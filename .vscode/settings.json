@@ -3,5 +3,10 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
+  },
+  "chat.tools.terminal.autoApprove": {
+    "tabs": true,
+    "/index.tsx": true,
+    "git remote": true
   }
 }

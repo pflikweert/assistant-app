@@ -42,9 +42,39 @@ To learn more about developing your project with Expo, look at the following res
 - [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
 - [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
 
-## Join the community
+## Supabase setup
 
-Join our community of developers creating universal apps.
+This app uses a Supabase PostgreSQL database to store imported transactions. The
+schema is intentionally _generic_ so it can accommodate data from any CSV export
+(not just Rabobank). The current migrations create/alter a
+`transactions` table with the following columns:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- `id` (uuid primary key)
+- `date` (date) – transaction date
+- `details` (text) – human-readable description
+- `counterparty` (text)
+- `amount` (numeric)
+- `currency` (text)
+- `type` (text)
+- `metadata` (jsonb) – catches any other columns from the CSV
+- `created_at` (timestamp with time zone default now())
+
+A unique index on `(date, details, amount)` prevents exact duplicates. The
+migration sequence first creates a concrete table and later renames the
+original `description` column to `details` while adding the generic fields.
+
+You can apply these migrations using the Supabase CLI (install with
+`npm install -g supabase`) or by copying the SQL files into the dashboard
+editor.
+
+```bash
+# login once if needed
+supabase login
+
+# from the project root
+supabase db push    # run pending migrations against your linked project
+```
+
+Once the table exists, importing a CSV will map the bank‑specific column names
+into the generic fields and store the remaining columns under `metadata`.
+Existing rows are updated if they match on `date+details+amount`.
