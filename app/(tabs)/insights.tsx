@@ -1,42 +1,37 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { FinColors } from "@/constants/theme";
 import { useFocusEffect } from "@react-navigation/native";
 import { supabase } from "@/services/supabase";
 
 const fmt = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" });
 
-// ─── Mini donut / category bar ────────────────────────────────────────────────
+// ─── Category bar ─────────────────────────────────────────────────────────────
 type Category = { label: string; amount: number; color: string };
 
-const CAT_COLORS = ["#22c55e", "#38bdf8", "#f59e0b", "#e879f9", "#fb923c", "#64748b"];
+const CAT_COLORS = ["#7dd3a1", "#94a3b8", "#a3a3a3", "#6b6b6b", "#525252"];
 
 function CategoryBar({ categories }: { categories: Category[] }) {
   const total = categories.reduce((s, c) => s + c.amount, 0) || 1;
   return (
-    <View style={{ gap: 10 }}>
-      {/* bar */}
-      <View style={{ flexDirection: "row", height: 8, borderRadius: 8, overflow: "hidden", gap: 2 }}>
+    <View style={{ gap: 16 }}>
+      {/* Segmented bar */}
+      <View style={{ flexDirection: "row", height: 6, borderRadius: 3, overflow: "hidden", gap: 2 }}>
         {categories.map((cat, i) => (
           <View key={i} style={{ flex: cat.amount / total, backgroundColor: cat.color }} />
         ))}
       </View>
-      {/* legend */}
-      <View style={{ gap: 8 }}>
+      {/* Legend */}
+      <View style={{ gap: 12 }}>
         {categories.map((cat, i) => (
           <View key={i} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: cat.color }} />
-              <Text style={{ fontSize: 13, color: FinColors.textSecondary }}>{cat.label}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: cat.color }} />
+              <Text style={{ fontSize: 14, color: FinColors.textSecondary }}>{cat.label}</Text>
             </View>
-            <View style={{ flexDirection: "row", gap: 16 }}>
-              <Text style={{ fontSize: 13, color: FinColors.textMuted }}>
-                {Math.round((cat.amount / total) * 100)}%
-              </Text>
-              <Text style={{ fontSize: 13, fontWeight: "600", color: FinColors.textPrimary, minWidth: 70, textAlign: "right" }}>
-                {fmt.format(cat.amount)}
-              </Text>
-            </View>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: FinColors.textPrimary }}>
+              {fmt.format(cat.amount)}
+            </Text>
           </View>
         ))}
       </View>
@@ -45,13 +40,11 @@ function CategoryBar({ categories }: { categories: Category[] }) {
 }
 
 // ─── Insight card ─────────────────────────────────────────────────────────────
-function InsightCard({ icon, text, accent }: { icon: string; text: string; accent?: boolean }) {
+function InsightCard({ title, text }: { title: string; text: string }) {
   return (
-    <View style={[styles.insightCard, accent && styles.insightCardAccent]}>
-      <View style={[styles.insightIcon, accent && styles.insightIconAccent]}>
-        <Text style={{ fontSize: 16, color: accent ? "#0f172a" : FinColors.green }}>{icon}</Text>
-      </View>
-      <Text style={[styles.insightText, accent && { color: "#0f172a" }]}>{text}</Text>
+    <View style={styles.insightCard}>
+      <Text style={styles.insightTitle}>{title}</Text>
+      <Text style={styles.insightText}>{text}</Text>
     </View>
   );
 }
@@ -60,7 +53,6 @@ function InsightCard({ icon, text, accent }: { icon: string; text: string; accen
 export default function InsightsScreen() {
   const [totalSpent, setTotalSpent] = React.useState(0);
   const [totalIncome, setTotalIncome] = React.useState(0);
-  const [categories, setCategories] = React.useState<Category[]>([]);
   const [txCount, setTxCount] = React.useState(0);
 
   const DEMO_CATEGORIES: Category[] = [
@@ -68,8 +60,7 @@ export default function InsightsScreen() {
     { label: "Transport", amount: 210, color: CAT_COLORS[1] },
     { label: "Utilities", amount: 155, color: CAT_COLORS[2] },
     { label: "Dining", amount: 290, color: CAT_COLORS[3] },
-    { label: "Subscriptions", amount: 120, color: CAT_COLORS[4] },
-    { label: "Other", amount: 95, color: CAT_COLORS[5] },
+    { label: "Other", amount: 95, color: CAT_COLORS[4] },
   ];
 
   const load = React.useCallback(async () => {
@@ -95,94 +86,65 @@ export default function InsightsScreen() {
   React.useEffect(() => { load(); }, [load]);
   useFocusEffect(React.useCallback(() => { load(); }, [load]));
 
-  const displayCategories = categories.length ? categories : DEMO_CATEGORIES;
-  const netSavings = totalIncome - totalSpent;
+  const netSavings = (totalIncome || 3420) - (totalSpent || 1250);
 
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
-        <Text style={styles.pageTitle}>Spending Insights</Text>
+        <Text style={styles.pageTitle}>Insights</Text>
         <View style={styles.monthBadge}>
           <Text style={styles.monthBadgeText}>This month</Text>
         </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        {/* Monthly summary */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Monthly Summary</Text>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Income</Text>
-              <Text style={[styles.summaryValue, { color: FinColors.green }]}>
-                +{fmt.format(totalIncome || 3420)}
-              </Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Expenses</Text>
-              <Text style={[styles.summaryValue, { color: FinColors.red }]}>
-                -{fmt.format(totalSpent || 1250)}
-              </Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Net</Text>
-              <Text style={[styles.summaryValue, { color: netSavings >= 0 ? FinColors.green : FinColors.red }]}>
-                {netSavings >= 0 ? "+" : ""}{fmt.format(netSavings || 2170)}
-              </Text>
-            </View>
+        {/* Summary cards */}
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Income</Text>
+            <Text style={[styles.summaryValue, { color: FinColors.green }]}>
+              +{fmt.format(totalIncome || 3420)}
+            </Text>
           </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Expenses</Text>
+            <Text style={styles.summaryValue}>
+              {fmt.format(totalSpent || 1250)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Net card */}
+        <View style={styles.netCard}>
+          <Text style={styles.netLabel}>Net this month</Text>
+          <Text style={[styles.netValue, netSavings >= 0 && { color: FinColors.green }]}>
+            {netSavings >= 0 ? "+" : ""}{fmt.format(netSavings)}
+          </Text>
           {txCount > 0 && (
-            <Text style={styles.txCountNote}>{txCount} transactions analysed</Text>
+            <Text style={styles.txNote}>{txCount} transactions analysed</Text>
           )}
         </View>
 
         {/* Category breakdown */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Category Breakdown</Text>
-          <CategoryBar categories={displayCategories} />
+          <Text style={styles.cardTitle}>Spending by Category</Text>
+          <CategoryBar categories={DEMO_CATEGORIES} />
         </View>
 
-        {/* AI insights */}
-        <Text style={styles.sectionLabel}>AI Insights</Text>
-        <InsightCard icon="↑" text="You spent 30% more on restaurants this week compared to last week." />
-        <InsightCard icon="!" text="Unusual activity: 3 transactions above €200 this week." />
-        <InsightCard icon="✓" text="Great job — your grocery spending is down 12% this month." accent />
-
-        {/* Savings suggestion */}
-        <Text style={styles.sectionLabel}>Savings Opportunities</Text>
-        <View style={styles.savingCard}>
-          <View style={styles.savingHeader}>
-            <View style={styles.savingIconWrap}>
-              <Text style={{ fontSize: 16, color: FinColors.green }}>$</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.savingTitle}>Reduce subscriptions</Text>
-              <Text style={styles.savingSubtitle}>You have 7 active subscriptions</Text>
-            </View>
-            <Text style={styles.savingAmount}>€120 / mo</Text>
-          </View>
-          <Text style={styles.savingBody}>
-            You could save <Text style={{ color: FinColors.green, fontWeight: "700" }}>€120 per month</Text> by auditing and cancelling unused subscriptions.
-          </Text>
-          <TouchableOpacity style={styles.savingBtn}>
-            <Text style={styles.savingBtnText}>View subscriptions</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.savingCard}>
-          <View style={styles.savingHeader}>
-            <View style={styles.savingIconWrap}>
-              <Text style={{ fontSize: 16, color: FinColors.green }}>↓</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.savingTitle}>Coffee & dining</Text>
-              <Text style={styles.savingSubtitle}>High vs. previous month</Text>
-            </View>
-            <Text style={styles.savingAmount}>€65 / mo</Text>
-          </View>
-        </View>
+        {/* AI Insights */}
+        <Text style={styles.sectionLabel}>Insights</Text>
+        <InsightCard
+          title="Restaurant spending up"
+          text="You spent 30% more on dining this week compared to your monthly average."
+        />
+        <InsightCard
+          title="Subscription review"
+          text="You have 7 active subscriptions totalling EUR 120/month. Consider reviewing unused services."
+        />
+        <InsightCard
+          title="Savings on track"
+          text="Your grocery spending is 12% lower this month. Great progress!"
+        />
       </ScrollView>
     </View>
   );
@@ -194,91 +156,76 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: 16,
+    paddingHorizontal: 24,
+    paddingTop: 60,
+    paddingBottom: 20,
   },
-  pageTitle: { fontSize: 24, fontWeight: "800", color: FinColors.textPrimary },
+  pageTitle: { fontSize: 28, fontWeight: "700", color: FinColors.textPrimary, letterSpacing: -0.5 },
   monthBadge: {
-    backgroundColor: FinColors.bgElevated,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 14,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  monthBadgeText: { fontSize: 11, fontWeight: "600", color: FinColors.textSecondary },
-  scroll: { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
+  monthBadgeText: { fontSize: 12, fontWeight: "600", color: FinColors.textSecondary },
+  scroll: { paddingHorizontal: 20, paddingBottom: 40, gap: 16 },
 
-  card: {
+  // Summary row
+  summaryRow: { flexDirection: "row", gap: 12 },
+  summaryCard: {
+    flex: 1,
     backgroundColor: FinColors.bgCard,
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  cardTitle: { fontSize: 15, fontWeight: "700", color: FinColors.textPrimary, marginBottom: 16 },
+  summaryLabel: { fontSize: 13, color: FinColors.textMuted, fontWeight: "500", marginBottom: 8 },
+  summaryValue: { fontSize: 22, fontWeight: "700", color: FinColors.textPrimary },
 
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  summaryItem: { flex: 1, alignItems: "center" },
-  summaryLabel: { fontSize: 11, color: FinColors.textMuted, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 },
-  summaryValue: { fontSize: 17, fontWeight: "800" },
-  summaryDivider: { width: 1, height: 40, backgroundColor: FinColors.borderSubtle },
-  txCountNote: { fontSize: 11, color: FinColors.textMuted, textAlign: "center", marginTop: 14 },
+  // Net card
+  netCard: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+  },
+  netLabel: { fontSize: 13, color: FinColors.textMuted, fontWeight: "500", marginBottom: 8 },
+  netValue: { fontSize: 36, fontWeight: "700", color: FinColors.textPrimary, letterSpacing: -1 },
+  txNote: { fontSize: 12, color: FinColors.textMuted, marginTop: 12 },
 
-  sectionLabel: { fontSize: 11, fontWeight: "700", color: FinColors.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginTop: 4 },
+  // Card
+  card: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  cardTitle: { fontSize: 16, fontWeight: "600", color: FinColors.textPrimary, marginBottom: 20 },
 
+  // Section
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: FinColors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginTop: 8,
+  },
+
+  // Insight card
   insightCard: {
     backgroundColor: FinColors.bgCard,
     borderRadius: 14,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
+    padding: 20,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  insightCardAccent: { backgroundColor: FinColors.green, borderColor: FinColors.green },
-  insightIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: FinColors.greenBg,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  insightIconAccent: { backgroundColor: "rgba(0,0,0,0.15)" },
-  insightText: { flex: 1, fontSize: 13, color: FinColors.textSecondary, lineHeight: 19 },
-
-  savingCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    gap: 12,
-  },
-  savingHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
-  savingIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: FinColors.greenBg,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  savingTitle: { fontSize: 14, fontWeight: "700", color: FinColors.textPrimary },
-  savingSubtitle: { fontSize: 11, color: FinColors.textMuted, marginTop: 2 },
-  savingAmount: { fontSize: 15, fontWeight: "800", color: FinColors.green },
-  savingBody: { fontSize: 13, color: FinColors.textSecondary, lineHeight: 20 },
-  savingBtn: {
-    backgroundColor: FinColors.bgElevated,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 10,
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  savingBtnText: { fontSize: 12, fontWeight: "600", color: FinColors.textPrimary },
+  insightTitle: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary, marginBottom: 8 },
+  insightText: { fontSize: 14, color: FinColors.textSecondary, lineHeight: 21 },
 });

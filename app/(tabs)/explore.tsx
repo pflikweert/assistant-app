@@ -14,28 +14,7 @@ import { FinColors } from "@/constants/theme";
 const fmt = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" });
 const PAGE_SIZE = 30;
 
-const MERCHANT_ICONS: Record<string, string> = {
-  supermarket: "S",
-  grocery: "S",
-  gas: "G",
-  petrol: "G",
-  heating: "H",
-  energy: "E",
-  salary: "$",
-  salaris: "$",
-  transfer: "T",
-  bank: "B",
-};
-
-function merchantIcon(name: string) {
-  const n = name.toLowerCase();
-  for (const [key, icon] of Object.entries(MERCHANT_ICONS)) {
-    if (n.includes(key)) return icon;
-  }
-  return name.charAt(0).toUpperCase() || "?";
-}
-
-const FILTER_PILLS = ["All", "Income", "Expenses", "Transfers"];
+const FILTER_PILLS = ["All", "Income", "Expenses"];
 
 type Tx = {
   id: string;
@@ -50,22 +29,18 @@ function TxItem({ item }: { item: Tx }) {
   const isPos = item.amount >= 0;
   return (
     <View style={styles.txRow}>
-      <View style={[styles.iconBubble, { backgroundColor: isPos ? FinColors.greenBg : "rgba(148,163,184,0.08)" }]}>
-        <Text style={{ color: isPos ? FinColors.green : FinColors.textSecondary, fontSize: 13, fontWeight: "700" }}>
-          {merchantIcon(item.counterparty || item.omschrijving1 || "?")}
+      <View style={styles.iconBubble}>
+        <Text style={styles.iconText}>
+          {(item.counterparty || "?").charAt(0).toUpperCase()}
         </Text>
       </View>
       <View style={styles.txMid}>
         <Text style={styles.txName} numberOfLines={1}>{item.counterparty || "Unknown"}</Text>
         <Text style={styles.txSub} numberOfLines={1}>{item.omschrijving1}</Text>
       </View>
-      {isPos ? (
-        <View style={styles.posTag}>
-          <Text style={styles.posTagText}>+{fmt.format(item.amount)}</Text>
-        </View>
-      ) : (
-        <Text style={styles.negAmt}>{fmt.format(item.amount)}</Text>
-      )}
+      <Text style={[styles.txAmount, isPos && styles.txAmountPos]}>
+        {isPos ? "+" : ""}{fmt.format(item.amount)}
+      </Text>
     </View>
   );
 }
@@ -128,7 +103,6 @@ export default function TransactionsTab() {
   const filtered = React.useMemo(() => {
     if (filter === "Income") return transactions.filter(t => t.amount > 0);
     if (filter === "Expenses") return transactions.filter(t => t.amount < 0);
-    if (filter === "Transfers") return transactions.filter(t => t.counterparty?.toLowerCase().includes("transfer") || t.omschrijving1?.toLowerCase().includes("transfer"));
     return transactions;
   }, [transactions, filter]);
 
@@ -160,7 +134,7 @@ export default function TransactionsTab() {
         ))}
       </View>
 
-      {loading && <ActivityIndicator color={FinColors.green} style={{ marginVertical: 12 }} />}
+      {loading && <ActivityIndicator color={FinColors.textSecondary} style={{ marginVertical: 12 }} />}
 
       <SectionList
         sections={sections}
@@ -175,7 +149,7 @@ export default function TransactionsTab() {
         ListEmptyComponent={() =>
           !loading ? <Text style={styles.empty}>No transactions found.</Text> : null
         }
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
       />
 
@@ -186,15 +160,15 @@ export default function TransactionsTab() {
           onPress={() => setPage(p => Math.max(0, p - 1))}
           disabled={page === 0 || loading}
         >
-          <Text style={[styles.pageBtnText, page === 0 && { color: FinColors.textMuted }]}>Previous</Text>
+          <Text style={[styles.pageBtnText, page === 0 && { opacity: 0.4 }]}>Previous</Text>
         </TouchableOpacity>
-        <Text style={styles.pageNum}>Page {page + 1}</Text>
+        <Text style={styles.pageNum}>{page + 1}</Text>
         <TouchableOpacity
           style={[styles.pageBtn, !hasMore && styles.pageBtnDisabled]}
           onPress={() => setPage(p => p + 1)}
           disabled={!hasMore || loading}
         >
-          <Text style={[styles.pageBtnText, !hasMore && { color: FinColors.textMuted }]}>Next</Text>
+          <Text style={[styles.pageBtnText, !hasMore && { opacity: 0.4 }]}>Next</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -203,80 +177,75 @@ export default function TransactionsTab() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: FinColors.bgBase },
-  topBar: { paddingHorizontal: 20, paddingTop: 56, paddingBottom: 12 },
-  pageTitle: { fontSize: 24, fontWeight: "800", color: FinColors.textPrimary },
+  topBar: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 16 },
+  pageTitle: { fontSize: 28, fontWeight: "700", color: FinColors.textPrimary, letterSpacing: -0.5 },
 
-  pillRow: { flexDirection: "row", paddingHorizontal: 16, gap: 8, marginBottom: 16, flexWrap: "wrap" },
+  pillRow: { flexDirection: "row", paddingHorizontal: 20, gap: 10, marginBottom: 8 },
   pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: FinColors.bgElevated,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 24,
+    backgroundColor: FinColors.bgCard,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  pillActive: { backgroundColor: FinColors.greenBg, borderColor: FinColors.greenBorder },
-  pillText: { fontSize: 12, fontWeight: "600", color: FinColors.textSecondary },
-  pillTextActive: { color: FinColors.green },
+  pillActive: { backgroundColor: FinColors.textPrimary },
+  pillText: { fontSize: 13, fontWeight: "600", color: FinColors.textSecondary },
+  pillTextActive: { color: FinColors.bgBase },
 
   sectionHeader: {
-    paddingTop: 20,
-    paddingBottom: 8,
+    paddingTop: 24,
+    paddingBottom: 12,
     backgroundColor: FinColors.bgBase,
   },
-  sectionTitle: { fontSize: 12, fontWeight: "700", color: FinColors.textMuted, textTransform: "uppercase", letterSpacing: 0.8 },
+  sectionTitle: { fontSize: 13, fontWeight: "600", color: FinColors.textMuted, textTransform: "uppercase", letterSpacing: 1 },
 
   txRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
+    paddingVertical: 16,
     backgroundColor: FinColors.bgBase,
   },
   iconBubble: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
+    marginRight: 14,
   },
+  iconText: { fontSize: 15, fontWeight: "600", color: FinColors.textSecondary },
   txMid: { flex: 1 },
-  txName: { fontSize: 14, fontWeight: "600", color: FinColors.textPrimary },
-  txSub: { fontSize: 11, color: FinColors.textMuted, marginTop: 2 },
+  txName: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
+  txSub: { fontSize: 12, color: FinColors.textMuted, marginTop: 3 },
+  txAmount: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
+  txAmountPos: { color: FinColors.green },
 
-  posTag: {
-    backgroundColor: FinColors.greenBg,
-    borderWidth: 1,
-    borderColor: FinColors.greenBorder,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  posTagText: { fontSize: 12, fontWeight: "700", color: FinColors.green },
-  negAmt: { fontSize: 14, fontWeight: "600", color: FinColors.textSecondary },
-
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: FinColors.borderSubtle, marginLeft: 52 },
-  empty: { textAlign: "center", color: FinColors.textMuted, paddingVertical: 32, fontSize: 14 },
+  divider: { height: 1, backgroundColor: FinColors.borderSubtle, marginLeft: 58 },
+  empty: { textAlign: "center", color: FinColors.textMuted, paddingVertical: 40, fontSize: 14 },
 
   pager: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingVertical: 16,
+    gap: 24,
     borderTopWidth: 1,
     borderTopColor: FinColors.borderSubtle,
     backgroundColor: FinColors.bgBase,
   },
   pageBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     backgroundColor: FinColors.bgCard,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  pageBtnDisabled: { opacity: 0.4 },
+  pageBtnDisabled: { opacity: 0.5 },
   pageBtnText: { fontSize: 13, fontWeight: "600", color: FinColors.textPrimary },
-  pageNum: { fontSize: 13, color: FinColors.textSecondary, fontWeight: "600" },
+  pageNum: { fontSize: 14, color: FinColors.textMuted, fontWeight: "600", minWidth: 24, textAlign: "center" },
 });

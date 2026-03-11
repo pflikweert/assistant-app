@@ -76,14 +76,14 @@ export default function TabLayout() {
           backgroundColor: FinColors.tabBg,
           borderTopColor: FinColors.borderSubtle,
           borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          height: 72,
+          paddingBottom: 12,
+          paddingTop: 10,
         },
         tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: "600",
-          letterSpacing: 0.3,
+          fontSize: 11,
+          fontWeight: "500",
+          letterSpacing: 0.2,
         },
       }}
     >

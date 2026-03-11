@@ -1,60 +1,65 @@
 /**
- * Fintech dark mode color palette.
- * Primary: #0f172a (deep navy background)
- * Accent:  #22c55e (green for positive values)
- * Cards:   #1e293b (slightly lighter navy for cards)
- * Muted:   #64748b (muted text / icons)
+ * Premium Fintech Ink Wash Color Palette
+ * ──────────────────────────────────────
+ * Charcoal black, cool gray, and soft ivory create
+ * a gallery-like aesthetic with high contrast and elegance.
+ *
+ * Base:   #121212 (charcoal black)
+ * Card:   #1a1a1a (soft elevated surface)
+ * Ivory:  #f5f5f0 (warm white text)
+ * Gray:   #6b6b6b (muted elements)
+ * Accent: #7dd3a1 (soft sage green — muted, not vibrant)
  */
 
 import { Platform } from 'react-native';
 
 export const FinColors = {
-  // backgrounds
-  bgBase: '#0f172a',       // deep navy — main screen bg
-  bgCard: '#1e293b',       // card background
-  bgElevated: '#273549',   // slightly elevated surfaces / filter pills
-  bgInput: '#1e293b',
+  // backgrounds — charcoal tones
+  bgBase: '#0d0d0d',       // deepest charcoal — main screen bg
+  bgCard: '#171717',       // card background — soft elevation
+  bgElevated: '#222222',   // elevated surfaces / filter pills
+  bgInput: '#1a1a1a',
 
-  // text
-  textPrimary: '#f1f5f9',
-  textSecondary: '#94a3b8',
-  textMuted: '#64748b',
+  // text — ivory & cool grays
+  textPrimary: '#f5f5f0',   // soft ivory
+  textSecondary: '#a3a3a3', // warm gray
+  textMuted: '#6b6b6b',     // cool muted gray
 
-  // accent
-  green: '#22c55e',
-  greenBg: 'rgba(34,197,94,0.12)',
-  greenBorder: 'rgba(34,197,94,0.35)',
+  // accent — soft sage green (muted, not vibrant)
+  green: '#7dd3a1',
+  greenBg: 'rgba(125,211,161,0.08)',
+  greenBorder: 'rgba(125,211,161,0.20)',
 
-  // negative / neutral
-  red: '#f87171',
-  redBg: 'rgba(248,113,113,0.12)',
+  // negative
+  red: '#e57373',
+  redBg: 'rgba(229,115,115,0.08)',
 
-  // borders
-  border: '#1e293b',
-  borderSubtle: 'rgba(148,163,184,0.12)',
+  // borders — subtle charcoal
+  border: '#1f1f1f',
+  borderSubtle: 'rgba(245,245,240,0.06)',
 
   // tab bar
-  tabBg: '#0d1526',
-  tabActive: '#22c55e',
-  tabInactive: '#64748b',
+  tabBg: '#0a0a0a',
+  tabActive: '#f5f5f0',     // ivory for active tab
+  tabInactive: '#525252',
 };
 
 export const Colors = {
   light: {
-    text: '#f1f5f9',
-    background: '#0f172a',
-    tint: '#22c55e',
-    icon: '#94a3b8',
-    tabIconDefault: '#64748b',
-    tabIconSelected: '#22c55e',
+    text: '#f5f5f0',
+    background: '#0d0d0d',
+    tint: '#7dd3a1',
+    icon: '#a3a3a3',
+    tabIconDefault: '#525252',
+    tabIconSelected: '#f5f5f0',
   },
   dark: {
-    text: '#f1f5f9',
-    background: '#0f172a',
-    tint: '#22c55e',
-    icon: '#94a3b8',
-    tabIconDefault: '#64748b',
-    tabIconSelected: '#22c55e',
+    text: '#f5f5f0',
+    background: '#0d0d0d',
+    tint: '#7dd3a1',
+    icon: '#a3a3a3',
+    tabIconDefault: '#525252',
+    tabIconSelected: '#f5f5f0',
   },
 };
 

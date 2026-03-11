@@ -16,54 +16,14 @@ const fmt = new Intl.NumberFormat("nl-NL", {
   currency: "EUR",
 });
 
-// ─── Mini sparkline chart (7 data points) ────────────────────────────────────
-function SparkLine({ data }: { data: number[] }) {
-  if (!data.length) return null;
-  const w = 280;
-  const h = 56;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - ((v - min) / range) * h;
-    return `${x},${y}`;
-  });
-  const polyline = pts.join(" ");
-  const last = pts[pts.length - 1].split(",");
-
-  // Build SVG via react-native-svg (or fallback to a View chart if unavailable)
-  // We use a pure View-based bar chart as RN SVG may not be available
-  return (
-    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6, height: 48, marginTop: 8 }}>
-      {data.map((v, i) => {
-        const pct = range === 0 ? 0.5 : (v - min) / range;
-        const barH = Math.max(6, pct * 44);
-        const isLast = i === data.length - 1;
-        return (
-          <View
-            key={i}
-            style={{
-              flex: 1,
-              height: barH,
-              backgroundColor: isLast ? FinColors.green : "rgba(34,197,94,0.3)",
-              borderRadius: 3,
-            }}
-          />
-        );
-      })}
-    </View>
-  );
-}
-
 // ─── Transaction row ──────────────────────────────────────────────────────────
 function TxRow({ tx }: { tx: any }) {
   const isPos = tx.amount >= 0;
   return (
     <View style={styles.txRow}>
-      <View style={[styles.txIcon, { backgroundColor: isPos ? FinColors.greenBg : "rgba(248,113,113,0.1)" }]}>
-        <Text style={{ fontSize: 14, color: isPos ? FinColors.green : FinColors.red }}>
-          {isPos ? "+" : "−"}
+      <View style={styles.txIconWrap}>
+        <Text style={styles.txIconText}>
+          {(tx.counterparty || "?").charAt(0).toUpperCase()}
         </Text>
       </View>
       <View style={styles.txMid}>
@@ -71,15 +31,22 @@ function TxRow({ tx }: { tx: any }) {
           {tx.counterparty || "Unknown"}
         </Text>
         <Text style={styles.txSub} numberOfLines={1}>
-          {tx.omschrijving1 || ""}
+          {tx.date}
         </Text>
       </View>
-      <View style={styles.txRight}>
-        <Text style={[styles.txAmount, { color: isPos ? FinColors.green : FinColors.textSecondary }]}>
-          {isPos ? "+" : "−"}{fmt.format(Math.abs(tx.amount))}
-        </Text>
-        <Text style={styles.txDate}>{tx.date}</Text>
-      </View>
+      <Text style={[styles.txAmount, isPos && styles.txAmountPos]}>
+        {isPos ? "+" : ""}{fmt.format(tx.amount)}
+      </Text>
+    </View>
+  );
+}
+
+// ─── Stat pill ─────────────────────────────────────────────────────────────────
+function StatPill({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <View style={styles.statPill}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, accent && { color: FinColors.green }]}>{value}</Text>
     </View>
   );
 }
@@ -89,8 +56,8 @@ export default function DashboardScreen() {
   const router = useRouter();
   const [transactions, setTransactions] = React.useState<any[]>([]);
   const [balance, setBalance] = React.useState(0);
-  const [safeToSpend, setSafeToSpend] = React.useState(0);
-  const [weeklyData, setWeeklyData] = React.useState<number[]>([]);
+  const [monthlySpent, setMonthlySpent] = React.useState(0);
+  const [monthlyIncome, setMonthlyIncome] = React.useState(0);
 
   const load = React.useCallback(async () => {
     try {
@@ -99,14 +66,13 @@ export default function DashboardScreen() {
         .select("id,details,counterparty,date,amount,metadata")
         .order("date", { ascending: false })
         .order("metadata->>Volgnr", { ascending: false })
-        .limit(20);
+        .limit(50);
 
       if (!data) return;
       const rows = data.map((r: any) => {
         const md = r.metadata || {};
         const details = String(r.details || "");
         const rawSeq = String(md["Volgnr"] || "").replace(/^0+/, "");
-        const omschrijving1 = details.split("|")[0]?.trim() || details;
         const saldoRaw = md["Saldo na trn"];
         let runningBalance: number | null = null;
         if (saldoRaw != null) {
@@ -115,9 +81,7 @@ export default function DashboardScreen() {
         }
         return {
           id: r.id,
-          description: details,
           counterparty: String(r.counterparty || "").trim(),
-          omschrijving1,
           date: r.date,
           amount: r.amount,
           seq: parseInt(rawSeq || "0", 10) || 0,
@@ -128,24 +92,18 @@ export default function DashboardScreen() {
         a.date === b.date ? b.seq - a.seq : a.date < b.date ? 1 : -1
       );
       setTransactions(rows.slice(0, 5));
+      
       const latestBalance = rows.find((r: any) => r.runningBalance != null)?.runningBalance ?? 0;
       setBalance(latestBalance);
-      setSafeToSpend(latestBalance * 0.05);
 
-      // Build weekly spending totals (last 7 days of outgoing)
+      // Calculate monthly totals
       const now = new Date();
-      const daily: Record<string, number> = {};
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        daily[d.toISOString().slice(0, 10)] = 0;
-      }
-      data.forEach((r: any) => {
-        if (r.amount < 0 && daily.hasOwnProperty(r.date)) {
-          daily[r.date] += Math.abs(r.amount);
-        }
-      });
-      setWeeklyData(Object.values(daily));
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const monthTxs = data.filter((r: any) => r.date >= monthStart);
+      const spent = monthTxs.filter((r: any) => r.amount < 0).reduce((s: number, r: any) => s + Math.abs(r.amount), 0);
+      const income = monthTxs.filter((r: any) => r.amount > 0).reduce((s: number, r: any) => s + r.amount, 0);
+      setMonthlySpent(spent);
+      setMonthlyIncome(income);
     } catch (e) {
       console.error("[v0] dashboard load error", e);
     }
@@ -154,64 +112,67 @@ export default function DashboardScreen() {
   React.useEffect(() => { load(); }, [load]);
   useFocusEffect(React.useCallback(() => { load(); }, [load]));
 
-  const demoWeekly = weeklyData.some(v => v > 0) ? weeklyData : [120, 85, 210, 60, 175, 90, 145];
-
   return (
     <View style={styles.root}>
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerSub}>Good morning</Text>
-          <Text style={styles.headerTitle}>Finance Assistant</Text>
+          <Text style={styles.greeting}>Welcome back</Text>
+          <Text style={styles.headerTitle}>Jan de Vries</Text>
         </View>
         <View style={styles.avatar}>
-          <Text style={{ color: FinColors.bgBase, fontWeight: "700", fontSize: 15 }}>JD</Text>
+          <Text style={styles.avatarText}>JD</Text>
         </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {/* Balance Card */}
         <View style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>Current Balance</Text>
+          <Text style={styles.balanceLabel}>Total Balance</Text>
           <Text style={styles.balanceAmount}>{fmt.format(balance)}</Text>
-          <View style={styles.balanceBadge}>
-            <Text style={styles.balanceBadgeText}>Main Account</Text>
+          <View style={styles.accountRow}>
+            <View style={styles.accountDot} />
+            <Text style={styles.accountText}>Main Account</Text>
           </View>
         </View>
 
-        {/* Safe to spend */}
-        <View style={styles.safeCard}>
-          <View>
-            <Text style={styles.safeLabel}>Safe to spend today</Text>
-            <Text style={styles.safeAmount}>{fmt.format(safeToSpend)}</Text>
-          </View>
-          <View style={styles.safeIcon}>
-            <Text style={{ fontSize: 18 }}>✓</Text>
-          </View>
+        {/* Stats row */}
+        <View style={styles.statsRow}>
+          <StatPill label="Income" value={`+${fmt.format(monthlyIncome || 3420)}`} accent />
+          <StatPill label="Expenses" value={fmt.format(monthlySpent || 1250)} />
         </View>
 
-        {/* Weekly chart */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Weekly Spending</Text>
-            <Text style={styles.cardBadge}>Last 7 days</Text>
-          </View>
-          <SparkLine data={demoWeekly} />
-          <View style={styles.weekLabels}>
-            {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
-              <Text key={i} style={styles.weekLabel}>{d}</Text>
-            ))}
-          </View>
+        {/* Quick actions */}
+        <View style={styles.actionsRow}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push("/csv-import")}>
+            <View style={styles.actionIcon}>
+              <Text style={styles.actionIconText}>+</Text>
+            </View>
+            <Text style={styles.actionLabel}>Import</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push("/transactions")}>
+            <View style={styles.actionIcon}>
+              <Text style={styles.actionIconText}>...</Text>
+            </View>
+            <Text style={styles.actionLabel}>All</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn}>
+            <View style={styles.actionIcon}>
+              <Text style={styles.actionIconText}>$</Text>
+            </View>
+            <Text style={styles.actionLabel}>Budget</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Recent Transactions */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Recent Transactions</Text>
-            <TouchableOpacity onPress={() => router.push("/transactions")}>
-              <Text style={styles.seeAll}>See all</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Transactions</Text>
+          <TouchableOpacity onPress={() => router.push("/transactions")}>
+            <Text style={styles.seeAll}>See all</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.txCard}>
           {transactions.length === 0 ? (
             <Text style={styles.emptyText}>No transactions yet</Text>
           ) : (
@@ -230,108 +191,113 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: FinColors.bgBase },
+  
+  // Header
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: 20,
+    paddingHorizontal: 24,
+    paddingTop: 60,
+    paddingBottom: 24,
   },
-  headerSub: { fontSize: 13, color: FinColors.textMuted, marginBottom: 2 },
-  headerTitle: { fontSize: 22, fontWeight: "700", color: FinColors.textPrimary },
+  greeting: { fontSize: 14, color: FinColors.textMuted, marginBottom: 4 },
+  headerTitle: { fontSize: 24, fontWeight: "700", color: FinColors.textPrimary, letterSpacing: -0.5 },
   avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: FinColors.green,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  scroll: { paddingHorizontal: 16, paddingBottom: 24, gap: 14 },
-
-  // Balance card
-  balanceCard: {
-    backgroundColor: FinColors.green,
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: "#22c55e",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  balanceLabel: { fontSize: 13, color: "rgba(0,0,0,0.55)", fontWeight: "600" },
-  balanceAmount: { fontSize: 38, fontWeight: "800", color: "#0f172a", marginTop: 4 },
-  balanceBadge: {
-    marginTop: 12,
-    backgroundColor: "rgba(0,0,0,0.12)",
-    alignSelf: "flex-start",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  balanceBadgeText: { fontSize: 11, fontWeight: "600", color: "rgba(0,0,0,0.6)" },
-
-  // Safe to spend
-  safeCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
-    padding: 20,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: FinColors.bgElevated,
     borderWidth: 1,
-    borderColor: FinColors.greenBorder,
-  },
-  safeLabel: { fontSize: 12, color: FinColors.textSecondary, marginBottom: 4 },
-  safeAmount: { fontSize: 26, fontWeight: "700", color: FinColors.green },
-  safeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: FinColors.greenBg,
+    borderColor: FinColors.borderSubtle,
     justifyContent: "center",
     alignItems: "center",
   },
+  avatarText: { color: FinColors.textSecondary, fontWeight: "600", fontSize: 14 },
 
-  // Generic card
-  card: {
+  scroll: { paddingHorizontal: 20, paddingBottom: 32 },
+
+  // Balance card — premium dark card style
+  balanceCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 20,
+    padding: 28,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  cardHeader: {
+  balanceLabel: { fontSize: 13, color: FinColors.textMuted, fontWeight: "500", marginBottom: 8 },
+  balanceAmount: { fontSize: 42, fontWeight: "700", color: FinColors.textPrimary, letterSpacing: -1 },
+  accountRow: { flexDirection: "row", alignItems: "center", marginTop: 16, gap: 8 },
+  accountDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: FinColors.green },
+  accountText: { fontSize: 13, color: FinColors.textSecondary, fontWeight: "500" },
+
+  // Stats row
+  statsRow: { flexDirection: "row", gap: 12, marginTop: 16 },
+  statPill: {
+    flex: 1,
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 14,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  statLabel: { fontSize: 12, color: FinColors.textMuted, fontWeight: "500", marginBottom: 6 },
+  statValue: { fontSize: 18, fontWeight: "700", color: FinColors.textPrimary },
+
+  // Quick actions
+  actionsRow: { flexDirection: "row", justifyContent: "center", gap: 32, marginTop: 28, marginBottom: 12 },
+  actionBtn: { alignItems: "center", gap: 8 },
+  actionIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  actionIconText: { fontSize: 20, color: FinColors.textPrimary, fontWeight: "500" },
+  actionLabel: { fontSize: 12, color: FinColors.textMuted, fontWeight: "500" },
+
+  // Section header
+  sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginTop: 28,
+    marginBottom: 14,
   },
-  cardTitle: { fontSize: 15, fontWeight: "700", color: FinColors.textPrimary },
-  cardBadge: { fontSize: 11, color: FinColors.textMuted, backgroundColor: FinColors.bgElevated, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-  seeAll: { fontSize: 12, color: FinColors.green, fontWeight: "600" },
+  sectionTitle: { fontSize: 16, fontWeight: "600", color: FinColors.textPrimary },
+  seeAll: { fontSize: 13, color: FinColors.textMuted, fontWeight: "500" },
 
-  weekLabels: { flexDirection: "row", justifyContent: "space-between", marginTop: 6 },
-  weekLabel: { flex: 1, textAlign: "center", fontSize: 10, color: FinColors.textMuted },
+  // Transaction card
+  txCard: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 16,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
 
   // Transaction row
-  txRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10 },
-  txIcon: {
-    width: 38,
-    height: 38,
+  txRow: { flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 12 },
+  txIconWrap: {
+    width: 42,
+    height: 42,
     borderRadius: 12,
+    backgroundColor: FinColors.bgElevated,
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
+    marginRight: 14,
   },
-  txMid: { flex: 1, justifyContent: "center" },
-  txName: { fontSize: 14, fontWeight: "600", color: FinColors.textPrimary },
-  txSub: { fontSize: 11, color: FinColors.textMuted, marginTop: 2 },
-  txRight: { alignItems: "flex-end" },
-  txAmount: { fontSize: 14, fontWeight: "700" },
-  txDate: { fontSize: 10, color: FinColors.textMuted, marginTop: 2 },
-  divider: { height: 1, backgroundColor: FinColors.borderSubtle },
-  emptyText: { fontSize: 13, color: FinColors.textMuted, textAlign: "center", paddingVertical: 16 },
+  txIconText: { fontSize: 15, fontWeight: "600", color: FinColors.textSecondary },
+  txMid: { flex: 1 },
+  txName: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
+  txSub: { fontSize: 12, color: FinColors.textMuted, marginTop: 3 },
+  txAmount: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
+  txAmountPos: { color: FinColors.green },
+  
+  divider: { height: 1, backgroundColor: FinColors.borderSubtle, marginLeft: 68 },
+  emptyText: { fontSize: 14, color: FinColors.textMuted, textAlign: "center", paddingVertical: 24 },
 });

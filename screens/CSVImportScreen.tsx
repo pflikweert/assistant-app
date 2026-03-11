@@ -353,15 +353,10 @@ const styles = StyleSheet.create({
   errorText: { fontSize: 13, color: FinColors.red },
 
   importBtn: {
-    backgroundColor: FinColors.green,
-    borderRadius: 16,
+    backgroundColor: FinColors.textPrimary,
+    borderRadius: 14,
     paddingVertical: 16,
     alignItems: "center",
-    shadowColor: FinColors.green,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
   },
-  importBtnText: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
+  importBtnText: { fontSize: 15, fontWeight: "700", color: FinColors.bgBase },
 });
