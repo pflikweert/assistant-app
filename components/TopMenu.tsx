@@ -1,16 +1,18 @@
-import { useThemeColor } from "@/hooks/use-theme-color";
+import { FinColors } from "@/constants/theme";
 import { useRouter } from "expo-router";
 import React from "react";
-import { Button, StyleSheet, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function TopMenu() {
   const router = useRouter();
-
-  const background = useThemeColor({}, "background");
   return (
-    <View style={[styles.container, { backgroundColor: background }]}>
-      <Button title="Import CSV" onPress={() => router.push("/csv-import")} />
-      <Button title="View all" onPress={() => router.push("/transactions")} />
+    <View style={styles.container}>
+      <TouchableOpacity style={styles.btn} onPress={() => router.push("/csv-import")}>
+        <Text style={styles.btnText}>Import CSV</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={() => router.push("/transactions")}>
+        <Text style={[styles.btnText, { color: "#0f172a" }]}>View all</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -19,6 +21,26 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    padding: 10,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: FinColors.bgBase,
+  },
+  btn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  btnPrimary: {
+    backgroundColor: FinColors.green,
+    borderColor: FinColors.green,
+  },
+  btnText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
   },
 });
