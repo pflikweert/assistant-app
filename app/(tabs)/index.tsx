@@ -1,24 +1,39 @@
 import { Button, ScrollView, StyleSheet, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 
 import TopMenu from "@/components/TopMenu";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { supabase } from "@/services/supabase";
 import { useRouter } from "expo-router";
 import React from "react";
 
-// transactions loaded from Supabase (last 5 by date descending)
+const euroFormatter = new Intl.NumberFormat("nl-NL", {
+  style: "currency",
+  currency: "EUR",
+});
+
+type DashboardTx = {
+  id: string;
+  description: string;
+  counterparty: string;
+  omschrijving1: string;
+  date: string;
+  amount: number;
+  seq: number;
+  runningBalance: number | null;
+};
 
 export default function DashboardScreen() {
-  const [transactions, setTransactions] = React.useState<
-    Array<{ id: string; description: string; date: string; amount: number }>
-  >([]);
+  const [transactions, setTransactions] = React.useState<DashboardTx[]>([]);
   const router = useRouter();
   const [balance, setBalance] = React.useState(0);
   const [safeToSpend, setSafeToSpend] = React.useState(0);
 
   const borderColor = useThemeColor({ light: "#ccc", dark: "#555" }, "text");
+  const iconColor = useThemeColor({}, "icon");
 
   const parseSaldo = (s: any) => {
     if (s == null) return null;
@@ -32,37 +47,42 @@ export default function DashboardScreen() {
     try {
       const { data, error } = await supabase
         .from("transactions")
-        .select("id,details,date,amount,metadata")
+        .select("id,details,counterparty,date,amount,metadata")
         .order("date", { ascending: false })
+        .order("metadata->>Volgnr", { ascending: false })
         .limit(10);
       if (error) {
         console.warn("failed to load transactions", error);
       } else {
         console.log("dashboard fetched", data?.length, "rows", data);
-        let bal = 0;
-        // map and respect volgnummer for ordering
-        const enriched = (data || []).map((r: any) => {
-          const md = r.metadata || {};
-          const seq = parseInt(String(md["Volgnr"] || ""), 10) || 0;
-          return { raw: r, seq };
-        });
-        enriched.sort((a, b) => a.seq - b.seq);
-        const rows = enriched.map(({ raw }) => {
+        const rows = (data || []).map((raw: any) => {
           const md = raw.metadata || {};
-          const saldo = parseSaldo(md["Saldo na trn"]);
-          if (saldo != null) bal = saldo;
-          else bal += raw.amount || 0;
+          const details = String(raw.details || "");
+          const rawSeq = String(md["Volgnr"] || "").replace(/^0+/, "");
+          const omschrijving1 = details.split("|")[0]?.trim() || details;
           return {
             id: raw.id,
-            description: raw.details,
+            description: details,
+            counterparty: String(raw.counterparty || "").trim(),
+            omschrijving1,
             date: raw.date,
             amount: raw.amount,
-            runningBalance: bal,
+            seq: parseInt(rawSeq || "0", 10) || 0,
+            runningBalance: parseSaldo(md["Saldo na trn"]),
           };
         });
-        setTransactions(rows as any);
-        setBalance(bal);
-        setSafeToSpend((bal / (rows.length || 1)) * 0.1);
+
+        rows.sort((a, b) => {
+          if (a.date === b.date) return b.seq - a.seq;
+          return a.date < b.date ? 1 : -1;
+        });
+
+        const latestWithBalance = rows.find((tx) => tx.runningBalance != null);
+        const latestBalance = latestWithBalance?.runningBalance ?? 0;
+
+        setTransactions(rows);
+        setBalance(latestBalance);
+        setSafeToSpend((latestBalance / (rows.length || 1)) * 0.1);
       }
     } catch (e) {
       console.error(e);
@@ -73,12 +93,20 @@ export default function DashboardScreen() {
     load();
   }, [load]);
 
-  const { useFocusEffect } = require("@react-navigation/native");
   useFocusEffect(
     React.useCallback(() => {
       load();
     }, [load]),
   );
+
+  const sections = React.useMemo(() => {
+    const map: Record<string, DashboardTx[]> = {};
+    transactions.forEach((tx) => {
+      if (!map[tx.date]) map[tx.date] = [];
+      map[tx.date].push(tx);
+    });
+    return Object.entries(map).map(([date, data]) => ({ title: date, data }));
+  }, [transactions]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -90,39 +118,55 @@ export default function DashboardScreen() {
         <ThemedView style={styles.section}>
           <ThemedText type="subtitle">Balance</ThemedText>
           <ThemedText type="title" style={styles.amount}>
-            ${balance.toFixed(2)}
+            {euroFormatter.format(balance)}
           </ThemedText>
         </ThemedView>
 
         <ThemedView style={styles.section}>
           <ThemedText type="subtitle">Safe to spend today</ThemedText>
           <ThemedText type="defaultSemiBold" style={styles.amount}>
-            ${safeToSpend.toFixed(2)}
+            {euroFormatter.format(safeToSpend)}
           </ThemedText>
         </ThemedView>
 
         <ThemedView style={styles.section}>
           <ThemedText type="subtitle">Recent transactions</ThemedText>
-          <ThemedText>Count: {transactions.length}</ThemedText>
-          {transactions.map((tx) => {
-            return (
-              <ThemedView
-                key={tx.id}
-                style={[styles.transaction, { borderBottomColor: borderColor }]}
-              >
-                <ThemedText>{tx.description}</ThemedText>
-                <ThemedText>{tx.date}</ThemedText>
-                <ThemedText
-                  style={[
-                    styles.transactionAmount,
-                    { color: tx.amount < 0 ? "#d9534f" : "#5cb85c" },
-                  ]}
+          {sections.map((section) => (
+            <View key={section.title}>
+              <ThemedText type="subtitle" style={styles.sectionHeader}>{section.title}</ThemedText>
+              {section.data.map((tx) => (
+                <ThemedView
+                  key={tx.id}
+                  style={[styles.transactionRow, { borderBottomColor: borderColor }]}
                 >
-                  {tx.amount < 0 ? "-" : "+"}${Math.abs(tx.amount).toFixed(2)}
-                </ThemedText>
-              </ThemedView>
-            );
-          })}
+                  <IconSymbol name="chevron.right" size={20} color={iconColor} style={styles.icon} />
+                  <View style={styles.rowText}>
+                    <ThemedText style={styles.desc}>{tx.counterparty || "Onbekende tegenpartij"}</ThemedText>
+                    <ThemedText style={styles.subDesc}>{tx.omschrijving1 || tx.description}</ThemedText>
+                  </View>
+                  <View style={styles.moneyColumns}>
+                    <View style={styles.moneyColumn}>
+                      <ThemedText style={styles.columnLabel}>Bedrag</ThemedText>
+                      <ThemedText
+                        style={[
+                          styles.transactionAmount,
+                          { color: tx.amount < 0 ? "#d9534f" : "#5cb85c" },
+                        ]}
+                      >
+                        {`${tx.amount < 0 ? "-" : "+"}${euroFormatter.format(Math.abs(tx.amount))}`}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.moneyColumn}>
+                      <ThemedText style={styles.columnLabel}>Saldo</ThemedText>
+                      <ThemedText style={styles.runningBalance}>
+                        {tx.runningBalance == null ? "onbekend" : euroFormatter.format(tx.runningBalance)}
+                      </ThemedText>
+                    </View>
+                  </View>
+                </ThemedView>
+              ))}
+            </View>
+          ))}
           <Button
             title="Show all transactions"
             onPress={() => router.push("/transactions")}
@@ -146,13 +190,57 @@ const styles = StyleSheet.create({
   amount: {
     marginTop: 4,
   },
-  transaction: {
+  sectionHeader: {
+    marginTop: 12,
+    fontWeight: "600",
+  },
+  transactionRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  rowText: {
+    flex: 1,
+    justifyContent: "center",
+    paddingRight: 8,
+  },
+  icon: {
+    marginRight: 10,
+    marginTop: 4,
+  },
+  desc: {
+    flex: 1,
+    fontSize: 15,
+  },
+  subDesc: {
+    marginTop: 4,
+    fontSize: 13,
+    opacity: 0.8,
+  },
+  moneyColumns: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  moneyColumn: {
+    minWidth: 98,
+    alignItems: "flex-end",
+  },
+  columnLabel: {
+    fontSize: 12,
+    opacity: 0.75,
+    marginBottom: 2,
+  },
   transactionAmount: {
+    fontSize: 17,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+  runningBalance: {
+    fontSize: 17,
+    color: "#888",
     fontWeight: "600",
+    textAlign: "right",
   },
 });

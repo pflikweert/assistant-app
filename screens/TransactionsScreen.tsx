@@ -121,7 +121,6 @@ export default function TransactionsScreen() {
       <ThemedText type="title" style={styles.heading}>
         All transactions
       </ThemedText>
-      <ThemedText>Count: {transactions.length}</ThemedText>
 
       {loading && <ActivityIndicator style={{ marginVertical: 20 }} />}
 
