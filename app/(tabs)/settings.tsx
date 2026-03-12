@@ -1,6 +1,7 @@
 import React from "react";
 import {
   ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Switch,
@@ -19,6 +20,7 @@ import {
   resumeBackgroundCategorization,
   runRecategorizationForAllInBackground,
   stopBackgroundCategorization,
+  clearAllTransactionData,
 } from "@/services/categorization";
 
 type RowProps = {
@@ -53,11 +55,47 @@ function SectionHeader({ title }: { title: string }) {
 export default function SettingsScreen() {
   const router = useRouter();
   const [darkMode, setDarkMode] = React.useState(true);
+  const [isClearing, setIsClearing] = React.useState(false);
   const backgroundStatus = useCategorizationStatus();
 
   const isBusy =
     backgroundStatus.phase === "queued" || backgroundStatus.phase === "running";
   const isPaused = backgroundStatus.phase === "paused";
+
+  const handleClearTransactions = () => {
+    Alert.alert(
+      "Alle transactiegegevens verwijderen",
+      "Dit zal alle transacties, categorisaties en auditlogs wissen. Dit kan niet ongedaan gemaakt worden. Ben je zeker?",
+      [
+        {
+          text: "Annuleren",
+          onPress: () => {},
+          style: "cancel",
+        },
+        {
+          text: "Verwijderen",
+          onPress: async () => {
+            setIsClearing(true);
+            try {
+              await clearAllTransactionData();
+              Alert.alert(
+                "Gereed",
+                "Alle transactiegegevens zijn gewist. Je kan nu nieuwe transacties importeren."
+              );
+            } catch (error) {
+              Alert.alert(
+                "Fout",
+                `Kon gegevens niet wissen: ${error instanceof Error ? error.message : String(error)}`
+              );
+            } finally {
+              setIsClearing(false);
+            }
+          },
+          style: "destructive",
+        },
+      ]
+    );
+  };
 
   return (
     <View style={styles.root}>
@@ -131,6 +169,17 @@ export default function SettingsScreen() {
             onPress={() => runRecategorizationForAllInBackground()}
             rightElement={
               isBusy ? (
+                <ActivityIndicator size="small" color={FinColors.green} />
+              ) : undefined
+            }
+          />
+          <View style={styles.divider} />
+          <SettingsRow
+            label="Transacties resetten"
+            subtitle="Verwijder alle transactiegegevens en categorisaties"
+            onPress={handleClearTransactions}
+            rightElement={
+              isClearing ? (
                 <ActivityIndicator size="small" color={FinColors.green} />
               ) : undefined
             }

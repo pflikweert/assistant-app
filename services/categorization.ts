@@ -1424,3 +1424,35 @@ export function stopBackgroundCategorization() {
         : "Stoppen aangevraagd. Huidige batch wordt afgerond.",
   }));
 }
+
+export async function clearAllTransactionData() {
+  try {
+    stopBackgroundCategorization();
+    const repo = createSupabaseCategorizationRepository();
+    await repo.clearAllTransactionData();
+    
+    // Reset categorization status
+    updateCategorizationStatus((current) => ({
+      ...current,
+      phase: "idle",
+      queuedCount: 0,
+      totalCount: 0,
+      processedCount: 0,
+      updatedCount: 0,
+      ruleCount: 0,
+      openAiCount: 0,
+      skippedCount: 0,
+      lastError: null,
+      lastCompletedAt: new Date().toISOString(),
+      message: "Alle transactiegegevens gewist. Klaar voor import.",
+    }));
+  } catch (error) {
+    const msg = formatError(error);
+    updateCategorizationStatus((current) => ({
+      ...current,
+      lastError: msg,
+      message: `Fout bij wissen: ${msg}`,
+    }));
+    throw error;
+  }
+}

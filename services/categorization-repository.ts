@@ -36,6 +36,7 @@ export type CategorizationRepository = {
     rawPattern: string,
     categoryId: string,
   ) => Promise<void>;
+  clearAllTransactionData: () => Promise<void>;
 };
 
 function asNumber(value: unknown, fallback = 0): number {
@@ -224,6 +225,32 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
         .from("category_rules")
         .upsert(payload, { onConflict: "pattern_normalized,pattern_type" });
       if (error) throw error;
+    },
+
+    async clearAllTransactionData() {
+      // Clear all transaction categorization data (but keep transactions themselves)
+      const { error } = await supabase
+        .from("transactions")
+        .update({
+          category_id_auto: null,
+          category_id_user: null,
+          category_confidence: null,
+          category_source: null,
+          category_model: null,
+          categorized_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .neq("id", ""); // This updates all rows
+
+      if (error) throw error;
+
+      // Also clear the categorization audit log
+      const { error: auditError } = await supabase
+        .from("categorization_audit")
+        .delete()
+        .neq("id", ""); // This deletes all rows
+
+      if (auditError) throw auditError;
     },
   };
 }
