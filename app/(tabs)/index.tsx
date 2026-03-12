@@ -13,12 +13,15 @@ import {
     getCategoryPathLabel,
 } from "@/services/category-display";
 import { supabase } from "@/services/supabase";
-import type { BudgetPlanComputation, CategoryRecord } from "@/types/categorization";
+import type {
+    BudgetPlanComputation,
+    CategoryRecord,
+} from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-  Pressable,
+    Pressable,
     ScrollView,
     StyleSheet,
     Text,
@@ -51,7 +54,9 @@ function formatUtilization(value: number) {
 
 function isMissingRelationError(error: unknown) {
   const code = String((error as { code?: string })?.code || "");
-  const message = String((error as { message?: string })?.message || "").toLowerCase();
+  const message = String(
+    (error as { message?: string })?.message || "",
+  ).toLowerCase();
 
   if (code === "42P01" || code === "PGRST205") return true;
   return message.includes("relation") && message.includes("does not exist");
@@ -123,9 +128,8 @@ export default function DashboardScreen() {
   const router = useRouter();
   const [transactions, setTransactions] = React.useState<DashboardTx[]>([]);
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
-  const [budgetPlan, setBudgetPlan] = React.useState<BudgetPlanComputation | null>(
-    null,
-  );
+  const [budgetPlan, setBudgetPlan] =
+    React.useState<BudgetPlanComputation | null>(null);
   const [budgetSchemaMissing, setBudgetSchemaMissing] = React.useState(false);
   const [balance, setBalance] = React.useState<number | null>(null);
   const [monthlySpent, setMonthlySpent] = React.useState<number | null>(null);
@@ -381,7 +385,9 @@ export default function DashboardScreen() {
                       : styles.budgetValueNegative,
                   ]}
                 >
-                  {remainingBudget == null ? "Onbekend" : fmt.format(remainingBudget)}
+                  {remainingBudget == null
+                    ? "Onbekend"
+                    : fmt.format(remainingBudget)}
                 </Text>
               </View>
               <View style={styles.budgetMainRow}>

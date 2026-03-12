@@ -1,13 +1,7 @@
 import { FinColors } from "@/constants/theme";
 import { usePathname, useRouter } from "expo-router";
 import React from "react";
-import {
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 type MenuItem = {
   label: string;
@@ -74,7 +68,9 @@ export default function HeaderDropdownMenu() {
                   onPress={() => handleNavigate(item.path)}
                   accessibilityRole="button"
                 >
-                  <Text style={[styles.itemText, active && styles.itemTextActive]}>
+                  <Text
+                    style={[styles.itemText, active && styles.itemTextActive]}
+                  >
                     {item.label}
                   </Text>
                 </Pressable>

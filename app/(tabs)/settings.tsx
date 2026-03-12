@@ -1,5 +1,5 @@
-import { FinColors } from "@/constants/theme";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
+import { FinColors } from "@/constants/theme";
 import {
     clearAllTransactionData,
     pauseBackgroundCategorization,

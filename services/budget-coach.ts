@@ -1,6 +1,6 @@
 import type {
-  BudgetCoachReport,
-  BudgetPlanComputation,
+    BudgetCoachReport,
+    BudgetPlanComputation,
 } from "@/types/categorization";
 import Constants from "expo-constants";
 
@@ -39,7 +39,10 @@ const openAIRateLimitState: OpenAIRateLimitState = {
   nextAllowedAt: 0,
 };
 
-const reportCache = new Map<string, { report: BudgetCoachReport; cachedAt: number }>();
+const reportCache = new Map<
+  string,
+  { report: BudgetCoachReport; cachedAt: number }
+>();
 
 function clampReportItems(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -201,10 +204,15 @@ function getOpenAIRetryDelayMs(attempt: number, error: OpenAIRequestError) {
 
 function buildCacheKey(plan: BudgetPlanComputation) {
   const recommendationSignature = plan.recommendations
-    .map((row) => `${row.categoryKey}:${row.monthlyBudget}:${row.monthlyActual}`)
+    .map(
+      (row) => `${row.categoryKey}:${row.monthlyBudget}:${row.monthlyActual}`,
+    )
     .join("|");
   const warningSignature = plan.warnings
-    .map((warning) => `${warning.categoryKey}:${warning.severity}:${warning.message}`)
+    .map(
+      (warning) =>
+        `${warning.categoryKey}:${warning.severity}:${warning.message}`,
+    )
     .join("|");
 
   return [
@@ -435,7 +443,11 @@ export async function generateBudgetCoachReport(
   if (cached) return cached;
 
   try {
-    const report = await requestCoachReportWithRetry(apiKey, DEFAULT_MODEL, plan);
+    const report = await requestCoachReportWithRetry(
+      apiKey,
+      DEFAULT_MODEL,
+      plan,
+    );
     setCachedReport(cacheKey, report);
     return report;
   } catch (error) {
