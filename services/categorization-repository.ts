@@ -229,23 +229,47 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
 
     async clearAllTransactionData() {
       console.log("[clearAllTransactionData] Clearing transaction categorization data...");
-      // Clear all transaction categorization data (but keep transactions themselves)
-      const { error } = await supabase
+      
+      // Get all transaction IDs first
+      const { data: allTxIds, error: fetchError } = await supabase
         .from("transactions")
-        .update({
-          category_id_auto: null,
-          category_id_user: null,
-          category_confidence: null,
-          category_source: null,
-          category_model: null,
-          categorized_at: null,
-          updated_at: new Date().toISOString(),
-        })
-        .neq("id", ""); // This updates all rows
+        .select("id");
+      
+      if (fetchError) {
+        console.error("[clearAllTransactionData] Error fetching transaction IDs:", fetchError);
+        throw fetchError;
+      }
+      
+      const txIds = (allTxIds || []).map((tx: any) => tx.id);
+      console.log(`[clearAllTransactionData] Found ${txIds.length} transactions to clear`);
+      
+      if (txIds.length === 0) {
+        console.log("[clearAllTransactionData] No transactions to clear");
+        return;
+      }
+      
+      // Update all transactions in batches
+      const batchSize = 1000;
+      for (let i = 0; i < txIds.length; i += batchSize) {
+        const batch = txIds.slice(i, i + batchSize);
+        const { error } = await supabase
+          .from("transactions")
+          .update({
+            category_id_auto: null,
+            category_id_user: null,
+            category_confidence: null,
+            category_source: null,
+            category_model: null,
+            categorized_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .in("id", batch);
 
-      if (error) {
-        console.error("[clearAllTransactionData] Error clearing transactions:", error);
-        throw error;
+        if (error) {
+          console.error("[clearAllTransactionData] Error updating batch:", error);
+          throw error;
+        }
+        console.log(`[clearAllTransactionData] Cleared batch ${Math.floor(i / batchSize) + 1}`);
       }
       console.log("[clearAllTransactionData] Transactions cleared");
 
@@ -254,7 +278,7 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
       const { error: auditError } = await supabase
         .from("categorization_audit")
         .delete()
-        .neq("id", ""); // This deletes all rows
+        .gt("id", 0); // Match all rows by having a truthy condition
 
       if (auditError) {
         console.error("[clearAllTransactionData] Error clearing audit log:", auditError);
