@@ -27,7 +27,10 @@ export default function CSVImportScreen() {
   const [success, setSuccess] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
   const [processed, setProcessed] = useState(0);
+  const [insertedCount, setInsertedCount] = useState(0);
+  const [updatedCount, setUpdatedCount] = useState(0);
   const [preview, setPreview] = useState<PreviewRow[]>([]);
+  const [pendingRowCount, setPendingRowCount] = useState<number | null>(null);
   const [pendingCsv, setPendingCsv] = useState<string | null>(null);
 
   // Prevent leaving during import
@@ -45,23 +48,34 @@ export default function CSVImportScreen() {
     navigation.setOptions({ headerLeft: loading ? () => null : undefined });
   }, [navigation, loading]);
 
-  const buildPreview = (csv: string): PreviewRow[] => {
+  const buildPreview = (
+    csv: string,
+  ): { previewRows: PreviewRow[]; rowCount: number } => {
     const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
-    return (data as any[]).slice(0, 5).map((r: any) => ({
-      date: r["Datum"] || r.Date || "—",
-      description:
-        r["Omschrijving-1"] ||
-        r["Naam tegenpartij"] ||
-        r["Naam / Omschrijving"] ||
-        "—",
-      amount: r["Bedrag"] || r.Amount || "—",
-    }));
+    const rows = (data as any[]) || [];
+    return {
+      rowCount: rows.length,
+      previewRows: rows.slice(0, 5).map((r: any) => ({
+        date: r["Datum"] || r.Date || "—",
+        description:
+          r["Omschrijving-1"] ||
+          r["Naam tegenpartij"] ||
+          r["Naam / Omschrijving"] ||
+          "—",
+        amount: r["Bedrag"] || r.Amount || "—",
+      })),
+    };
   };
 
   const pickFile = async () => {
     setMessage(null);
     setSuccess(false);
+    setTotal(null);
+    setProcessed(0);
+    setInsertedCount(0);
+    setUpdatedCount(0);
     setPreview([]);
+    setPendingRowCount(null);
     setPendingCsv(null);
 
     if (Platform.OS === "web") {
@@ -72,7 +86,9 @@ export default function CSVImportScreen() {
         const file = e.target?.files?.[0];
         if (!file) return;
         const text = await file.text();
-        setPreview(buildPreview(text));
+        const { previewRows, rowCount } = buildPreview(text);
+        setPreview(previewRows);
+        setPendingRowCount(rowCount);
         setPendingCsv(text);
         setMessage(null);
       };
@@ -84,7 +100,9 @@ export default function CSVImportScreen() {
       if (res.type === "cancel") return;
       if (res?.uri) {
         const text = await FileSystem.readAsStringAsync(res.uri);
-        setPreview(buildPreview(text));
+        const { previewRows, rowCount } = buildPreview(text);
+        setPreview(previewRows);
+        setPendingRowCount(rowCount);
         setPendingCsv(text);
         setMessage(null);
       }
@@ -97,7 +115,7 @@ export default function CSVImportScreen() {
     if (!pendingCsv) return;
     setLoading(true);
     setSuccess(false);
-    setMessage("Importing…");
+    setMessage("Importeren...");
     await Promise.resolve();
     try {
       await handleCsvContent(pendingCsv);
@@ -175,11 +193,17 @@ export default function CSVImportScreen() {
     rows.sort((a, b) => a.seq - b.seq);
     setTotal(rows.length);
     setProcessed(0);
+    setInsertedCount(0);
+    setUpdatedCount(0);
     let imported = 0;
+    let insertedRows = 0;
+    let updated = 0;
     const importedIds: string[] = [];
 
     for (const tx of rows) {
-      setMessage(`Importing ${imported + 1} / ${rows.length}…`);
+      setMessage(
+        `Verwerken ${imported + 1} / ${rows.length}... (${insertedRows} nieuw, ${updated} bijgewerkt)`,
+      );
       const { data: existing, error: selErr } = await supabase
         .from("transactions")
         .select("id")
@@ -204,21 +228,25 @@ export default function CSVImportScreen() {
           .eq("id", existing[0].id);
         if (updErr) throw updErr;
         importedIds.push(existing[0].id);
+        updated += 1;
+        setUpdatedCount(updated);
       } else {
-        const { data: inserted, error: insErr } = await supabase
+        const { data: insertedRow, error: insErr } = await supabase
           .from("transactions")
           .insert(payload)
           .select("id")
           .single();
         if (insErr) throw insErr;
-        if (inserted?.id) importedIds.push(inserted.id);
+        if (insertedRow?.id) importedIds.push(insertedRow.id);
+        insertedRows += 1;
+        setInsertedCount(insertedRows);
       }
       imported++;
       setProcessed(imported);
     }
     setSuccess(true);
     setMessage(
-      `${imported} transaction${imported === 1 ? "" : "s"} imported. Categorization started in background.`,
+      `${imported} transacties verwerkt: ${insertedRows} nieuw, ${updated} bijgewerkt. Categorisatie is op de achtergrond gestart.`,
     );
     runCategorizationInBackground(importedIds);
     setPendingCsv(null);
@@ -263,6 +291,11 @@ export default function CSVImportScreen() {
       {preview.length > 0 && (
         <View style={styles.previewCard}>
           <Text style={styles.previewTitle}>Preview</Text>
+          {pendingRowCount != null ? (
+            <Text style={styles.previewSummary}>
+              {pendingRowCount} rijen gevonden in CSV
+            </Text>
+          ) : null}
           {/* Header */}
           <View style={[styles.previewRow, styles.previewHeaderRow]}>
             <Text
@@ -304,7 +337,8 @@ export default function CSVImportScreen() {
             </View>
           ))}
           <Text style={styles.previewNote}>
-            Showing first {preview.length} rows
+            Eerste {preview.length} rijen van{" "}
+            {pendingRowCount ?? preview.length}
           </Text>
         </View>
       )}
@@ -320,6 +354,12 @@ export default function CSVImportScreen() {
             <View
               style={[styles.progressBarFill, { width: `${pct}%` as any }]}
             />
+          </View>
+          <View style={styles.progressStatsRow}>
+            <Text style={styles.progressStatText}>Nieuw: {insertedCount}</Text>
+            <Text style={styles.progressStatText}>
+              Bijgewerkt: {updatedCount}
+            </Text>
           </View>
           <Text style={styles.progressPct}>{pct}%</Text>
         </View>
@@ -423,6 +463,11 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
     marginBottom: 10,
   },
+  previewSummary: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    marginBottom: 10,
+  },
   previewRow: { flexDirection: "row", paddingVertical: 7 },
   previewRowAlt: { backgroundColor: "rgba(148,163,184,0.04)", borderRadius: 6 },
   previewHeaderRow: {
@@ -469,6 +514,16 @@ const styles = StyleSheet.create({
     color: FinColors.green,
     fontWeight: "700",
     textAlign: "right",
+  },
+  progressStatsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  progressStatText: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+    fontWeight: "600",
   },
 
   successCard: {

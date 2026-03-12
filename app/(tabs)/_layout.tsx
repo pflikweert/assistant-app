@@ -19,12 +19,20 @@ function TabIcon({
     return (
       <View style={{ width: s, height: s, justifyContent: "space-between" }}>
         <View style={{ flexDirection: "row", gap: 3, flex: 1 }}>
-          <View style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]} />
-          <View style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]} />
+          <View
+            style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]}
+          />
+          <View
+            style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]}
+          />
         </View>
         <View style={{ flexDirection: "row", gap: 3, flex: 1, marginTop: 3 }}>
-          <View style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]} />
-          <View style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]} />
+          <View
+            style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]}
+          />
+          <View
+            style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]}
+          />
         </View>
       </View>
     );
@@ -48,18 +56,59 @@ function TabIcon({
   }
   if (type === "insights") {
     return (
-      <View style={{ width: s, height: s, justifyContent: "flex-end", flexDirection: "row", alignItems: "flex-end", gap: 3 }}>
+      <View
+        style={{
+          width: s,
+          height: s,
+          justifyContent: "flex-end",
+          flexDirection: "row",
+          alignItems: "flex-end",
+          gap: 3,
+        }}
+      >
         {[8, 14, 10, 18].map((h, i) => (
-          <View key={i} style={{ flex: 1, height: h, backgroundColor: color, borderRadius: 2 }} />
+          <View
+            key={i}
+            style={{
+              flex: 1,
+              height: h,
+              backgroundColor: color,
+              borderRadius: 2,
+            }}
+          />
         ))}
       </View>
     );
   }
   // settings — gear-like circles
   return (
-    <View style={{ width: s, height: s, justifyContent: "center", alignItems: "center" }}>
-      <View style={{ width: s, height: s, borderRadius: s / 2, borderWidth: 2, borderColor: color, justifyContent: "center", alignItems: "center" }}>
-        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }} />
+    <View
+      style={{
+        width: s,
+        height: s,
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <View
+        style={{
+          width: s,
+          height: s,
+          borderRadius: s / 2,
+          borderWidth: 2,
+          borderColor: color,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <View
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: 4,
+            backgroundColor: color,
+          }}
+        />
       </View>
     </View>
   );
@@ -100,10 +149,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="transactions"
         options={{
           title: "Transactions",
-          tabBarIcon: ({ color }) => <TabIcon color={color} type="transactions" />,
+          tabBarIcon: ({ color }) => (
+            <TabIcon color={color} type="transactions" />
+          ),
         }}
       />
       <Tabs.Screen

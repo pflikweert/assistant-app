@@ -1,31 +1,53 @@
-import React from "react";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
 import { FinColors } from "@/constants/theme";
-import { useIsFocused } from "@react-navigation/native";
-import { getTransactionCategories, setTransactionManualCategory } from "@/services/categorization-repository";
 import {
-  buildCategoryNameMap,
-  formatConfidenceLabel,
-  getCategorizationCoverage,
-  getCategoryLabel,
-  getEffectiveCategoryId,
-  getLeafCategories,
-  needsCategorizationReview,
-} from "@/services/category-display";
+    getTransactionCategories,
+    setTransactionManualCategory,
+} from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
+import {
+    buildCategoryRecordMap,
+    formatConfidenceLabel,
+    getCategorizationCoverage,
+    getCategoryPathLabel,
+    getEffectiveCategoryId,
+    getLeafCategories,
+    needsCategorizationReview,
+} from "@/services/category-display";
 import { supabase } from "@/services/supabase";
 import type { CategoryRecord } from "@/types/categorization";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useIsFocused } from "@react-navigation/native";
+import React from "react";
+import {
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
+} from "react-native";
 
-const fmt = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" });
+const fmt = new Intl.NumberFormat("nl-NL", {
+  style: "currency",
+  currency: "EUR",
+});
+
+const SUBJECT_DRIVEN_PROVIDERS = [
+  "klarna",
+  "paypal",
+  "riverty",
+  "afterpay",
+  "billink",
+  "in3",
+  "sprinque",
+];
+
+function isSubjectDrivenCounterparty(counterparty: string | null | undefined) {
+  const normalized = String(counterparty || "").toLowerCase();
+  if (!normalized) return false;
+  return SUBJECT_DRIVEN_PROVIDERS.some((token) => normalized.includes(token));
+}
 
 function normalizeSearch(value: string) {
   return value
@@ -82,20 +104,55 @@ function CategoryBar({ categories }: { categories: Category[] }) {
   return (
     <View style={{ gap: 16 }}>
       {/* Segmented bar */}
-      <View style={{ flexDirection: "row", height: 6, borderRadius: 3, overflow: "hidden", gap: 2 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          height: 6,
+          borderRadius: 3,
+          overflow: "hidden",
+          gap: 2,
+        }}
+      >
         {categories.map((cat, i) => (
-          <View key={i} style={{ flex: cat.amount / total, backgroundColor: cat.color }} />
+          <View
+            key={i}
+            style={{ flex: cat.amount / total, backgroundColor: cat.color }}
+          />
         ))}
       </View>
       {/* Legend */}
       <View style={{ gap: 12 }}>
         {categories.map((cat, i) => (
-          <View key={i} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: cat.color }} />
-              <Text style={{ fontSize: 14, color: FinColors.textSecondary }}>{cat.label}</Text>
+          <View
+            key={i}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+            >
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: cat.color,
+                }}
+              />
+              <Text style={{ fontSize: 14, color: FinColors.textSecondary }}>
+                {cat.label}
+              </Text>
             </View>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: FinColors.textPrimary }}>
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: "600",
+                color: FinColors.textPrimary,
+              }}
+            >
               {fmt.format(cat.amount)}
             </Text>
           </View>
@@ -137,7 +194,9 @@ function ReviewItem({
         </Text>
         <View style={styles.reviewMetaRow}>
           <Text style={styles.reviewCategory}>{tx.categoryLabel}</Text>
-          <Text style={styles.reviewConfidence}>{formatConfidenceLabel(tx)}</Text>
+          <Text style={styles.reviewConfidence}>
+            {formatConfidenceLabel(tx)}
+          </Text>
         </View>
       </View>
       <View style={styles.reviewAside}>
@@ -173,14 +232,20 @@ export default function InsightsScreen() {
   const [totalSpent, setTotalSpent] = React.useState(0);
   const [totalIncome, setTotalIncome] = React.useState(0);
   const [txCount, setTxCount] = React.useState(0);
-  const [selectedTx, setSelectedTx] = React.useState<ReviewableInsightTx | null>(null);
+  const [selectedTx, setSelectedTx] =
+    React.useState<ReviewableInsightTx | null>(null);
   const [savingReview, setSavingReview] = React.useState(false);
   const [categorySearch, setCategorySearch] = React.useState("");
-  const [expandedParents, setExpandedParents] = React.useState<Record<string, boolean>>({});
+  const [expandedParents, setExpandedParents] = React.useState<
+    Record<string, boolean>
+  >({});
   const isFocused = useIsFocused();
   const backgroundStatus = useCategorizationStatus();
 
-  const categoryMap = React.useMemo(() => buildCategoryNameMap(categories), [categories]);
+  const categoryMap = React.useMemo(
+    () => buildCategoryRecordMap(categories),
+    [categories],
+  );
   const leafCategories = React.useMemo(() => {
     const curatedLeaves = getLeafCategories(categories, { curatedOnly: true });
     return curatedLeaves.length ? curatedLeaves : getLeafCategories(categories);
@@ -262,7 +327,7 @@ export default function InsightsScreen() {
     () =>
       transactions.map((tx) => ({
         ...tx,
-        categoryLabel: getCategoryLabel(tx, categoryMap),
+        categoryLabel: getCategoryPathLabel(tx, categoryMap),
       })),
     [transactions, categoryMap],
   );
@@ -295,7 +360,10 @@ export default function InsightsScreen() {
   }, [displayTransactions]);
 
   const reviewQueue = React.useMemo(
-    () => displayTransactions.filter((tx) => needsCategorizationReview(tx)).slice(0, 8),
+    () =>
+      displayTransactions
+        .filter((tx) => needsCategorizationReview(tx))
+        .slice(0, 8),
     [displayTransactions],
   );
 
@@ -304,7 +372,10 @@ export default function InsightsScreen() {
     const topCategory = spendingByCategory[0];
 
     if (topCategory) {
-      const share = totalSpent > 0 ? Math.round((topCategory.amount / totalSpent) * 100) : 0;
+      const share =
+        totalSpent > 0
+          ? Math.round((topCategory.amount / totalSpent) * 100)
+          : 0;
       cards.push({
         title: `Grootste uitgave: ${topCategory.label}`,
         text: `${topCategory.label} is deze maand goed voor ${fmt.format(topCategory.amount)} en ${share}% van je uitgaven.`,
@@ -410,7 +481,9 @@ export default function InsightsScreen() {
       try {
         await setTransactionManualCategory(selectedTx.id, categoryId, {
           reason: "insights review",
-          learnFromCounterparty: true,
+          learnFromCounterparty: !isSubjectDrivenCounterparty(
+            selectedTx.counterparty,
+          ),
         });
         setSelectedTx(null);
         setCategorySearch("");
@@ -424,21 +497,24 @@ export default function InsightsScreen() {
     [load, selectedTx],
   );
 
-  const openReviewModal = React.useCallback((tx: ReviewableInsightTx) => {
-    const suggestedCategoryId = getEffectiveCategoryId(tx);
-    if (suggestedCategoryId) {
-      const groupId = categoryToGroupId.get(suggestedCategoryId);
-      if (groupId) {
-        setExpandedParents((current) => ({
-          ...current,
-          [groupId]: true,
-        }));
+  const openReviewModal = React.useCallback(
+    (tx: ReviewableInsightTx) => {
+      const suggestedCategoryId = getEffectiveCategoryId(tx);
+      if (suggestedCategoryId) {
+        const groupId = categoryToGroupId.get(suggestedCategoryId);
+        if (groupId) {
+          setExpandedParents((current) => ({
+            ...current,
+            [groupId]: true,
+          }));
+        }
       }
-    }
 
-    setSelectedTx(tx);
-    setCategorySearch("");
-  }, [categoryToGroupId]);
+      setSelectedTx(tx);
+      setCategorySearch("");
+    },
+    [categoryToGroupId],
+  );
 
   const toggleParent = React.useCallback((parentId: string) => {
     setExpandedParents((current) => ({
@@ -456,7 +532,7 @@ export default function InsightsScreen() {
       try {
         await setTransactionManualCategory(tx.id, categoryId, {
           reason: "insights quick confirm",
-          learnFromCounterparty: true,
+          learnFromCounterparty: !isSubjectDrivenCounterparty(tx.counterparty),
         });
 
         if (selectedTx?.id === tx.id) {
@@ -473,7 +549,8 @@ export default function InsightsScreen() {
     [load, selectedTx?.id],
   );
 
-  const netSavings = (totalIncome || 3420) - (totalSpent || 1250);
+  const hasMonthData = txCount > 0;
+  const netSavings = totalIncome - totalSpent;
 
   return (
     <View style={styles.root}>
@@ -481,16 +558,26 @@ export default function InsightsScreen() {
         <Text style={styles.pageTitle}>Insights</Text>
         <View style={styles.monthBadge}>
           <Pressable
-            style={[styles.monthNavButton, monthOffset >= 24 && styles.monthNavButtonDisabled]}
-            onPress={() => setMonthOffset((current) => Math.min(current + 1, 24))}
+            style={[
+              styles.monthNavButton,
+              monthOffset >= 24 && styles.monthNavButtonDisabled,
+            ]}
+            onPress={() =>
+              setMonthOffset((current) => Math.min(current + 1, 24))
+            }
             disabled={monthOffset >= 24}
           >
             <Text style={styles.monthNavButtonText}>‹</Text>
           </Pressable>
           <Text style={styles.monthBadgeText}>{selectedMonth.label}</Text>
           <Pressable
-            style={[styles.monthNavButton, monthOffset === 0 && styles.monthNavButtonDisabled]}
-            onPress={() => setMonthOffset((current) => Math.max(current - 1, 0))}
+            style={[
+              styles.monthNavButton,
+              monthOffset === 0 && styles.monthNavButtonDisabled,
+            ]}
+            onPress={() =>
+              setMonthOffset((current) => Math.max(current - 1, 0))
+            }
             disabled={monthOffset === 0}
           >
             <Text style={styles.monthNavButtonText}>›</Text>
@@ -498,19 +585,34 @@ export default function InsightsScreen() {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+      >
         {/* Summary cards */}
         <View style={styles.summaryRow}>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Income</Text>
-            <Text style={[styles.summaryValue, { color: FinColors.green }]}>
-              +{fmt.format(totalIncome || 3420)}
+            <Text
+              style={[
+                styles.summaryValue,
+                hasMonthData
+                  ? { color: FinColors.green }
+                  : styles.emptyAmountText,
+              ]}
+            >
+              {hasMonthData ? `+${fmt.format(totalIncome)}` : "Nog geen data"}
             </Text>
           </View>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Expenses</Text>
-            <Text style={styles.summaryValue}>
-              {fmt.format(totalSpent || 1250)}
+            <Text
+              style={[
+                styles.summaryValue,
+                !hasMonthData && styles.emptyAmountText,
+              ]}
+            >
+              {hasMonthData ? fmt.format(totalSpent) : "Nog geen data"}
             </Text>
           </View>
         </View>
@@ -518,19 +620,36 @@ export default function InsightsScreen() {
         {/* Net card */}
         <View style={styles.netCard}>
           <Text style={styles.netLabel}>Net in geselecteerde maand</Text>
-          <Text style={[styles.netValue, netSavings >= 0 && { color: FinColors.green }]}>
-            {netSavings >= 0 ? "+" : ""}{fmt.format(netSavings)}
+          <Text
+            style={[
+              styles.netValue,
+              hasMonthData
+                ? netSavings >= 0 && { color: FinColors.green }
+                : styles.emptyAmountText,
+            ]}
+          >
+            {hasMonthData
+              ? `${netSavings >= 0 ? "+" : ""}${fmt.format(netSavings)}`
+              : "Nog geen data"}
           </Text>
-          {txCount > 0 && (
+          {txCount > 0 ? (
             <Text style={styles.txNote}>{txCount} transactions analysed</Text>
+          ) : (
+            <Text style={styles.txNote}>
+              Er zijn nog geen transacties in deze maand.
+            </Text>
           )}
         </View>
 
         <View style={styles.reviewSummaryCard}>
           <View style={styles.reviewSummaryHeader}>
-            <Text style={styles.reviewSummaryTitle}>Categorisatiekwaliteit</Text>
+            <Text style={styles.reviewSummaryTitle}>
+              Categorisatiekwaliteit
+            </Text>
             <Text style={styles.reviewSummaryValue}>
-              {coverage.total ? `${coverage.categorized}/${coverage.total}` : "0/0"}
+              {coverage.total
+                ? `${coverage.categorized}/${coverage.total}`
+                : "0/0"}
             </Text>
           </View>
           <Text style={styles.reviewSummaryText}>
@@ -539,9 +658,15 @@ export default function InsightsScreen() {
               : `${reviewQueue.length} transacties moeten nog handmatig worden nagekeken.`}
           </Text>
           <View style={styles.reviewSummaryMeta}>
-            <Text style={styles.reviewSummaryMetaText}>Auto: {coverage.auto}</Text>
-            <Text style={styles.reviewSummaryMetaText}>Handmatig: {coverage.manual}</Text>
-            <Text style={styles.reviewSummaryMetaText}>Open: {coverage.uncategorized}</Text>
+            <Text style={styles.reviewSummaryMetaText}>
+              Auto: {coverage.auto}
+            </Text>
+            <Text style={styles.reviewSummaryMetaText}>
+              Handmatig: {coverage.manual}
+            </Text>
+            <Text style={styles.reviewSummaryMetaText}>
+              Open: {coverage.uncategorized}
+            </Text>
           </View>
         </View>
 
@@ -551,7 +676,10 @@ export default function InsightsScreen() {
           {spendingByCategory.length ? (
             <CategoryBar categories={spendingByCategory} />
           ) : (
-            <Text style={styles.emptyStateText}>Nog niet genoeg gecategoriseerde uitgaven om een verdeling te tonen.</Text>
+            <Text style={styles.emptyStateText}>
+              Nog niet genoeg gecategoriseerde uitgaven om een verdeling te
+              tonen.
+            </Text>
           )}
         </View>
 
@@ -570,7 +698,10 @@ export default function InsightsScreen() {
               ))}
             </View>
           ) : (
-            <Text style={styles.emptyStateText}>Alle transacties in deze periode hebben voldoende zekerheid of zijn al bevestigd.</Text>
+            <Text style={styles.emptyStateText}>
+              Alle transacties in deze periode hebben voldoende zekerheid of
+              zijn al bevestigd.
+            </Text>
           )}
         </View>
 
@@ -600,7 +731,8 @@ export default function InsightsScreen() {
               {selectedTx?.details || selectedTx?.date || ""}
             </Text>
             <Text style={styles.modalHint}>
-              Kies de juiste categorie. Deze keuze wordt gebruikt om vergelijkbare transacties later automatisch te herkennen.
+              Kies de juiste categorie. Deze keuze wordt gebruikt om
+              vergelijkbare transacties later automatisch te herkennen.
             </Text>
 
             <TextInput
@@ -616,7 +748,8 @@ export default function InsightsScreen() {
             <ScrollView style={styles.modalList}>
               {filteredModalGroups.length ? (
                 filteredModalGroups.map((group) => {
-                  const expanded = searchActive || Boolean(expandedParents[group.id]);
+                  const expanded =
+                    searchActive || Boolean(expandedParents[group.id]);
 
                   return (
                     <View key={group.id} style={styles.modalGroup}>
@@ -627,7 +760,9 @@ export default function InsightsScreen() {
                       >
                         <Text style={styles.modalGroupTitle}>{group.name}</Text>
                         {searchActive ? (
-                          <Text style={styles.modalGroupCount}>{group.children.length}</Text>
+                          <Text style={styles.modalGroupCount}>
+                            {group.children.length}
+                          </Text>
                         ) : (
                           <View style={styles.modalGroupIconWrap}>
                             <MaterialIcons
@@ -649,7 +784,9 @@ export default function InsightsScreen() {
                                 void handleReviewSave(category.id);
                               }}
                             >
-                              <Text style={styles.modalCategoryText}>{category.name}</Text>
+                              <Text style={styles.modalCategoryText}>
+                                {category.name}
+                              </Text>
                             </Pressable>
                           ))
                         : null}
@@ -657,7 +794,9 @@ export default function InsightsScreen() {
                   );
                 })
               ) : (
-                <Text style={styles.modalEmptyText}>Geen categorieen gevonden voor deze zoekopdracht.</Text>
+                <Text style={styles.modalEmptyText}>
+                  Geen categorieen gevonden voor deze zoekopdracht.
+                </Text>
               )}
             </ScrollView>
 
@@ -687,7 +826,12 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 20,
   },
-  pageTitle: { fontSize: 28, fontWeight: "700", color: FinColors.textPrimary, letterSpacing: -0.5 },
+  pageTitle: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    letterSpacing: -0.5,
+  },
   monthBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -699,7 +843,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  monthBadgeText: { fontSize: 12, fontWeight: "600", color: FinColors.textSecondary },
+  monthBadgeText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: FinColors.textSecondary,
+  },
   monthNavButton: {
     width: 24,
     height: 24,
@@ -731,8 +879,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  summaryLabel: { fontSize: 13, color: FinColors.textMuted, fontWeight: "500", marginBottom: 8 },
-  summaryValue: { fontSize: 22, fontWeight: "700", color: FinColors.textPrimary },
+  summaryLabel: {
+    fontSize: 13,
+    color: FinColors.textMuted,
+    fontWeight: "500",
+    marginBottom: 8,
+  },
+  summaryValue: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  emptyAmountText: {
+    fontSize: 18,
+    color: FinColors.textMuted,
+    fontWeight: "600",
+  },
 
   // Net card
   netCard: {
@@ -743,8 +905,18 @@ const styles = StyleSheet.create({
     borderColor: FinColors.borderSubtle,
     alignItems: "center",
   },
-  netLabel: { fontSize: 13, color: FinColors.textMuted, fontWeight: "500", marginBottom: 8 },
-  netValue: { fontSize: 36, fontWeight: "700", color: FinColors.textPrimary, letterSpacing: -1 },
+  netLabel: {
+    fontSize: 13,
+    color: FinColors.textMuted,
+    fontWeight: "500",
+    marginBottom: 8,
+  },
+  netValue: {
+    fontSize: 36,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    letterSpacing: -1,
+  },
   txNote: { fontSize: 12, color: FinColors.textMuted, marginTop: 12 },
 
   reviewSummaryCard: {
@@ -759,10 +931,28 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  reviewSummaryTitle: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
-  reviewSummaryValue: { fontSize: 14, fontWeight: "700", color: FinColors.green },
-  reviewSummaryText: { fontSize: 13, color: FinColors.textSecondary, marginTop: 10, lineHeight: 20 },
-  reviewSummaryMeta: { flexDirection: "row", justifyContent: "space-between", marginTop: 12, gap: 12 },
+  reviewSummaryTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
+  reviewSummaryValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.green,
+  },
+  reviewSummaryText: {
+    fontSize: 13,
+    color: FinColors.textSecondary,
+    marginTop: 10,
+    lineHeight: 20,
+  },
+  reviewSummaryMeta: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
+    gap: 12,
+  },
   reviewSummaryMetaText: { fontSize: 12, color: FinColors.textMuted },
 
   // Card
@@ -773,7 +963,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  cardTitle: { fontSize: 16, fontWeight: "600", color: FinColors.textPrimary, marginBottom: 20 },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+    marginBottom: 20,
+  },
   emptyStateText: { fontSize: 14, color: FinColors.textMuted, lineHeight: 22 },
   reviewList: { gap: 12 },
   reviewRow: {
@@ -788,7 +983,13 @@ const styles = StyleSheet.create({
   reviewMain: { flex: 1 },
   reviewName: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
   reviewSub: { fontSize: 12, color: FinColors.textMuted, marginTop: 4 },
-  reviewMetaRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" },
+  reviewMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    flexWrap: "wrap",
+  },
   reviewCategory: {
     fontSize: 11,
     fontWeight: "600",
@@ -803,7 +1004,11 @@ const styles = StyleSheet.create({
   },
   reviewConfidence: { fontSize: 11, color: FinColors.textMuted },
   reviewAside: { alignItems: "flex-end", gap: 10 },
-  reviewAmount: { fontSize: 14, fontWeight: "600", color: FinColors.textPrimary },
+  reviewAmount: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
   reviewActions: {
     flexDirection: "row",
     gap: 8,
@@ -816,7 +1021,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  reviewButtonText: { fontSize: 12, fontWeight: "600", color: FinColors.textPrimary },
+  reviewButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
   confirmButton: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -825,7 +1034,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.greenBorder,
   },
-  confirmButtonText: { fontSize: 12, fontWeight: "700", color: FinColors.green },
+  confirmButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.green,
+  },
 
   // Section
   sectionLabel: {
@@ -845,7 +1058,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  insightTitle: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary, marginBottom: 8 },
+  insightTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+    marginBottom: 8,
+  },
   insightText: { fontSize: 14, color: FinColors.textSecondary, lineHeight: 21 },
 
   modalBackdrop: {
@@ -861,9 +1079,24 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   modalTitle: { fontSize: 18, fontWeight: "700", color: FinColors.textPrimary },
-  modalName: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary, marginTop: 10 },
-  modalSub: { fontSize: 13, color: FinColors.textMuted, marginTop: 4, lineHeight: 20 },
-  modalHint: { fontSize: 12, color: FinColors.textSecondary, marginTop: 10, lineHeight: 18 },
+  modalName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+    marginTop: 10,
+  },
+  modalSub: {
+    fontSize: 13,
+    color: FinColors.textMuted,
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  modalHint: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    marginTop: 10,
+    lineHeight: 18,
+  },
   modalSearchInput: {
     marginTop: 12,
     borderWidth: 1,
@@ -921,7 +1154,11 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgElevated,
     marginLeft: 12,
   },
-  modalCategoryText: { fontSize: 14, color: FinColors.textPrimary, fontWeight: "600" },
+  modalCategoryText: {
+    fontSize: 14,
+    color: FinColors.textPrimary,
+    fontWeight: "600",
+  },
   modalEmptyText: {
     fontSize: 13,
     color: FinColors.textMuted,
@@ -937,5 +1174,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  modalCloseText: { fontSize: 14, fontWeight: "600", color: FinColors.textPrimary },
+  modalCloseText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
 });

@@ -1,27 +1,27 @@
-import React from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { useRouter } from "expo-router";
 import { FinColors } from "@/constants/theme";
 import {
-  formatCategorizationStatus,
-  useCategorizationStatus,
-} from "@/services/categorization-status";
-import {
-  pauseBackgroundCategorization,
-  resumeBackgroundCategorization,
-  runRecategorizationForAllInBackground,
-  stopBackgroundCategorization,
-  clearAllTransactionData,
+    clearAllTransactionData,
+    pauseBackgroundCategorization,
+    resumeBackgroundCategorization,
+    runRecategorizationForAllInBackground,
+    stopBackgroundCategorization,
 } from "@/services/categorization";
+import {
+    formatCategorizationStatus,
+    useCategorizationStatus,
+} from "@/services/categorization-status";
+import { useRouter } from "expo-router";
+import React from "react";
+import {
+    ActivityIndicator,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 type RowProps = {
   label: string;
@@ -48,7 +48,8 @@ function ConfirmResetModal({
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Alle data verwijderen</Text>
           <Text style={styles.modalText}>
-            Dit zal alle transacties, categorisaties en auditlogs wissen. Dit kan niet ongedaan gemaakt worden. Ben je zeker?
+            Dit zal alle transacties, categorisaties en auditlogs wissen. Dit
+            kan niet ongedaan gemaakt worden. Ben je zeker?
           </Text>
           <View style={styles.modalButtons}>
             <TouchableOpacity
@@ -89,7 +90,8 @@ function SuccessModal({
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>✓ Gereed</Text>
           <Text style={styles.modalText}>
-            Alle transactiegegevens zijn gewist. Je kan nu nieuwe transacties importeren.
+            Alle transactiegegevens zijn gewist. Je kan nu nieuwe transacties
+            importeren.
           </Text>
           <TouchableOpacity
             style={[styles.modalButton, styles.successButton]}
@@ -132,9 +134,19 @@ function ErrorModal({
   );
 }
 
-function SettingsRow({ label, subtitle, value, onPress, rightElement }: RowProps) {
+function SettingsRow({
+  label,
+  subtitle,
+  value,
+  onPress,
+  rightElement,
+}: RowProps) {
   return (
-    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={onPress ? 0.7 : 1}>
+    <TouchableOpacity
+      style={styles.row}
+      onPress={onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+    >
       <View style={styles.rowContent}>
         <Text style={styles.rowLabel}>{label}</Text>
         {subtitle ? <Text style={styles.rowSub}>{subtitle}</Text> : null}
@@ -142,7 +154,7 @@ function SettingsRow({ label, subtitle, value, onPress, rightElement }: RowProps
       {rightElement ?? (
         <View style={styles.rowRight}>
           {value ? <Text style={styles.rowValue}>{value}</Text> : null}
-          {onPress ? <Text style={styles.rowChevron}>{'>'}</Text> : null}
+          {onPress ? <Text style={styles.rowChevron}>{">"}</Text> : null}
         </View>
       )}
     </TouchableOpacity>
@@ -198,7 +210,10 @@ export default function SettingsScreen() {
         <Text style={styles.pageTitle}>Settings</Text>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+      >
         {/* Profile card */}
         <View style={styles.profileCard}>
           <View style={styles.avatarLarge}>
@@ -229,11 +244,7 @@ export default function SettingsScreen() {
         {/* Preferences */}
         <SectionHeader title="Preferences" />
         <View style={styles.card}>
-          <SettingsRow
-            label="Currency"
-            value="EUR"
-            onPress={() => {}}
-          />
+          <SettingsRow label="Currency" value="EUR" onPress={() => {}} />
           <View style={styles.divider} />
           <SettingsRow
             label="Appearance"
@@ -242,7 +253,10 @@ export default function SettingsScreen() {
               <Switch
                 value={darkMode}
                 onValueChange={setDarkMode}
-                trackColor={{ false: FinColors.bgElevated, true: FinColors.green }}
+                trackColor={{
+                  false: FinColors.bgElevated,
+                  true: FinColors.green,
+                }}
                 thumbColor={FinColors.textPrimary}
               />
             }
@@ -287,24 +301,37 @@ export default function SettingsScreen() {
             <Text style={styles.statusTitle}>Categorisatie</Text>
             <Text style={styles.statusPhase}>{backgroundStatus.phase}</Text>
           </View>
-          <Text style={styles.statusText}>{formatCategorizationStatus(backgroundStatus)}</Text>
+          <Text style={styles.statusText}>
+            {formatCategorizationStatus(backgroundStatus)}
+          </Text>
           <View style={styles.controlRow}>
             <TouchableOpacity
-              style={[styles.controlButton, (isPaused || !isBusy) && styles.controlButtonDisabled]}
+              style={[
+                styles.controlButton,
+                (isPaused || !isBusy) && styles.controlButtonDisabled,
+              ]}
               onPress={pauseBackgroundCategorization}
               disabled={isPaused || !isBusy}
             >
               <Text style={styles.controlButtonText}>Pauzeer</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.controlButton, (!isPaused && !backgroundStatus.queuedCount) && styles.controlButtonDisabled]}
+              style={[
+                styles.controlButton,
+                !isPaused &&
+                  !backgroundStatus.queuedCount &&
+                  styles.controlButtonDisabled,
+              ]}
               onPress={resumeBackgroundCategorization}
               disabled={!isPaused && !backgroundStatus.queuedCount}
             >
               <Text style={styles.controlButtonText}>Hervat</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.controlButton, !isBusy && !isPaused && styles.controlButtonDisabled]}
+              style={[
+                styles.controlButton,
+                !isBusy && !isPaused && styles.controlButtonDisabled,
+              ]}
               onPress={stopBackgroundCategorization}
               disabled={!isBusy && !isPaused}
             >
@@ -312,23 +339,40 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.statusMetaRow}>
-            <Text style={styles.statusMetaText}>Verwerkt: {backgroundStatus.processedCount}</Text>
-            <Text style={styles.statusMetaText}>Bijgewerkt: {backgroundStatus.updatedCount}</Text>
+            <Text style={styles.statusMetaText}>
+              Verwerkt: {backgroundStatus.processedCount}
+            </Text>
+            <Text style={styles.statusMetaText}>
+              Bijgewerkt: {backgroundStatus.updatedCount}
+            </Text>
           </View>
           <View style={styles.statusMetaRow}>
-            <Text style={styles.statusMetaText}>Rules: {backgroundStatus.ruleCount}</Text>
-            <Text style={styles.statusMetaText}>OpenAI: {backgroundStatus.openAiCount}</Text>
+            <Text style={styles.statusMetaText}>
+              Rules: {backgroundStatus.ruleCount}
+            </Text>
+            <Text style={styles.statusMetaText}>
+              OpenAI: {backgroundStatus.openAiCount}
+            </Text>
           </View>
           <View style={styles.statusMetaRow}>
-            <Text style={styles.statusMetaText}>Laatste mode: {backgroundStatus.lastRunMode || "-"}</Text>
-            <Text style={styles.statusMetaText}>Overgeslagen: {backgroundStatus.skippedCount}</Text>
+            <Text style={styles.statusMetaText}>
+              Laatste mode: {backgroundStatus.lastRunMode || "-"}
+            </Text>
+            <Text style={styles.statusMetaText}>
+              Overgeslagen: {backgroundStatus.skippedCount}
+            </Text>
           </View>
           {backgroundStatus.lastError ? (
-            <Text style={styles.statusError}>Laatste fout: {backgroundStatus.lastError}</Text>
+            <Text style={styles.statusError}>
+              Laatste fout: {backgroundStatus.lastError}
+            </Text>
           ) : null}
           {backgroundStatus.lastCompletedAt ? (
             <Text style={styles.statusTimestamp}>
-              Laatste afronding: {new Date(backgroundStatus.lastCompletedAt).toLocaleString("nl-NL")}
+              Laatste afronding:{" "}
+              {new Date(backgroundStatus.lastCompletedAt).toLocaleString(
+                "nl-NL",
+              )}
             </Text>
           ) : null}
         </View>
@@ -369,7 +413,12 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: FinColors.bgBase },
   topBar: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 20 },
-  pageTitle: { fontSize: 28, fontWeight: "700", color: FinColors.textPrimary, letterSpacing: -0.5 },
+  pageTitle: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    letterSpacing: -0.5,
+  },
   scroll: { paddingHorizontal: 20, paddingBottom: 48, gap: 8 },
 
   // Profile
@@ -392,9 +441,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  avatarText: { fontSize: 18, fontWeight: "700", color: FinColors.textSecondary },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+  },
   profileInfo: { flex: 1 },
-  profileName: { fontSize: 18, fontWeight: "700", color: FinColors.textPrimary },
+  profileName: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
   profileEmail: { fontSize: 13, color: FinColors.textMuted, marginTop: 4 },
 
   // Section
@@ -431,7 +488,11 @@ const styles = StyleSheet.create({
   rowRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   rowValue: { fontSize: 14, color: FinColors.textSecondary, fontWeight: "500" },
   rowChevron: { fontSize: 16, color: FinColors.textMuted },
-  divider: { height: 1, backgroundColor: FinColors.borderSubtle, marginLeft: 20 },
+  divider: {
+    height: 1,
+    backgroundColor: FinColors.borderSubtle,
+    marginLeft: 20,
+  },
 
   statusCard: {
     backgroundColor: FinColors.bgCard,
@@ -445,14 +506,23 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  statusTitle: { fontSize: 15, fontWeight: "700", color: FinColors.textPrimary },
+  statusTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
   statusPhase: {
     fontSize: 12,
     color: FinColors.green,
     textTransform: "uppercase",
     fontWeight: "700",
   },
-  statusText: { fontSize: 13, color: FinColors.textSecondary, lineHeight: 20, marginTop: 10 },
+  statusText: {
+    fontSize: 13,
+    color: FinColors.textSecondary,
+    lineHeight: 20,
+    marginTop: 10,
+  },
   controlRow: {
     flexDirection: "row",
     gap: 10,
@@ -482,7 +552,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   statusMetaText: { fontSize: 12, color: FinColors.textMuted },
-  statusError: { fontSize: 12, color: FinColors.red, marginTop: 12, lineHeight: 18 },
+  statusError: {
+    fontSize: 12,
+    color: FinColors.red,
+    marginTop: 12,
+    lineHeight: 18,
+  },
   statusTimestamp: { fontSize: 12, color: FinColors.textMuted, marginTop: 12 },
 
   // Sign out

@@ -12,6 +12,7 @@ export type CategorizationRepository = {
   getCategories: () => Promise<CategoryRecord[]>;
   getActiveRules: () => Promise<CategoryRuleRecord[]>;
   getPendingTransactionIds: (limit: number) => Promise<string[]>;
+  getAllTransactionIds: (limit: number, offset?: number) => Promise<string[]>;
   getRecategorizableTransactionIds: (
     limit: number,
     offset?: number,
@@ -90,6 +91,17 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
         .from("transactions")
         .select("id")
         .is("category_id_user", null)
+        .order("date", { ascending: false })
+        .range(offset, to);
+      if (error) throw error;
+      return ((data || []) as { id: string }[]).map((row) => row.id);
+    },
+
+    async getAllTransactionIds(limit, offset = 0) {
+      const to = Math.max(offset + limit - 1, offset);
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("id")
         .order("date", { ascending: false })
         .range(offset, to);
       if (error) throw error;
@@ -228,64 +240,47 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
     },
 
     async clearAllTransactionData() {
-      console.log("[clearAllTransactionData] Clearing transaction categorization data...");
-      
-      // Get all transaction IDs first
-      const { data: allTxIds, error: fetchError } = await supabase
+      console.log("[clearAllTransactionData] Deleting all transaction data...");
+
+      const { count, error: countError } = await supabase
         .from("transactions")
-        .select("id");
-      
-      if (fetchError) {
-        console.error("[clearAllTransactionData] Error fetching transaction IDs:", fetchError);
-        throw fetchError;
+        .select("id", { count: "exact", head: true });
+
+      if (countError) {
+        console.error(
+          "[clearAllTransactionData] Error counting transactions:",
+          countError,
+        );
+        throw countError;
       }
-      
-      const txIds = (allTxIds || []).map((tx: any) => tx.id);
-      console.log(`[clearAllTransactionData] Found ${txIds.length} transactions to clear`);
-      
-      if (txIds.length === 0) {
-        console.log("[clearAllTransactionData] No transactions to clear");
+
+      const transactionCount = count ?? 0;
+      console.log(
+        `[clearAllTransactionData] Found ${transactionCount} transactions to delete`,
+      );
+
+      if (transactionCount === 0) {
+        console.log("[clearAllTransactionData] No transactions to delete");
         return;
       }
-      
-      // Update all transactions in batches (50 at a time to avoid URL length limits)
-      const batchSize = 50;
-      for (let i = 0; i < txIds.length; i += batchSize) {
-        const batch = txIds.slice(i, i + batchSize);
-        console.log(`[clearAllTransactionData] Clearing batch ${Math.floor(i / batchSize) + 1} (${batch.length} items)`);
-        
-        const { error } = await supabase
-          .from("transactions")
-          .update({
-            category_id_auto: null,
-            category_id_user: null,
-            category_confidence: null,
-            category_source: null,
-            category_model: null,
-            categorized_at: null,
-            updated_at: new Date().toISOString(),
-          })
-          .in("id", batch);
 
-        if (error) {
-          console.error("[clearAllTransactionData] Error updating batch:", error);
-          throw error;
-        }
-      }
-      console.log("[clearAllTransactionData] Transactions cleared");
-
-      // Also clear the categorization audit log
-      console.log("[clearAllTransactionData] Clearing audit log...");
-      const { error: auditError } = await supabase
-        .from("categorization_audit")
+      const { error: deleteError } = await supabase
+        .from("transactions")
         .delete()
-        .not("id", "is", null); // Match all rows (id is never null)
+        .not("id", "is", null);
 
-      if (auditError) {
-        console.error("[clearAllTransactionData] Error clearing audit log:", auditError);
-        throw auditError;
+      if (deleteError) {
+        console.error(
+          "[clearAllTransactionData] Error deleting transactions:",
+          deleteError,
+        );
+        throw deleteError;
       }
-      console.log("[clearAllTransactionData] Audit log cleared");
+
+      console.log("[clearAllTransactionData] Transactions deleted");
+      console.log(
+        "[clearAllTransactionData] Categorization audit entries removed via cascade delete",
+      );
     },
   };
 }
@@ -336,4 +331,158 @@ export function normalizePattern(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+// ── Transaction detail + counterparty helpers ──────────────────────────────
+
+export type TransactionDetail = {
+  id: string;
+  date: string;
+  details: string;
+  counterparty: string | null;
+  amount: number;
+  currency: string | null;
+  type: string | null;
+  metadata: Record<string, unknown>;
+  category_id_auto: string | null;
+  category_id_user: string | null;
+  category_confidence: number | null;
+  category_source: string | null;
+  category_model: string | null;
+  categorized_at: string | null;
+  created_at: string | null;
+  is_reviewed: boolean;
+};
+
+export type CounterpartyTxSummary = {
+  id: string;
+  date: string;
+  details: string;
+  counterparty: string | null;
+  amount: number;
+  category_id_auto: string | null;
+  category_id_user: string | null;
+};
+
+export async function getTransactionDetail(
+  id: string,
+): Promise<TransactionDetail | null> {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select(
+      "id,date,details,counterparty,amount,currency,type,metadata,category_id_auto,category_id_user,category_confidence,category_source,category_model,categorized_at,created_at,is_reviewed",
+    )
+    .eq("id", id)
+    .single();
+  if (error) throw error;
+  if (!data) return null;
+  const d = data as any;
+  return {
+    id: String(d.id),
+    date: String(d.date || ""),
+    details: String(d.details || ""),
+    counterparty: d.counterparty ? String(d.counterparty) : null,
+    amount: asNumber(d.amount, 0),
+    currency: d.currency ? String(d.currency) : null,
+    type: d.type ? String(d.type) : null,
+    metadata: (d.metadata || {}) as Record<string, unknown>,
+    category_id_auto: d.category_id_auto || null,
+    category_id_user: d.category_id_user || null,
+    category_confidence:
+      d.category_confidence == null ? null : Number(d.category_confidence),
+    category_source: d.category_source || null,
+    category_model: d.category_model || null,
+    categorized_at: d.categorized_at || null,
+    created_at: d.created_at || null,
+    is_reviewed: Boolean(d.is_reviewed),
+  };
+}
+
+export async function getCounterpartyTransactions(
+  counterparty: string,
+  excludeId: string,
+  limit = 5,
+): Promise<CounterpartyTxSummary[]> {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select(
+      "id,date,details,counterparty,amount,category_id_auto,category_id_user",
+    )
+    .eq("counterparty", counterparty)
+    .neq("id", excludeId)
+    .order("date", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return ((data || []) as any[]).map((row) => ({
+    id: row.id,
+    date: String(row.date || ""),
+    details: String(row.details || ""),
+    counterparty: row.counterparty ? String(row.counterparty) : null,
+    amount: asNumber(row.amount, 0),
+    category_id_auto: row.category_id_auto || null,
+    category_id_user: row.category_id_user || null,
+  }));
+}
+
+export async function countCounterpartyTransactions(
+  counterparty: string,
+  scope: "all" | "uncategorized",
+): Promise<number> {
+  const base = supabase
+    .from("transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("counterparty", counterparty);
+  const { count, error } =
+    scope === "uncategorized"
+      ? await base.is("category_id_user", null)
+      : await base;
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function bulkUpdateCategoryByCounterparty(
+  counterparty: string,
+  categoryId: string,
+  scope: "all" | "uncategorized",
+): Promise<number> {
+  const countBase = supabase
+    .from("transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("counterparty", counterparty);
+  const { count, error: countError } =
+    scope === "uncategorized"
+      ? await countBase.is("category_id_user", null)
+      : await countBase;
+  if (countError) throw countError;
+  if (!count) return 0;
+
+  const updateBase = supabase
+    .from("transactions")
+    .update({
+      category_id_user: categoryId,
+      category_source: "manual",
+      category_model: "manual-bulk",
+      category_confidence: 1,
+      categorized_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("counterparty", counterparty);
+  const { error: updateError } =
+    scope === "uncategorized"
+      ? await updateBase.is("category_id_user", null)
+      : await updateBase;
+  if (updateError) throw updateError;
+
+  return count;
+}
+
+export async function setTransactionReviewed(
+  id: string,
+  reviewed: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from("transactions")
+    .update({ is_reviewed: reviewed, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
 }

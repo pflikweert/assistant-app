@@ -1,18 +1,20 @@
-import { getLeafCategories } from "./category-display";
-import {
-    createSupabaseCategorizationRepository,
-    normalizePattern,
-} from "./categorization-repository";
-import {
-  type CategorizationRunMode,
-  updateCategorizationStatus,
-} from "./categorization-status";
 import type {
     CategoryRecord,
     CategoryRuleRecord,
     TransactionCategorizationRecord,
 } from "@/types/categorization";
 import Constants from "expo-constants";
+import {
+    createSupabaseCategorizationRepository,
+    normalizePattern,
+} from "./categorization-repository";
+import { enrichTransactionAnalysis } from "./analysis";
+import {
+    type CategorizationRunMode,
+    updateCategorizationStatus,
+} from "./categorization-status";
+import { recomputeCurrentMonthCashflowForecast } from "./forecasting";
+import { getLeafCategories } from "./category-display";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const appEnv = ((Constants.expoConfig?.extra as Record<
@@ -171,12 +173,14 @@ function getBrowserStorage(): {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
 } | null {
-  const candidate = (globalThis as {
-    localStorage?: {
-      getItem?: (key: string) => string | null;
-      setItem?: (key: string, value: string) => void;
-    };
-  }).localStorage;
+  const candidate = (
+    globalThis as {
+      localStorage?: {
+        getItem?: (key: string) => string | null;
+        setItem?: (key: string, value: string) => void;
+      };
+    }
+  ).localStorage;
 
   if (
     !candidate ||
@@ -351,7 +355,8 @@ function getPrimaryMerchantText(tx: TransactionCategorizationRecord) {
   if (counterparty) return counterparty;
 
   const detailSegments = getRelevantDetailSegments(tx);
-  const merchantSegment = detailSegments[detailSegments.length - 1] || tx.details;
+  const merchantSegment =
+    detailSegments[detailSegments.length - 1] || tx.details;
   return normalizePattern(merchantSegment);
 }
 
@@ -361,22 +366,130 @@ function getRelevantDetailsText(tx: TransactionCategorizationRecord) {
   return detailSegments.join(" | ");
 }
 
+function getTransactionSubjectText(tx: TransactionCategorizationRecord) {
+  const detailSegments = getRelevantDetailSegments(tx);
+  if (!detailSegments.length) return tx.details || "";
+
+  const merchant = getPrimaryMerchantText(tx);
+  for (const segment of detailSegments) {
+    const normalized = normalizePattern(segment);
+    if (!normalized) continue;
+    if (normalized !== merchant) return segment;
+  }
+
+  return detailSegments[0] || tx.details || "";
+}
+
+type RuleHaystackSource = "counterparty" | "merchant" | "details";
+
+type RuleHaystackEntry = {
+  text: string;
+  priority: number;
+  source: RuleHaystackSource;
+};
+
 function getRuleHaystacks(tx: TransactionCategorizationRecord) {
-  const entries: { text: string; priority: number }[] = [];
+  const entries: RuleHaystackEntry[] = [];
   const seen = new Set<string>();
 
-  const push = (value: string, priority: number) => {
+  const push = (
+    value: string,
+    priority: number,
+    source: RuleHaystackSource,
+  ) => {
     const normalized = normalizePattern(value);
     if (!normalized || seen.has(normalized)) return;
     seen.add(normalized);
-    entries.push({ text: normalized, priority });
+    entries.push({ text: normalized, priority, source });
   };
 
-  push(tx.counterparty || "", 3);
-  push(getPrimaryMerchantText(tx), 2);
-  push(getRelevantDetailsText(tx), 1);
+  push(tx.counterparty || "", 3, "counterparty");
+  push(getPrimaryMerchantText(tx), 2, "merchant");
+  push(getRelevantDetailsText(tx), 1, "details");
 
   return entries;
+}
+
+function tryBelastingdienstHeuristicMatch(
+  tx: TransactionCategorizationRecord,
+  categoriesByKey: Map<string, CategoryRecord>,
+): {
+  categoryId: string;
+  confidence: number;
+  model: string;
+  reason: string;
+} | null {
+  const counterparty = normalizePattern(tx.counterparty || "");
+  if (!counterparty.includes("belastingdienst")) return null;
+
+  const detailsRaw = String(tx.details || "");
+  const detailsNormalized = normalizePattern(detailsRaw);
+
+  const childBudgetCategory = categoriesByKey.get("income_child_budget");
+  if (
+    childBudgetCategory &&
+    (detailsNormalized.includes("voorschot kit kgb") ||
+      detailsNormalized.includes("kindgebonden budget"))
+  ) {
+    return {
+      categoryId: childBudgetCategory.id,
+      confidence: 0.99,
+      model: "heuristic-belastingdienst-kgb-v1",
+      reason: "Belastingdienst voorschot KIT/KGB reference",
+    };
+  }
+
+  const hasZvwContribution = detailsNormalized.includes("bijdrage zvw");
+  const healthInsuranceCategory = categoriesByKey.get("care_health_insurance");
+  if (hasZvwContribution && healthInsuranceCategory) {
+    return {
+      categoryId: healthInsuranceCategory.id,
+      confidence: 0.96,
+      model: "heuristic-belastingdienst-zvw-v1",
+      reason:
+        tx.amount < 0
+          ? "Belastingdienst ZVW contribution payment"
+          : "Belastingdienst ZVW contribution settlement/refund",
+    };
+  }
+
+  const roadTaxCategory = categoriesByKey.get("auto_transport_road_tax");
+  if (!roadTaxCategory || tx.amount >= 0) return null;
+
+  const firstSegment = detailsRaw.split("|")[0]?.trim().toLowerCase() || "";
+  const hasDateRange = /\b\d{2}-\d{2}-\d{4}\s+t\/m\s+\d{2}-\d{2}-\d{4}\b/.test(
+    firstSegment,
+  );
+  const hasReferencePrefix = /^[a-z0-9-]{4,16}\s+\d{2}-\d{2}-\d{4}\b/.test(
+    firstSegment,
+  );
+
+  if (hasDateRange && hasReferencePrefix) {
+    return {
+      categoryId: roadTaxCategory.id,
+      confidence: 0.97,
+      model: "heuristic-belastingdienst-road-tax-v1",
+      reason: "Belastingdienst period reference with date range",
+    };
+  }
+
+  return null;
+}
+
+function doesRuleAllowHaystack(
+  patternType: string,
+  source: RuleHaystackSource,
+) {
+  if (patternType === "details_contains") {
+    return source === "details";
+  }
+
+  return true;
+}
+
+function getRuleTypeScoreBonus(patternType: string) {
+  if (patternType === "details_contains") return 5000;
+  return 0;
 }
 
 function buildSearchText(tx: TransactionCategorizationRecord): string {
@@ -519,8 +632,10 @@ async function waitForOpenAIRateLimitWindow(estimatedTokens: number) {
     const delayMs = getOpenAIRateLimitDelayMs(estimatedTokens);
     if (delayMs <= 0) return;
 
-    await waitWithStatus(delayMs, (remainingMs) =>
-      `Wacht ${Math.ceil(remainingMs / 1000)}s op OpenAI rate limit reset.`,
+    await waitWithStatus(
+      delayMs,
+      (remainingMs) =>
+        `Wacht ${Math.ceil(remainingMs / 1000)}s op OpenAI rate limit reset.`,
     );
   }
 }
@@ -559,13 +674,19 @@ function tryRuleMatch(
     if (!rule.is_active) continue;
     const needle = rule.pattern_normalized;
     if (!needle) continue;
+    const patternType = String(rule.pattern_type || "counterparty_contains");
 
     const conf = clampConfidence(Number(rule.confidence));
 
     for (const haystack of haystacks) {
+      if (!doesRuleAllowHaystack(patternType, haystack.source)) continue;
       if (!haystack.text.includes(needle)) continue;
 
-      const score = haystack.priority * 1000 + needle.length * 10 + conf;
+      const score =
+        getRuleTypeScoreBonus(patternType) +
+        haystack.priority * 1000 +
+        needle.length * 10 +
+        conf;
       if (!best || score > best.score) {
         best = {
           categoryId: rule.category_id,
@@ -595,7 +716,9 @@ function extractJsonObject(text: string): string | null {
 function parseOpenAIItems(content: string): OpenAIResult[] {
   const rawJson = extractJsonObject(content);
   if (!rawJson) {
-    const err = new Error("OpenAI returned no JSON object.") as OpenAIRequestError;
+    const err = new Error(
+      "OpenAI returned no JSON object.",
+    ) as OpenAIRequestError;
     err.code = "invalid_json";
     throw err;
   }
@@ -671,7 +794,7 @@ async function requestOpenAICategories(
       {
         role: "system",
         content:
-          "You classify Dutch bank transactions. Always pick exactly one category_key from the provided list. Focus on the actual merchant or counterparty. Ignore technical payment-route text such as Google Pay, Apple Pay, terminal ids, approval codes, card/pass details, and location-only fragments unless they are the only clue. Return strict JSON only and always include a short reason string for every item.",
+          "You classify Dutch bank transactions. Always pick exactly one category_key from the provided list. Focus on the actual purchase subject in the transaction details, then the true merchant. Ignore technical payment-route text such as Google Pay, Apple Pay, terminal ids, approval codes, card/pass details, and location-only fragments unless they are the only clue. For deferred/aggregator payment providers (for example Klarna, PayPal, Riverty, AfterPay), do NOT classify by provider name alone: use subject/details per transaction, because each payment can belong to a different category. Return strict JSON only and always include a short reason string for every item.",
       },
       {
         role: "user",
@@ -683,6 +806,7 @@ async function requestOpenAICategories(
             amount: t.amount,
             counterparty: t.counterparty || "",
             merchant: getPrimaryMerchantText(t),
+            subject: getTransactionSubjectText(t),
             details: getRelevantDetailsText(t),
           })),
         }),
@@ -715,7 +839,9 @@ async function requestOpenAICategories(
       response.headers.get("Retry-After"),
     );
     setOpenAINextAllowedAt(
-      retryAfterMs ? Date.now() + retryAfterMs : openAIRateLimitState.resetRequestsAt,
+      retryAfterMs
+        ? Date.now() + retryAfterMs
+        : openAIRateLimitState.resetRequestsAt,
     );
 
     const err = new Error(
@@ -781,10 +907,12 @@ async function requestOpenAICategoriesWithRetry(
           delay / 1000,
         )}s before retry ${attempt}/${OPENAI_RETRY_ATTEMPTS}.`,
       );
-      await waitWithStatus(delay, (remainingMs) =>
-        `OpenAI retry ${attempt}/${OPENAI_RETRY_ATTEMPTS} over ${Math.ceil(
-          remainingMs / 1000,
-        )}s. ${errorMessage}`,
+      await waitWithStatus(
+        delay,
+        (remainingMs) =>
+          `OpenAI retry ${attempt}/${OPENAI_RETRY_ATTEMPTS} over ${Math.ceil(
+            remainingMs / 1000,
+          )}s. ${errorMessage}`,
       );
     }
   }
@@ -874,12 +1002,16 @@ export async function categorizeTransactions(
     };
   }
 
-  const leafCategories = getLeafCategories(allCategories, { curatedOnly: true });
+  const leafCategories = getLeafCategories(allCategories, {
+    curatedOnly: true,
+  });
   const selectableCategories = leafCategories.length
     ? leafCategories
     : getLeafCategories(allCategories);
   const categoriesById = new Map(allCategories.map((c) => [c.id, c]));
-  const activeRules = allRules.filter((rule) => categoriesById.has(rule.category_id));
+  const activeRules = allRules.filter((rule) =>
+    categoriesById.has(rule.category_id),
+  );
   const categoriesByKey = new Map(selectableCategories.map((c) => [c.key, c]));
 
   const pendingTransactions = transactions.filter(
@@ -901,6 +1033,22 @@ export async function categorizeTransactions(
   const unresolved: TransactionCategorizationRecord[] = [];
 
   for (const tx of pendingTransactions) {
+    const heuristicMatch = tryBelastingdienstHeuristicMatch(
+      tx,
+      categoriesByKey,
+    );
+    if (heuristicMatch) {
+      results.push({
+        transactionId: tx.id,
+        categoryId: heuristicMatch.categoryId,
+        confidence: heuristicMatch.confidence,
+        source: "rule",
+        model: heuristicMatch.model,
+        reason: heuristicMatch.reason,
+      });
+      continue;
+    }
+
     const matched = tryRuleMatch(tx, activeRules);
     if (matched && matched.confidence >= RULE_CONFIDENCE_THRESHOLD) {
       results.push({
@@ -961,8 +1109,10 @@ export async function categorizeTransactions(
     if (representatives.length && openAiKey) {
       for (let i = 0; i < representatives.length; i += OPENAI_BATCH_SIZE) {
         if (i > 0) {
-          await waitWithStatus(OPENAI_INTER_BATCH_DELAY_MS, (remainingMs) =>
-            `Volgende OpenAI batch over ${Math.ceil(remainingMs / 1000)}s.`,
+          await waitWithStatus(
+            OPENAI_INTER_BATCH_DELAY_MS,
+            (remainingMs) =>
+              `Volgende OpenAI batch over ${Math.ceil(remainingMs / 1000)}s.`,
           );
         }
         const batch = representatives.slice(i, i + OPENAI_BATCH_SIZE);
@@ -1018,7 +1168,9 @@ export async function categorizeTransactions(
   }
 
   const txMap = new Map(transactions.map((tx) => [tx.id, tx]));
-  const resolvedTransactionIds = new Set(results.map((result) => result.transactionId));
+  const resolvedTransactionIds = new Set(
+    results.map((result) => result.transactionId),
+  );
   const staleOtherAutoIds: string[] = [];
 
   if (options.force) {
@@ -1070,6 +1222,18 @@ export async function categorizeTransactions(
     if (result.source === "rule" && result.matchedRuleId) {
       await repo.incrementRuleHit(result.matchedRuleId);
     }
+  }
+
+  try {
+    await enrichTransactionAnalysis(uniqueIds);
+  } catch (error) {
+    console.warn("analysis enrichment failed", formatError(error));
+  }
+
+  try {
+    await recomputeCurrentMonthCashflowForecast();
+  } catch (error) {
+    console.warn("cashflow forecast recompute failed", formatError(error));
   }
 
   const cleared = staleOtherAutoIds.length;
@@ -1183,18 +1347,20 @@ async function flushQueuedCategorization() {
             ? "running"
             : "completed",
         queuedCount: queuedTransactionIds.size,
-        totalCount: Math.max(processedCount + queuedTransactionIds.size, totalCount),
+        totalCount: Math.max(
+          processedCount + queuedTransactionIds.size,
+          totalCount,
+        ),
         processedCount,
         updatedCount,
         ruleCount,
         openAiCount,
         skippedCount,
-        message:
-          stoppedWithClearedQueue
-            ? "Achtergrondcategorisatie gestopt. Wachtrij is leeggemaakt."
-            : queuedTransactionIds.size > 0
-              ? "Categorisatie draait op de achtergrond."
-              : "Achtergrondcategorisatie afgerond.",
+        message: stoppedWithClearedQueue
+          ? "Achtergrondcategorisatie gestopt. Wachtrij is leeggemaakt."
+          : queuedTransactionIds.size > 0
+            ? "Categorisatie draait op de achtergrond."
+            : "Achtergrondcategorisatie afgerond.",
         lastCompletedAt:
           queuedTransactionIds.size > 0 && !stoppedWithClearedQueue
             ? current.lastCompletedAt
@@ -1202,7 +1368,8 @@ async function flushQueuedCategorization() {
         lastError: null,
         lastRunMode: current.mode,
         isPauseRequested: false,
-        isStopRequested: !stoppedWithClearedQueue && queuedTransactionIds.size > 0,
+        isStopRequested:
+          !stoppedWithClearedQueue && queuedTransactionIds.size > 0,
       }));
     }
   } catch (error) {
@@ -1329,7 +1496,7 @@ export function runRecategorizationForAllInBackground(
         let offset = 0;
 
         while (true) {
-          const pageIds = await repo.getRecategorizableTransactionIds(
+          const pageIds = await repo.getAllTransactionIds(
             pageSize,
             offset,
           );
@@ -1430,13 +1597,15 @@ export async function clearAllTransactionData() {
     console.log("[clearAllTransactionData] Starting...");
     stopBackgroundCategorization();
     console.log("[clearAllTransactionData] Background categorization stopped");
-    
+
     const repo = createSupabaseCategorizationRepository();
     console.log("[clearAllTransactionData] Repository created");
-    
+
     await repo.clearAllTransactionData();
-    console.log("[clearAllTransactionData] All transaction data cleared from DB");
-    
+    console.log(
+      "[clearAllTransactionData] All transaction data cleared from DB",
+    );
+
     // Reset categorization status
     updateCategorizationStatus((current) => ({
       ...current,
@@ -1463,4 +1632,55 @@ export async function clearAllTransactionData() {
     }));
     throw error;
   }
+}
+
+export async function recategorizeSingleTransaction(
+  transactionId: string,
+): Promise<{
+  categoryId: string;
+  categoryKey: string;
+  categoryName: string;
+  confidence: number;
+  reason: string;
+} | null> {
+  const repo = createSupabaseCategorizationRepository();
+  const [allCategories, txs] = await Promise.all([
+    repo.getCategories(),
+    repo.getTransactionsByIds([transactionId]),
+  ]);
+
+  const tx = txs[0];
+  if (!tx || !allCategories.length) return null;
+
+  const leafCategories = getLeafCategories(allCategories, {
+    curatedOnly: true,
+  });
+  const selectableCategories = leafCategories.length
+    ? leafCategories
+    : getLeafCategories(allCategories);
+  const categoriesByKey = new Map(selectableCategories.map((c) => [c.key, c]));
+
+  const openAiKey = appEnv.OPENAI_API_KEY;
+  if (!openAiKey) throw new Error("OPENAI_API_KEY niet geconfigureerd.");
+
+  const items = await requestOpenAICategoriesWithRetry(
+    openAiKey,
+    DEFAULT_MODEL,
+    selectableCategories,
+    [tx],
+  );
+
+  const item = items[0];
+  if (!item) return null;
+
+  const category = categoriesByKey.get(item.category_key);
+  if (!category) return null;
+
+  return {
+    categoryId: category.id,
+    categoryKey: category.key,
+    categoryName: category.name,
+    confidence: clampConfidence(Number(item.confidence ?? 0)),
+    reason: item.reason || "Predicted by model",
+  };
 }

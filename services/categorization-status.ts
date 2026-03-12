@@ -67,9 +67,7 @@ export function updateCategorizationStatus(
     | ((current: CategorizationStatus) => CategorizationStatus),
 ) {
   status =
-    typeof updater === "function"
-      ? updater(status)
-      : { ...status, ...updater };
+    typeof updater === "function" ? updater(status) : { ...status, ...updater };
   emit();
 }
 

@@ -1,26 +1,26 @@
-import React from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { useIsFocused } from "@react-navigation/native";
-import { useRouter } from "expo-router";
-import {
-  buildCategoryNameMap,
-  getCategorizationCoverage,
-  getCategoryLabel,
-} from "@/services/category-display";
-import {
-  formatCategorizationStatus,
-  useCategorizationStatus,
-} from "@/services/categorization-status";
+import { FinColors } from "@/constants/theme";
 import { getTransactionCategories } from "@/services/categorization-repository";
+import {
+    formatCategorizationStatus,
+    useCategorizationStatus,
+} from "@/services/categorization-status";
+import {
+    buildCategoryRecordMap,
+    getCategorizationCoverage,
+    getCategoryPathLabel,
+} from "@/services/category-display";
 import { supabase } from "@/services/supabase";
 import type { CategoryRecord } from "@/types/categorization";
-import { FinColors } from "@/constants/theme";
+import { useIsFocused } from "@react-navigation/native";
+import { useRouter } from "expo-router";
+import React from "react";
+import {
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -62,18 +62,37 @@ function TxRow({ tx }: { tx: DashboardTxRow }) {
         </View>
       </View>
       <Text style={[styles.txAmount, isPos && styles.txAmountPos]}>
-        {isPos ? "+" : ""}{fmt.format(tx.amount)}
+        {isPos ? "+" : ""}
+        {fmt.format(tx.amount)}
       </Text>
     </View>
   );
 }
 
 // ─── Stat pill ─────────────────────────────────────────────────────────────────
-function StatPill({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function StatPill({
+  label,
+  value,
+  accent,
+  isEmpty,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  isEmpty?: boolean;
+}) {
   return (
     <View style={styles.statPill}>
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, accent && { color: FinColors.green }]}>{value}</Text>
+      <Text
+        style={[
+          styles.statValue,
+          accent && !isEmpty && { color: FinColors.green },
+          isEmpty && styles.emptyAmountText,
+        ]}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -83,19 +102,26 @@ export default function DashboardScreen() {
   const router = useRouter();
   const [transactions, setTransactions] = React.useState<DashboardTx[]>([]);
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
-  const [balance, setBalance] = React.useState(0);
-  const [monthlySpent, setMonthlySpent] = React.useState(0);
-  const [monthlyIncome, setMonthlyIncome] = React.useState(0);
+  const [balance, setBalance] = React.useState<number | null>(null);
+  const [monthlySpent, setMonthlySpent] = React.useState<number | null>(null);
+  const [monthlyIncome, setMonthlyIncome] = React.useState<number | null>(null);
   const isFocused = useIsFocused();
   const backgroundStatus = useCategorizationStatus();
 
-  const categoryMap = React.useMemo(() => buildCategoryNameMap(categories), [categories]);
-  const coverage = React.useMemo(() => getCategorizationCoverage(transactions), [transactions]);
+  const categoryMap = React.useMemo(
+    () => buildCategoryRecordMap(categories),
+    [categories],
+  );
+  const coverage = React.useMemo(
+    () => getCategorizationCoverage(transactions),
+    [transactions],
+  );
+  const hasTransactions = transactions.length > 0;
   const recentTransactions = React.useMemo<DashboardTxRow[]>(
     () =>
       transactions.map((tx) => ({
         ...tx,
-        categoryLabel: getCategoryLabel(tx, categoryMap),
+        categoryLabel: getCategoryPathLabel(tx, categoryMap),
       })),
     [transactions, categoryMap],
   );
@@ -113,7 +139,9 @@ export default function DashboardScreen() {
     try {
       const { data } = await supabase
         .from("transactions")
-        .select("id,counterparty,date,amount,metadata,category_id_auto,category_id_user")
+        .select(
+          "id,counterparty,date,amount,metadata,category_id_auto,category_id_user",
+        )
         .order("date", { ascending: false })
         .order("metadata->>Volgnr", { ascending: false })
         .limit(50);
@@ -125,7 +153,9 @@ export default function DashboardScreen() {
         const saldoRaw = md["Saldo na trn"];
         let runningBalance: number | null = null;
         if (saldoRaw != null) {
-          const n = parseFloat(String(saldoRaw).replace(/\./g, "").replace(",", "."));
+          const n = parseFloat(
+            String(saldoRaw).replace(/\./g, "").replace(",", "."),
+          );
           runningBalance = isNaN(n) ? null : n;
         }
         return {
@@ -140,19 +170,35 @@ export default function DashboardScreen() {
         };
       });
       rows.sort((a, b) =>
-        a.date === b.date ? b.seq - a.seq : a.date < b.date ? 1 : -1
+        a.date === b.date ? b.seq - a.seq : a.date < b.date ? 1 : -1,
       );
+
+      if (!rows.length) {
+        setTransactions([]);
+        setBalance(null);
+        setMonthlySpent(null);
+        setMonthlyIncome(null);
+        return;
+      }
+
       setTransactions(rows.slice(0, 5));
-      
-      const latestBalance = rows.find((r) => r.runningBalance != null)?.runningBalance ?? 0;
+
+      const latestBalance =
+        rows.find((r) => r.runningBalance != null)?.runningBalance ?? null;
       setBalance(latestBalance);
 
       // Calculate monthly totals
       const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+        .toISOString()
+        .slice(0, 10);
       const monthTxs = data.filter((r: any) => r.date >= monthStart);
-      const spent = monthTxs.filter((r: any) => r.amount < 0).reduce((s: number, r: any) => s + Math.abs(r.amount), 0);
-      const income = monthTxs.filter((r: any) => r.amount > 0).reduce((s: number, r: any) => s + r.amount, 0);
+      const spent = monthTxs
+        .filter((r: any) => r.amount < 0)
+        .reduce((s: number, r: any) => s + Math.abs(r.amount), 0);
+      const income = monthTxs
+        .filter((r: any) => r.amount > 0)
+        .reduce((s: number, r: any) => s + r.amount, 0);
       setMonthlySpent(spent);
       setMonthlyIncome(income);
     } catch (e) {
@@ -189,27 +235,64 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scroll}
+      >
         {/* Balance Card */}
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Total Balance</Text>
-          <Text style={styles.balanceAmount}>{fmt.format(balance)}</Text>
+          <Text
+            style={[
+              styles.balanceAmount,
+              !hasTransactions && styles.emptyAmountText,
+            ]}
+          >
+            {hasTransactions && balance != null
+              ? fmt.format(balance)
+              : "Nog geen data"}
+          </Text>
           <View style={styles.accountRow}>
             <View style={styles.accountDot} />
-            <Text style={styles.accountText}>Main Account</Text>
+            <Text style={styles.accountText}>
+              {hasTransactions
+                ? "Main Account"
+                : "Importeer transacties om saldo te tonen"}
+            </Text>
           </View>
         </View>
 
         {/* Stats row */}
         <View style={styles.statsRow}>
-          <StatPill label="Income" value={`+${fmt.format(monthlyIncome || 3420)}`} accent />
-          <StatPill label="Expenses" value={fmt.format(monthlySpent || 1250)} />
+          <StatPill
+            label="Income"
+            value={
+              hasTransactions && monthlyIncome != null
+                ? `+${fmt.format(monthlyIncome)}`
+                : "Nog geen data"
+            }
+            accent
+            isEmpty={!hasTransactions}
+          />
+          <StatPill
+            label="Expenses"
+            value={
+              hasTransactions && monthlySpent != null
+                ? fmt.format(monthlySpent)
+                : "Nog geen data"
+            }
+            isEmpty={!hasTransactions}
+          />
         </View>
 
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>
             <Text style={styles.statusTitle}>Categorisatie</Text>
-            <Text style={styles.statusValue}>{coverage.total ? `${coverage.categorized}/${coverage.total}` : "0/0"}</Text>
+            <Text style={styles.statusValue}>
+              {coverage.total
+                ? `${coverage.categorized}/${coverage.total}`
+                : "0/0"}
+            </Text>
           </View>
           <Text style={styles.statusSubtext}>
             {coverage.uncategorized === 0
@@ -220,13 +303,17 @@ export default function DashboardScreen() {
             <View
               style={[
                 styles.statusBarFill,
-                { width: `${coverage.total ? Math.round((coverage.categorized / coverage.total) * 100) : 0}%` },
+                {
+                  width: `${coverage.total ? Math.round((coverage.categorized / coverage.total) * 100) : 0}%`,
+                },
               ]}
             />
           </View>
           <View style={styles.statusMetaRow}>
             <Text style={styles.statusMetaText}>Auto: {coverage.auto}</Text>
-            <Text style={styles.statusMetaText}>Handmatig: {coverage.manual}</Text>
+            <Text style={styles.statusMetaText}>
+              Handmatig: {coverage.manual}
+            </Text>
           </View>
           <View style={styles.backgroundStatusBox}>
             <Text style={styles.backgroundStatusLabel}>Achtergrondstatus</Text>
@@ -238,13 +325,19 @@ export default function DashboardScreen() {
 
         {/* Quick actions */}
         <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push("/csv-import")}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => router.push("/csv-import")}
+          >
             <View style={styles.actionIcon}>
               <Text style={styles.actionIconText}>+</Text>
             </View>
             <Text style={styles.actionLabel}>Import</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push("/transactions")}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => router.push("/transactions")}
+          >
             <View style={styles.actionIcon}>
               <Text style={styles.actionIconText}>...</Text>
             </View>
@@ -273,7 +366,9 @@ export default function DashboardScreen() {
             recentTransactions.map((tx, i) => (
               <React.Fragment key={tx.id}>
                 <TxRow tx={tx} />
-                {i < recentTransactions.length - 1 && <View style={styles.divider} />}
+                {i < recentTransactions.length - 1 && (
+                  <View style={styles.divider} />
+                )}
               </React.Fragment>
             ))
           )}
@@ -285,7 +380,7 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: FinColors.bgBase },
-  
+
   // Header
   header: {
     flexDirection: "row",
@@ -296,7 +391,12 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   greeting: { fontSize: 14, color: FinColors.textMuted, marginBottom: 4 },
-  headerTitle: { fontSize: 24, fontWeight: "700", color: FinColors.textPrimary, letterSpacing: -0.5 },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    letterSpacing: -0.5,
+  },
   avatar: {
     width: 44,
     height: 44,
@@ -307,7 +407,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  avatarText: { color: FinColors.textSecondary, fontWeight: "600", fontSize: 14 },
+  avatarText: {
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+    fontSize: 14,
+  },
 
   scroll: { paddingHorizontal: 20, paddingBottom: 32 },
 
@@ -319,11 +423,35 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  balanceLabel: { fontSize: 13, color: FinColors.textMuted, fontWeight: "500", marginBottom: 8 },
-  balanceAmount: { fontSize: 42, fontWeight: "700", color: FinColors.textPrimary, letterSpacing: -1 },
-  accountRow: { flexDirection: "row", alignItems: "center", marginTop: 16, gap: 8 },
-  accountDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: FinColors.green },
-  accountText: { fontSize: 13, color: FinColors.textSecondary, fontWeight: "500" },
+  balanceLabel: {
+    fontSize: 13,
+    color: FinColors.textMuted,
+    fontWeight: "500",
+    marginBottom: 8,
+  },
+  balanceAmount: {
+    fontSize: 42,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    letterSpacing: -1,
+  },
+  accountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 16,
+    gap: 8,
+  },
+  accountDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: FinColors.green,
+  },
+  accountText: {
+    fontSize: 13,
+    color: FinColors.textSecondary,
+    fontWeight: "500",
+  },
 
   // Stats row
   statsRow: { flexDirection: "row", gap: 12, marginTop: 16 },
@@ -335,11 +463,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  statLabel: { fontSize: 12, color: FinColors.textMuted, fontWeight: "500", marginBottom: 6 },
+  statLabel: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+    fontWeight: "500",
+    marginBottom: 6,
+  },
   statValue: { fontSize: 18, fontWeight: "700", color: FinColors.textPrimary },
+  emptyAmountText: {
+    fontSize: 16,
+    color: FinColors.textMuted,
+    fontWeight: "600",
+  },
 
   // Quick actions
-  actionsRow: { flexDirection: "row", justifyContent: "center", gap: 32, marginTop: 28, marginBottom: 12 },
+  actionsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 32,
+    marginTop: 28,
+    marginBottom: 12,
+  },
   actionBtn: { alignItems: "center", gap: 8 },
   actionIcon: {
     width: 52,
@@ -351,7 +495,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  actionIconText: { fontSize: 20, color: FinColors.textPrimary, fontWeight: "500" },
+  actionIconText: {
+    fontSize: 20,
+    color: FinColors.textPrimary,
+    fontWeight: "500",
+  },
   actionLabel: { fontSize: 12, color: FinColors.textMuted, fontWeight: "500" },
 
   // Section header
@@ -362,7 +510,11 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: 14,
   },
-  sectionTitle: { fontSize: 16, fontWeight: "600", color: FinColors.textPrimary },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
   seeAll: { fontSize: 13, color: FinColors.textMuted, fontWeight: "500" },
 
   // Transaction card
@@ -375,7 +527,12 @@ const styles = StyleSheet.create({
   },
 
   // Transaction row
-  txRow: { flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 12 },
+  txRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+  },
   txIconWrap: {
     width: 42,
     height: 42,
@@ -385,10 +542,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 14,
   },
-  txIconText: { fontSize: 15, fontWeight: "600", color: FinColors.textSecondary },
+  txIconText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: FinColors.textSecondary,
+  },
   txMid: { flex: 1 },
   txName: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
-  txMetaRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 3, flexWrap: "wrap" },
+  txMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 3,
+    flexWrap: "wrap",
+  },
   txSub: { fontSize: 12, color: FinColors.textMuted, marginTop: 3 },
   txCategory: {
     fontSize: 11,
@@ -417,9 +584,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  statusTitle: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
+  statusTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
   statusValue: { fontSize: 14, fontWeight: "700", color: FinColors.green },
-  statusSubtext: { fontSize: 12, color: FinColors.textMuted, marginTop: 8, lineHeight: 18 },
+  statusSubtext: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+    marginTop: 8,
+    lineHeight: 18,
+  },
   statusBarTrack: {
     marginTop: 12,
     height: 8,
@@ -444,9 +620,26 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: FinColors.borderSubtle,
   },
-  backgroundStatusLabel: { fontSize: 12, color: FinColors.textMuted, marginBottom: 6 },
-  backgroundStatusText: { fontSize: 13, color: FinColors.textPrimary, lineHeight: 20 },
-  
-  divider: { height: 1, backgroundColor: FinColors.borderSubtle, marginLeft: 68 },
-  emptyText: { fontSize: 14, color: FinColors.textMuted, textAlign: "center", paddingVertical: 24 },
+  backgroundStatusLabel: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+    marginBottom: 6,
+  },
+  backgroundStatusText: {
+    fontSize: 13,
+    color: FinColors.textPrimary,
+    lineHeight: 20,
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: FinColors.borderSubtle,
+    marginLeft: 68,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: FinColors.textMuted,
+    textAlign: "center",
+    paddingVertical: 24,
+  },
 });

@@ -17,6 +17,10 @@ export function buildCategoryNameMap(categories: CategoryRecord[]) {
   return new Map(categories.map((category) => [category.id, category.name]));
 }
 
+export function buildCategoryRecordMap(categories: CategoryRecord[]) {
+  return new Map(categories.map((category) => [category.id, category]));
+}
+
 export function sortCategories(categories: CategoryRecord[]) {
   return [...categories].sort((a, b) => {
     const left = a.sort_order ?? Number.MAX_SAFE_INTEGER;
@@ -30,7 +34,9 @@ export function getLeafCategories(
   categories: CategoryRecord[],
   options: { curatedOnly?: boolean } = {},
 ) {
-  const parentIds = new Set(categories.map((category) => category.parent_id).filter(Boolean));
+  const parentIds = new Set(
+    categories.map((category) => category.parent_id).filter(Boolean),
+  );
   const leaves = categories.filter((category) => !parentIds.has(category.id));
   const source = leaves.length ? leaves : categories;
   const filtered = options.curatedOnly
@@ -48,6 +54,21 @@ export function getCategoryLabel(
   const categoryId = getEffectiveCategoryId(row);
   if (!categoryId) return fallback;
   return categoryMap.get(categoryId) || fallback;
+}
+
+export function getCategoryPathLabel(
+  row: CategorizedRow,
+  categoryById: Map<string, CategoryRecord>,
+  fallback = "Ongecategoriseerd",
+) {
+  const categoryId = getEffectiveCategoryId(row);
+  if (!categoryId) return fallback;
+
+  const child = categoryById.get(categoryId);
+  if (!child) return fallback;
+
+  const parent = child.parent_id ? categoryById.get(child.parent_id) : null;
+  return parent ? `${parent.name} › ${child.name}` : child.name;
 }
 
 export function getCategorizationCoverage(rows: CategorizedRow[]) {

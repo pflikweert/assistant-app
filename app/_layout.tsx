@@ -1,8 +1,13 @@
-import { DarkTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
-import { FinColors } from '@/constants/theme';
+import { FinColors } from "@/constants/theme";
+import { DarkTheme, ThemeProvider } from "@react-navigation/native";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { LogBox } from "react-native";
+import "react-native-reanimated";
+
+LogBox.ignoreLogs([
+  "props.pointerEvents is deprecated. Use style.pointerEvents",
+]);
 
 // Override DarkTheme with our fintech palette
 const FinTheme = {
@@ -18,7 +23,7 @@ const FinTheme = {
 };
 
 export const unstable_settings = {
-  anchor: '(tabs)',
+  anchor: "(tabs)",
 };
 
 export default function RootLayout() {
@@ -28,14 +33,27 @@ export default function RootLayout() {
         screenOptions={{
           headerStyle: { backgroundColor: FinColors.bgCard },
           headerTintColor: FinColors.textPrimary,
-          headerTitleStyle: { fontWeight: '700', color: FinColors.textPrimary },
+          headerTitleStyle: { fontWeight: "700", color: FinColors.textPrimary },
           contentStyle: { backgroundColor: FinColors.bgBase },
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="transactions" options={{ title: 'All Transactions', headerShown: true }} />
-        <Stack.Screen name="csv-import" options={{ title: 'Import Transactions', headerShown: true }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Info' }} />
+        <Stack.Screen
+          name="csv-import"
+          options={{ title: "Import Transactions", headerShown: true }}
+        />
+        <Stack.Screen
+          name="modal"
+          options={{ presentation: "modal", title: "Info" }}
+        />
+        <Stack.Screen
+          name="transaction-detail"
+          options={{
+            presentation: "modal",
+            title: "Transactie",
+            headerShown: true,
+          }}
+        />
       </Stack>
       <StatusBar style="light" />
     </ThemeProvider>
