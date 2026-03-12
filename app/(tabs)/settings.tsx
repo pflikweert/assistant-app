@@ -62,6 +62,49 @@ export default function SettingsScreen() {
     backgroundStatus.phase === "queued" || backgroundStatus.phase === "running";
   const isPaused = backgroundStatus.phase === "paused";
 
+  const handleResetPress = () => {
+    console.log("[Settings] Reset button pressed");
+    Alert.alert(
+      "Alle transactiegegevens verwijderen",
+      "Dit zal alle transacties, categorisaties en auditlogs wissen. Dit kan niet ongedaan gemaakt worden. Ben je zeker?",
+      [
+        {
+          text: "Annuleren",
+          onPress: () => {
+            console.log("Clear cancelled");
+          },
+          style: "cancel",
+        },
+        {
+          text: "Verwijderen",
+          onPress: async () => {
+            console.log("Clear started");
+            setIsClearing(true);
+            try {
+              console.log("Calling clearAllTransactionData...");
+              await clearAllTransactionData();
+              console.log("Clear completed successfully");
+              Alert.alert(
+                "Gereed",
+                "Alle transactiegegevens zijn gewist. Je kan nu nieuwe transacties importeren."
+              );
+            } catch (error) {
+              console.error("Clear failed:", error);
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              Alert.alert(
+                "Fout",
+                `Kon gegevens niet wissen: ${errorMsg}`
+              );
+            } finally {
+              setIsClearing(false);
+            }
+          },
+          style: "destructive",
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
@@ -142,48 +185,7 @@ export default function SettingsScreen() {
           <SettingsRow
             label="Transacties resetten"
             subtitle="Verwijder alle transactiegegevens en categorisaties"
-            onPress={() => {
-              console.log("[Settings] Reset button pressed");
-              Alert.alert(
-                "Alle transactiegegevens verwijderen",
-                "Dit zal alle transacties, categorisaties en auditlogs wissen. Dit kan niet ongedaan gemaakt worden. Ben je zeker?",
-                [
-                  {
-                    text: "Annuleren",
-                    onPress: () => {
-                      console.log("Clear cancelled");
-                    },
-                    style: "cancel",
-                  },
-                  {
-                    text: "Verwijderen",
-                    onPress: async () => {
-                      console.log("Clear started");
-                      setIsClearing(true);
-                      try {
-                        console.log("Calling clearAllTransactionData...");
-                        await clearAllTransactionData();
-                        console.log("Clear completed successfully");
-                        Alert.alert(
-                          "Gereed",
-                          "Alle transactiegegevens zijn gewist. Je kan nu nieuwe transacties importeren."
-                        );
-                      } catch (error) {
-                        console.error("Clear failed:", error);
-                        const errorMsg = error instanceof Error ? error.message : String(error);
-                        Alert.alert(
-                          "Fout",
-                          `Kon gegevens niet wissen: ${errorMsg}`
-                        );
-                      } finally {
-                        setIsClearing(false);
-                      }
-                    },
-                    style: "destructive",
-                  },
-                ]
-              );
-            }}
+            onPress={handleResetPress}
             rightElement={
               isClearing ? (
                 <ActivityIndicator size="small" color={FinColors.green} />
