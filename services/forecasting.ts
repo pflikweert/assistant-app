@@ -1,3 +1,4 @@
+import { computeBudgetPlan } from "@/services/budget-plan";
 import { supabase } from "@/services/supabase";
 import type { RecurringType } from "@/types/categorization";
 import { normalizePattern } from "./categorization-repository";
@@ -248,26 +249,40 @@ export async function recomputeCurrentMonthCashflowForecast(
   const monthStartIso = dateToIso(monthStart);
   const monthEndIso = dateToIso(monthEndExclusive);
 
-  const [categoryMap, historyTransactions, incomeSources, startingBalance] =
-    await Promise.all([
-      fetchCategoryMap(),
-      fetchTransactionsInRange(
-        dateToIso(subtractDays(monthStart, 90)),
-        monthEndIso,
-      ),
-      fetchIncomeSources(),
-      getLatestStartingBalance(monthStartIso),
-    ]);
+  const stableIncomePlan = await computeBudgetPlan(reference, "default").catch(
+    (error) => {
+      console.warn("[forecast] stable income unavailable, using legacy sources", error);
+      return null;
+    },
+  );
+
+  const [categoryMap, historyTransactions, startingBalance] = await Promise.all([
+    fetchCategoryMap(),
+    fetchTransactionsInRange(
+      dateToIso(subtractDays(monthStart, 90)),
+      monthEndIso,
+    ),
+    getLatestStartingBalance(monthStartIso),
+  ]);
 
   let expectedIncomeTotal = 0;
-  for (const source of incomeSources) {
-    const anchorDate = new Date(source.last_detected_at);
-    if (
-      !frequencyAppliesInMonth(source.income_frequency, anchorDate, monthStart)
-    ) {
-      continue;
+  if (stableIncomePlan) {
+    expectedIncomeTotal = Math.max(0, asNumber(stableIncomePlan.trend.income.total, 0));
+  } else {
+    const incomeSources = await fetchIncomeSources();
+    for (const source of incomeSources) {
+      const anchorDate = new Date(source.last_detected_at);
+      if (
+        !frequencyAppliesInMonth(
+          source.income_frequency,
+          anchorDate,
+          monthStart,
+        )
+      ) {
+        continue;
+      }
+      expectedIncomeTotal += source.expected_income;
     }
-    expectedIncomeTotal += source.expected_income;
   }
 
   const recurringGroups = new Map<

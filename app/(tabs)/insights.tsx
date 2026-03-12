@@ -18,7 +18,7 @@ import {
 } from "@/services/category-display";
 import { supabase } from "@/services/supabase";
 import type {
-  BudgetPlanComputation,
+    BudgetPlanComputation,
     CategoryRecord,
     ExpenseAnalysisCategory,
 } from "@/types/categorization";
@@ -128,6 +128,25 @@ function formatShortDate(value: string) {
     day: "2-digit",
     month: "short",
   });
+}
+
+function formatIncludedIncomeLabel(plan: BudgetPlanComputation | null) {
+  if (!plan) return "Budget-instellingen";
+
+  const labels: string[] = [];
+  if (plan.settings.includeIncome.salary) labels.push("salaris");
+  if (plan.settings.includeIncome.childBudget) {
+    labels.push("kindgebonden budget");
+  }
+  if (plan.settings.includeIncome.structuralOther) {
+    labels.push("overige structurele inkomsten");
+  }
+  if (plan.settings.includeIncome.variable) {
+    labels.push("variabele/eenmalige inkomsten");
+  }
+
+  if (!labels.length) return "geen inkomstenbron";
+  return labels.join(", ");
 }
 
 function toLocalIsoDate(date: Date) {
@@ -1246,6 +1265,9 @@ export default function InsightsScreen() {
                   Verwacht tekort deze maand
                 </Text>
               ) : null}
+              <Text style={styles.forecastMetaText}>
+                Inkomstenbasis: {formatIncludedIncomeLabel(budgetPlan)}.
+              </Text>
               {forecastTopCostLabels.length ? (
                 <Text style={styles.forecastMetaText}>
                   Grootste kostenposten: {forecastTopCostLabels.join(", ")}
@@ -1280,8 +1302,12 @@ export default function InsightsScreen() {
                 </Text>
               </View>
               <View style={styles.monthReportRow}>
-                <Text style={styles.monthReportLabel}>Aanbevolen spaardoel</Text>
-                <Text style={[styles.monthReportValue, { color: FinColors.green }]}>
+                <Text style={styles.monthReportLabel}>
+                  Aanbevolen spaardoel
+                </Text>
+                <Text
+                  style={[styles.monthReportValue, { color: FinColors.green }]}
+                >
                   +{fmt.format(budgetPlan.recommendedSavings)}
                 </Text>
               </View>
@@ -1299,7 +1325,8 @@ export default function InsightsScreen() {
               </View>
 
               <Text style={styles.budgetMetaText}>
-                Overzicht is verplaatst naar de Budget-pagina voor detail en beheer.
+                Overzicht is verplaatst naar de Budget-pagina voor detail en
+                beheer.
               </Text>
 
               <Pressable

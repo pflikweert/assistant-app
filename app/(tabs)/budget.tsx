@@ -3,25 +3,26 @@ import { FinColors } from "@/constants/theme";
 import { generateBudgetCoachReport } from "@/services/budget-coach";
 import { computeBudgetPlan } from "@/services/budget-plan";
 import {
-  upsertBudgetPlanSettings,
-  upsertMonthlyBudgetValue,
+    upsertBudgetPlanSettings,
+    upsertMonthlyBudgetValue,
 } from "@/services/budget-plan-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
 import type {
   BudgetCategoryKey,
+  BudgetIncomeInclusionSettings,
   BudgetPlanComputation,
   BudgetPlanMode,
 } from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
 import React from "react";
 import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from "react-native";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
@@ -44,6 +45,23 @@ const BUDGET_MODE_OPTIONS: { value: BudgetPlanMode; label: string }[] = [
   { value: "active_savings", label: "Actief sparen" },
   { value: "balanced", label: "Gebalanceerd" },
   { value: "custom", label: "Custom" },
+];
+
+const DEFAULT_INCLUDE_INCOME: BudgetIncomeInclusionSettings = {
+  salary: true,
+  childBudget: true,
+  structuralOther: false,
+  variable: false,
+};
+
+const INCOME_SOURCE_OPTIONS: {
+  key: keyof BudgetIncomeInclusionSettings;
+  label: string;
+}[] = [
+  { key: "salary", label: "Salaris" },
+  { key: "childBudget", label: "Kindgebonden budget" },
+  { key: "structuralOther", label: "Overige structurele inkomsten" },
+  { key: "variable", label: "Variabele/eenmalige inkomsten" },
 ];
 
 function toLocalIsoDate(date: Date) {
@@ -107,9 +125,8 @@ function isMissingRelationError(error: unknown) {
 
 export default function BudgetScreen() {
   const [monthOffset, setMonthOffset] = React.useState(0);
-  const [budgetPlan, setBudgetPlan] = React.useState<BudgetPlanComputation | null>(
-    null,
-  );
+  const [budgetPlan, setBudgetPlan] =
+    React.useState<BudgetPlanComputation | null>(null);
   const [budgetSchemaMissing, setBudgetSchemaMissing] = React.useState(false);
   const [budgetCoachLoading, setBudgetCoachLoading] = React.useState(false);
   const [budgetEditOpen, setBudgetEditOpen] = React.useState(false);
@@ -117,6 +134,8 @@ export default function BudgetScreen() {
   const [budgetModeDraft, setBudgetModeDraft] =
     React.useState<BudgetPlanMode>("active_savings");
   const [budgetFactorDraft, setBudgetFactorDraft] = React.useState("0.90");
+  const [budgetIncomeDraft, setBudgetIncomeDraft] =
+    React.useState<BudgetIncomeInclusionSettings>(DEFAULT_INCLUDE_INCOME);
   const [budgetDraftValues, setBudgetDraftValues] = React.useState<
     Partial<Record<BudgetCategoryKey, string>>
   >({});
@@ -180,7 +199,10 @@ export default function BudgetScreen() {
     if (!budgetPlan || budgetPlan.monthlyBudgetTotal <= 0) return 0;
     return Math.min(
       1,
-      Math.max(0, budgetPlan.monthToDateExpenses.total / budgetPlan.monthlyBudgetTotal),
+      Math.max(
+        0,
+        budgetPlan.monthToDateExpenses.total / budgetPlan.monthlyBudgetTotal,
+      ),
     );
   }, [budgetPlan]);
 
@@ -254,6 +276,12 @@ export default function BudgetScreen() {
 
     setBudgetModeDraft(budgetPlan.settings.mode);
     setBudgetFactorDraft(budgetPlan.settings.adjustmentFactor.toFixed(2));
+    setBudgetIncomeDraft({
+      salary: budgetPlan.settings.includeIncome.salary,
+      childBudget: budgetPlan.settings.includeIncome.childBudget,
+      structuralOther: budgetPlan.settings.includeIncome.structuralOther,
+      variable: budgetPlan.settings.includeIncome.variable,
+    });
 
     const nextDraft: Partial<Record<BudgetCategoryKey, string>> = {};
     for (const row of budgetPlan.recommendations) {
@@ -279,6 +307,7 @@ export default function BudgetScreen() {
         planKey: "default",
         mode: budgetModeDraft,
         adjustmentFactor: safeFactor,
+        includeIncome: budgetIncomeDraft,
       });
 
       const updates: Promise<unknown>[] = [];
@@ -312,6 +341,7 @@ export default function BudgetScreen() {
   }, [
     budgetDraftValues,
     budgetFactorDraft,
+    budgetIncomeDraft,
     budgetModeDraft,
     budgetPlan,
     editableBudgetRows,
@@ -330,7 +360,9 @@ export default function BudgetScreen() {
                 styles.monthNavButton,
                 monthOffset >= 24 && styles.monthNavButtonDisabled,
               ]}
-              onPress={() => setMonthOffset((current) => Math.min(current + 1, 24))}
+              onPress={() =>
+                setMonthOffset((current) => Math.min(current + 1, 24))
+              }
               disabled={monthOffset >= 24}
             >
               <Text style={styles.monthNavButtonText}>‹</Text>
@@ -341,7 +373,9 @@ export default function BudgetScreen() {
                 styles.monthNavButton,
                 monthOffset === 0 && styles.monthNavButtonDisabled,
               ]}
-              onPress={() => setMonthOffset((current) => Math.max(current - 1, 0))}
+              onPress={() =>
+                setMonthOffset((current) => Math.max(current - 1, 0))
+              }
               disabled={monthOffset === 0}
             >
               <Text style={styles.monthNavButtonText}>›</Text>
@@ -367,7 +401,9 @@ export default function BudgetScreen() {
                     : styles.heroNegative,
                 ]}
               >
-                {remainingBudget == null ? "Onbekend" : fmt.format(remainingBudget)}
+                {remainingBudget == null
+                  ? "Onbekend"
+                  : fmt.format(remainingBudget)}
               </Text>
               <Text style={styles.heroSubLabel}>
                 Resterend budget deze maand
@@ -386,7 +422,9 @@ export default function BudgetScreen() {
             <View style={styles.statsRow}>
               <View style={styles.statCard}>
                 <Text style={styles.statLabel}>Weekbudget</Text>
-                <Text style={styles.statValue}>{fmt.format(budgetPlan.weeklyBudgetTotal)}</Text>
+                <Text style={styles.statValue}>
+                  {fmt.format(budgetPlan.weeklyBudgetTotal)}
+                </Text>
               </View>
               <View style={styles.statCard}>
                 <Text style={styles.statLabel}>Aanbevolen sparen</Text>
@@ -396,7 +434,9 @@ export default function BudgetScreen() {
               </View>
               <View style={styles.statCard}>
                 <Text style={styles.statLabel}>Mode</Text>
-                <Text style={styles.statValue}>{formatBudgetModeLabel(budgetPlan.settings.mode)}</Text>
+                <Text style={styles.statValue}>
+                  {formatBudgetModeLabel(budgetPlan.settings.mode)}
+                </Text>
               </View>
             </View>
 
@@ -410,10 +450,13 @@ export default function BudgetScreen() {
                 <View key={row.categoryKey} style={styles.rowWrap}>
                   <View style={styles.rowTop}>
                     <Text style={styles.rowLabel}>{row.label}</Text>
-                    <Text style={styles.rowValue}>{formatUtilization(row.utilization)}</Text>
+                    <Text style={styles.rowValue}>
+                      {formatUtilization(row.utilization)}
+                    </Text>
                   </View>
                   <Text style={styles.rowSub}>
-                    {fmt.format(row.monthlyActual)} van {fmt.format(row.monthlyBudget)}
+                    {fmt.format(row.monthlyActual)} van{" "}
+                    {fmt.format(row.monthlyBudget)}
                   </Text>
                   <View style={styles.utilTrack}>
                     <View
@@ -422,7 +465,8 @@ export default function BudgetScreen() {
                         {
                           width: `${Math.min(100, Math.round((Number.isFinite(row.utilization) ? row.utilization : 1.3) * 100))}%`,
                         },
-                        (!Number.isFinite(row.utilization) || row.utilization >= 1.1) &&
+                        (!Number.isFinite(row.utilization) ||
+                          row.utilization >= 1.1) &&
                           styles.utilFillWarning,
                         row.utilization >= 1.25 && styles.utilFillCritical,
                       ]}
@@ -436,7 +480,9 @@ export default function BudgetScreen() {
               <Text style={styles.cardTitle}>Waarschuwingen</Text>
               <View style={styles.pillRow}>
                 {warningSummary.critical > 0 ? (
-                  <View style={[styles.warningPill, styles.warningPillCritical]}>
+                  <View
+                    style={[styles.warningPill, styles.warningPillCritical]}
+                  >
                     <Text style={styles.warningPillText}>
                       Critical {warningSummary.critical}
                     </Text>
@@ -451,12 +497,17 @@ export default function BudgetScreen() {
                 ) : null}
                 {warningSummary.info > 0 ? (
                   <View style={[styles.warningPill, styles.warningPillInfo]}>
-                    <Text style={styles.warningPillText}>Info {warningSummary.info}</Text>
+                    <Text style={styles.warningPillText}>
+                      Info {warningSummary.info}
+                    </Text>
                   </View>
                 ) : null}
               </View>
               {budgetPlan.warnings.slice(0, 5).map((warning, index) => (
-                <View key={`${warning.categoryKey}-${index}`} style={styles.warningRow}>
+                <View
+                  key={`${warning.categoryKey}-${index}`}
+                  style={styles.warningRow}
+                >
                   <View
                     style={[
                       styles.warningDot,
@@ -514,7 +565,9 @@ export default function BudgetScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Budgetbeheer</Text>
-            <Text style={styles.modalSub}>Instellingen voor {selectedMonth.label}</Text>
+            <Text style={styles.modalSub}>
+              Instellingen voor {selectedMonth.label}
+            </Text>
 
             <Text style={styles.modalSectionTitle}>Budgetmodus</Text>
             <View style={styles.modeRow}>
@@ -523,7 +576,10 @@ export default function BudgetScreen() {
                 return (
                   <Pressable
                     key={option.value}
-                    style={[styles.modeButton, selected && styles.modeButtonActive]}
+                    style={[
+                      styles.modeButton,
+                      selected && styles.modeButtonActive,
+                    ]}
                     onPress={() => setBudgetModeDraft(option.value)}
                   >
                     <Text
@@ -549,7 +605,43 @@ export default function BudgetScreen() {
               keyboardType="decimal-pad"
             />
 
-            <Text style={styles.modalSectionTitle}>Maandbudget per categorie</Text>
+            <Text style={styles.modalSectionTitle}>Inkomstenbasis</Text>
+            <Text style={styles.modalHintText}>
+              Selecteer welke inkomsten meetellen voor budget en cashflow voorspelling.
+            </Text>
+            <View style={styles.incomeOptionsWrap}>
+              {INCOME_SOURCE_OPTIONS.map((option) => {
+                const selected = budgetIncomeDraft[option.key];
+                return (
+                  <Pressable
+                    key={option.key}
+                    style={[
+                      styles.incomeOptionButton,
+                      selected && styles.incomeOptionButtonActive,
+                    ]}
+                    onPress={() =>
+                      setBudgetIncomeDraft((current) => ({
+                        ...current,
+                        [option.key]: !current[option.key],
+                      }))
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.incomeOptionText,
+                        selected && styles.incomeOptionTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={styles.modalSectionTitle}>
+              Maandbudget per categorie
+            </Text>
             <ScrollView style={styles.editList}>
               {editableBudgetRows.map((row) => (
                 <View key={row.categoryKey} style={styles.editRow}>
@@ -560,7 +652,10 @@ export default function BudgetScreen() {
                     </Text>
                   </View>
                   <TextInput
-                    value={budgetDraftValues[row.categoryKey] ?? row.monthlyBudget.toFixed(2)}
+                    value={
+                      budgetDraftValues[row.categoryKey] ??
+                      row.monthlyBudget.toFixed(2)
+                    }
                     onChangeText={(text) =>
                       setBudgetDraftValues((current) => ({
                         ...current,
@@ -961,6 +1056,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13,
+  },
+  modalHintText: {
+    marginTop: -2,
+    marginBottom: 8,
+    color: FinColors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  incomeOptionsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  incomeOptionButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  incomeOptionButtonActive: {
+    backgroundColor: FinColors.greenBg,
+    borderColor: FinColors.greenBorder,
+  },
+  incomeOptionText: {
+    color: FinColors.textSecondary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  incomeOptionTextActive: {
+    color: FinColors.green,
   },
   editList: {
     maxHeight: 260,

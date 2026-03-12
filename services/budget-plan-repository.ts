@@ -2,6 +2,7 @@ import { supabase } from "@/services/supabase";
 import type {
   BudgetCategoryKey,
   BudgetCategoryOverride,
+  BudgetIncomeInclusionSettings,
   BudgetPlanMode,
   BudgetPlanSettings,
   MonthlyBudgetValue,
@@ -10,6 +11,12 @@ import type {
 const DEFAULT_PLAN_KEY = "default";
 const DEFAULT_MODE: BudgetPlanMode = "active_savings";
 const DEFAULT_ADJUSTMENT_FACTOR = 0.9;
+const DEFAULT_INCLUDE_INCOME: BudgetIncomeInclusionSettings = {
+  salary: true,
+  childBudget: true,
+  structuralOther: false,
+  variable: false,
+};
 
 type RowRecord = Record<string, unknown>;
 
@@ -17,6 +24,7 @@ export type UpsertBudgetPlanSettingsInput = {
   planKey?: string;
   mode?: BudgetPlanMode;
   adjustmentFactor?: number;
+  includeIncome?: Partial<BudgetIncomeInclusionSettings>;
 };
 
 export type UpsertBudgetCategoryOverrideInput = {
@@ -64,6 +72,24 @@ function asAdjustmentFactor(value: unknown, fallback: number): number {
   return parsed;
 }
 
+function asBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return fallback;
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  const code = String((error as { code?: string })?.code || "");
+  const message = String((error as { message?: string })?.message || "").toLowerCase();
+  if (code === "42703") return true;
+  return message.includes("column") && message.includes("does not exist");
+}
+
 function normalizePlanKey(planKey?: string): string {
   const trimmed = String(planKey || DEFAULT_PLAN_KEY).trim();
   return trimmed || DEFAULT_PLAN_KEY;
@@ -89,6 +115,9 @@ function mapSettingsRow(
       planKey: planKeyFallback,
       mode: DEFAULT_MODE,
       adjustmentFactor: DEFAULT_ADJUSTMENT_FACTOR,
+      includeIncome: {
+        ...DEFAULT_INCLUDE_INCOME,
+      },
       createdAt: null,
       updatedAt: null,
     };
@@ -96,7 +125,9 @@ function mapSettingsRow(
 
   const modeRaw = String(row.mode || DEFAULT_MODE);
   const mode: BudgetPlanMode =
-    modeRaw === "balanced" || modeRaw === "custom" || modeRaw === "active_savings"
+    modeRaw === "balanced" ||
+    modeRaw === "custom" ||
+    modeRaw === "active_savings"
       ? modeRaw
       : DEFAULT_MODE;
 
@@ -107,6 +138,24 @@ function mapSettingsRow(
       row.adjustment_factor,
       DEFAULT_ADJUSTMENT_FACTOR,
     ),
+    includeIncome: {
+      salary: asBoolean(
+        row.include_income_salary,
+        DEFAULT_INCLUDE_INCOME.salary,
+      ),
+      childBudget: asBoolean(
+        row.include_income_child_budget,
+        DEFAULT_INCLUDE_INCOME.childBudget,
+      ),
+      structuralOther: asBoolean(
+        row.include_income_structural_other,
+        DEFAULT_INCLUDE_INCOME.structuralOther,
+      ),
+      variable: asBoolean(
+        row.include_income_variable,
+        DEFAULT_INCLUDE_INCOME.variable,
+      ),
+    },
     createdAt: row.created_at ? String(row.created_at) : null,
     updatedAt: row.updated_at ? String(row.updated_at) : null,
   };
@@ -163,7 +212,7 @@ export async function getBudgetPlanSettings(
   const normalizedPlanKey = normalizePlanKey(planKey);
   const { data, error } = await supabase
     .from("budget_plan_settings")
-    .select("plan_key,mode,adjustment_factor,created_at,updated_at")
+    .select("*")
     .eq("plan_key", normalizedPlanKey)
     .maybeSingle();
 
@@ -182,20 +231,55 @@ export async function upsertBudgetPlanSettings(
     input.adjustmentFactor == null
       ? existing.adjustmentFactor
       : asAdjustmentFactor(input.adjustmentFactor, existing.adjustmentFactor);
+  const nextIncludeIncome: BudgetIncomeInclusionSettings = {
+    salary:
+      input.includeIncome?.salary == null
+        ? existing.includeIncome.salary
+        : Boolean(input.includeIncome.salary),
+    childBudget:
+      input.includeIncome?.childBudget == null
+        ? existing.includeIncome.childBudget
+        : Boolean(input.includeIncome.childBudget),
+    structuralOther:
+      input.includeIncome?.structuralOther == null
+        ? existing.includeIncome.structuralOther
+        : Boolean(input.includeIncome.structuralOther),
+    variable:
+      input.includeIncome?.variable == null
+        ? existing.includeIncome.variable
+        : Boolean(input.includeIncome.variable),
+  };
 
-  const { data, error } = await supabase
+  const basePayload = {
+    plan_key: normalizedPlanKey,
+    mode: nextMode,
+    adjustment_factor: nextAdjustmentFactor,
+    updated_at: new Date().toISOString(),
+  };
+
+  const incomePayload = {
+    ...basePayload,
+    include_income_salary: nextIncludeIncome.salary,
+    include_income_child_budget: nextIncludeIncome.childBudget,
+    include_income_structural_other: nextIncludeIncome.structuralOther,
+    include_income_variable: nextIncludeIncome.variable,
+  };
+
+  let { data, error } = await supabase
     .from("budget_plan_settings")
-    .upsert(
-      {
-        plan_key: normalizedPlanKey,
-        mode: nextMode,
-        adjustment_factor: nextAdjustmentFactor,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "plan_key" },
-    )
-    .select("plan_key,mode,adjustment_factor,created_at,updated_at")
+    .upsert(incomePayload, { onConflict: "plan_key" })
+    .select("*")
     .single();
+
+  if (error && isMissingColumnError(error)) {
+    const retry = await supabase
+      .from("budget_plan_settings")
+      .upsert(basePayload, { onConflict: "plan_key" })
+      .select("*")
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) throw error;
   return mapSettingsRow(data as RowRecord, normalizedPlanKey);

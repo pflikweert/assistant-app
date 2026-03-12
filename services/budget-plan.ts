@@ -1,25 +1,25 @@
-import { supabase } from "@/services/supabase";
 import {
-  getBudgetCategoryOverrides,
-  getBudgetPlanSettings,
-  getMonthlyBudgetValues,
+    getBudgetCategoryOverrides,
+    getBudgetPlanSettings,
+    getMonthlyBudgetValues,
 } from "@/services/budget-plan-repository";
 import { normalizePattern } from "@/services/categorization-repository";
+import { supabase } from "@/services/supabase";
 import type {
-  AnalysisCategory,
-  AnalysisMainGroup,
-  BudgetCategoryKey,
-  BudgetCoachReport,
-  BudgetExpenseBreakdown,
-  BudgetIncomeBreakdown,
-  BudgetOverrideSource,
-  BudgetPlanComputation,
-  BudgetPlanSettings,
-  BudgetRecommendationRow,
-  BudgetTrendSnapshot,
-  BudgetVariableBreakdown,
-  BudgetWarning,
-  BudgetWarningSeverity,
+    AnalysisCategory,
+    AnalysisMainGroup,
+    BudgetCategoryKey,
+    BudgetCoachReport,
+    BudgetExpenseBreakdown,
+    BudgetIncomeBreakdown,
+    BudgetOverrideSource,
+    BudgetPlanComputation,
+    BudgetPlanSettings,
+    BudgetRecommendationRow,
+    BudgetTrendSnapshot,
+    BudgetVariableBreakdown,
+    BudgetWarning,
+    BudgetWarningSeverity,
 } from "@/types/categorization";
 
 const PAGE_SIZE = 500;
@@ -166,7 +166,9 @@ function round2(value: number) {
 }
 
 function startOfUtcDay(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
 }
 
 function startOfMonth(date: Date) {
@@ -233,7 +235,10 @@ function getHaystack(tx: Pick<BudgetTx, "counterparty" | "details">) {
   return normalizePattern(`${tx.counterparty || ""} ${tx.details || ""}`);
 }
 
-function resolveExpenseBucket(tx: BudgetTx, categoryMeta: CategoryMeta | null): ExpenseBucket {
+function resolveExpenseBucket(
+  tx: BudgetTx,
+  categoryMeta: CategoryMeta | null,
+): ExpenseBucket {
   if (
     tx.analysis_main_group === "expense" &&
     (tx.analysis_category === "fixed_costs" ||
@@ -244,7 +249,9 @@ function resolveExpenseBucket(tx: BudgetTx, categoryMeta: CategoryMeta | null): 
     return tx.analysis_category;
   }
 
-  const categoryKey = categoryMeta ? normalizeCategoryKey(categoryMeta.key) : "";
+  const categoryKey = categoryMeta
+    ? normalizeCategoryKey(categoryMeta.key)
+    : "";
   const budgetGroup = normalizePattern(categoryMeta?.budget_group || "");
   const haystack = getHaystack(tx);
 
@@ -269,7 +276,8 @@ function resolveExpenseBucket(tx: BudgetTx, categoryMeta: CategoryMeta | null): 
   if (budgetGroup === "fixed") return "fixed_costs";
   if (budgetGroup === "variable") return "variable_costs";
 
-  if (includesAny(haystack, SAVINGS_TRANSFER_KEYWORDS)) return "savings_transfer";
+  if (includesAny(haystack, SAVINGS_TRANSFER_KEYWORDS))
+    return "savings_transfer";
   if (includesAny(haystack, SUBSCRIPTION_KEYWORDS)) return "subscriptions";
   if (includesAny(haystack, FIXED_EXPENSE_KEYWORDS)) return "fixed_costs";
 
@@ -280,7 +288,9 @@ function resolveVariableSubbucket(
   tx: BudgetTx,
   categoryMeta: CategoryMeta | null,
 ): "groceries" | "fuel" | "smoking" | "other" {
-  const categoryKey = categoryMeta ? normalizeCategoryKey(categoryMeta.key) : "";
+  const categoryKey = categoryMeta
+    ? normalizeCategoryKey(categoryMeta.key)
+    : "";
   const haystack = getHaystack(tx);
 
   if (
@@ -295,7 +305,10 @@ function resolveVariableSubbucket(
     return "fuel";
   }
 
-  if (categoryKey.includes("smoking") || includesAny(haystack, SMOKING_KEYWORDS)) {
+  if (
+    categoryKey.includes("smoking") ||
+    includesAny(haystack, SMOKING_KEYWORDS)
+  ) {
     return "smoking";
   }
 
@@ -306,7 +319,9 @@ function classifyIncome(
   tx: BudgetTx,
   categoryMeta: CategoryMeta | null,
 ): IncomeBucket {
-  const categoryKey = categoryMeta ? normalizeCategoryKey(categoryMeta.key) : "";
+  const categoryKey = categoryMeta
+    ? normalizeCategoryKey(categoryMeta.key)
+    : "";
   const haystack = getHaystack(tx);
 
   if (
@@ -369,13 +384,38 @@ function emptyExpenseBreakdown(): BudgetExpenseBreakdown {
   };
 }
 
-function multiplyIncomeBy(value: BudgetIncomeBreakdown, factor: number): BudgetIncomeBreakdown {
+function multiplyIncomeBy(
+  value: BudgetIncomeBreakdown,
+  factor: number,
+): BudgetIncomeBreakdown {
   return {
     salary: round2(value.salary * factor),
     childBudget: round2(value.childBudget * factor),
     structuralOther: round2(value.structuralOther * factor),
     variable: round2(value.variable * factor),
     total: round2(value.total * factor),
+  };
+}
+
+function resolveIncludedIncomeTotal(
+  income: BudgetIncomeBreakdown,
+  settings: BudgetPlanSettings,
+): number {
+  let total = 0;
+  if (settings.includeIncome.salary) total += income.salary;
+  if (settings.includeIncome.childBudget) total += income.childBudget;
+  if (settings.includeIncome.structuralOther) total += income.structuralOther;
+  if (settings.includeIncome.variable) total += income.variable;
+  return round2(total);
+}
+
+function applyIncomeInclusion(
+  income: BudgetIncomeBreakdown,
+  settings: BudgetPlanSettings,
+): BudgetIncomeBreakdown {
+  return {
+    ...income,
+    total: resolveIncludedIncomeTotal(income, settings),
   };
 }
 
@@ -460,8 +500,12 @@ function defaultFactorForCategory(
   return 1;
 }
 
-function resolveUtilization(monthlyActual: number, monthlyBudget: number): number {
-  if (monthlyBudget <= 0) return monthlyActual > 0 ? Number.POSITIVE_INFINITY : 0;
+function resolveUtilization(
+  monthlyActual: number,
+  monthlyBudget: number,
+): number {
+  if (monthlyBudget <= 0)
+    return monthlyActual > 0 ? Number.POSITIVE_INFINITY : 0;
   return monthlyActual / monthlyBudget;
 }
 
@@ -479,7 +523,10 @@ function formatWarningMessage(label: string, utilization: number): string {
   return `${label} is ${overByPct}% above budget.`;
 }
 
-function formatPaceWarningMessage(label: string, projectedUtilization: number): string {
+function formatPaceWarningMessage(
+  label: string,
+  projectedUtilization: number,
+): string {
   if (!Number.isFinite(projectedUtilization)) {
     return `${label} week pace is above plan (no budget set).`;
   }
@@ -514,10 +561,16 @@ async function fetchTransactionsInRange(
       amount: asNumber(row.amount, 0),
       details: String(row.details || ""),
       counterparty: row.counterparty ? String(row.counterparty) : null,
-      analysis_main_group: (row.analysis_main_group || null) as AnalysisMainGroup | null,
-      analysis_category: (row.analysis_category || null) as AnalysisCategory | null,
-      category_id_auto: row.category_id_auto ? String(row.category_id_auto) : null,
-      category_id_user: row.category_id_user ? String(row.category_id_user) : null,
+      analysis_main_group: (row.analysis_main_group ||
+        null) as AnalysisMainGroup | null,
+      analysis_category: (row.analysis_category ||
+        null) as AnalysisCategory | null,
+      category_id_auto: row.category_id_auto
+        ? String(row.category_id_auto)
+        : null,
+      category_id_user: row.category_id_user
+        ? String(row.category_id_user)
+        : null,
     }));
 
     rows.push(...page);
@@ -561,7 +614,9 @@ function computeBreakdowns(
     if (amount === 0) continue;
 
     const categoryId = row.category_id_user || row.category_id_auto;
-    const categoryMeta = categoryId ? categoryMap.get(categoryId) || null : null;
+    const categoryMeta = categoryId
+      ? categoryMap.get(categoryId) || null
+      : null;
 
     if (amount > 0) {
       const incomeBucket = classifyIncome(row, categoryMeta);
@@ -633,19 +688,26 @@ function buildCoachReport(
     )
     .sort((left, right) => left.utilization - right.utilization)
     .slice(0, 3)
-    .map((row) => `${row.label} is on track (${Math.round(row.utilization * 100)}% used).`);
+    .map(
+      (row) =>
+        `${row.label} is on track (${Math.round(row.utilization * 100)}% used).`,
+    );
 
   const risks = warnings.slice(0, 4).map((warning) => warning.message);
 
   const actions: string[] = [];
   if (warnings.some((warning) => warning.severity === "critical")) {
-    actions.push("Reduce variable spending immediately to prevent month-end pressure.");
+    actions.push(
+      "Reduce variable spending immediately to prevent month-end pressure.",
+    );
   }
   if (warnings.some((warning) => warning.severity === "warning")) {
     actions.push("Review recurring and discretionary expenses this week.");
   }
   if (recommendedSavings > 0) {
-    actions.push(`Reserve ${round2(recommendedSavings)} for savings this month.`);
+    actions.push(
+      `Reserve ${round2(recommendedSavings)} for savings this month.`,
+    );
   }
   if (!actions.length) {
     actions.push("Current spending is healthy. Keep following this plan.");
@@ -705,22 +767,37 @@ export async function computeBudgetPlan(
   const monthlyScale = MONTHLY_NORMALIZER_DAYS / observedDays;
 
   const trendRaw = computeBreakdowns(trendRows, categoryMap);
+  const trendIncome = applyIncomeInclusion(
+    multiplyIncomeBy(trendRaw.income, monthlyScale),
+    settings,
+  );
+  const trendExpenses = multiplyExpensesBy(trendRaw.expenses, monthlyScale);
   const trend: BudgetTrendSnapshot = {
     windowDays: TREND_WINDOW_DAYS,
     observedDays,
     monthlyScale: round2(monthlyScale),
-    income: multiplyIncomeBy(trendRaw.income, monthlyScale),
-    expenses: multiplyExpensesBy(trendRaw.expenses, monthlyScale),
-    net: round2((trendRaw.income.total - trendRaw.expenses.total) * monthlyScale),
+    income: trendIncome,
+    expenses: trendExpenses,
+    net: round2(trendIncome.total - trendExpenses.total),
   };
 
-  const monthToDate = computeBreakdowns(monthRows, categoryMap);
+  const monthToDateRaw = computeBreakdowns(monthRows, categoryMap);
+  const monthToDate = {
+    income: applyIncomeInclusion(monthToDateRaw.income, settings),
+    expenses: monthToDateRaw.expenses,
+  };
   const monthProgress = Math.min(
     1,
-    Math.max(0, daysBetween(monthStart, trendEndExclusive) / daysBetween(monthStart, monthEndExclusive)),
+    Math.max(
+      0,
+      daysBetween(monthStart, trendEndExclusive) /
+        daysBetween(monthStart, monthEndExclusive),
+    ),
   );
 
-  const overridesByKey = new Map(categoryOverrides.map((item) => [item.categoryKey, item]));
+  const overridesByKey = new Map(
+    categoryOverrides.map((item) => [item.categoryKey, item]),
+  );
   const monthValuesByKey = new Map(
     monthlyBudgetValues.map((item) => [item.categoryKey, item]),
   );
@@ -729,8 +806,12 @@ export async function computeBudgetPlan(
   const warnings: BudgetWarning[] = [];
 
   for (const categoryKey of RECOMMENDATION_ORDER) {
-    const baselineMonthly = round2(getTrendBaselineForCategory(categoryKey, trend));
-    const actualMonthly = round2(getBudgetCategoryActual(categoryKey, monthToDate.expenses));
+    const baselineMonthly = round2(
+      getTrendBaselineForCategory(categoryKey, trend),
+    );
+    const actualMonthly = round2(
+      getBudgetCategoryActual(categoryKey, monthToDate.expenses),
+    );
 
     const override = overridesByKey.get(categoryKey);
     const monthlyValue = monthValuesByKey.get(categoryKey);
@@ -744,14 +825,15 @@ export async function computeBudgetPlan(
 
     if (monthlyValue) {
       monthlyBudget = round2(Math.max(monthlyValue.monthlyBudget, 0));
-      appliedFactor = baselineMonthly > 0 ? monthlyBudget / baselineMonthly : resolvedFactor;
+      appliedFactor =
+        baselineMonthly > 0 ? monthlyBudget / baselineMonthly : resolvedFactor;
       overrideSource = "monthly_override";
     } else if (override?.monthlyTargetOverride != null) {
       monthlyBudget = round2(Math.max(override.monthlyTargetOverride, 0));
       appliedFactor =
         baselineMonthly > 0
           ? monthlyBudget / baselineMonthly
-          : override.factorOverride ?? resolvedFactor;
+          : (override.factorOverride ?? resolvedFactor);
       overrideSource = "category_override";
     } else {
       monthlyBudget = round2(Math.max(baselineMonthly * resolvedFactor, 0));
@@ -790,14 +872,20 @@ export async function computeBudgetPlan(
         categoryKey,
         severity: resolveWarningSeverity(utilization),
         utilization,
-        message: formatWarningMessage(RECOMMENDATION_LABELS[categoryKey], utilization),
+        message: formatWarningMessage(
+          RECOMMENDATION_LABELS[categoryKey],
+          utilization,
+        ),
       });
       continue;
     }
 
     if (categoryKey !== "savings_target" && monthProgress > 0) {
       const projectedActual = actualMonthly / monthProgress;
-      const projectedUtilization = resolveUtilization(projectedActual, monthlyBudget);
+      const projectedUtilization = resolveUtilization(
+        projectedActual,
+        monthlyBudget,
+      );
 
       if (projectedUtilization > 1) {
         warnings.push({
@@ -850,14 +938,19 @@ export async function computeBudgetPlan(
     (monthlyBudgetByKey.get("subscriptions") || 0) +
     (monthlyBudgetByKey.get("variable_costs") || 0);
 
-  const savingsPotential = round2(Math.max(trend.income.total - baseExpenseBudget, 0));
+  const savingsPotential = round2(
+    Math.max(trend.income.total - baseExpenseBudget, 0),
+  );
   const configuredSavingsTarget = monthlyBudgetByKey.get("savings_target") || 0;
 
   let recommendedSavings = configuredSavingsTarget;
   if (settings.mode === "active_savings") {
     recommendedSavings = Math.max(configuredSavingsTarget, savingsPotential);
   } else if (settings.mode === "balanced") {
-    recommendedSavings = Math.max(configuredSavingsTarget, savingsPotential * 0.75);
+    recommendedSavings = Math.max(
+      configuredSavingsTarget,
+      savingsPotential * 0.75,
+    );
   }
   recommendedSavings = round2(Math.max(recommendedSavings, 0));
 
@@ -866,7 +959,11 @@ export async function computeBudgetPlan(
   );
 
   const weeklyBudgetTotal = round2(monthlyBudgetTotal / WEEKS_PER_MONTH);
-  const coachReport = buildCoachReport(recommendations, warnings, recommendedSavings);
+  const coachReport = buildCoachReport(
+    recommendations,
+    warnings,
+    recommendedSavings,
+  );
 
   return {
     planKey,

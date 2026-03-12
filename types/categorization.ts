@@ -130,10 +130,18 @@ export type BudgetOverrideSource =
   | "category_override"
   | "monthly_override";
 
+export type BudgetIncomeInclusionSettings = {
+  salary: boolean;
+  childBudget: boolean;
+  structuralOther: boolean;
+  variable: boolean;
+};
+
 export type BudgetPlanSettings = {
   planKey: string;
   mode: BudgetPlanMode;
   adjustmentFactor: number;
+  includeIncome: BudgetIncomeInclusionSettings;
   createdAt: string | null;
   updatedAt: string | null;
 };
