@@ -279,7 +279,7 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
       const { error: auditError } = await supabase
         .from("categorization_audit")
         .delete()
-        .gt("id", 0); // Match all rows by having a truthy condition
+        .not("id", "is", null); // Match all rows (id is never null)
 
       if (auditError) {
         console.error("[clearAllTransactionData] Error clearing audit log:", auditError);
