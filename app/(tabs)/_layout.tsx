@@ -12,7 +12,7 @@ function TabIcon({
   type,
 }: {
   color: string;
-  type: "dashboard" | "transactions" | "insights" | "settings";
+  type: "dashboard" | "transactions" | "insights" | "budget" | "settings";
 }) {
   const s = 22;
   if (type === "dashboard") {
@@ -77,6 +77,40 @@ function TabIcon({
             }}
           />
         ))}
+      </View>
+    );
+  }
+  if (type === "budget") {
+    return (
+      <View style={{ width: s, height: s, justifyContent: "space-between" }}>
+        <View
+          style={{
+            height: 7,
+            borderRadius: 3,
+            borderWidth: 2,
+            borderColor: color,
+            backgroundColor: "transparent",
+          }}
+        />
+        <View style={{ flexDirection: "row", gap: 3 }}>
+          <View
+            style={{
+              flex: 1,
+              height: 10,
+              borderRadius: 2,
+              backgroundColor: color,
+            }}
+          />
+          <View
+            style={{
+              flex: 1,
+              height: 6,
+              borderRadius: 2,
+              backgroundColor: color,
+              marginTop: 4,
+            }}
+          />
+        </View>
       </View>
     );
   }
@@ -165,10 +199,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="budget"
+        options={{
+          title: "Budget",
+          tabBarIcon: ({ color }) => <TabIcon color={color} type="budget" />,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
-          title: "Settings",
-          tabBarIcon: ({ color }) => <TabIcon color={color} type="settings" />,
+          href: null,
         }}
       />
     </Tabs>

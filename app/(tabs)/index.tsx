@@ -1,5 +1,7 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
+import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
+import { computeBudgetPlan } from "@/services/budget-plan";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import {
     formatCategorizationStatus,
@@ -11,11 +13,12 @@ import {
     getCategoryPathLabel,
 } from "@/services/category-display";
 import { supabase } from "@/services/supabase";
-import type { CategoryRecord } from "@/types/categorization";
+import type { BudgetPlanComputation, CategoryRecord } from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
+  Pressable,
     ScrollView,
     StyleSheet,
     Text,
@@ -40,6 +43,19 @@ type DashboardTx = {
 };
 
 type DashboardTxRow = DashboardTx & { categoryLabel: string };
+
+function formatUtilization(value: number) {
+  if (!Number.isFinite(value)) return ">100%";
+  return `${Math.round(value * 100)}%`;
+}
+
+function isMissingRelationError(error: unknown) {
+  const code = String((error as { code?: string })?.code || "");
+  const message = String((error as { message?: string })?.message || "").toLowerCase();
+
+  if (code === "42P01" || code === "PGRST205") return true;
+  return message.includes("relation") && message.includes("does not exist");
+}
 
 // ─── Transaction row ──────────────────────────────────────────────────────────
 function TxRow({
@@ -107,9 +123,14 @@ export default function DashboardScreen() {
   const router = useRouter();
   const [transactions, setTransactions] = React.useState<DashboardTx[]>([]);
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
+  const [budgetPlan, setBudgetPlan] = React.useState<BudgetPlanComputation | null>(
+    null,
+  );
+  const [budgetSchemaMissing, setBudgetSchemaMissing] = React.useState(false);
   const [balance, setBalance] = React.useState<number | null>(null);
   const [monthlySpent, setMonthlySpent] = React.useState<number | null>(null);
   const [monthlyIncome, setMonthlyIncome] = React.useState<number | null>(null);
+  const budgetLoadInFlight = React.useRef(false);
   const isFocused = useIsFocused();
   const backgroundStatus = useCategorizationStatus();
 
@@ -130,6 +151,18 @@ export default function DashboardScreen() {
       })),
     [transactions, categoryMap],
   );
+  const remainingBudget = React.useMemo(() => {
+    if (!budgetPlan) return null;
+    return budgetPlan.monthlyBudgetTotal - budgetPlan.monthToDateExpenses.total;
+  }, [budgetPlan]);
+  const budgetTopRows = React.useMemo(() => {
+    if (!budgetPlan) return [];
+
+    return budgetPlan.recommendations
+      .filter((row) => row.categoryKey !== "savings_target")
+      .sort((left, right) => right.utilization - left.utilization)
+      .slice(0, 3);
+  }, [budgetPlan]);
 
   const loadCategories = React.useCallback(async () => {
     try {
@@ -211,6 +244,33 @@ export default function DashboardScreen() {
     }
   }, []);
 
+  const loadBudgetWidget = React.useCallback(async () => {
+    if (budgetSchemaMissing) {
+      setBudgetPlan(null);
+      return;
+    }
+    if (budgetLoadInFlight.current) {
+      return;
+    }
+
+    budgetLoadInFlight.current = true;
+    try {
+      const plan = await computeBudgetPlan(new Date(), "default");
+      setBudgetPlan(plan);
+    } catch (error) {
+      if (isMissingRelationError(error)) {
+        setBudgetSchemaMissing(true);
+        setBudgetPlan(null);
+        return;
+      }
+
+      console.error("[v0] dashboard budget widget load error", error);
+      setBudgetPlan(null);
+    } finally {
+      budgetLoadInFlight.current = false;
+    }
+  }, [budgetSchemaMissing]);
+
   React.useEffect(() => {
     if (!isFocused) return;
     void loadCategories();
@@ -219,13 +279,21 @@ export default function DashboardScreen() {
   React.useEffect(() => {
     if (!isFocused) return;
     void load();
-  }, [isFocused, load]);
+    void loadBudgetWidget();
+  }, [isFocused, load, loadBudgetWidget]);
 
   React.useEffect(() => {
     if (!isFocused || !backgroundStatus.lastCompletedAt) return;
     void loadCategories();
     void load();
-  }, [backgroundStatus.lastCompletedAt, isFocused, load, loadCategories]);
+    void loadBudgetWidget();
+  }, [
+    backgroundStatus.lastCompletedAt,
+    isFocused,
+    load,
+    loadBudgetWidget,
+    loadCategories,
+  ]);
 
   return (
     <View style={styles.root}>
@@ -235,8 +303,11 @@ export default function DashboardScreen() {
           <Text style={styles.greeting}>Welcome back</Text>
           <Text style={styles.headerTitle}>Jan de Vries</Text>
         </View>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>JD</Text>
+        <View style={styles.headerActions}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>JD</Text>
+          </View>
+          <HeaderDropdownMenu />
         </View>
       </View>
 
@@ -289,6 +360,55 @@ export default function DashboardScreen() {
             isEmpty={!hasTransactions}
           />
         </View>
+
+        <Pressable
+          style={styles.budgetWidgetCard}
+          onPress={() => router.push("/budget")}
+        >
+          <View style={styles.budgetWidgetHeader}>
+            <Text style={styles.budgetWidgetTitle}>Budget huidige stand</Text>
+            <Text style={styles.budgetWidgetHint}>Details</Text>
+          </View>
+          {budgetPlan ? (
+            <>
+              <View style={styles.budgetMainRow}>
+                <Text style={styles.budgetMainLabel}>Resterend budget</Text>
+                <Text
+                  style={[
+                    styles.budgetMainValue,
+                    remainingBudget != null && remainingBudget >= 0
+                      ? styles.budgetValuePositive
+                      : styles.budgetValueNegative,
+                  ]}
+                >
+                  {remainingBudget == null ? "Onbekend" : fmt.format(remainingBudget)}
+                </Text>
+              </View>
+              <View style={styles.budgetMainRow}>
+                <Text style={styles.budgetMainLabel}>Weekbudget totaal</Text>
+                <Text style={styles.budgetMainValue}>
+                  {fmt.format(budgetPlan.weeklyBudgetTotal)}
+                </Text>
+              </View>
+              <View style={styles.budgetTopList}>
+                {budgetTopRows.map((row) => (
+                  <View key={row.categoryKey} style={styles.budgetTopRow}>
+                    <Text style={styles.budgetTopLabel}>{row.label}</Text>
+                    <Text style={styles.budgetTopValue}>
+                      {formatUtilization(row.utilization)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          ) : (
+            <Text style={styles.budgetEmptyText}>
+              {budgetSchemaMissing
+                ? "Budgetschema nog niet beschikbaar in deze omgeving."
+                : "Budgetgegevens laden..."}
+            </Text>
+          )}
+        </Pressable>
 
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>
@@ -348,7 +468,10 @@ export default function DashboardScreen() {
             </View>
             <Text style={styles.actionLabel}>All</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => router.push("/budget")}
+          >
             <View style={styles.actionIcon}>
               <Text style={styles.actionIconText}>$</Text>
             </View>
@@ -394,6 +517,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 60,
     paddingBottom: 24,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   greeting: { fontSize: 14, color: FinColors.textMuted, marginBottom: 4 },
   headerTitle: {
@@ -479,6 +607,76 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: FinColors.textMuted,
     fontWeight: "600",
+  },
+  budgetWidgetCard: {
+    marginTop: 16,
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: FinColors.greenBorder,
+    gap: 10,
+  },
+  budgetWidgetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  budgetWidgetTitle: {
+    fontSize: 15,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  budgetWidgetHint: {
+    fontSize: 12,
+    color: FinColors.green,
+    fontWeight: "700",
+  },
+  budgetMainRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  budgetMainLabel: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  budgetMainValue: {
+    fontSize: 14,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  budgetValuePositive: {
+    color: FinColors.green,
+  },
+  budgetValueNegative: {
+    color: FinColors.red,
+  },
+  budgetTopList: {
+    marginTop: 4,
+    gap: 6,
+  },
+  budgetTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  budgetTopLabel: {
+    fontSize: 13,
+    color: FinColors.textSecondary,
+  },
+  budgetTopValue: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  budgetEmptyText: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+    lineHeight: 18,
   },
 
   // Quick actions

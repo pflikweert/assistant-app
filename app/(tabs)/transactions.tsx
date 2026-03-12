@@ -1,4 +1,5 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
+import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
@@ -467,6 +468,7 @@ export default function TransactionsTab() {
                 <Text style={styles.resetButtonText}>Reset</Text>
               </TouchableOpacity>
             ) : null}
+            <HeaderDropdownMenu />
           </View>
         </View>
 

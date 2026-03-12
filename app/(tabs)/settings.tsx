@@ -1,4 +1,5 @@
 import { FinColors } from "@/constants/theme";
+import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import {
     clearAllTransactionData,
     pauseBackgroundCategorization,
@@ -208,6 +209,7 @@ export default function SettingsScreen() {
     <View style={styles.root}>
       <View style={styles.topBar}>
         <Text style={styles.pageTitle}>Settings</Text>
+        <HeaderDropdownMenu />
       </View>
 
       <ScrollView
@@ -412,7 +414,14 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: FinColors.bgBase },
-  topBar: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 20 },
+  topBar: {
+    paddingHorizontal: 24,
+    paddingTop: 60,
+    paddingBottom: 20,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   pageTitle: {
     fontSize: 28,
     fontWeight: "700",
