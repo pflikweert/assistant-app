@@ -1,6 +1,7 @@
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import { generateBudgetCoachReport } from "@/services/budget-coach";
+import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
 import { computeBudgetPlan } from "@/services/budget-plan";
 import {
     upsertBudgetPlanSettings,
@@ -13,6 +14,7 @@ import type {
   BudgetPlanComputation,
   BudgetPlanMode,
 } from "@/types/categorization";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useIsFocused } from "@react-navigation/native";
 import React from "react";
 import {
@@ -296,6 +298,7 @@ export default function BudgetScreen() {
     if (!budgetPlan) return;
 
     setSavingBudgetEdit(true);
+    setBudgetEditOpen(false);
     try {
       const parsedFactor = parseBudgetAmountInput(budgetFactorDraft);
       const safeFactor = Math.max(
@@ -331,7 +334,16 @@ export default function BudgetScreen() {
         await Promise.all(updates);
       }
 
-      setBudgetEditOpen(false);
+      const forecastReferenceDate = new Date(
+        `${selectedMonth.endIso}T12:00:00.000Z`,
+      );
+      forecastReferenceDate.setUTCDate(forecastReferenceDate.getUTCDate() - 1);
+      await recomputeCurrentMonthCashflowForecast(forecastReferenceDate).catch(
+        (error) => {
+          console.warn("[budget] forecast recompute after save failed", error);
+        },
+      );
+
       await loadBudgetPlan();
     } catch (error) {
       console.error("[budget] save error", error);
@@ -346,6 +358,7 @@ export default function BudgetScreen() {
     budgetPlan,
     editableBudgetRows,
     loadBudgetPlan,
+    selectedMonth.endIso,
     selectedMonth.startIso,
   ]);
 
@@ -564,7 +577,19 @@ export default function BudgetScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Budgetbeheer</Text>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Budgetbeheer</Text>
+              <Pressable
+                style={styles.modalIconCloseButton}
+                onPress={() => setBudgetEditOpen(false)}
+              >
+                <MaterialIcons
+                  name="close"
+                  size={18}
+                  color={FinColors.textSecondary}
+                />
+              </Pressable>
+            </View>
             <Text style={styles.modalSub}>
               Instellingen voor {selectedMonth.label}
             </Text>
@@ -1002,6 +1027,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     padding: 16,
+  },
+  modalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  modalIconCloseButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
   },
   modalTitle: {
     fontSize: 18,

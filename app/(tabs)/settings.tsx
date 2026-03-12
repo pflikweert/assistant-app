@@ -1,5 +1,6 @@
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import {
     clearAllTransactionData,
     pauseBackgroundCategorization,
@@ -47,7 +48,20 @@ function ConfirmResetModal({
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Alle data verwijderen</Text>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.modalTitle}>Alle data verwijderen</Text>
+            <TouchableOpacity
+              style={styles.modalIconCloseButton}
+              onPress={onCancel}
+              disabled={isClearing}
+            >
+              <MaterialIcons
+                name="close"
+                size={18}
+                color={FinColors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.modalText}>
             Dit zal alle transacties, categorisaties en auditlogs wissen. Dit
             kan niet ongedaan gemaakt worden. Ben je zeker?
@@ -89,7 +103,19 @@ function SuccessModal({
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>✓ Gereed</Text>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.modalTitle}>✓ Gereed</Text>
+            <TouchableOpacity
+              style={styles.modalIconCloseButton}
+              onPress={onClose}
+            >
+              <MaterialIcons
+                name="close"
+                size={18}
+                color={FinColors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.modalText}>
             Alle transactiegegevens zijn gewist. Je kan nu nieuwe transacties
             importeren.
@@ -119,7 +145,19 @@ function ErrorModal({
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Fout</Text>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.modalTitle}>Fout</Text>
+            <TouchableOpacity
+              style={styles.modalIconCloseButton}
+              onPress={onClose}
+            >
+              <MaterialIcons
+                name="close"
+                size={18}
+                color={FinColors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.modalText}>
             {error || "Kon gegevens niet wissen"}
           </Text>
@@ -598,11 +636,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
+  modalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 12,
+  },
+  modalIconCloseButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+  },
   modalTitle: {
     fontSize: 18,
     fontWeight: "700",
     color: FinColors.textPrimary,
-    marginBottom: 12,
   },
   modalText: {
     fontSize: 14,

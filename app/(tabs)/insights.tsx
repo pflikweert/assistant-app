@@ -2,6 +2,7 @@ import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import { computeBudgetPlan } from "@/services/budget-plan";
+import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
 import {
     getTransactionCategories,
     setTransactionManualCategory,
@@ -797,13 +798,44 @@ export default function InsightsScreen() {
     forecastLoadInFlight.current = true;
 
     try {
-      const { data, error } = await supabase
-        .from("monthly_cashflow_forecasts")
-        .select(
-          "month_start,expected_income_total,expected_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3",
-        )
-        .eq("month_start", selectedMonth.startIso)
-        .maybeSingle();
+      const fetchForecastRow = async () =>
+        supabase
+          .from("monthly_cashflow_forecasts")
+          .select(
+            "month_start,expected_income_total,expected_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3",
+          )
+          .eq("month_start", selectedMonth.startIso)
+          .maybeSingle();
+
+      const referenceDate = new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
+      referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
+
+      const currentMonthStartIso = getMonthBounds(0).startIso;
+      const isCurrentMonth = selectedMonth.startIso === currentMonthStartIso;
+
+      if (isCurrentMonth) {
+        await recomputeCurrentMonthCashflowForecast(referenceDate).catch(
+          (error) => {
+            console.warn("[insights] forecast recompute trigger failed", error);
+          },
+        );
+      }
+
+      let { data, error } = await fetchForecastRow();
+
+      if (!data) {
+        await recomputeCurrentMonthCashflowForecast(referenceDate).catch(
+          (recomputeError) => {
+            console.warn(
+              "[insights] forecast backfill trigger failed",
+              recomputeError,
+            );
+          },
+        );
+        const retry = await fetchForecastRow();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (error) {
         if (isMissingRelationError(error)) {
@@ -840,7 +872,7 @@ export default function InsightsScreen() {
     } finally {
       forecastLoadInFlight.current = false;
     }
-  }, [forecastSchemaMissing, selectedMonth.startIso]);
+  }, [forecastSchemaMissing, selectedMonth.endIso, selectedMonth.startIso]);
 
   const loadBudgetPlan = React.useCallback(async () => {
     if (budgetSchemaMissing) {
@@ -1425,7 +1457,19 @@ export default function InsightsScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Inkomsten details</Text>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Inkomsten details</Text>
+              <Pressable
+                style={styles.modalIconCloseButton}
+                onPress={() => setIncomeDetailsOpen(false)}
+              >
+                <MaterialIcons
+                  name="close"
+                  size={18}
+                  color={FinColors.textSecondary}
+                />
+              </Pressable>
+            </View>
             <Text style={styles.modalSub}>{selectedMonth.label}</Text>
 
             <View style={styles.incomeSummaryRow}>
@@ -1541,7 +1585,22 @@ export default function InsightsScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Review transactie</Text>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Review transactie</Text>
+              <Pressable
+                style={styles.modalIconCloseButton}
+                onPress={() => {
+                  setSelectedTx(null);
+                  setCategorySearch("");
+                }}
+              >
+                <MaterialIcons
+                  name="close"
+                  size={18}
+                  color={FinColors.textSecondary}
+                />
+              </Pressable>
+            </View>
             <Text style={styles.modalName} numberOfLines={1}>
               {selectedTx?.counterparty || "Onbekende tegenpartij"}
             </Text>
@@ -2256,6 +2315,22 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
     padding: 18,
+  },
+  modalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  modalIconCloseButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
   },
   modalTitle: { fontSize: 18, fontWeight: "700", color: FinColors.textPrimary },
   modalName: {
