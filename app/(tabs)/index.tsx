@@ -6,9 +6,20 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
+import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
+import {
+  buildCategoryNameMap,
+  getCategorizationCoverage,
+  getCategoryLabel,
+} from "@/services/category-display";
+import {
+  formatCategorizationStatus,
+  useCategorizationStatus,
+} from "@/services/categorization-status";
+import { getTransactionCategories } from "@/services/categorization-repository";
 import { supabase } from "@/services/supabase";
+import type { CategoryRecord } from "@/types/categorization";
 import { FinColors } from "@/constants/theme";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
@@ -16,8 +27,21 @@ const fmt = new Intl.NumberFormat("nl-NL", {
   currency: "EUR",
 });
 
+type DashboardTx = {
+  id: string;
+  counterparty: string;
+  date: string;
+  amount: number;
+  seq: number;
+  runningBalance: number | null;
+  category_id_auto: string | null;
+  category_id_user: string | null;
+};
+
+type DashboardTxRow = DashboardTx & { categoryLabel: string };
+
 // ─── Transaction row ──────────────────────────────────────────────────────────
-function TxRow({ tx }: { tx: any }) {
+function TxRow({ tx }: { tx: DashboardTxRow }) {
   const isPos = tx.amount >= 0;
   return (
     <View style={styles.txRow}>
@@ -30,9 +54,12 @@ function TxRow({ tx }: { tx: any }) {
         <Text style={styles.txName} numberOfLines={1}>
           {tx.counterparty || "Unknown"}
         </Text>
-        <Text style={styles.txSub} numberOfLines={1}>
-          {tx.date}
-        </Text>
+        <View style={styles.txMetaRow}>
+          <Text style={styles.txSub} numberOfLines={1}>
+            {tx.date}
+          </Text>
+          <Text style={styles.txCategory}>{tx.categoryLabel}</Text>
+        </View>
       </View>
       <Text style={[styles.txAmount, isPos && styles.txAmountPos]}>
         {isPos ? "+" : ""}{fmt.format(tx.amount)}
@@ -54,24 +81,46 @@ function StatPill({ label, value, accent }: { label: string; value: string; acce
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
   const router = useRouter();
-  const [transactions, setTransactions] = React.useState<any[]>([]);
+  const [transactions, setTransactions] = React.useState<DashboardTx[]>([]);
+  const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
   const [balance, setBalance] = React.useState(0);
   const [monthlySpent, setMonthlySpent] = React.useState(0);
   const [monthlyIncome, setMonthlyIncome] = React.useState(0);
+  const isFocused = useIsFocused();
+  const backgroundStatus = useCategorizationStatus();
+
+  const categoryMap = React.useMemo(() => buildCategoryNameMap(categories), [categories]);
+  const coverage = React.useMemo(() => getCategorizationCoverage(transactions), [transactions]);
+  const recentTransactions = React.useMemo<DashboardTxRow[]>(
+    () =>
+      transactions.map((tx) => ({
+        ...tx,
+        categoryLabel: getCategoryLabel(tx, categoryMap),
+      })),
+    [transactions, categoryMap],
+  );
+
+  const loadCategories = React.useCallback(async () => {
+    try {
+      const rows = await getTransactionCategories();
+      setCategories(rows);
+    } catch (error) {
+      console.error("[v0] dashboard categories error", error);
+    }
+  }, []);
 
   const load = React.useCallback(async () => {
     try {
       const { data } = await supabase
         .from("transactions")
-        .select("id,details,counterparty,date,amount,metadata")
+        .select("id,counterparty,date,amount,metadata,category_id_auto,category_id_user")
         .order("date", { ascending: false })
         .order("metadata->>Volgnr", { ascending: false })
         .limit(50);
 
       if (!data) return;
-      const rows = data.map((r: any) => {
+      const rows: DashboardTx[] = data.map((r: any) => {
         const md = r.metadata || {};
-        const details = String(r.details || "");
         const rawSeq = String(md["Volgnr"] || "").replace(/^0+/, "");
         const saldoRaw = md["Saldo na trn"];
         let runningBalance: number | null = null;
@@ -86,14 +135,16 @@ export default function DashboardScreen() {
           amount: r.amount,
           seq: parseInt(rawSeq || "0", 10) || 0,
           runningBalance,
+          category_id_auto: r.category_id_auto || null,
+          category_id_user: r.category_id_user || null,
         };
       });
-      rows.sort((a: any, b: any) =>
+      rows.sort((a, b) =>
         a.date === b.date ? b.seq - a.seq : a.date < b.date ? 1 : -1
       );
       setTransactions(rows.slice(0, 5));
       
-      const latestBalance = rows.find((r: any) => r.runningBalance != null)?.runningBalance ?? 0;
+      const latestBalance = rows.find((r) => r.runningBalance != null)?.runningBalance ?? 0;
       setBalance(latestBalance);
 
       // Calculate monthly totals
@@ -109,8 +160,21 @@ export default function DashboardScreen() {
     }
   }, []);
 
-  React.useEffect(() => { load(); }, [load]);
-  useFocusEffect(React.useCallback(() => { load(); }, [load]));
+  React.useEffect(() => {
+    if (!isFocused) return;
+    void loadCategories();
+  }, [isFocused, loadCategories]);
+
+  React.useEffect(() => {
+    if (!isFocused) return;
+    void load();
+  }, [isFocused, load]);
+
+  React.useEffect(() => {
+    if (!isFocused || !backgroundStatus.lastCompletedAt) return;
+    void loadCategories();
+    void load();
+  }, [backgroundStatus.lastCompletedAt, isFocused, load, loadCategories]);
 
   return (
     <View style={styles.root}>
@@ -140,6 +204,36 @@ export default function DashboardScreen() {
         <View style={styles.statsRow}>
           <StatPill label="Income" value={`+${fmt.format(monthlyIncome || 3420)}`} accent />
           <StatPill label="Expenses" value={fmt.format(monthlySpent || 1250)} />
+        </View>
+
+        <View style={styles.statusCard}>
+          <View style={styles.statusHeader}>
+            <Text style={styles.statusTitle}>Categorisatie</Text>
+            <Text style={styles.statusValue}>{coverage.total ? `${coverage.categorized}/${coverage.total}` : "0/0"}</Text>
+          </View>
+          <Text style={styles.statusSubtext}>
+            {coverage.uncategorized === 0
+              ? "Alle recente transacties zijn gecategoriseerd."
+              : `${coverage.uncategorized} transacties hebben nog review nodig.`}
+          </Text>
+          <View style={styles.statusBarTrack}>
+            <View
+              style={[
+                styles.statusBarFill,
+                { width: `${coverage.total ? Math.round((coverage.categorized / coverage.total) * 100) : 0}%` },
+              ]}
+            />
+          </View>
+          <View style={styles.statusMetaRow}>
+            <Text style={styles.statusMetaText}>Auto: {coverage.auto}</Text>
+            <Text style={styles.statusMetaText}>Handmatig: {coverage.manual}</Text>
+          </View>
+          <View style={styles.backgroundStatusBox}>
+            <Text style={styles.backgroundStatusLabel}>Achtergrondstatus</Text>
+            <Text style={styles.backgroundStatusText}>
+              {formatCategorizationStatus(backgroundStatus)}
+            </Text>
+          </View>
         </View>
 
         {/* Quick actions */}
@@ -173,13 +267,13 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.txCard}>
-          {transactions.length === 0 ? (
+          {recentTransactions.length === 0 ? (
             <Text style={styles.emptyText}>No transactions yet</Text>
           ) : (
-            transactions.map((tx, i) => (
+            recentTransactions.map((tx, i) => (
               <React.Fragment key={tx.id}>
                 <TxRow tx={tx} />
-                {i < transactions.length - 1 && <View style={styles.divider} />}
+                {i < recentTransactions.length - 1 && <View style={styles.divider} />}
               </React.Fragment>
             ))
           )}
@@ -294,9 +388,64 @@ const styles = StyleSheet.create({
   txIconText: { fontSize: 15, fontWeight: "600", color: FinColors.textSecondary },
   txMid: { flex: 1 },
   txName: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
+  txMetaRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 3, flexWrap: "wrap" },
   txSub: { fontSize: 12, color: FinColors.textMuted, marginTop: 3 },
+  txCategory: {
+    fontSize: 11,
+    color: FinColors.textPrimary,
+    backgroundColor: FinColors.greenBg,
+    borderWidth: 1,
+    borderColor: FinColors.greenBorder,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
   txAmount: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
   txAmountPos: { color: FinColors.green },
+
+  statusCard: {
+    marginTop: 16,
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  statusHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  statusTitle: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
+  statusValue: { fontSize: 14, fontWeight: "700", color: FinColors.green },
+  statusSubtext: { fontSize: 12, color: FinColors.textMuted, marginTop: 8, lineHeight: 18 },
+  statusBarTrack: {
+    marginTop: 12,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgElevated,
+    overflow: "hidden",
+  },
+  statusBarFill: {
+    height: "100%",
+    backgroundColor: FinColors.green,
+    borderRadius: 999,
+  },
+  statusMetaRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  statusMetaText: { fontSize: 12, color: FinColors.textSecondary },
+  backgroundStatusBox: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: FinColors.borderSubtle,
+  },
+  backgroundStatusLabel: { fontSize: 12, color: FinColors.textMuted, marginBottom: 6 },
+  backgroundStatusText: { fontSize: 13, color: FinColors.textPrimary, lineHeight: 20 },
   
   divider: { height: 1, backgroundColor: FinColors.borderSubtle, marginLeft: 68 },
   emptyText: { fontSize: 14, color: FinColors.textMuted, textAlign: "center", paddingVertical: 24 },

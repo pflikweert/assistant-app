@@ -7,14 +7,22 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
+import { useIsFocused } from "@react-navigation/native";
 import { supabase } from "@/services/supabase";
 import { FinColors } from "@/constants/theme";
+import { getTransactionCategories } from "@/services/categorization-repository";
+import {
+  buildCategoryNameMap,
+  getCategoryLabel,
+  getEffectiveCategoryId,
+} from "@/services/category-display";
+import { useCategorizationStatus } from "@/services/categorization-status";
+import type { CategoryRecord } from "@/types/categorization";
 
 const fmt = new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" });
 const PAGE_SIZE = 30;
 
-const FILTER_PILLS = ["All", "Income", "Expenses"];
+const FILTER_PILLS = ["All", "Income", "Expenses", "Needs Review"];
 
 type Tx = {
   id: string;
@@ -23,9 +31,13 @@ type Tx = {
   date: string;
   amount: number;
   seq: number;
+  category_id_auto: string | null;
+  category_id_user: string | null;
 };
 
-function TxItem({ item }: { item: Tx }) {
+type TxListItem = Tx & { categoryLabel: string };
+
+function TxItem({ item }: { item: TxListItem }) {
   const isPos = item.amount >= 0;
   return (
     <View style={styles.txRow}>
@@ -37,6 +49,10 @@ function TxItem({ item }: { item: Tx }) {
       <View style={styles.txMid}>
         <Text style={styles.txName} numberOfLines={1}>{item.counterparty || "Unknown"}</Text>
         <Text style={styles.txSub} numberOfLines={1}>{item.omschrijving1}</Text>
+        <View style={styles.categoryRow}>
+          <Text style={styles.categoryBadge}>{item.categoryLabel}</Text>
+          {item.category_id_user ? <Text style={styles.categoryMeta}>Handmatig</Text> : null}
+        </View>
       </View>
       <Text style={[styles.txAmount, isPos && styles.txAmountPos]}>
         {isPos ? "+" : ""}{fmt.format(item.amount)}
@@ -58,10 +74,24 @@ function SectionHeader({ title }: { title: string }) {
 
 export default function TransactionsTab() {
   const [transactions, setTransactions] = React.useState<Tx[]>([]);
+  const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [page, setPage] = React.useState(0);
   const [hasMore, setHasMore] = React.useState(true);
   const [filter, setFilter] = React.useState("All");
+  const isFocused = useIsFocused();
+  const backgroundStatus = useCategorizationStatus();
+
+  const categoryMap = React.useMemo(() => buildCategoryNameMap(categories), [categories]);
+
+  const loadCategories = React.useCallback(async () => {
+    try {
+      const rows = await getTransactionCategories();
+      setCategories(rows);
+    } catch (error) {
+      console.warn("[v0] category load error", error);
+    }
+  }, []);
 
   const loadPage = React.useCallback(async (p: number) => {
     setLoading(true);
@@ -69,7 +99,7 @@ export default function TransactionsTab() {
       const start = p * PAGE_SIZE;
       const { data } = await supabase
         .from("transactions")
-        .select("id,details,counterparty,date,amount,metadata")
+        .select("id,details,counterparty,date,amount,metadata,category_id_auto,category_id_user")
         .order("date", { ascending: false })
         .order("metadata->>Volgnr", { ascending: false })
         .range(start, start + PAGE_SIZE - 1);
@@ -85,6 +115,8 @@ export default function TransactionsTab() {
           date: r.date,
           amount: r.amount,
           seq: parseInt(rawSeq || "0", 10) || 0,
+          category_id_auto: r.category_id_auto || null,
+          category_id_user: r.category_id_user || null,
         };
       });
       rows.sort((a, b) => a.date === b.date ? b.seq - a.seq : a.date < b.date ? 1 : -1);
@@ -97,17 +129,40 @@ export default function TransactionsTab() {
     }
   }, []);
 
-  React.useEffect(() => { loadPage(page); }, [loadPage, page]);
-  useFocusEffect(React.useCallback(() => { loadPage(page); }, [loadPage, page]));
+  React.useEffect(() => {
+    if (!isFocused) return;
+    void loadCategories();
+  }, [isFocused, loadCategories]);
+
+  React.useEffect(() => {
+    if (!isFocused) return;
+    void loadPage(page);
+  }, [isFocused, loadPage, page]);
+
+  React.useEffect(() => {
+    if (!isFocused || !backgroundStatus.lastCompletedAt) return;
+    void loadCategories();
+    void loadPage(page);
+  }, [backgroundStatus.lastCompletedAt, isFocused, loadCategories, loadPage, page]);
+
+  const displayTransactions = React.useMemo<TxListItem[]>(
+    () =>
+      transactions.map((tx) => ({
+        ...tx,
+        categoryLabel: getCategoryLabel(tx, categoryMap),
+      })),
+    [transactions, categoryMap],
+  );
 
   const filtered = React.useMemo(() => {
-    if (filter === "Income") return transactions.filter(t => t.amount > 0);
-    if (filter === "Expenses") return transactions.filter(t => t.amount < 0);
-    return transactions;
-  }, [transactions, filter]);
+    if (filter === "Income") return displayTransactions.filter(t => t.amount > 0);
+    if (filter === "Expenses") return displayTransactions.filter(t => t.amount < 0);
+    if (filter === "Needs Review") return displayTransactions.filter(t => !getEffectiveCategoryId(t));
+    return displayTransactions;
+  }, [displayTransactions, filter]);
 
   const sections = React.useMemo(() => {
-    const map: Record<string, Tx[]> = {};
+    const map: Record<string, TxListItem[]> = {};
     filtered.forEach(tx => {
       if (!map[tx.date]) map[tx.date] = [];
       map[tx.date].push(tx);
@@ -221,6 +276,20 @@ const styles = StyleSheet.create({
   txMid: { flex: 1 },
   txName: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
   txSub: { fontSize: 12, color: FinColors.textMuted, marginTop: 3 },
+  categoryRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
+  categoryBadge: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+    backgroundColor: FinColors.greenBg,
+    borderWidth: 1,
+    borderColor: FinColors.greenBorder,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  categoryMeta: { fontSize: 11, color: FinColors.textMuted },
   txAmount: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
   txAmountPos: { color: FinColors.green },
 

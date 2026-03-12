@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Switch,
@@ -9,6 +10,16 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { FinColors } from "@/constants/theme";
+import {
+  formatCategorizationStatus,
+  useCategorizationStatus,
+} from "@/services/categorization-status";
+import {
+  pauseBackgroundCategorization,
+  resumeBackgroundCategorization,
+  runRecategorizationForAllInBackground,
+  stopBackgroundCategorization,
+} from "@/services/categorization";
 
 type RowProps = {
   label: string;
@@ -42,6 +53,11 @@ function SectionHeader({ title }: { title: string }) {
 export default function SettingsScreen() {
   const router = useRouter();
   const [darkMode, setDarkMode] = React.useState(true);
+  const backgroundStatus = useCategorizationStatus();
+
+  const isBusy =
+    backgroundStatus.phase === "queued" || backgroundStatus.phase === "running";
+  const isPaused = backgroundStatus.phase === "paused";
 
   return (
     <View style={styles.root}>
@@ -108,6 +124,69 @@ export default function SettingsScreen() {
             subtitle="Download all transactions as CSV"
             onPress={() => {}}
           />
+          <View style={styles.divider} />
+          <SettingsRow
+            label="Alles hercategoriseren"
+            subtitle="Zet alle niet-handmatige transacties opnieuw door rules en OpenAI"
+            onPress={() => runRecategorizationForAllInBackground()}
+            rightElement={
+              isBusy ? (
+                <ActivityIndicator size="small" color={FinColors.green} />
+              ) : undefined
+            }
+          />
+        </View>
+
+        <SectionHeader title="Achtergrondtaken" />
+        <View style={styles.statusCard}>
+          <View style={styles.statusHeader}>
+            <Text style={styles.statusTitle}>Categorisatie</Text>
+            <Text style={styles.statusPhase}>{backgroundStatus.phase}</Text>
+          </View>
+          <Text style={styles.statusText}>{formatCategorizationStatus(backgroundStatus)}</Text>
+          <View style={styles.controlRow}>
+            <TouchableOpacity
+              style={[styles.controlButton, (isPaused || !isBusy) && styles.controlButtonDisabled]}
+              onPress={pauseBackgroundCategorization}
+              disabled={isPaused || !isBusy}
+            >
+              <Text style={styles.controlButtonText}>Pauzeer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.controlButton, (!isPaused && !backgroundStatus.queuedCount) && styles.controlButtonDisabled]}
+              onPress={resumeBackgroundCategorization}
+              disabled={!isPaused && !backgroundStatus.queuedCount}
+            >
+              <Text style={styles.controlButtonText}>Hervat</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.controlButton, !isBusy && !isPaused && styles.controlButtonDisabled]}
+              onPress={stopBackgroundCategorization}
+              disabled={!isBusy && !isPaused}
+            >
+              <Text style={styles.controlButtonText}>Stop</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.statusMetaRow}>
+            <Text style={styles.statusMetaText}>Verwerkt: {backgroundStatus.processedCount}</Text>
+            <Text style={styles.statusMetaText}>Bijgewerkt: {backgroundStatus.updatedCount}</Text>
+          </View>
+          <View style={styles.statusMetaRow}>
+            <Text style={styles.statusMetaText}>Rules: {backgroundStatus.ruleCount}</Text>
+            <Text style={styles.statusMetaText}>OpenAI: {backgroundStatus.openAiCount}</Text>
+          </View>
+          <View style={styles.statusMetaRow}>
+            <Text style={styles.statusMetaText}>Laatste mode: {backgroundStatus.lastRunMode || "-"}</Text>
+            <Text style={styles.statusMetaText}>Overgeslagen: {backgroundStatus.skippedCount}</Text>
+          </View>
+          {backgroundStatus.lastError ? (
+            <Text style={styles.statusError}>Laatste fout: {backgroundStatus.lastError}</Text>
+          ) : null}
+          {backgroundStatus.lastCompletedAt ? (
+            <Text style={styles.statusTimestamp}>
+              Laatste afronding: {new Date(backgroundStatus.lastCompletedAt).toLocaleString("nl-NL")}
+            </Text>
+          ) : null}
         </View>
 
         {/* About */}
@@ -193,6 +272,58 @@ const styles = StyleSheet.create({
   rowValue: { fontSize: 14, color: FinColors.textSecondary, fontWeight: "500" },
   rowChevron: { fontSize: 16, color: FinColors.textMuted },
   divider: { height: 1, backgroundColor: FinColors.borderSubtle, marginLeft: 20 },
+
+  statusCard: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  statusHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  statusTitle: { fontSize: 15, fontWeight: "700", color: FinColors.textPrimary },
+  statusPhase: {
+    fontSize: 12,
+    color: FinColors.green,
+    textTransform: "uppercase",
+    fontWeight: "700",
+  },
+  statusText: { fontSize: 13, color: FinColors.textSecondary, lineHeight: 20, marginTop: 10 },
+  controlRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  controlButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderRadius: 10,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  controlButtonDisabled: {
+    opacity: 0.45,
+  },
+  controlButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  statusMetaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 10,
+    gap: 12,
+  },
+  statusMetaText: { fontSize: 12, color: FinColors.textMuted },
+  statusError: { fontSize: 12, color: FinColors.red, marginTop: 12, lineHeight: 18 },
+  statusTimestamp: { fontSize: 12, color: FinColors.textMuted, marginTop: 12 },
 
   // Sign out
   signOutBtn: {

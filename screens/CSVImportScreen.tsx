@@ -1,21 +1,22 @@
-import React, { useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
+import React, { useState } from "react";
+import {
+    ActivityIndicator,
+    Alert,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 // @ts-ignore
-import Papa from "papaparse";
-import { supabase } from "@/services/supabase";
 import { FinColors } from "@/constants/theme";
+import { runCategorizationInBackground } from "@/services/categorization";
+import { supabase } from "@/services/supabase";
+import Papa from "papaparse";
 
 type PreviewRow = { date: string; description: string; amount: string };
 
@@ -49,7 +50,10 @@ export default function CSVImportScreen() {
     return (data as any[]).slice(0, 5).map((r: any) => ({
       date: r["Datum"] || r.Date || "—",
       description:
-        r["Omschrijving-1"] || r["Naam tegenpartij"] || r["Naam / Omschrijving"] || "—",
+        r["Omschrijving-1"] ||
+        r["Naam tegenpartij"] ||
+        r["Naam / Omschrijving"] ||
+        "—",
       amount: r["Bedrag"] || r.Amount || "—",
     }));
   };
@@ -136,18 +140,43 @@ export default function CSVImportScreen() {
       const type = r["Code"] || r["Type"];
       const metadata: Record<string, string> = {};
       Object.entries(r).forEach(([k, v]) => {
-        if (!["Datum","Bedrag","Munt","Omschrijving-1","Omschrijving-2","Omschrijving-3","Naam tegenpartij","Naam uiteindelijke partij","Tegenrekening IBAN/BBAN","Naam / Omschrijving","Code","Type"].includes(k)) {
+        if (
+          ![
+            "Datum",
+            "Bedrag",
+            "Munt",
+            "Omschrijving-1",
+            "Omschrijving-2",
+            "Omschrijving-3",
+            "Naam tegenpartij",
+            "Naam uiteindelijke partij",
+            "Tegenrekening IBAN/BBAN",
+            "Naam / Omschrijving",
+            "Code",
+            "Type",
+          ].includes(k)
+        ) {
           metadata[k] = v;
         }
       });
       const seqRaw = r["Volgnr"] || metadata["Volgnr"] || "";
       const seq = parseInt(String(seqRaw).replace(/^0+/, ""), 10) || 0;
-      return { date, details: description, counterparty, amount, currency, type, metadata, seq };
+      return {
+        date,
+        details: description,
+        counterparty,
+        amount,
+        currency,
+        type,
+        metadata,
+        seq,
+      };
     });
     rows.sort((a, b) => a.seq - b.seq);
     setTotal(rows.length);
     setProcessed(0);
     let imported = 0;
+    const importedIds: string[] = [];
 
     for (const tx of rows) {
       setMessage(`Importing ${imported + 1} / ${rows.length}…`);
@@ -159,28 +188,54 @@ export default function CSVImportScreen() {
         .eq("amount", tx.amount)
         .limit(1);
       if (selErr) throw selErr;
-      const payload: any = { date: tx.date, details: tx.details, counterparty: tx.counterparty, amount: tx.amount, currency: tx.currency, type: tx.type, metadata: tx.metadata || {} };
+      const payload: any = {
+        date: tx.date,
+        details: tx.details,
+        counterparty: tx.counterparty,
+        amount: tx.amount,
+        currency: tx.currency,
+        type: tx.type,
+        metadata: tx.metadata || {},
+      };
       if (existing?.length) {
-        const { error: updErr } = await supabase.from("transactions").update(payload).eq("id", existing[0].id);
+        const { error: updErr } = await supabase
+          .from("transactions")
+          .update(payload)
+          .eq("id", existing[0].id);
         if (updErr) throw updErr;
+        importedIds.push(existing[0].id);
       } else {
-        const { error: insErr } = await supabase.from("transactions").insert(payload);
+        const { data: inserted, error: insErr } = await supabase
+          .from("transactions")
+          .insert(payload)
+          .select("id")
+          .single();
         if (insErr) throw insErr;
+        if (inserted?.id) importedIds.push(inserted.id);
       }
       imported++;
       setProcessed(imported);
     }
     setSuccess(true);
-    setMessage(`${imported} transaction${imported === 1 ? "" : "s"} imported successfully.`);
+    setMessage(
+      `${imported} transaction${imported === 1 ? "" : "s"} imported. Categorization started in background.`,
+    );
+    runCategorizationInBackground(importedIds);
     setPendingCsv(null);
   }
 
   const pct = total ? Math.round((processed / total) * 100) : 0;
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
       <Text style={styles.title}>Import Bank Transactions</Text>
-      <Text style={styles.subtitle}>Upload a Rabobank CSV export to sync your transactions.</Text>
+      <Text style={styles.subtitle}>
+        Upload a Rabobank CSV export to sync your transactions.
+      </Text>
 
       {/* Upload card */}
       <TouchableOpacity
@@ -193,7 +248,9 @@ export default function CSVImportScreen() {
         </View>
         <Text style={styles.uploadLabel}>Upload Rabobank CSV</Text>
         <Text style={styles.uploadHint}>
-          {pendingCsv ? "File selected — review below" : "Tap to select a .csv file"}
+          {pendingCsv
+            ? "File selected — review below"
+            : "Tap to select a .csv file"}
         </Text>
         <View style={styles.uploadBtn}>
           <Text style={styles.uploadBtnText}>
@@ -208,18 +265,47 @@ export default function CSVImportScreen() {
           <Text style={styles.previewTitle}>Preview</Text>
           {/* Header */}
           <View style={[styles.previewRow, styles.previewHeaderRow]}>
-            <Text style={[styles.previewCell, styles.previewHeader, { flex: 1.2 }]}>Date</Text>
-            <Text style={[styles.previewCell, styles.previewHeader, { flex: 3 }]}>Description</Text>
-            <Text style={[styles.previewCell, styles.previewHeader, { flex: 1.5, textAlign: "right" }]}>Amount</Text>
+            <Text
+              style={[styles.previewCell, styles.previewHeader, { flex: 1.2 }]}
+            >
+              Date
+            </Text>
+            <Text
+              style={[styles.previewCell, styles.previewHeader, { flex: 3 }]}
+            >
+              Description
+            </Text>
+            <Text
+              style={[
+                styles.previewCell,
+                styles.previewHeader,
+                { flex: 1.5, textAlign: "right" },
+              ]}
+            >
+              Amount
+            </Text>
           </View>
           {preview.map((row, i) => (
-            <View key={i} style={[styles.previewRow, i % 2 === 0 && styles.previewRowAlt]}>
-              <Text style={[styles.previewCell, { flex: 1.2 }]}>{row.date}</Text>
-              <Text style={[styles.previewCell, { flex: 3 }]} numberOfLines={1}>{row.description}</Text>
-              <Text style={[styles.previewCell, { flex: 1.5, textAlign: "right" }]}>{row.amount}</Text>
+            <View
+              key={i}
+              style={[styles.previewRow, i % 2 === 0 && styles.previewRowAlt]}
+            >
+              <Text style={[styles.previewCell, { flex: 1.2 }]}>
+                {row.date}
+              </Text>
+              <Text style={[styles.previewCell, { flex: 3 }]} numberOfLines={1}>
+                {row.description}
+              </Text>
+              <Text
+                style={[styles.previewCell, { flex: 1.5, textAlign: "right" }]}
+              >
+                {row.amount}
+              </Text>
             </View>
           ))}
-          <Text style={styles.previewNote}>Showing first {preview.length} rows</Text>
+          <Text style={styles.previewNote}>
+            Showing first {preview.length} rows
+          </Text>
         </View>
       )}
 
@@ -231,7 +317,9 @@ export default function CSVImportScreen() {
             <Text style={styles.progressText}>{message}</Text>
           </View>
           <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${pct}%` as any }]} />
+            <View
+              style={[styles.progressBarFill, { width: `${pct}%` as any }]}
+            />
           </View>
           <Text style={styles.progressPct}>{pct}%</Text>
         </View>
@@ -265,8 +353,18 @@ export default function CSVImportScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: FinColors.bgBase },
   content: { padding: 20, paddingTop: 8, gap: 16 },
-  title: { fontSize: 24, fontWeight: "800", color: FinColors.textPrimary, marginBottom: 4 },
-  subtitle: { fontSize: 13, color: FinColors.textMuted, marginBottom: 8, lineHeight: 20 },
+  title: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: FinColors.textMuted,
+    marginBottom: 8,
+    lineHeight: 20,
+  },
 
   uploadCard: {
     backgroundColor: FinColors.bgCard,
@@ -278,7 +376,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  uploadCardReady: { borderColor: FinColors.greenBorder, backgroundColor: FinColors.greenBg },
+  uploadCardReady: {
+    borderColor: FinColors.greenBorder,
+    backgroundColor: FinColors.greenBg,
+  },
   uploadIconWrap: {
     width: 56,
     height: 56,
@@ -288,7 +389,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 4,
   },
-  uploadLabel: { fontSize: 15, fontWeight: "700", color: FinColors.textPrimary },
+  uploadLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
   uploadHint: { fontSize: 12, color: FinColors.textMuted, textAlign: "center" },
   uploadBtn: {
     marginTop: 8,
@@ -299,7 +404,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  uploadBtnText: { fontSize: 13, fontWeight: "600", color: FinColors.textPrimary },
+  uploadBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
 
   previewCard: {
     backgroundColor: FinColors.bgCard,
@@ -308,13 +417,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  previewTitle: { fontSize: 13, fontWeight: "700", color: FinColors.textPrimary, marginBottom: 10 },
+  previewTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    marginBottom: 10,
+  },
   previewRow: { flexDirection: "row", paddingVertical: 7 },
   previewRowAlt: { backgroundColor: "rgba(148,163,184,0.04)", borderRadius: 6 },
-  previewHeaderRow: { borderBottomWidth: 1, borderBottomColor: FinColors.borderSubtle, marginBottom: 4 },
+  previewHeaderRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+    marginBottom: 4,
+  },
   previewCell: { fontSize: 11, color: FinColors.textSecondary },
-  previewHeader: { fontWeight: "700", color: FinColors.textMuted, fontSize: 10, textTransform: "uppercase" },
-  previewNote: { fontSize: 10, color: FinColors.textMuted, marginTop: 8, textAlign: "right" },
+  previewHeader: {
+    fontWeight: "700",
+    color: FinColors.textMuted,
+    fontSize: 10,
+    textTransform: "uppercase",
+  },
+  previewNote: {
+    fontSize: 10,
+    color: FinColors.textMuted,
+    marginTop: 8,
+    textAlign: "right",
+  },
 
   progressCard: {
     backgroundColor: FinColors.bgCard,
@@ -326,9 +454,22 @@ const styles = StyleSheet.create({
   },
   progressHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
   progressText: { fontSize: 12, color: FinColors.textSecondary, flex: 1 },
-  progressBarBg: { height: 4, backgroundColor: FinColors.bgElevated, borderRadius: 4 },
-  progressBarFill: { height: 4, backgroundColor: FinColors.green, borderRadius: 4 },
-  progressPct: { fontSize: 11, color: FinColors.green, fontWeight: "700", textAlign: "right" },
+  progressBarBg: {
+    height: 4,
+    backgroundColor: FinColors.bgElevated,
+    borderRadius: 4,
+  },
+  progressBarFill: {
+    height: 4,
+    backgroundColor: FinColors.green,
+    borderRadius: 4,
+  },
+  progressPct: {
+    fontSize: 11,
+    color: FinColors.green,
+    fontWeight: "700",
+    textAlign: "right",
+  },
 
   successCard: {
     backgroundColor: FinColors.greenBg,
@@ -341,7 +482,12 @@ const styles = StyleSheet.create({
     borderColor: FinColors.greenBorder,
   },
   successIcon: { fontSize: 20, color: FinColors.green },
-  successText: { fontSize: 14, fontWeight: "600", color: FinColors.green, flex: 1 },
+  successText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: FinColors.green,
+    flex: 1,
+  },
 
   errorCard: {
     backgroundColor: FinColors.redBg,

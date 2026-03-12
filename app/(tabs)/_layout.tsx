@@ -4,6 +4,7 @@ import { StyleSheet, View } from "react-native";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { FinColors } from "@/constants/theme";
+import { runPendingCategorizationInBackground } from "@/services/categorization";
 
 // Simple SVG-free icon using React Native primitives
 function TabIcon({
@@ -65,6 +66,10 @@ function TabIcon({
 }
 
 export default function TabLayout() {
+  React.useEffect(() => {
+    runPendingCategorizationInBackground();
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
