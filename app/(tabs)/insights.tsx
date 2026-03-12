@@ -104,6 +104,29 @@ function normalizeSearch(value: string) {
     .trim();
 }
 
+function formatShortDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) return value;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(year, month, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month ||
+    date.getDate() !== day
+  ) {
+    return value;
+  }
+
+  return date.toLocaleDateString("nl-NL", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
 function toLocalIsoDate(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -169,6 +192,11 @@ type CashflowForecast = {
 };
 
 type ReviewableInsightTx = InsightTx & { categoryLabel: string };
+type IncomeBreakdownRow = {
+  label: string;
+  total: number;
+  count: number;
+};
 type DrilldownExpenseGroup = Exclude<
   ExpenseAnalysisCategory,
   "savings_transfer"
@@ -403,6 +431,7 @@ export default function InsightsScreen() {
   const [txCount, setTxCount] = React.useState(0);
   const [selectedTx, setSelectedTx] =
     React.useState<ReviewableInsightTx | null>(null);
+  const [incomeDetailsOpen, setIncomeDetailsOpen] = React.useState(false);
   const [savingReview, setSavingReview] = React.useState(false);
   const [categorySearch, setCategorySearch] = React.useState("");
   const [expandedParents, setExpandedParents] = React.useState<
@@ -572,6 +601,40 @@ export default function InsightsScreen() {
         .slice(0, 8),
     [displayTransactions],
   );
+
+  const incomeTransactions = React.useMemo(
+    () =>
+      displayTransactions
+        .filter((tx) => tx.amount > 0)
+        .sort((a, b) => {
+          if (a.date !== b.date) return b.date.localeCompare(a.date);
+          return b.amount - a.amount;
+        }),
+    [displayTransactions],
+  );
+
+  const incomeBreakdown = React.useMemo<IncomeBreakdownRow[]>(() => {
+    const totals = new Map<string, { total: number; count: number }>();
+
+    for (const tx of incomeTransactions) {
+      const key = tx.categoryLabel || "Overig";
+      const existing = totals.get(key);
+      if (existing) {
+        existing.total += tx.amount;
+        existing.count += 1;
+      } else {
+        totals.set(key, { total: tx.amount, count: 1 });
+      }
+    }
+
+    return Array.from(totals.entries())
+      .map(([label, value]) => ({
+        label,
+        total: value.total,
+        count: value.count,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [incomeTransactions]);
 
   const insightCards = React.useMemo(() => {
     const cards: { title: string; text: string }[] = [];
@@ -1018,12 +1081,18 @@ export default function InsightsScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Maandrapport</Text>
-          <View style={styles.monthReportRow}>
+          <Pressable
+            style={styles.monthReportRowButton}
+            onPress={() => setIncomeDetailsOpen(true)}
+          >
             <Text style={styles.monthReportLabel}>Inkomsten</Text>
-            <Text style={[styles.monthReportValue, { color: FinColors.green }]}>
-              +{fmt.format(monthReport.income)}
-            </Text>
-          </View>
+            <View style={styles.monthReportButtonRight}>
+              <Text style={[styles.monthReportValue, { color: FinColors.green }]}>
+                +{fmt.format(monthReport.income)}
+              </Text>
+              <Text style={styles.monthReportButtonHint}>Details</Text>
+            </View>
+          </Pressable>
           <View style={styles.monthReportRow}>
             <Text style={styles.monthReportLabel}>
               Uitgaven totaal (excl. sparen)
@@ -1214,6 +1283,96 @@ export default function InsightsScreen() {
           <InsightCard key={card.title} title={card.title} text={card.text} />
         ))}
       </ScrollView>
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={incomeDetailsOpen}
+        onRequestClose={() => setIncomeDetailsOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Inkomsten details</Text>
+            <Text style={styles.modalSub}>{selectedMonth.label}</Text>
+
+            <View style={styles.incomeSummaryRow}>
+              <Text style={styles.monthReportLabel}>Totaal inkomsten</Text>
+              <Text style={[styles.monthReportValue, { color: FinColors.green }]}>
+                +{fmt.format(monthReport.income)}
+              </Text>
+            </View>
+            <View style={styles.incomeSummaryRow}>
+              <Text style={styles.monthReportLabel}>Aantal transacties</Text>
+              <Text style={styles.monthReportValue}>{incomeTransactions.length}</Text>
+            </View>
+
+            {incomeBreakdown.length ? (
+              <View style={styles.incomeBreakdownWrap}>
+                <Text style={styles.incomeSectionTitle}>Verdeling inkomsten</Text>
+                {incomeBreakdown.map((item) => (
+                  <View key={item.label} style={styles.incomeBreakdownRow}>
+                    <View style={styles.incomeBreakdownMain}>
+                      <Text style={styles.incomeBreakdownLabel}>{item.label}</Text>
+                      <Text style={styles.incomeBreakdownMeta}>
+                        {item.count} transactie{item.count === 1 ? "" : "s"}
+                      </Text>
+                    </View>
+                    <Text style={[styles.incomeBreakdownValue, { color: FinColors.green }]}>
+                      +{fmt.format(item.total)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            <Text style={styles.incomeSectionTitle}>Transacties</Text>
+            <ScrollView style={styles.incomeTxList}>
+              {incomeTransactions.length ? (
+                incomeTransactions.map((tx) => (
+                  <Pressable
+                    key={tx.id}
+                    style={styles.incomeTxRow}
+                    onPress={() => {
+                      setIncomeDetailsOpen(false);
+                      router.push(`/transaction-detail?id=${tx.id}`);
+                    }}
+                  >
+                    <View style={styles.reviewIconWrap}>
+                      <TransactionCategoryIcon row={tx} categoryById={categoryMap} />
+                    </View>
+                    <View style={styles.incomeTxMain}>
+                      <Text style={styles.incomeTxCounterparty} numberOfLines={1}>
+                        {tx.counterparty || "Onbekende bron"}
+                      </Text>
+                      <Text style={styles.incomeTxSub} numberOfLines={1}>
+                        {tx.details || tx.date}
+                      </Text>
+                      <Text style={styles.incomeTxCategory} numberOfLines={1}>
+                        {tx.categoryLabel}
+                      </Text>
+                    </View>
+                    <View style={styles.incomeTxAside}>
+                      <Text style={styles.incomeTxAmount}>+{fmt.format(tx.amount)}</Text>
+                      <Text style={styles.incomeTxDate}>{formatShortDate(tx.date)}</Text>
+                    </View>
+                  </Pressable>
+                ))
+              ) : (
+                <Text style={styles.modalEmptyText}>
+                  Geen inkomsten gevonden in deze maand.
+                </Text>
+              )}
+            </ScrollView>
+
+            <Pressable
+              style={styles.modalCloseButton}
+              onPress={() => setIncomeDetailsOpen(false)}
+            >
+              <Text style={styles.modalCloseText}>Sluiten</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         animationType="slide"
@@ -1475,6 +1634,17 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgElevated,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
+  },
+  monthReportButtonRight: {
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  monthReportButtonHint: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: FinColors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
   },
   monthReportLabel: {
     fontSize: 13,
@@ -1741,5 +1911,93 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: FinColors.textPrimary,
+  },
+  incomeSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  incomeBreakdownWrap: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    gap: 8,
+  },
+  incomeSectionTitle: {
+    marginTop: 12,
+    marginBottom: 8,
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  incomeBreakdownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  incomeBreakdownMain: {
+    flex: 1,
+  },
+  incomeBreakdownLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
+  incomeBreakdownMeta: {
+    marginTop: 2,
+    fontSize: 11,
+    color: FinColors.textMuted,
+  },
+  incomeBreakdownValue: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  incomeTxList: {
+    maxHeight: 320,
+  },
+  incomeTxRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+  },
+  incomeTxMain: {
+    flex: 1,
+  },
+  incomeTxCounterparty: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  incomeTxSub: {
+    marginTop: 2,
+    fontSize: 12,
+    color: FinColors.textSecondary,
+  },
+  incomeTxCategory: {
+    marginTop: 4,
+    fontSize: 11,
+    color: FinColors.textMuted,
+  },
+  incomeTxAside: {
+    alignItems: "flex-end",
+  },
+  incomeTxAmount: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.green,
+  },
+  incomeTxDate: {
+    marginTop: 4,
+    fontSize: 11,
+    color: FinColors.textMuted,
   },
 });
