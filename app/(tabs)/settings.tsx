@@ -69,23 +69,30 @@ export default function SettingsScreen() {
       [
         {
           text: "Annuleren",
-          onPress: () => {},
+          onPress: () => {
+            console.log("Clear cancelled");
+          },
           style: "cancel",
         },
         {
           text: "Verwijderen",
           onPress: async () => {
+            console.log("Clear started");
             setIsClearing(true);
             try {
+              console.log("Calling clearAllTransactionData...");
               await clearAllTransactionData();
+              console.log("Clear completed successfully");
               Alert.alert(
                 "Gereed",
                 "Alle transactiegegevens zijn gewist. Je kan nu nieuwe transacties importeren."
               );
             } catch (error) {
+              console.error("Clear failed:", error);
+              const errorMsg = error instanceof Error ? error.message : String(error);
               Alert.alert(
                 "Fout",
-                `Kon gegevens niet wissen: ${error instanceof Error ? error.message : String(error)}`
+                `Kon gegevens niet wissen: ${errorMsg}`
               );
             } finally {
               setIsClearing(false);

@@ -228,6 +228,7 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
     },
 
     async clearAllTransactionData() {
+      console.log("[clearAllTransactionData] Clearing transaction categorization data...");
       // Clear all transaction categorization data (but keep transactions themselves)
       const { error } = await supabase
         .from("transactions")
@@ -242,15 +243,24 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
         })
         .neq("id", ""); // This updates all rows
 
-      if (error) throw error;
+      if (error) {
+        console.error("[clearAllTransactionData] Error clearing transactions:", error);
+        throw error;
+      }
+      console.log("[clearAllTransactionData] Transactions cleared");
 
       // Also clear the categorization audit log
+      console.log("[clearAllTransactionData] Clearing audit log...");
       const { error: auditError } = await supabase
         .from("categorization_audit")
         .delete()
         .neq("id", ""); // This deletes all rows
 
-      if (auditError) throw auditError;
+      if (auditError) {
+        console.error("[clearAllTransactionData] Error clearing audit log:", auditError);
+        throw auditError;
+      }
+      console.log("[clearAllTransactionData] Audit log cleared");
     },
   };
 }

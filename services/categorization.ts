@@ -1427,9 +1427,15 @@ export function stopBackgroundCategorization() {
 
 export async function clearAllTransactionData() {
   try {
+    console.log("[clearAllTransactionData] Starting...");
     stopBackgroundCategorization();
+    console.log("[clearAllTransactionData] Background categorization stopped");
+    
     const repo = createSupabaseCategorizationRepository();
+    console.log("[clearAllTransactionData] Repository created");
+    
     await repo.clearAllTransactionData();
+    console.log("[clearAllTransactionData] All transaction data cleared from DB");
     
     // Reset categorization status
     updateCategorizationStatus((current) => ({
@@ -1446,7 +1452,9 @@ export async function clearAllTransactionData() {
       lastCompletedAt: new Date().toISOString(),
       message: "Alle transactiegegevens gewist. Klaar voor import.",
     }));
+    console.log("[clearAllTransactionData] Status updated");
   } catch (error) {
+    console.error("[clearAllTransactionData] Error:", error);
     const msg = formatError(error);
     updateCategorizationStatus((current) => ({
       ...current,
