@@ -1,3 +1,4 @@
+import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinColors } from "@/constants/theme";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
@@ -138,7 +139,15 @@ function getMonthOptionByKey(monthKey: string): MonthOption {
   };
 }
 
-function TxItem({ item, onPress }: { item: TxListItem; onPress: () => void }) {
+function TxItem({
+  item,
+  onPress,
+  categoryMap,
+}: {
+  item: TxListItem;
+  onPress: () => void;
+  categoryMap: Map<string, CategoryRecord>;
+}) {
   const isPos = item.amount >= 0;
   return (
     <TouchableOpacity
@@ -147,9 +156,7 @@ function TxItem({ item, onPress }: { item: TxListItem; onPress: () => void }) {
       activeOpacity={0.7}
     >
       <View style={styles.iconBubble}>
-        <Text style={styles.iconText}>
-          {(item.counterparty || "?").charAt(0).toUpperCase()}
-        </Text>
+        <TransactionCategoryIcon row={item} categoryById={categoryMap} />
       </View>
       <View style={styles.txMid}>
         <Text style={styles.txName} numberOfLines={1}>
@@ -541,6 +548,7 @@ export default function TransactionsTab() {
           <>
             <TxItem
               item={item}
+              categoryMap={categoryMap}
               onPress={() => router.push(`/transaction-detail?id=${item.id}`)}
             />
             {index < section.data.length - 1 && <View style={styles.divider} />}
@@ -727,17 +735,8 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgBase,
   },
   iconBubble: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: FinColors.bgCard,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    justifyContent: "center",
-    alignItems: "center",
     marginRight: 14,
   },
-  iconText: { fontSize: 15, fontWeight: "600", color: FinColors.textSecondary },
   txMid: { flex: 1 },
   txName: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
   txSub: { fontSize: 12, color: FinColors.textMuted, marginTop: 3 },

@@ -1,0 +1,40 @@
+{
+  "name": "vscode-pixel-agent-extension",
+  "displayName": "Pixel Agent Extension",
+  "description": "Development extension scaffold for Pixel Agent.",
+  "version": "0.0.1",
+  "publisher": "pieterflikweert",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "pixelAgent.openPanel",
+        "title": "Pixel Agent: Open Panel"
+      },
+      {
+        "command": "pixelAgent.hello",
+        "title": "Pixel Agent: Hello"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "npm run build:extension && npm run build:webview",
+    "build:extension": "tsc -p .",
+    "build:webview": "vite build --config webview-ui/vite.config.ts",
+    "watch": "npm run watch:extension",
+    "watch:extension": "tsc -p . --watch --preserveWatchOutput",
+    "dev:webview": "vite --config webview-ui/vite.config.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.30",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5"
+  }
+}

@@ -4,17 +4,17 @@ import type {
     TransactionCategorizationRecord,
 } from "@/types/categorization";
 import Constants from "expo-constants";
+import { enrichTransactionAnalysis } from "./analysis";
 import {
     createSupabaseCategorizationRepository,
     normalizePattern,
 } from "./categorization-repository";
-import { enrichTransactionAnalysis } from "./analysis";
 import {
     type CategorizationRunMode,
     updateCategorizationStatus,
 } from "./categorization-status";
-import { recomputeCurrentMonthCashflowForecast } from "./forecasting";
 import { getLeafCategories } from "./category-display";
+import { recomputeCurrentMonthCashflowForecast } from "./forecasting";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const appEnv = ((Constants.expoConfig?.extra as Record<
@@ -1496,10 +1496,7 @@ export function runRecategorizationForAllInBackground(
         let offset = 0;
 
         while (true) {
-          const pageIds = await repo.getAllTransactionIds(
-            pageSize,
-            offset,
-          );
+          const pageIds = await repo.getAllTransactionIds(pageSize, offset);
           if (!pageIds.length) break;
 
           ids.push(...pageIds);

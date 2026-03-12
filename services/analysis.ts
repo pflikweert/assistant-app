@@ -1,10 +1,11 @@
 import { supabase } from "@/services/supabase";
 import type {
-  AnalysisCategory,
-  AnalysisMainGroup,
-  ForecastIncomeSource,
-  RecurringType,
-  TransactionAnalysisUpdate,
+    AnalysisCategory,
+    AnalysisMainGroup,
+    ExpenseAnalysisCategory,
+    ForecastIncomeSource,
+    RecurringType,
+    TransactionAnalysisUpdate,
 } from "@/types/categorization";
 import { normalizePattern } from "./categorization-repository";
 
@@ -87,6 +88,19 @@ const SUBSCRIPTION_KEYWORDS = [
   "adobe",
 ];
 
+const SAVINGS_TRANSFER_KEYWORDS = [
+  "spaar",
+  "sparen",
+  "spaarrekening",
+  "belegging",
+  "beleggen",
+  "investering",
+  "invest",
+  "crypto",
+  "overboeking eigen rekening",
+  "naar sparen",
+];
+
 const VARIABLE_EXPENSE_KEYWORDS = [
   "jumbo",
   "plus",
@@ -101,6 +115,12 @@ const VARIABLE_EXPENSE_KEYWORDS = [
   "sigaret",
   "rook",
   "snack",
+  "therapie",
+  "fysio",
+  "psycholoog",
+  "huisarts",
+  "apotheek",
+  "zorgkosten",
 ];
 
 function asNumber(value: unknown, fallback = 0): number {
@@ -127,7 +147,8 @@ function subtractDays(date: Date, days: number) {
 function getDescriptor(tx: Pick<AnalysisTx, "counterparty" | "details">) {
   const base = normalizePattern(tx.counterparty || "");
   if (base) return base;
-  const firstSegment = String(tx.details || "").split("|")[0] || tx.details || "";
+  const firstSegment =
+    String(tx.details || "").split("|")[0] || tx.details || "";
   return normalizePattern(firstSegment);
 }
 
@@ -137,6 +158,39 @@ function textHaystack(tx: Pick<AnalysisTx, "counterparty" | "details">) {
 
 function includesAny(haystack: string, needles: string[]) {
   return needles.some((needle) => haystack.includes(needle));
+}
+
+function isCareCategoryKey(categoryKey: string) {
+  return (
+    categoryKey === "care" ||
+    categoryKey === "health" ||
+    categoryKey.startsWith("care_") ||
+    categoryKey.startsWith("health_")
+  );
+}
+
+function isCareInsuranceCategoryKey(categoryKey: string) {
+  return (
+    categoryKey.startsWith("care_health_insurance") ||
+    categoryKey.startsWith("insurance_health") ||
+    categoryKey.startsWith("health_insurance")
+  );
+}
+
+function isSavingsCategoryKey(categoryKey: string) {
+  return (
+    categoryKey === "savings" ||
+    categoryKey === "savings_transfer" ||
+    categoryKey.startsWith("savings_")
+  );
+}
+
+function isSubscriptionCategoryKey(categoryKey: string) {
+  return (
+    categoryKey === "subscriptions" ||
+    categoryKey.startsWith("subscriptions_") ||
+    categoryKey.startsWith("subscription_")
+  );
 }
 
 function amountIsSimilar(left: number, right: number) {
@@ -161,7 +215,32 @@ function resolveExpenseAnalysisCategory(
   haystack: string,
   categoryKey: string | null,
   budgetGroup: string | null,
-): AnalysisCategory {
+): ExpenseAnalysisCategory {
+  if (categoryKey) {
+    if (isSavingsCategoryKey(categoryKey)) return "savings_transfer";
+    if (isSubscriptionCategoryKey(categoryKey)) return "subscriptions";
+
+    const isCareInsurance = isCareInsuranceCategoryKey(categoryKey);
+    const isCareOther = isCareCategoryKey(categoryKey) && !isCareInsurance;
+    if (isCareOther) return "variable_costs";
+
+    if (
+      categoryKey.startsWith("housing") ||
+      isCareInsurance ||
+      categoryKey.startsWith("auto_transport_car_insurance") ||
+      categoryKey.startsWith("auto_transport_road_tax")
+    ) {
+      return "fixed_costs";
+    }
+  }
+
+  if (budgetGroup === "savings") return "savings_transfer";
+  if (budgetGroup === "fixed") return "fixed_costs";
+  if (budgetGroup === "variable") return "variable_costs";
+
+  if (includesAny(haystack, SAVINGS_TRANSFER_KEYWORDS)) {
+    return "savings_transfer";
+  }
   if (includesAny(haystack, SUBSCRIPTION_KEYWORDS)) return "subscriptions";
 
   if (haystack.includes("belastingdienst")) {
@@ -175,20 +254,6 @@ function resolveExpenseAnalysisCategory(
 
   if (includesAny(haystack, FIXED_EXPENSE_KEYWORDS)) return "fixed_costs";
   if (includesAny(haystack, VARIABLE_EXPENSE_KEYWORDS)) return "variable_costs";
-
-  if (categoryKey) {
-    if (categoryKey.startsWith("subscriptions")) return "subscriptions";
-    if (
-      categoryKey.startsWith("housing") ||
-      categoryKey.startsWith("care_health") ||
-      categoryKey.startsWith("auto_transport_car_insurance") ||
-      categoryKey.startsWith("auto_transport_road_tax")
-    ) {
-      return "fixed_costs";
-    }
-  }
-
-  if (budgetGroup === "fixed") return "fixed_costs";
   return "variable_costs";
 }
 
@@ -199,7 +264,9 @@ function resolveIncomeAnalysisCategory(haystack: string): AnalysisCategory {
   return "income_variable";
 }
 
-async function getCategoryMetaMap(): Promise<Map<string, AnalysisCategoryMeta>> {
+async function getCategoryMetaMap(): Promise<
+  Map<string, AnalysisCategoryMeta>
+> {
   const { data, error } = await supabase
     .from("categories")
     .select("id,key,budget_group");
@@ -236,10 +303,10 @@ async function getTransactionsByIds(ids: string[]): Promise<AnalysisTx[]> {
     amount: asNumber(row.amount, 0),
     category_id_auto: row.category_id_auto || null,
     category_id_user: row.category_id_user || null,
-    analysis_main_group: (row.analysis_main_group || null) as
-      | AnalysisMainGroup
-      | null,
-    analysis_category: (row.analysis_category || null) as AnalysisCategory | null,
+    analysis_main_group: (row.analysis_main_group ||
+      null) as AnalysisMainGroup | null,
+    analysis_category: (row.analysis_category ||
+      null) as AnalysisCategory | null,
     recurring: Boolean(row.recurring),
     recurring_type: (row.recurring_type || null) as RecurringType | null,
     spending_pattern: row.spending_pattern || null,
@@ -275,10 +342,10 @@ async function getTransactionsInWindow(
       amount: asNumber(row.amount, 0),
       category_id_auto: row.category_id_auto || null,
       category_id_user: row.category_id_user || null,
-      analysis_main_group: (row.analysis_main_group || null) as
-        | AnalysisMainGroup
-        | null,
-      analysis_category: (row.analysis_category || null) as AnalysisCategory | null,
+      analysis_main_group: (row.analysis_main_group ||
+        null) as AnalysisMainGroup | null,
+      analysis_category: (row.analysis_category ||
+        null) as AnalysisCategory | null,
       recurring: Boolean(row.recurring),
       recurring_type: (row.recurring_type || null) as RecurringType | null,
       spending_pattern: row.spending_pattern || null,
@@ -301,7 +368,7 @@ function buildRecurringInfo(tx: AnalysisTx, history: AnalysisTx[]) {
 
   const candidates = history
     .filter((item) => {
-      if ((item.amount >= 0) !== (tx.amount >= 0)) return false;
+      if (item.amount >= 0 !== tx.amount >= 0) return false;
       if (!amountIsSimilar(item.amount, tx.amount)) return false;
       return getDescriptor(item) === descriptor;
     })
@@ -376,7 +443,8 @@ function buildAnalysisUpdate(
     : null;
   const haystack = textHaystack(tx);
 
-  const analysisMainGroup: AnalysisMainGroup = tx.amount >= 0 ? "income" : "expense";
+  const analysisMainGroup: AnalysisMainGroup =
+    tx.amount >= 0 ? "income" : "expense";
 
   const analysisCategory =
     analysisMainGroup === "income"
@@ -428,7 +496,11 @@ function mergeIncomeSources(
   if (!descriptor) return;
 
   const date = toDate(tx.date);
-  const sourceLabel = (tx.counterparty || tx.details.split("|")[0] || "Inkomst").trim();
+  const sourceLabel = (
+    tx.counterparty ||
+    tx.details.split("|")[0] ||
+    "Inkomst"
+  ).trim();
   const nextFrequency = update.recurringType || "irregular";
   const nextValue = Math.abs(tx.amount);
 
@@ -447,7 +519,9 @@ function mergeIncomeSources(
 
   const expectedIncome = (existing.expectedIncome + nextValue) / 2;
   const incomeFrequency =
-    existing.incomeFrequency === "irregular" ? nextFrequency : existing.incomeFrequency;
+    existing.incomeFrequency === "irregular"
+      ? nextFrequency
+      : existing.incomeFrequency;
 
   collector.set(descriptor, {
     ...existing,

@@ -54,6 +54,13 @@ export default function RootLayout() {
             headerShown: true,
           }}
         />
+        <Stack.Screen
+          name="analysis-detail"
+          options={{
+            title: "Analyse detail",
+            headerShown: true,
+          }}
+        />
       </Stack>
       <StatusBar style="light" />
     </ThemeProvider>

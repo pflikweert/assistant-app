@@ -39,7 +39,8 @@ export type AnalysisMainGroup = "income" | "expense";
 export type ExpenseAnalysisCategory =
   | "fixed_costs"
   | "subscriptions"
-  | "variable_costs";
+  | "variable_costs"
+  | "savings_transfer";
 
 export type IncomeAnalysisCategory = "income_structural" | "income_variable";
 

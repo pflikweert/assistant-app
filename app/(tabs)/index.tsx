@@ -1,3 +1,4 @@
+import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinColors } from "@/constants/theme";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import {
@@ -41,14 +42,18 @@ type DashboardTx = {
 type DashboardTxRow = DashboardTx & { categoryLabel: string };
 
 // ─── Transaction row ──────────────────────────────────────────────────────────
-function TxRow({ tx }: { tx: DashboardTxRow }) {
+function TxRow({
+  tx,
+  categoryMap,
+}: {
+  tx: DashboardTxRow;
+  categoryMap: Map<string, CategoryRecord>;
+}) {
   const isPos = tx.amount >= 0;
   return (
     <View style={styles.txRow}>
       <View style={styles.txIconWrap}>
-        <Text style={styles.txIconText}>
-          {(tx.counterparty || "?").charAt(0).toUpperCase()}
-        </Text>
+        <TransactionCategoryIcon row={tx} categoryById={categoryMap} />
       </View>
       <View style={styles.txMid}>
         <Text style={styles.txName} numberOfLines={1}>
@@ -365,7 +370,7 @@ export default function DashboardScreen() {
           ) : (
             recentTransactions.map((tx, i) => (
               <React.Fragment key={tx.id}>
-                <TxRow tx={tx} />
+                <TxRow tx={tx} categoryMap={categoryMap} />
                 {i < recentTransactions.length - 1 && (
                   <View style={styles.divider} />
                 )}
@@ -534,18 +539,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   txIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: FinColors.bgElevated,
-    justifyContent: "center",
-    alignItems: "center",
     marginRight: 14,
-  },
-  txIconText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: FinColors.textSecondary,
   },
   txMid: { flex: 1 },
   txName: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },

@@ -71,6 +71,37 @@ export function getCategoryPathLabel(
   return parent ? `${parent.name} › ${child.name}` : child.name;
 }
 
+export function getRootCategory(
+  row: CategorizedRow,
+  categoryById: Map<string, CategoryRecord>,
+) {
+  const categoryId = getEffectiveCategoryId(row);
+  if (!categoryId) return null;
+
+  let current: CategoryRecord | null = categoryById.get(categoryId) || null;
+  if (!current) return null;
+
+  const visited = new Set<string>();
+  while (current?.parent_id) {
+    if (visited.has(current.id)) break;
+    visited.add(current.id);
+
+    const parent: CategoryRecord | null =
+      categoryById.get(current.parent_id) || null;
+    if (!parent) break;
+    current = parent;
+  }
+
+  return current;
+}
+
+export function getRootCategoryKey(
+  row: CategorizedRow,
+  categoryById: Map<string, CategoryRecord>,
+) {
+  return getRootCategory(row, categoryById)?.key || null;
+}
+
 export function getCategorizationCoverage(rows: CategorizedRow[]) {
   let categorized = 0;
   let manual = 0;

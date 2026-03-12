@@ -1,3 +1,4 @@
+import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinColors } from "@/constants/theme";
 import {
     getTransactionCategories,
@@ -14,9 +15,13 @@ import {
     needsCategorizationReview,
 } from "@/services/category-display";
 import { supabase } from "@/services/supabase";
-import type { CategoryRecord } from "@/types/categorization";
+import type {
+    CategoryRecord,
+    ExpenseAnalysisCategory,
+} from "@/types/categorization";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useIsFocused } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import React from "react";
 import {
     Modal,
@@ -43,6 +48,47 @@ const SUBJECT_DRIVEN_PROVIDERS = [
   "sprinque",
 ];
 
+const FIXED_FALLBACK_HINTS = [
+  "hypotheek",
+  "zorgverzekering",
+  "energie",
+  "water",
+  "gemeentelijke",
+  "gblt",
+  "autoverzekering",
+  "wegenbelasting",
+  "cv installatie",
+  "verzekering",
+];
+
+const SUBSCRIPTION_FALLBACK_HINTS = [
+  "abonnement",
+  "internet",
+  "mobiel",
+  "streaming",
+  "netflix",
+  "spotify",
+  "google",
+  "sony",
+  "playstation",
+  "ziggo",
+  "youfone",
+  "vodafone",
+  "paypal",
+];
+
+const SAVINGS_FALLBACK_HINTS = [
+  "spaar",
+  "sparen",
+  "spaarrekening",
+  "belegging",
+  "beleggen",
+  "investering",
+  "crypto",
+  "naar sparen",
+  "overboeking eigen rekening",
+];
+
 function isSubjectDrivenCounterparty(counterparty: string | null | undefined) {
   const normalized = String(counterparty || "").toLowerCase();
   if (!normalized) return false;
@@ -58,6 +104,13 @@ function normalizeSearch(value: string) {
     .trim();
 }
 
+function toLocalIsoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function getMonthBounds(monthsAgo: number) {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
@@ -66,8 +119,8 @@ function getMonthBounds(monthsAgo: number) {
   return {
     start,
     end,
-    startIso: start.toISOString().slice(0, 10),
-    endIso: end.toISOString().slice(0, 10),
+    startIso: toLocalIsoDate(start),
+    endIso: toLocalIsoDate(end),
     label: start.toLocaleDateString("nl-NL", {
       month: "long",
       year: "numeric",
@@ -87,9 +140,39 @@ type InsightTx = {
   category_id_user: string | null;
   category_confidence: number | null;
   category_source: string | null;
+  analysis_main_group: "income" | "expense" | null;
+  analysis_category:
+    | "fixed_costs"
+    | "subscriptions"
+    | "variable_costs"
+    | "savings_transfer"
+    | "income_structural"
+    | "income_variable"
+    | null;
+  recurring: boolean;
+  recurring_type: "monthly" | "quarterly" | "yearly" | "irregular" | null;
+  spending_pattern: "frequent_small_expense" | null;
+};
+
+type CashflowForecast = {
+  month_start: string;
+  expected_income_total: number;
+  expected_expense_total: number;
+  expected_fixed_costs: number;
+  expected_subscriptions: number;
+  expected_variable_costs: number;
+  expected_end_of_month_balance: number | null;
+  risk_flag: "none" | "deficit_warning";
+  top_cost_bucket_1: string | null;
+  top_cost_bucket_2: string | null;
+  top_cost_bucket_3: string | null;
 };
 
 type ReviewableInsightTx = InsightTx & { categoryLabel: string };
+type DrilldownExpenseGroup = Exclude<
+  ExpenseAnalysisCategory,
+  "savings_transfer"
+>;
 type CategoryGroup = {
   id: string;
   name: string;
@@ -177,14 +260,19 @@ function ReviewItem({
   onPress,
   onConfirm,
   saving,
+  categoryMap,
 }: {
   tx: ReviewableInsightTx;
   onPress: (tx: ReviewableInsightTx) => void;
   onConfirm: (tx: ReviewableInsightTx) => void;
   saving: boolean;
+  categoryMap: Map<string, CategoryRecord>;
 }) {
   return (
     <View style={styles.reviewRow}>
+      <View style={styles.reviewIconWrap}>
+        <TransactionCategoryIcon row={tx} categoryById={categoryMap} />
+      </View>
       <View style={styles.reviewMain}>
         <Text style={styles.reviewName} numberOfLines={1}>
           {tx.counterparty || "Onbekende tegenpartij"}
@@ -224,12 +312,93 @@ function ReviewItem({
   );
 }
 
+function toLowerHaystack(tx: InsightTx) {
+  return `${tx.counterparty || ""} ${tx.details || ""}`.toLowerCase();
+}
+
+function fallbackExpenseCategory(tx: InsightTx): ExpenseAnalysisCategory {
+  const haystack = toLowerHaystack(tx);
+  if (SAVINGS_FALLBACK_HINTS.some((hint) => haystack.includes(hint))) {
+    return "savings_transfer";
+  }
+  if (SUBSCRIPTION_FALLBACK_HINTS.some((hint) => haystack.includes(hint))) {
+    return "subscriptions";
+  }
+  if (FIXED_FALLBACK_HINTS.some((hint) => haystack.includes(hint))) {
+    return "fixed_costs";
+  }
+  return "variable_costs";
+}
+
+function resolveExpenseBucket(
+  tx: InsightTx,
+  categoryMap: Map<string, CategoryRecord>,
+): ExpenseAnalysisCategory {
+  if (
+    tx.analysis_category === "fixed_costs" ||
+    tx.analysis_category === "subscriptions" ||
+    tx.analysis_category === "variable_costs" ||
+    tx.analysis_category === "savings_transfer"
+  ) {
+    return tx.analysis_category;
+  }
+
+  const categoryId = getEffectiveCategoryId(tx);
+  const category = categoryId ? categoryMap.get(categoryId) || null : null;
+  const categoryKey = String(category?.key || "");
+
+  if (categoryKey.startsWith("savings")) return "savings_transfer";
+  if (categoryKey.startsWith("subscriptions")) return "subscriptions";
+  if (
+    categoryKey.startsWith("care_") &&
+    !categoryKey.startsWith("care_health_insurance")
+  ) {
+    return "variable_costs";
+  }
+
+  if (category?.budget_group === "savings") return "savings_transfer";
+  if (category?.budget_group === "fixed") return "fixed_costs";
+  if (category?.budget_group === "variable") return "variable_costs";
+
+  return fallbackExpenseCategory(tx);
+}
+
+function isMissingColumnError(error: unknown) {
+  const code = String((error as { code?: string })?.code || "");
+  const message = String(
+    (error as { message?: string })?.message || "",
+  ).toLowerCase();
+
+  if (code === "42703" || code === "PGRST204") return true;
+
+  return (
+    (message.includes("column") && message.includes("does not exist")) ||
+    message.includes("could not find")
+  );
+}
+
+function isMissingRelationError(error: unknown) {
+  const code = String((error as { code?: string })?.code || "");
+  const message = String(
+    (error as { message?: string })?.message || "",
+  ).toLowerCase();
+
+  if (code === "42P01" || code === "PGRST205") return true;
+
+  return message.includes("relation") && message.includes("does not exist");
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function InsightsScreen() {
+  const router = useRouter();
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
   const [transactions, setTransactions] = React.useState<InsightTx[]>([]);
+  const [forecast, setForecast] = React.useState<CashflowForecast | null>(null);
+  const [analysisSchemaMissing, setAnalysisSchemaMissing] =
+    React.useState(false);
+  const [forecastSchemaMissing, setForecastSchemaMissing] =
+    React.useState(false);
   const [monthOffset, setMonthOffset] = React.useState(0);
-  const [totalSpent, setTotalSpent] = React.useState(0);
   const [totalIncome, setTotalIncome] = React.useState(0);
   const [txCount, setTxCount] = React.useState(0);
   const [selectedTx, setSelectedTx] =
@@ -239,6 +408,7 @@ export default function InsightsScreen() {
   const [expandedParents, setExpandedParents] = React.useState<
     Record<string, boolean>
   >({});
+  const forecastLoadInFlight = React.useRef(false);
   const isFocused = useIsFocused();
   const backgroundStatus = useCategorizationStatus();
 
@@ -340,8 +510,44 @@ export default function InsightsScreen() {
     [monthOffset],
   );
 
+  const monthReport = React.useMemo(() => {
+    let fixed = 0;
+    let subscriptions = 0;
+    let variable = 0;
+    let savingsTransfers = 0;
+
+    for (const tx of transactions) {
+      if (tx.amount >= 0) continue;
+
+      const bucket = resolveExpenseBucket(tx, categoryMap);
+
+      const value = Math.abs(tx.amount);
+      if (bucket === "fixed_costs") fixed += value;
+      else if (bucket === "subscriptions") subscriptions += value;
+      else if (bucket === "variable_costs") variable += value;
+      else savingsTransfers += value;
+    }
+
+    const expenses = fixed + subscriptions + variable;
+    const outflow = expenses + savingsTransfers;
+
+    return {
+      fixed,
+      subscriptions,
+      variable,
+      savingsTransfers,
+      expenses,
+      outflow,
+      income: totalIncome,
+      net: totalIncome - expenses,
+    };
+  }, [categoryMap, totalIncome, transactions]);
+
   const spendingByCategory = React.useMemo<Category[]>(() => {
-    const expenseRows = displayTransactions.filter((tx) => tx.amount < 0);
+    const expenseRows = displayTransactions.filter((tx) => {
+      if (tx.amount >= 0) return false;
+      return resolveExpenseBucket(tx, categoryMap) !== "savings_transfer";
+    });
     const totals = new Map<string, number>();
 
     for (const tx of expenseRows) {
@@ -357,7 +563,7 @@ export default function InsightsScreen() {
         amount,
         color: CAT_COLORS[index % CAT_COLORS.length],
       }));
-  }, [displayTransactions]);
+  }, [categoryMap, displayTransactions]);
 
   const reviewQueue = React.useMemo(
     () =>
@@ -373,8 +579,8 @@ export default function InsightsScreen() {
 
     if (topCategory) {
       const share =
-        totalSpent > 0
-          ? Math.round((topCategory.amount / totalSpent) * 100)
+        monthReport.expenses > 0
+          ? Math.round((topCategory.amount / monthReport.expenses) * 100)
           : 0;
       cards.push({
         title: `Grootste uitgave: ${topCategory.label}`,
@@ -399,7 +605,12 @@ export default function InsightsScreen() {
     });
 
     return cards;
-  }, [coverage.manual, reviewQueue.length, spendingByCategory, totalSpent]);
+  }, [
+    coverage.manual,
+    monthReport.expenses,
+    reviewQueue.length,
+    spendingByCategory,
+  ]);
 
   const loadCategories = React.useCallback(async () => {
     try {
@@ -412,20 +623,46 @@ export default function InsightsScreen() {
 
   const load = React.useCallback(async () => {
     try {
-      const { data } = await supabase
-        .from("transactions")
+      const baseSelect =
+        "id,amount,details,counterparty,date,category_id_auto,category_id_user,category_confidence,category_source";
+      const analysisSelect =
+        "analysis_main_group,analysis_category,recurring,recurring_type,spending_pattern";
+      const transactionsQuery = supabase.from("transactions") as any;
+
+      let queryResult = await transactionsQuery
         .select(
-          "id,amount,details,counterparty,date,category_id_auto,category_id_user,category_confidence,category_source",
+          analysisSchemaMissing
+            ? baseSelect
+            : `${baseSelect},${analysisSelect}`,
         )
         .gte("date", selectedMonth.startIso)
         .lt("date", selectedMonth.endIso)
         .order("date", { ascending: false })
         .limit(300);
 
+      if (
+        queryResult.error &&
+        !analysisSchemaMissing &&
+        isMissingColumnError(queryResult.error)
+      ) {
+        setAnalysisSchemaMissing(true);
+        setForecastSchemaMissing(true);
+
+        queryResult = await transactionsQuery
+          .select(baseSelect)
+          .gte("date", selectedMonth.startIso)
+          .lt("date", selectedMonth.endIso)
+          .order("date", { ascending: false })
+          .limit(300);
+      }
+
+      if (queryResult.error) throw queryResult.error;
+
+      const data = queryResult.data || [];
+
       if (!data?.length) {
         setTransactions([]);
         setTxCount(0);
-        setTotalSpent(0);
         setTotalIncome(0);
         return;
       }
@@ -440,23 +677,81 @@ export default function InsightsScreen() {
         category_confidence:
           r.category_confidence == null ? null : Number(r.category_confidence),
         category_source: r.category_source || null,
+        analysis_main_group: r.analysis_main_group || null,
+        analysis_category: r.analysis_category || null,
+        recurring: "recurring" in r ? Boolean(r.recurring) : false,
+        recurring_type: r.recurring_type || null,
+        spending_pattern: r.spending_pattern || null,
       }));
 
       setTransactions(rows);
       setTxCount(rows.length);
 
-      const spent = rows
-        .filter((r) => r.amount < 0)
-        .reduce((s, r) => s + Math.abs(r.amount), 0);
       const income = rows
         .filter((r) => r.amount > 0)
         .reduce((s, r) => s + r.amount, 0);
-      setTotalSpent(spent);
       setTotalIncome(income);
     } catch (e) {
       console.error("[v0] insights load error", e);
     }
-  }, [selectedMonth.endIso, selectedMonth.startIso]);
+  }, [analysisSchemaMissing, selectedMonth.endIso, selectedMonth.startIso]);
+
+  const loadForecast = React.useCallback(async () => {
+    if (forecastSchemaMissing) {
+      setForecast(null);
+      return;
+    }
+    if (forecastLoadInFlight.current) {
+      return;
+    }
+
+    forecastLoadInFlight.current = true;
+
+    try {
+      const { data, error } = await supabase
+        .from("monthly_cashflow_forecasts")
+        .select(
+          "month_start,expected_income_total,expected_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3",
+        )
+        .eq("month_start", selectedMonth.startIso)
+        .maybeSingle();
+
+      if (error) {
+        if (isMissingRelationError(error)) {
+          setForecastSchemaMissing(true);
+          setForecast(null);
+          return;
+        }
+        throw error;
+      }
+      if (!data) {
+        setForecast(null);
+        return;
+      }
+
+      setForecast({
+        month_start: String(data.month_start),
+        expected_income_total: Number(data.expected_income_total || 0),
+        expected_expense_total: Number(data.expected_expense_total || 0),
+        expected_fixed_costs: Number(data.expected_fixed_costs || 0),
+        expected_subscriptions: Number(data.expected_subscriptions || 0),
+        expected_variable_costs: Number(data.expected_variable_costs || 0),
+        expected_end_of_month_balance:
+          data.expected_end_of_month_balance == null
+            ? null
+            : Number(data.expected_end_of_month_balance),
+        risk_flag: (data.risk_flag || "none") as "none" | "deficit_warning",
+        top_cost_bucket_1: data.top_cost_bucket_1 || null,
+        top_cost_bucket_2: data.top_cost_bucket_2 || null,
+        top_cost_bucket_3: data.top_cost_bucket_3 || null,
+      });
+    } catch (error) {
+      console.error("[v0] insights forecast load error", error);
+      setForecast(null);
+    } finally {
+      forecastLoadInFlight.current = false;
+    }
+  }, [forecastSchemaMissing, selectedMonth.startIso]);
 
   React.useEffect(() => {
     if (!isFocused) return;
@@ -465,14 +760,86 @@ export default function InsightsScreen() {
 
   React.useEffect(() => {
     if (!isFocused) return;
-    void load();
-  }, [isFocused, load]);
+
+    let cancelled = false;
+    const run = async () => {
+      await load();
+      if (cancelled) return;
+      await loadForecast();
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [isFocused, load, loadForecast]);
 
   React.useEffect(() => {
     if (!isFocused || !backgroundStatus.lastCompletedAt) return;
-    void loadCategories();
-    void load();
-  }, [backgroundStatus.lastCompletedAt, isFocused, load, loadCategories]);
+
+    let cancelled = false;
+    const run = async () => {
+      await loadCategories();
+      if (cancelled) return;
+      await load();
+      if (cancelled) return;
+      await loadForecast();
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    backgroundStatus.lastCompletedAt,
+    isFocused,
+    load,
+    loadCategories,
+    loadForecast,
+  ]);
+
+  const openAnalysisDetail = React.useCallback(
+    (group: DrilldownExpenseGroup) => {
+      router.push({
+        pathname: "/analysis-detail",
+        params: {
+          group,
+          monthStart: selectedMonth.startIso,
+          monthEnd: selectedMonth.endIso,
+          monthLabel: selectedMonth.label,
+        },
+      });
+    },
+    [router, selectedMonth.endIso, selectedMonth.label, selectedMonth.startIso],
+  );
+
+  const topCostLabel = React.useCallback((bucket: string | null) => {
+    if (bucket === "variable_costs") return "Variabele kosten";
+    if (bucket === "subscriptions") return "Abonnementen";
+    if (bucket === "fixed_costs") return "Vaste lasten";
+    if (bucket === "savings_transfer") return "Overboeken naar sparen";
+    return null;
+  }, []);
+
+  const forecastTopCostLabels = React.useMemo(
+    () =>
+      [
+        forecast?.top_cost_bucket_1,
+        forecast?.top_cost_bucket_2,
+        forecast?.top_cost_bucket_3,
+      ]
+        .map((bucket) => topCostLabel(bucket || null))
+        .filter(
+          (label): label is NonNullable<ReturnType<typeof topCostLabel>> =>
+            Boolean(label),
+        ),
+    [
+      forecast?.top_cost_bucket_1,
+      forecast?.top_cost_bucket_2,
+      forecast?.top_cost_bucket_3,
+      topCostLabel,
+    ],
+  );
 
   const handleReviewSave = React.useCallback(
     async (categoryId: string) => {
@@ -550,7 +917,7 @@ export default function InsightsScreen() {
   );
 
   const hasMonthData = txCount > 0;
-  const netSavings = totalIncome - totalSpent;
+  const netResult = monthReport.net;
 
   return (
     <View style={styles.root}>
@@ -612,31 +979,166 @@ export default function InsightsScreen() {
                 !hasMonthData && styles.emptyAmountText,
               ]}
             >
-              {hasMonthData ? fmt.format(totalSpent) : "Nog geen data"}
+              {hasMonthData
+                ? fmt.format(monthReport.expenses)
+                : "Nog geen data"}
             </Text>
           </View>
         </View>
 
         {/* Net card */}
         <View style={styles.netCard}>
-          <Text style={styles.netLabel}>Net in geselecteerde maand</Text>
+          <Text style={styles.netLabel}>Netto resultaat (excl. sparen)</Text>
           <Text
             style={[
               styles.netValue,
               hasMonthData
-                ? netSavings >= 0 && { color: FinColors.green }
+                ? netResult >= 0 && { color: FinColors.green }
                 : styles.emptyAmountText,
             ]}
           >
             {hasMonthData
-              ? `${netSavings >= 0 ? "+" : ""}${fmt.format(netSavings)}`
+              ? `${netResult >= 0 ? "+" : ""}${fmt.format(netResult)}`
               : "Nog geen data"}
           </Text>
+          {hasMonthData ? (
+            <Text style={styles.txNote}>
+              Overboekingen naar sparen:{" "}
+              {fmt.format(monthReport.savingsTransfers)}
+            </Text>
+          ) : null}
           {txCount > 0 ? (
             <Text style={styles.txNote}>{txCount} transactions analysed</Text>
           ) : (
             <Text style={styles.txNote}>
               Er zijn nog geen transacties in deze maand.
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Maandrapport</Text>
+          <View style={styles.monthReportRow}>
+            <Text style={styles.monthReportLabel}>Inkomsten</Text>
+            <Text style={[styles.monthReportValue, { color: FinColors.green }]}>
+              +{fmt.format(monthReport.income)}
+            </Text>
+          </View>
+          <View style={styles.monthReportRow}>
+            <Text style={styles.monthReportLabel}>
+              Uitgaven totaal (excl. sparen)
+            </Text>
+            <Text style={styles.monthReportValue}>
+              {fmt.format(monthReport.expenses)}
+            </Text>
+          </View>
+          <Pressable
+            style={styles.monthReportRowButton}
+            onPress={() => openAnalysisDetail("fixed_costs")}
+          >
+            <Text style={styles.monthReportLabel}>Vaste lasten</Text>
+            <Text style={styles.monthReportValue}>
+              {fmt.format(monthReport.fixed)}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={styles.monthReportRowButton}
+            onPress={() => openAnalysisDetail("subscriptions")}
+          >
+            <Text style={styles.monthReportLabel}>Abonnementen</Text>
+            <Text style={styles.monthReportValue}>
+              {fmt.format(monthReport.subscriptions)}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={styles.monthReportRowButton}
+            onPress={() => openAnalysisDetail("variable_costs")}
+          >
+            <Text style={styles.monthReportLabel}>Variabele kosten</Text>
+            <Text style={styles.monthReportValue}>
+              {fmt.format(monthReport.variable)}
+            </Text>
+          </Pressable>
+          <View style={styles.monthReportRow}>
+            <Text style={styles.monthReportLabel}>Overboeken naar sparen</Text>
+            <Text style={styles.monthReportValue}>
+              {fmt.format(monthReport.savingsTransfers)}
+            </Text>
+          </View>
+          <View style={styles.monthReportRow}>
+            <Text style={styles.monthReportLabel}>Totale uitstroom</Text>
+            <Text style={styles.monthReportValue}>
+              {fmt.format(monthReport.outflow)}
+            </Text>
+          </View>
+          <View style={[styles.monthReportRow, styles.monthReportNetRow]}>
+            <Text style={styles.monthReportNetLabel}>
+              Netto resultaat (excl. sparen)
+            </Text>
+            <Text
+              style={[
+                styles.monthReportNetValue,
+                monthReport.net >= 0 && { color: FinColors.green },
+              ]}
+            >
+              {monthReport.net >= 0 ? "+" : ""}
+              {fmt.format(monthReport.net)}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Cashflow voorspelling</Text>
+          {forecast ? (
+            <>
+              <View style={styles.monthReportRow}>
+                <Text style={styles.monthReportLabel}>Verwachte inkomsten</Text>
+                <Text
+                  style={[styles.monthReportValue, { color: FinColors.green }]}
+                >
+                  +{fmt.format(forecast.expected_income_total)}
+                </Text>
+              </View>
+              <View style={styles.monthReportRow}>
+                <Text style={styles.monthReportLabel}>Verwachte uitgaven</Text>
+                <Text style={styles.monthReportValue}>
+                  {fmt.format(forecast.expected_expense_total)}
+                </Text>
+              </View>
+              <View style={[styles.monthReportRow, styles.monthReportNetRow]}>
+                <Text style={styles.monthReportNetLabel}>
+                  Verwacht saldo eind maand
+                </Text>
+                <Text
+                  style={[
+                    styles.monthReportNetValue,
+                    forecast.expected_end_of_month_balance != null &&
+                      forecast.expected_end_of_month_balance >= 0 && {
+                        color: FinColors.green,
+                      },
+                  ]}
+                >
+                  {forecast.expected_end_of_month_balance == null
+                    ? "Onbekend"
+                    : `${forecast.expected_end_of_month_balance >= 0 ? "+" : ""}${fmt.format(forecast.expected_end_of_month_balance)}`}
+                </Text>
+              </View>
+              {forecast.risk_flag === "deficit_warning" ||
+              (forecast.expected_end_of_month_balance != null &&
+                forecast.expected_end_of_month_balance < 0) ? (
+                <Text style={styles.warningText}>
+                  Verwacht tekort deze maand
+                </Text>
+              ) : null}
+              {forecastTopCostLabels.length ? (
+                <Text style={styles.forecastMetaText}>
+                  Grootste kostenposten: {forecastTopCostLabels.join(", ")}
+                </Text>
+              ) : null}
+            </>
+          ) : (
+            <Text style={styles.emptyStateText}>
+              Nog geen voorspelling beschikbaar voor {selectedMonth.label}.
             </Text>
           )}
         </View>
@@ -691,6 +1193,7 @@ export default function InsightsScreen() {
                 <ReviewItem
                   key={tx.id}
                   tx={tx}
+                  categoryMap={categoryMap}
                   onPress={openReviewModal}
                   onConfirm={handleQuickConfirm}
                   saving={savingReview}
@@ -955,6 +1458,63 @@ const styles = StyleSheet.create({
   },
   reviewSummaryMetaText: { fontSize: 12, color: FinColors.textMuted },
 
+  monthReportRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  monthReportRowButton: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  monthReportLabel: {
+    fontSize: 13,
+    color: FinColors.textSecondary,
+    fontWeight: "500",
+  },
+  monthReportValue: {
+    fontSize: 14,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  monthReportNetRow: {
+    borderTopWidth: 1,
+    borderTopColor: FinColors.borderSubtle,
+    paddingTop: 10,
+    marginTop: 4,
+  },
+  monthReportNetLabel: {
+    fontSize: 13,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  monthReportNetValue: {
+    fontSize: 15,
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+  },
+  warningText: {
+    fontSize: 13,
+    color: FinColors.red,
+    fontWeight: "700",
+    marginTop: 6,
+  },
+  forecastMetaText: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+    marginTop: 8,
+    lineHeight: 18,
+  },
+
   // Card
   card: {
     backgroundColor: FinColors.bgCard,
@@ -979,6 +1539,9 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: FinColors.borderSubtle,
+  },
+  reviewIconWrap: {
+    marginTop: 2,
   },
   reviewMain: { flex: 1 },
   reviewName: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },

@@ -1,0 +1,2 @@
+-- Placeholder migration kept to match remote version history (20260322).
+-- Actual analysis/forecast schema is applied in 20260330_add_analysis_and_forecast_schema.sql.

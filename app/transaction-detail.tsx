@@ -1,3 +1,4 @@
+import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinColors } from "@/constants/theme";
 import { recategorizeSingleTransaction } from "@/services/categorization";
 import {
@@ -702,6 +703,12 @@ export default function TransactionDetailScreen() {
                     router.push(`/transaction-detail?id=${item.id}`)
                   }
                 >
+                  <View style={styles.historyIconWrap}>
+                    <TransactionCategoryIcon
+                      row={item}
+                      categoryById={categoryById}
+                    />
+                  </View>
                   <View style={styles.historyLeft}>
                     <Text style={styles.historyDate}>{item.date}</Text>
                     <Text style={styles.historyDesc} numberOfLines={2}>
@@ -1005,11 +1012,14 @@ const styles = StyleSheet.create({
   // History
   historyItem: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: FinColors.border,
+    gap: 10,
+  },
+  historyIconWrap: {
+    marginRight: 2,
   },
   historyLeft: { flex: 1, gap: 3 },
   historyDate: { color: FinColors.textSecondary, fontSize: 13 },
