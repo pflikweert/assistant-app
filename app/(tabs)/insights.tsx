@@ -1,5 +1,11 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinColors } from "@/constants/theme";
+import { generateBudgetCoachReport } from "@/services/budget-coach";
+import { computeBudgetPlan } from "@/services/budget-plan";
+import {
+  upsertBudgetPlanSettings,
+  upsertMonthlyBudgetValue,
+} from "@/services/budget-plan-repository";
 import {
     getTransactionCategories,
     setTransactionManualCategory,
@@ -16,6 +22,9 @@ import {
 } from "@/services/category-display";
 import { supabase } from "@/services/supabase";
 import type {
+  BudgetCategoryKey,
+  BudgetPlanComputation,
+  BudgetPlanMode,
     CategoryRecord,
     ExpenseAnalysisCategory,
 } from "@/types/categorization";
@@ -151,6 +160,30 @@ function getMonthBounds(monthsAgo: number) {
   };
 }
 
+function formatUtilization(value: number) {
+  if (!Number.isFinite(value)) return ">100%";
+  return `${Math.round(value * 100)}%`;
+}
+
+function parseBudgetAmountInput(value: string): number | null {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/,/g, ".")
+    .replace(/[^0-9.-]/g, "");
+
+  if (!normalized) return null;
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(parsed, 0);
+}
+
+function formatBudgetModeLabel(mode: BudgetPlanMode) {
+  if (mode === "active_savings") return "Actief sparen";
+  if (mode === "balanced") return "Gebalanceerd";
+  return "Custom";
+}
+
 // ─── Category bar ─────────────────────────────────────────────────────────────
 type Category = { label: string; amount: number; color: string };
 type InsightTx = {
@@ -209,6 +242,23 @@ type CategoryGroup = {
 };
 
 const CAT_COLORS = ["#7dd3a1", "#94a3b8", "#a3a3a3", "#6b6b6b", "#525252"];
+
+const BUDGET_EDIT_ORDER: BudgetCategoryKey[] = [
+  "fixed_costs",
+  "subscriptions",
+  "variable_costs",
+  "groceries",
+  "fuel",
+  "smoking",
+  "other",
+  "savings_target",
+];
+
+const BUDGET_MODE_OPTIONS: { value: BudgetPlanMode; label: string }[] = [
+  { value: "active_savings", label: "Actief sparen" },
+  { value: "balanced", label: "Gebalanceerd" },
+  { value: "custom", label: "Custom" },
+];
 
 function CategoryBar({ categories }: { categories: Category[] }) {
   const total = categories.reduce((s, c) => s + c.amount, 0) || 1;
@@ -422,22 +472,35 @@ export default function InsightsScreen() {
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
   const [transactions, setTransactions] = React.useState<InsightTx[]>([]);
   const [forecast, setForecast] = React.useState<CashflowForecast | null>(null);
+  const [budgetPlan, setBudgetPlan] =
+    React.useState<BudgetPlanComputation | null>(null);
   const [analysisSchemaMissing, setAnalysisSchemaMissing] =
     React.useState(false);
   const [forecastSchemaMissing, setForecastSchemaMissing] =
     React.useState(false);
+  const [budgetSchemaMissing, setBudgetSchemaMissing] = React.useState(false);
   const [monthOffset, setMonthOffset] = React.useState(0);
   const [totalIncome, setTotalIncome] = React.useState(0);
   const [txCount, setTxCount] = React.useState(0);
   const [selectedTx, setSelectedTx] =
     React.useState<ReviewableInsightTx | null>(null);
   const [incomeDetailsOpen, setIncomeDetailsOpen] = React.useState(false);
+  const [budgetEditOpen, setBudgetEditOpen] = React.useState(false);
+  const [savingBudgetEdit, setSavingBudgetEdit] = React.useState(false);
+  const [budgetCoachLoading, setBudgetCoachLoading] = React.useState(false);
+  const [budgetModeDraft, setBudgetModeDraft] =
+    React.useState<BudgetPlanMode>("active_savings");
+  const [budgetFactorDraft, setBudgetFactorDraft] = React.useState("0.90");
+  const [budgetDraftValues, setBudgetDraftValues] = React.useState<
+    Partial<Record<BudgetCategoryKey, string>>
+  >({});
   const [savingReview, setSavingReview] = React.useState(false);
   const [categorySearch, setCategorySearch] = React.useState("");
   const [expandedParents, setExpandedParents] = React.useState<
     Record<string, boolean>
   >({});
   const forecastLoadInFlight = React.useRef(false);
+  const budgetLoadInFlight = React.useRef(false);
   const isFocused = useIsFocused();
   const backgroundStatus = useCategorizationStatus();
 
@@ -816,6 +879,62 @@ export default function InsightsScreen() {
     }
   }, [forecastSchemaMissing, selectedMonth.startIso]);
 
+  const loadBudgetPlan = React.useCallback(async () => {
+    if (budgetSchemaMissing) {
+      setBudgetPlan(null);
+      setBudgetCoachLoading(false);
+      return;
+    }
+    if (budgetLoadInFlight.current) {
+      return;
+    }
+
+    budgetLoadInFlight.current = true;
+
+    try {
+      const referenceDate = new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
+      referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
+      const computed = await computeBudgetPlan(referenceDate, "default");
+      setBudgetPlan(computed);
+
+      setBudgetCoachLoading(true);
+      try {
+        const liveCoachReport = await generateBudgetCoachReport(computed);
+        setBudgetPlan((current) => {
+          if (!current) return current;
+
+          if (
+            current.planKey !== computed.planKey ||
+            current.referenceDate !== computed.referenceDate ||
+            current.monthStart !== computed.monthStart
+          ) {
+            return current;
+          }
+
+          return {
+            ...current,
+            coachReport: liveCoachReport,
+          };
+        });
+      } finally {
+        setBudgetCoachLoading(false);
+      }
+    } catch (error) {
+      if (isMissingRelationError(error)) {
+        setBudgetSchemaMissing(true);
+        setBudgetPlan(null);
+        setBudgetCoachLoading(false);
+        return;
+      }
+
+      console.error("[v0] insights budget plan load error", error);
+      setBudgetPlan(null);
+      setBudgetCoachLoading(false);
+    } finally {
+      budgetLoadInFlight.current = false;
+    }
+  }, [budgetSchemaMissing, selectedMonth.endIso]);
+
   React.useEffect(() => {
     if (!isFocused) return;
     void loadCategories();
@@ -829,13 +948,15 @@ export default function InsightsScreen() {
       await load();
       if (cancelled) return;
       await loadForecast();
+      if (cancelled) return;
+      await loadBudgetPlan();
     };
 
     void run();
     return () => {
       cancelled = true;
     };
-  }, [isFocused, load, loadForecast]);
+  }, [isFocused, load, loadBudgetPlan, loadForecast]);
 
   React.useEffect(() => {
     if (!isFocused || !backgroundStatus.lastCompletedAt) return;
@@ -847,6 +968,8 @@ export default function InsightsScreen() {
       await load();
       if (cancelled) return;
       await loadForecast();
+      if (cancelled) return;
+      await loadBudgetPlan();
     };
 
     void run();
@@ -857,6 +980,7 @@ export default function InsightsScreen() {
     backgroundStatus.lastCompletedAt,
     isFocused,
     load,
+    loadBudgetPlan,
     loadCategories,
     loadForecast,
   ]);
@@ -903,6 +1027,104 @@ export default function InsightsScreen() {
       topCostLabel,
     ],
   );
+
+  const editableBudgetRows = React.useMemo(() => {
+    if (!budgetPlan) return [];
+    const byKey = new Map(
+      budgetPlan.recommendations.map((row) => [row.categoryKey, row]),
+    );
+
+    return BUDGET_EDIT_ORDER.map((key) => byKey.get(key)).filter(
+      (row): row is BudgetPlanComputation["recommendations"][number] =>
+        Boolean(row),
+    );
+  }, [budgetPlan]);
+
+  const budgetWarningSummary = React.useMemo(() => {
+    const summary = {
+      critical: 0,
+      warning: 0,
+      info: 0,
+    };
+
+    for (const warning of budgetPlan?.warnings || []) {
+      if (warning.severity === "critical") summary.critical += 1;
+      else if (warning.severity === "warning") summary.warning += 1;
+      else summary.info += 1;
+    }
+
+    return summary;
+  }, [budgetPlan?.warnings]);
+
+  const openBudgetEdit = React.useCallback(() => {
+    if (!budgetPlan) return;
+
+    setBudgetModeDraft(budgetPlan.settings.mode);
+    setBudgetFactorDraft(budgetPlan.settings.adjustmentFactor.toFixed(2));
+
+    const nextDraft: Partial<Record<BudgetCategoryKey, string>> = {};
+    for (const row of budgetPlan.recommendations) {
+      nextDraft[row.categoryKey] = row.monthlyBudget.toFixed(2);
+    }
+
+    setBudgetDraftValues(nextDraft);
+    setBudgetEditOpen(true);
+  }, [budgetPlan]);
+
+  const saveBudgetEdit = React.useCallback(async () => {
+    if (!budgetPlan) return;
+
+    setSavingBudgetEdit(true);
+    try {
+      const parsedFactor = parseBudgetAmountInput(budgetFactorDraft);
+      const safeFactor = Math.max(
+        0.01,
+        Math.min(1.5, parsedFactor ?? budgetPlan.settings.adjustmentFactor),
+      );
+
+      await upsertBudgetPlanSettings({
+        planKey: "default",
+        mode: budgetModeDraft,
+        adjustmentFactor: safeFactor,
+      });
+
+      const updates: Promise<unknown>[] = [];
+      for (const row of editableBudgetRows) {
+        const rawValue = budgetDraftValues[row.categoryKey];
+        const parsed = parseBudgetAmountInput(rawValue || "");
+        if (parsed == null) continue;
+
+        updates.push(
+          upsertMonthlyBudgetValue({
+            planKey: "default",
+            monthStartIso: selectedMonth.startIso,
+            categoryKey: row.categoryKey,
+            monthlyBudget: parsed,
+            source: "manual",
+          }),
+        );
+      }
+
+      if (updates.length) {
+        await Promise.all(updates);
+      }
+
+      setBudgetEditOpen(false);
+      await loadBudgetPlan();
+    } catch (error) {
+      console.error("[v0] insights budget save error", error);
+    } finally {
+      setSavingBudgetEdit(false);
+    }
+  }, [
+    budgetDraftValues,
+    budgetFactorDraft,
+    budgetModeDraft,
+    budgetPlan,
+    editableBudgetRows,
+    loadBudgetPlan,
+    selectedMonth.startIso,
+  ]);
 
   const handleReviewSave = React.useCallback(
     async (categoryId: string) => {
@@ -1214,6 +1436,194 @@ export default function InsightsScreen() {
           )}
         </View>
 
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Budget Plan</Text>
+          {budgetPlan ? (
+            <>
+              <View style={styles.monthReportRow}>
+                <Text style={styles.monthReportLabel}>Aanbevolen spaardoel</Text>
+                <Text style={[styles.monthReportValue, { color: FinColors.green }]}>
+                  +{fmt.format(budgetPlan.recommendedSavings)}
+                </Text>
+              </View>
+              <View style={styles.monthReportRow}>
+                <Text style={styles.monthReportLabel}>Potentieel spaargeld</Text>
+                <Text style={styles.monthReportValue}>
+                  {fmt.format(budgetPlan.savingsPotential)}
+                </Text>
+              </View>
+              <View style={styles.monthReportRow}>
+                <Text style={styles.monthReportLabel}>Weekbudget totaal</Text>
+                <Text style={styles.monthReportValue}>
+                  {fmt.format(budgetPlan.weeklyBudgetTotal)}
+                </Text>
+              </View>
+
+              <Text style={styles.budgetMetaText}>
+                Modus: {formatBudgetModeLabel(budgetPlan.settings.mode)} - Factor:{" "}
+                {budgetPlan.settings.adjustmentFactor.toFixed(2)}
+              </Text>
+
+              <Pressable style={styles.budgetEditButton} onPress={openBudgetEdit}>
+                <Text style={styles.budgetEditButtonText}>Budget aanpassen</Text>
+              </Pressable>
+
+              <View style={styles.budgetRecommendationList}>
+                {budgetPlan.recommendations
+                  .filter((row) => row.categoryKey !== "savings_target")
+                  .slice(0, 6)
+                  .map((row) => {
+                    const utilizationStyle =
+                      !Number.isFinite(row.utilization) || row.utilization >= 1.25
+                        ? styles.budgetUtilizationCritical
+                        : row.utilization >= 1.1
+                          ? styles.budgetUtilizationWarning
+                          : row.utilization > 1
+                            ? styles.budgetUtilizationInfo
+                            : styles.budgetUtilizationOk;
+
+                    return (
+                      <View key={row.categoryKey} style={styles.budgetRecommendationRow}>
+                        <View style={styles.budgetRecommendationMain}>
+                          <Text style={styles.budgetRecommendationLabel}>{row.label}</Text>
+                          <Text style={styles.budgetRecommendationMeta}>
+                            Actueel {fmt.format(row.monthlyActual)} van {fmt.format(row.monthlyBudget)}
+                          </Text>
+                        </View>
+                        <View style={styles.budgetRecommendationAside}>
+                          <Text style={styles.budgetRecommendationWeekly}>
+                            {fmt.format(row.weeklyBudget)}/wk
+                          </Text>
+                          <Text style={[styles.budgetRecommendationUtilization, utilizationStyle]}>
+                            {formatUtilization(row.utilization)}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+              </View>
+
+              {budgetPlan.warnings.length ? (
+                <View style={styles.budgetWarningWrap}>
+                  <Text style={styles.budgetWarningTitle}>Waarschuwingen</Text>
+                  <View style={styles.budgetWarningSummaryRow}>
+                    {budgetWarningSummary.critical > 0 ? (
+                      <View
+                        style={[
+                          styles.budgetWarningPill,
+                          styles.budgetWarningPillCritical,
+                        ]}
+                      >
+                        <Text style={styles.budgetWarningPillText}>
+                          Critical {budgetWarningSummary.critical}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {budgetWarningSummary.warning > 0 ? (
+                      <View
+                        style={[
+                          styles.budgetWarningPill,
+                          styles.budgetWarningPillWarning,
+                        ]}
+                      >
+                        <Text style={styles.budgetWarningPillText}>
+                          Warning {budgetWarningSummary.warning}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {budgetWarningSummary.info > 0 ? (
+                      <View
+                        style={[
+                          styles.budgetWarningPill,
+                          styles.budgetWarningPillInfo,
+                        ]}
+                      >
+                        <Text style={styles.budgetWarningPillText}>
+                          Info {budgetWarningSummary.info}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  {budgetPlan.warnings.slice(0, 4).map((warning, index) => {
+                    const warningDotStyle =
+                      warning.severity === "critical"
+                        ? styles.budgetWarningDotCritical
+                        : warning.severity === "warning"
+                          ? styles.budgetWarningDotWarning
+                          : styles.budgetWarningDotInfo;
+
+                    return (
+                      <View
+                        key={`${warning.categoryKey}-${warning.severity}-${index}`}
+                        style={styles.budgetWarningRow}
+                      >
+                        <View style={[styles.budgetWarningDot, warningDotStyle]} />
+                        <Text style={styles.budgetWarningText}>{warning.message}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <Text style={styles.budgetHealthyText}>
+                  Geen overschrijdingen: je budget ligt op schema.
+                </Text>
+              )}
+
+              <View style={styles.budgetCoachWrap}>
+                <View style={styles.budgetCoachHeaderRow}>
+                  <Text style={styles.budgetCoachTitle}>Budget Coach</Text>
+                  <Text style={styles.budgetCoachMeta}>
+                    {budgetCoachLoading ? "Live advies ophalen..." : "Live advies"}
+                  </Text>
+                </View>
+                <Text style={styles.budgetCoachSummary}>
+                  {budgetPlan.coachReport.sections.summary}
+                </Text>
+
+                {budgetPlan.coachReport.sections.strengths.length ? (
+                  <View style={styles.budgetCoachSection}>
+                    <Text style={styles.budgetCoachSectionTitle}>Sterke punten</Text>
+                    {budgetPlan.coachReport.sections.strengths.map((item, index) => (
+                      <Text key={`strength-${index}`} style={styles.budgetCoachListItem}>
+                        - {item}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+
+                {budgetPlan.coachReport.sections.risks.length ? (
+                  <View style={styles.budgetCoachSection}>
+                    <Text style={styles.budgetCoachSectionTitle}>Risico&apos;s</Text>
+                    {budgetPlan.coachReport.sections.risks.map((item, index) => (
+                      <Text key={`risk-${index}`} style={styles.budgetCoachListItem}>
+                        - {item}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+
+                {budgetPlan.coachReport.sections.actions.length ? (
+                  <View style={styles.budgetCoachSection}>
+                    <Text style={styles.budgetCoachSectionTitle}>Acties deze week</Text>
+                    {budgetPlan.coachReport.sections.actions.map((item, index) => (
+                      <Text key={`action-${index}`} style={styles.budgetCoachListItem}>
+                        - {item}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            </>
+          ) : (
+            <Text style={styles.emptyStateText}>
+              {budgetSchemaMissing
+                ? "Budgetschema nog niet beschikbaar in deze omgeving."
+                : `Nog geen budgetplan beschikbaar voor ${selectedMonth.label}.`}
+            </Text>
+          )}
+        </View>
+
         <View style={styles.reviewSummaryCard}>
           <View style={styles.reviewSummaryHeader}>
             <Text style={styles.reviewSummaryTitle}>
@@ -1395,6 +1805,107 @@ export default function InsightsScreen() {
             >
               <Text style={styles.modalCloseText}>Sluiten</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={budgetEditOpen}
+        onRequestClose={() => setBudgetEditOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Budgetbeheer</Text>
+            <Text style={styles.modalSub}>
+              Instellingen voor {selectedMonth.label}
+            </Text>
+
+            <Text style={styles.budgetEditSectionTitle}>Budgetmodus</Text>
+            <View style={styles.budgetModeRow}>
+              {BUDGET_MODE_OPTIONS.map((option) => {
+                const selected = budgetModeDraft === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    style={[
+                      styles.budgetModeButton,
+                      selected && styles.budgetModeButtonActive,
+                    ]}
+                    onPress={() => setBudgetModeDraft(option.value)}
+                  >
+                    <Text
+                      style={[
+                        styles.budgetModeButtonText,
+                        selected && styles.budgetModeButtonTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={styles.budgetEditSectionTitle}>Besparingsfactor</Text>
+            <TextInput
+              value={budgetFactorDraft}
+              onChangeText={setBudgetFactorDraft}
+              placeholder="0.90"
+              placeholderTextColor={FinColors.textMuted}
+              style={styles.modalSearchInput}
+              keyboardType="decimal-pad"
+            />
+
+            <Text style={styles.budgetEditSectionTitle}>Maandbudget per categorie</Text>
+            <ScrollView style={styles.budgetEditList}>
+              {editableBudgetRows.map((row) => (
+                <View key={row.categoryKey} style={styles.budgetEditRow}>
+                  <View style={styles.budgetEditRowMain}>
+                    <Text style={styles.budgetEditRowLabel}>{row.label}</Text>
+                    <Text style={styles.budgetEditRowMeta}>
+                      Actueel: {fmt.format(row.monthlyActual)}
+                    </Text>
+                  </View>
+                  <TextInput
+                    value={
+                      budgetDraftValues[row.categoryKey] ??
+                      row.monthlyBudget.toFixed(2)
+                    }
+                    onChangeText={(text) =>
+                      setBudgetDraftValues((current) => ({
+                        ...current,
+                        [row.categoryKey]: text,
+                      }))
+                    }
+                    style={styles.budgetEditInput}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.budgetEditActions}>
+              <Pressable
+                style={[styles.modalCloseButton, styles.budgetCancelButton]}
+                onPress={() => setBudgetEditOpen(false)}
+                disabled={savingBudgetEdit}
+              >
+                <Text style={styles.modalCloseText}>Annuleren</Text>
+              </Pressable>
+              <Pressable
+                style={styles.budgetSaveButton}
+                onPress={() => {
+                  void saveBudgetEdit();
+                }}
+                disabled={savingBudgetEdit}
+              >
+                <Text style={styles.budgetSaveButtonText}>
+                  {savingBudgetEdit ? "Opslaan..." : "Opslaan"}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1708,6 +2219,291 @@ const styles = StyleSheet.create({
     color: FinColors.textMuted,
     marginTop: 8,
     lineHeight: 18,
+  },
+  budgetMetaText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: FinColors.textMuted,
+  },
+  budgetEditButton: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  budgetEditButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  budgetRecommendationList: {
+    marginTop: 10,
+    gap: 8,
+  },
+  budgetRecommendationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+  },
+  budgetRecommendationMain: {
+    flex: 1,
+  },
+  budgetRecommendationLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  budgetRecommendationMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    color: FinColors.textSecondary,
+  },
+  budgetRecommendationAside: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  budgetRecommendationWeekly: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  budgetRecommendationUtilization: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  budgetUtilizationOk: {
+    color: FinColors.green,
+  },
+  budgetUtilizationInfo: {
+    color: "#d9b95b",
+  },
+  budgetUtilizationWarning: {
+    color: "#f5a55a",
+  },
+  budgetUtilizationCritical: {
+    color: FinColors.red,
+  },
+  budgetWarningWrap: {
+    marginTop: 12,
+    backgroundColor: FinColors.bgElevated,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 12,
+    gap: 8,
+  },
+  budgetWarningTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  budgetWarningSummaryRow: {
+    flexDirection: "row",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  budgetWarningPill: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+  },
+  budgetWarningPillInfo: {
+    backgroundColor: "#fdf6de",
+    borderColor: "#d9b95b",
+  },
+  budgetWarningPillWarning: {
+    backgroundColor: "#fff1e6",
+    borderColor: "#f5a55a",
+  },
+  budgetWarningPillCritical: {
+    backgroundColor: "#ffebeb",
+    borderColor: FinColors.red,
+  },
+  budgetWarningPillText: {
+    fontSize: 11,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  budgetWarningRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  budgetWarningDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 5,
+  },
+  budgetWarningDotInfo: {
+    backgroundColor: "#d9b95b",
+  },
+  budgetWarningDotWarning: {
+    backgroundColor: "#f5a55a",
+  },
+  budgetWarningDotCritical: {
+    backgroundColor: FinColors.red,
+  },
+  budgetWarningText: {
+    flex: 1,
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    lineHeight: 18,
+  },
+  budgetHealthyText: {
+    marginTop: 12,
+    fontSize: 12,
+    color: FinColors.green,
+    fontWeight: "600",
+  },
+  budgetCoachWrap: {
+    marginTop: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    padding: 12,
+    gap: 8,
+  },
+  budgetCoachHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  budgetCoachTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  budgetCoachMeta: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+    fontWeight: "600",
+  },
+  budgetCoachSummary: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    lineHeight: 18,
+  },
+  budgetCoachSection: {
+    gap: 4,
+  },
+  budgetCoachSectionTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  budgetCoachListItem: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    lineHeight: 18,
+  },
+  budgetEditSectionTitle: {
+    marginTop: 14,
+    marginBottom: 8,
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  budgetModeRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  budgetModeButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  budgetModeButtonActive: {
+    backgroundColor: FinColors.greenBg,
+    borderColor: FinColors.greenBorder,
+  },
+  budgetModeButtonText: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  budgetModeButtonTextActive: {
+    color: FinColors.green,
+  },
+  budgetEditList: {
+    marginTop: 4,
+    maxHeight: 260,
+  },
+  budgetEditRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+  },
+  budgetEditRowMain: {
+    flex: 1,
+  },
+  budgetEditRowLabel: {
+    fontSize: 13,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  budgetEditRowMeta: {
+    marginTop: 2,
+    fontSize: 11,
+    color: FinColors.textMuted,
+  },
+  budgetEditInput: {
+    minWidth: 96,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    color: FinColors.textPrimary,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    textAlign: "right",
+  },
+  budgetEditActions: {
+    marginTop: 12,
+    flexDirection: "row",
+    gap: 10,
+  },
+  budgetCancelButton: {
+    flex: 1,
+    marginTop: 0,
+  },
+  budgetSaveButton: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: FinColors.greenBg,
+    borderWidth: 1,
+    borderColor: FinColors.greenBorder,
+  },
+  budgetSaveButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.green,
   },
 
   // Card

@@ -109,3 +109,134 @@ export type ManualCategoryUpdateOptions = {
   reason?: string;
   learnFromCounterparty?: boolean;
 };
+
+export type BudgetPlanMode = "active_savings" | "balanced" | "custom";
+
+export type BudgetCategoryKey =
+  | "fixed_costs"
+  | "subscriptions"
+  | "variable_costs"
+  | "groceries"
+  | "fuel"
+  | "smoking"
+  | "other"
+  | "savings_target";
+
+export type BudgetWarningSeverity = "info" | "warning" | "critical";
+
+export type BudgetOverrideSource =
+  | "trend"
+  | "settings"
+  | "category_override"
+  | "monthly_override";
+
+export type BudgetPlanSettings = {
+  planKey: string;
+  mode: BudgetPlanMode;
+  adjustmentFactor: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type BudgetCategoryOverride = {
+  planKey: string;
+  categoryKey: BudgetCategoryKey;
+  monthlyTargetOverride: number | null;
+  factorOverride: number | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type MonthlyBudgetValue = {
+  planKey: string;
+  monthStart: string;
+  categoryKey: BudgetCategoryKey;
+  monthlyBudget: number;
+  source: "manual" | "system";
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type BudgetIncomeBreakdown = {
+  salary: number;
+  childBudget: number;
+  structuralOther: number;
+  variable: number;
+  total: number;
+};
+
+export type BudgetVariableBreakdown = {
+  groceries: number;
+  fuel: number;
+  smoking: number;
+  other: number;
+  total: number;
+};
+
+export type BudgetExpenseBreakdown = {
+  fixedCosts: number;
+  subscriptions: number;
+  variableCosts: number;
+  savingsTransfer: number;
+  total: number;
+  variable: BudgetVariableBreakdown;
+};
+
+export type BudgetTrendSnapshot = {
+  windowDays: number;
+  observedDays: number;
+  monthlyScale: number;
+  income: BudgetIncomeBreakdown;
+  expenses: BudgetExpenseBreakdown;
+  net: number;
+};
+
+export type BudgetRecommendationRow = {
+  categoryKey: BudgetCategoryKey;
+  label: string;
+  baselineMonthly: number;
+  appliedFactor: number;
+  monthlyBudget: number;
+  weeklyBudget: number;
+  monthlyActual: number;
+  monthProgress: number;
+  utilization: number;
+  overrideSource: BudgetOverrideSource;
+};
+
+export type BudgetWarning = {
+  categoryKey: BudgetCategoryKey;
+  severity: BudgetWarningSeverity;
+  utilization: number;
+  message: string;
+};
+
+export type BudgetCoachReportSections = {
+  summary: string;
+  strengths: string[];
+  risks: string[];
+  actions: string[];
+};
+
+export type BudgetCoachReport = {
+  generatedAt: string;
+  sections: BudgetCoachReportSections;
+};
+
+export type BudgetPlanComputation = {
+  planKey: string;
+  referenceDate: string;
+  monthStart: string;
+  monthProgress: number;
+  settings: BudgetPlanSettings;
+  trend: BudgetTrendSnapshot;
+  monthToDateIncome: BudgetIncomeBreakdown;
+  monthToDateExpenses: BudgetExpenseBreakdown;
+  recommendations: BudgetRecommendationRow[];
+  warnings: BudgetWarning[];
+  savingsPotential: number;
+  recommendedSavings: number;
+  monthlyBudgetTotal: number;
+  weeklyBudgetTotal: number;
+  coachReport: BudgetCoachReport;
+};
