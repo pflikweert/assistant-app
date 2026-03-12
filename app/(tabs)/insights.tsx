@@ -1087,7 +1087,9 @@ export default function InsightsScreen() {
           >
             <Text style={styles.monthReportLabel}>Inkomsten</Text>
             <View style={styles.monthReportButtonRight}>
-              <Text style={[styles.monthReportValue, { color: FinColors.green }]}>
+              <Text
+                style={[styles.monthReportValue, { color: FinColors.green }]}
+              >
                 +{fmt.format(monthReport.income)}
               </Text>
               <Text style={styles.monthReportButtonHint}>Details</Text>
@@ -1297,27 +1299,40 @@ export default function InsightsScreen() {
 
             <View style={styles.incomeSummaryRow}>
               <Text style={styles.monthReportLabel}>Totaal inkomsten</Text>
-              <Text style={[styles.monthReportValue, { color: FinColors.green }]}>
+              <Text
+                style={[styles.monthReportValue, { color: FinColors.green }]}
+              >
                 +{fmt.format(monthReport.income)}
               </Text>
             </View>
             <View style={styles.incomeSummaryRow}>
               <Text style={styles.monthReportLabel}>Aantal transacties</Text>
-              <Text style={styles.monthReportValue}>{incomeTransactions.length}</Text>
+              <Text style={styles.monthReportValue}>
+                {incomeTransactions.length}
+              </Text>
             </View>
 
             {incomeBreakdown.length ? (
               <View style={styles.incomeBreakdownWrap}>
-                <Text style={styles.incomeSectionTitle}>Verdeling inkomsten</Text>
+                <Text style={styles.incomeSectionTitle}>
+                  Verdeling inkomsten
+                </Text>
                 {incomeBreakdown.map((item) => (
                   <View key={item.label} style={styles.incomeBreakdownRow}>
                     <View style={styles.incomeBreakdownMain}>
-                      <Text style={styles.incomeBreakdownLabel}>{item.label}</Text>
+                      <Text style={styles.incomeBreakdownLabel}>
+                        {item.label}
+                      </Text>
                       <Text style={styles.incomeBreakdownMeta}>
                         {item.count} transactie{item.count === 1 ? "" : "s"}
                       </Text>
                     </View>
-                    <Text style={[styles.incomeBreakdownValue, { color: FinColors.green }]}>
+                    <Text
+                      style={[
+                        styles.incomeBreakdownValue,
+                        { color: FinColors.green },
+                      ]}
+                    >
                       +{fmt.format(item.total)}
                     </Text>
                   </View>
@@ -1338,10 +1353,16 @@ export default function InsightsScreen() {
                     }}
                   >
                     <View style={styles.reviewIconWrap}>
-                      <TransactionCategoryIcon row={tx} categoryById={categoryMap} />
+                      <TransactionCategoryIcon
+                        row={tx}
+                        categoryById={categoryMap}
+                      />
                     </View>
                     <View style={styles.incomeTxMain}>
-                      <Text style={styles.incomeTxCounterparty} numberOfLines={1}>
+                      <Text
+                        style={styles.incomeTxCounterparty}
+                        numberOfLines={1}
+                      >
                         {tx.counterparty || "Onbekende bron"}
                       </Text>
                       <Text style={styles.incomeTxSub} numberOfLines={1}>
@@ -1352,8 +1373,12 @@ export default function InsightsScreen() {
                       </Text>
                     </View>
                     <View style={styles.incomeTxAside}>
-                      <Text style={styles.incomeTxAmount}>+{fmt.format(tx.amount)}</Text>
-                      <Text style={styles.incomeTxDate}>{formatShortDate(tx.date)}</Text>
+                      <Text style={styles.incomeTxAmount}>
+                        +{fmt.format(tx.amount)}
+                      </Text>
+                      <Text style={styles.incomeTxDate}>
+                        {formatShortDate(tx.date)}
+                      </Text>
                     </View>
                   </Pressable>
                 ))
