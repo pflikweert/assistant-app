@@ -248,10 +248,12 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
         return;
       }
       
-      // Update all transactions in batches
-      const batchSize = 1000;
+      // Update all transactions in batches (50 at a time to avoid URL length limits)
+      const batchSize = 50;
       for (let i = 0; i < txIds.length; i += batchSize) {
         const batch = txIds.slice(i, i + batchSize);
+        console.log(`[clearAllTransactionData] Clearing batch ${Math.floor(i / batchSize) + 1} (${batch.length} items)`);
+        
         const { error } = await supabase
           .from("transactions")
           .update({
@@ -269,7 +271,6 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
           console.error("[clearAllTransactionData] Error updating batch:", error);
           throw error;
         }
-        console.log(`[clearAllTransactionData] Cleared batch ${Math.floor(i / batchSize) + 1}`);
       }
       console.log("[clearAllTransactionData] Transactions cleared");
 
