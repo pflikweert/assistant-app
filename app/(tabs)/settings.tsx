@@ -1,7 +1,7 @@
 import React from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Switch,
@@ -31,6 +31,107 @@ type RowProps = {
   rightElement?: React.ReactNode;
 };
 
+function ConfirmResetModal({
+  visible,
+  isClearing,
+  onConfirm,
+  onCancel,
+}: {
+  visible: boolean;
+  isClearing: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Alle data verwijderen</Text>
+          <Text style={styles.modalText}>
+            Dit zal alle transacties, categorisaties en auditlogs wissen. Dit kan niet ongedaan gemaakt worden. Ben je zeker?
+          </Text>
+          <View style={styles.modalButtons}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={onCancel}
+              disabled={isClearing}
+            >
+              <Text style={styles.cancelButtonText}>Annuleren</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.deleteButton]}
+              onPress={onConfirm}
+              disabled={isClearing}
+            >
+              {isClearing ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text style={styles.deleteButtonText}>Verwijderen</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function SuccessModal({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>✓ Gereed</Text>
+          <Text style={styles.modalText}>
+            Alle transactiegegevens zijn gewist. Je kan nu nieuwe transacties importeren.
+          </Text>
+          <TouchableOpacity
+            style={[styles.modalButton, styles.successButton]}
+            onPress={onClose}
+          >
+            <Text style={styles.successButtonText}>OK</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function ErrorModal({
+  visible,
+  error,
+  onClose,
+}: {
+  visible: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Fout</Text>
+          <Text style={styles.modalText}>
+            {error || "Kon gegevens niet wissen"}
+          </Text>
+          <TouchableOpacity
+            style={[styles.modalButton, styles.errorButton]}
+            onPress={onClose}
+          >
+            <Text style={styles.errorButtonText}>OK</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function SettingsRow({ label, subtitle, value, onPress, rightElement }: RowProps) {
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={onPress ? 0.7 : 1}>
@@ -56,6 +157,10 @@ export default function SettingsScreen() {
   const router = useRouter();
   const [darkMode, setDarkMode] = React.useState(true);
   const [isClearing, setIsClearing] = React.useState(false);
+  const [showConfirmModal, setShowConfirmModal] = React.useState(false);
+  const [showSuccessModal, setShowSuccessModal] = React.useState(false);
+  const [showErrorModal, setShowErrorModal] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const backgroundStatus = useCategorizationStatus();
 
   const isBusy =
@@ -64,45 +169,27 @@ export default function SettingsScreen() {
 
   const handleResetPress = () => {
     console.log("[Settings] Reset button pressed");
-    Alert.alert(
-      "Alle transactiegegevens verwijderen",
-      "Dit zal alle transacties, categorisaties en auditlogs wissen. Dit kan niet ongedaan gemaakt worden. Ben je zeker?",
-      [
-        {
-          text: "Annuleren",
-          onPress: () => {
-            console.log("Clear cancelled");
-          },
-          style: "cancel",
-        },
-        {
-          text: "Verwijderen",
-          onPress: async () => {
-            console.log("Clear started");
-            setIsClearing(true);
-            try {
-              console.log("Calling clearAllTransactionData...");
-              await clearAllTransactionData();
-              console.log("Clear completed successfully");
-              Alert.alert(
-                "Gereed",
-                "Alle transactiegegevens zijn gewist. Je kan nu nieuwe transacties importeren."
-              );
-            } catch (error) {
-              console.error("Clear failed:", error);
-              const errorMsg = error instanceof Error ? error.message : String(error);
-              Alert.alert(
-                "Fout",
-                `Kon gegevens niet wissen: ${errorMsg}`
-              );
-            } finally {
-              setIsClearing(false);
-            }
-          },
-          style: "destructive",
-        },
-      ]
-    );
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmReset = async () => {
+    console.log("[Settings] Reset confirmed");
+    setIsClearing(true);
+    try {
+      console.log("Calling clearAllTransactionData...");
+      await clearAllTransactionData();
+      console.log("Clear completed successfully");
+      setShowConfirmModal(false);
+      setShowSuccessModal(true);
+    } catch (error) {
+      console.error("Clear failed:", error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      setErrorMessage(errorMsg);
+      setShowConfirmModal(false);
+      setShowErrorModal(true);
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   return (
@@ -259,6 +346,22 @@ export default function SettingsScreen() {
           <Text style={styles.signOutText}>Sign out</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <ConfirmResetModal
+        visible={showConfirmModal}
+        isClearing={isClearing}
+        onConfirm={handleConfirmReset}
+        onCancel={() => setShowConfirmModal(false)}
+      />
+      <SuccessModal
+        visible={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+      />
+      <ErrorModal
+        visible={showErrorModal}
+        error={errorMessage}
+        onClose={() => setShowErrorModal(false)}
+      />
     </View>
   );
 }
@@ -393,4 +496,80 @@ const styles = StyleSheet.create({
     borderColor: FinColors.red,
   },
   signOutText: { fontSize: 15, fontWeight: "600", color: FinColors.red },
+
+  // Modals
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    marginBottom: 12,
+  },
+  modalText: {
+    fontSize: 14,
+    color: FinColors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelButton: {
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
+  deleteButton: {
+    backgroundColor: FinColors.red,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "white",
+  },
+  successButton: {
+    backgroundColor: FinColors.green,
+  },
+  successButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "white",
+  },
+  errorButton: {
+    backgroundColor: FinColors.red,
+  },
+  errorButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "white",
+  },
 });
