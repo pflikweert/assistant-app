@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "dev": "expo start --web",
+    "dev": "supabase db push && expo start --web",
     "dev:web": "expo start --web --non-interactive",
     "build": "expo export --platform web",
     "test:unit": "vitest run",
