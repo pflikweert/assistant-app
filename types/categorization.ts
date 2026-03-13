@@ -231,6 +231,77 @@ export type BudgetCoachReport = {
   sections: BudgetCoachReportSections;
 };
 
+export type BudgetExpenseDetailItem = {
+  label: string;
+  amount: number;
+  transactionCount: number;
+  lastTransactionDate: string | null;
+};
+
+export type BudgetOutsideExpenseItem = BudgetExpenseDetailItem & {
+  categoryLabel: string;
+};
+
+export type BudgetOutsideExpenseSummary = {
+  total: number;
+  fixedCosts: number;
+  subscriptions: number;
+  variableCosts: number;
+  savingsTransfer: number;
+  items: BudgetOutsideExpenseItem[];
+};
+
+export type BudgetFlowSummary = {
+  expectedIncomeMonthly: number;
+  actualIncomeMonthToDate: number;
+  fixedCostsBudget: number;
+  subscriptionsBudget: number;
+  subtotalAfterFixed: number;
+  subtotalAfterSubscriptions: number;
+  variableBudget: number;
+};
+
+export type BudgetWeekPlanRow = {
+  weekNumber: number;
+  label: string;
+  startDate: string;
+  endDateExclusive: string;
+  budget: number;
+  actual: number;
+  remaining: number;
+  utilization: number;
+  isCurrentWeek: boolean;
+  isPastWeek: boolean;
+  wasRebalanced: boolean;
+  overrunAmount: number;
+};
+
+export type BudgetWeekSubcategorySpend = {
+  key: string;
+  label: string;
+  amount: number;
+};
+
+export type BudgetWeekCategorySpend = {
+  key: string;
+  label: string;
+  amount: number;
+  subcategories: BudgetWeekSubcategorySpend[];
+};
+
+export type BudgetWeekSpendBreakdown = {
+  weekNumber: number;
+  categories: BudgetWeekCategorySpend[];
+};
+
+export type BudgetSavingsProgress = {
+  recommendedSavings: number;
+  earnedActual: number;
+  earnedOnTrack: number;
+  progressActual: number;
+  progressOnTrack: number;
+};
+
 export type BudgetPlanComputation = {
   planKey: string;
   referenceDate: string;
@@ -246,5 +317,14 @@ export type BudgetPlanComputation = {
   recommendedSavings: number;
   monthlyBudgetTotal: number;
   weeklyBudgetTotal: number;
+  flowSummary: BudgetFlowSummary;
+  weeklyVariablePlan: BudgetWeekPlanRow[];
+  weeklySpendBreakdown: BudgetWeekSpendBreakdown[];
+  outsideBudgetExpenses: BudgetOutsideExpenseSummary;
+  expenseDetails: {
+    fixedCosts: BudgetExpenseDetailItem[];
+    subscriptions: BudgetExpenseDetailItem[];
+  };
+  savingsProgress: BudgetSavingsProgress;
   coachReport: BudgetCoachReport;
 };

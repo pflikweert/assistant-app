@@ -2,7 +2,6 @@ import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import { computeBudgetPlan } from "@/services/budget-plan";
-import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
 import {
     getTransactionCategories,
     setTransactionManualCategory,
@@ -17,6 +16,7 @@ import {
     getLeafCategories,
     needsCategorizationReview,
 } from "@/services/category-display";
+import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
 import { supabase } from "@/services/supabase";
 import type {
     BudgetPlanComputation,
@@ -1323,13 +1323,17 @@ export default function InsightsScreen() {
                   style={[
                     styles.monthReportValue,
                     budgetPlan.monthlyBudgetTotal -
-                      budgetPlan.monthToDateExpenses.total >=
+                      (budgetPlan.monthToDateExpenses.fixedCosts +
+                        budgetPlan.monthToDateExpenses.subscriptions +
+                        budgetPlan.monthToDateExpenses.variableCosts) >=
                       0 && { color: FinColors.green },
                   ]}
                 >
                   {fmt.format(
                     budgetPlan.monthlyBudgetTotal -
-                      budgetPlan.monthToDateExpenses.total,
+                      (budgetPlan.monthToDateExpenses.fixedCosts +
+                        budgetPlan.monthToDateExpenses.subscriptions +
+                        budgetPlan.monthToDateExpenses.variableCosts),
                   )}
                 </Text>
               </View>

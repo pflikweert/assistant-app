@@ -17,6 +17,7 @@ import type {
     BudgetPlanComputation,
     CategoryRecord,
 } from "@/types/categorization";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -52,6 +53,34 @@ function formatUtilization(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function getBudgetCategoryIconName(categoryKey: string) {
+  if (categoryKey === "fixed_costs") return "home-work";
+  if (categoryKey === "subscriptions") return "subscriptions";
+  if (categoryKey === "groceries") return "shopping-basket";
+  if (categoryKey === "fuel") return "local-gas-station";
+  if (categoryKey === "smoking") return "smoking-rooms";
+  return "payments";
+}
+
+function formatShortDateLabel(value: string) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("nl-NL", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
+function formatWeekRangeLabel(startDate: string, endDateExclusive: string) {
+  const endDate = new Date(`${endDateExclusive}T00:00:00.000Z`);
+  if (Number.isNaN(endDate.getTime())) {
+    return `${formatShortDateLabel(startDate)} - ${formatShortDateLabel(endDateExclusive)}`;
+  }
+  endDate.setUTCDate(endDate.getUTCDate() - 1);
+  const endIso = endDate.toISOString().slice(0, 10);
+  return `${formatShortDateLabel(startDate)} - ${formatShortDateLabel(endIso)}`;
+}
+
 function isMissingRelationError(error: unknown) {
   const code = String((error as { code?: string })?.code || "");
   const message = String(
@@ -78,7 +107,7 @@ function TxRow({
       </View>
       <View style={styles.txMid}>
         <Text style={styles.txName} numberOfLines={1}>
-          {tx.counterparty || "Unknown"}
+          {tx.counterparty || "Onbekend"}
         </Text>
         <View style={styles.txMetaRow}>
           <Text style={styles.txSub} numberOfLines={1}>
@@ -157,16 +186,47 @@ export default function DashboardScreen() {
   );
   const remainingBudget = React.useMemo(() => {
     if (!budgetPlan) return null;
-    return budgetPlan.monthlyBudgetTotal - budgetPlan.monthToDateExpenses.total;
+    const coreMonthToDateExpenses =
+      budgetPlan.monthToDateExpenses.fixedCosts +
+      budgetPlan.monthToDateExpenses.subscriptions +
+      budgetPlan.monthToDateExpenses.variableCosts;
+    return budgetPlan.monthlyBudgetTotal - coreMonthToDateExpenses;
   }, [budgetPlan]);
-  const budgetTopRows = React.useMemo(() => {
+  const monthSpentInBudget = React.useMemo(() => {
+    if (!budgetPlan) return null;
+    return (
+      budgetPlan.monthToDateExpenses.fixedCosts +
+      budgetPlan.monthToDateExpenses.subscriptions +
+      budgetPlan.monthToDateExpenses.variableCosts
+    );
+  }, [budgetPlan]);
+  const topCategoryRows = React.useMemo(() => {
     if (!budgetPlan) return [];
 
     return budgetPlan.recommendations
-      .filter((row) => row.categoryKey !== "savings_target")
-      .sort((left, right) => right.utilization - left.utilization)
-      .slice(0, 3);
+      .filter(
+        (row) =>
+          row.categoryKey !== "savings_target" &&
+          row.categoryKey !== "variable_costs",
+      )
+      .sort((left, right) => {
+        if (right.monthlyActual !== left.monthlyActual) {
+          return right.monthlyActual - left.monthlyActual;
+        }
+        return right.utilization - left.utilization;
+      })
+      .slice(0, 5);
   }, [budgetPlan]);
+  const currentWeekPlan = React.useMemo(() => {
+    if (!budgetPlan) return null;
+    return (
+      budgetPlan.weeklyVariablePlan.find((week) => week.isCurrentWeek) || null
+    );
+  }, [budgetPlan]);
+  const criticalBudgetRows = React.useMemo(
+    () => topCategoryRows.filter((row) => row.utilization >= 1),
+    [topCategoryRows],
+  );
 
   const loadCategories = React.useCallback(async () => {
     try {
@@ -304,7 +364,7 @@ export default function DashboardScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Welcome back</Text>
+          <Text style={styles.greeting}>Welkom terug</Text>
           <Text style={styles.headerTitle}>Jan de Vries</Text>
         </View>
         <View style={styles.headerActions}>
@@ -321,7 +381,7 @@ export default function DashboardScreen() {
       >
         {/* Balance Card */}
         <View style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>Total Balance</Text>
+          <Text style={styles.balanceLabel}>Totaal saldo</Text>
           <Text
             style={[
               styles.balanceAmount,
@@ -336,7 +396,7 @@ export default function DashboardScreen() {
             <View style={styles.accountDot} />
             <Text style={styles.accountText}>
               {hasTransactions
-                ? "Main Account"
+                ? "Hoofdrekening"
                 : "Importeer transacties om saldo te tonen"}
             </Text>
           </View>
@@ -345,7 +405,7 @@ export default function DashboardScreen() {
         {/* Stats row */}
         <View style={styles.statsRow}>
           <StatPill
-            label="Income"
+            label="Inkomsten"
             value={
               hasTransactions && monthlyIncome != null
                 ? `+${fmt.format(monthlyIncome)}`
@@ -355,7 +415,7 @@ export default function DashboardScreen() {
             isEmpty={!hasTransactions}
           />
           <StatPill
-            label="Expenses"
+            label="Uitgaven"
             value={
               hasTransactions && monthlySpent != null
                 ? fmt.format(monthlySpent)
@@ -370,16 +430,40 @@ export default function DashboardScreen() {
           onPress={() => router.push("/budget")}
         >
           <View style={styles.budgetWidgetHeader}>
-            <Text style={styles.budgetWidgetTitle}>Budget huidige stand</Text>
-            <Text style={styles.budgetWidgetHint}>Details</Text>
+            <Text style={styles.budgetWidgetTitle}>Budget huidige maand</Text>
+            <View style={styles.budgetWidgetHintWrap}>
+              <Text style={styles.budgetWidgetHint}>Bekijk</Text>
+              <MaterialIcons
+                name="chevron-right"
+                size={16}
+                color={FinColors.green}
+              />
+            </View>
           </View>
           {budgetPlan ? (
             <>
+              <View style={styles.budgetMainRow}>
+                <Text style={styles.budgetMainLabel}>Totaal budget maand</Text>
+                <Text style={[styles.budgetMainValue]}>
+                  {fmt.format(budgetPlan.monthlyBudgetTotal)}
+                </Text>
+              </View>
+              <View style={styles.budgetMainRow}>
+                <Text style={styles.budgetMainLabel}>
+                  Uitgegeven deze maand
+                </Text>
+                <Text style={styles.budgetMainValue}>
+                  {monthSpentInBudget == null
+                    ? "Onbekend"
+                    : fmt.format(monthSpentInBudget)}
+                </Text>
+              </View>
               <View style={styles.budgetMainRow}>
                 <Text style={styles.budgetMainLabel}>Resterend budget</Text>
                 <Text
                   style={[
                     styles.budgetMainValue,
+                    styles.budgetMainValuePrimary,
                     remainingBudget != null && remainingBudget >= 0
                       ? styles.budgetValuePositive
                       : styles.budgetValueNegative,
@@ -390,22 +474,89 @@ export default function DashboardScreen() {
                     : fmt.format(remainingBudget)}
                 </Text>
               </View>
-              <View style={styles.budgetMainRow}>
-                <Text style={styles.budgetMainLabel}>Weekbudget totaal</Text>
-                <Text style={styles.budgetMainValue}>
-                  {fmt.format(budgetPlan.weeklyBudgetTotal)}
-                </Text>
-              </View>
-              <View style={styles.budgetTopList}>
-                {budgetTopRows.map((row) => (
-                  <View key={row.categoryKey} style={styles.budgetTopRow}>
-                    <Text style={styles.budgetTopLabel}>{row.label}</Text>
-                    <Text style={styles.budgetTopValue}>
-                      {formatUtilization(row.utilization)}
+
+              {currentWeekPlan ? (
+                <View style={styles.currentWeekBox}>
+                  <View style={styles.currentWeekTopRow}>
+                    <Text style={styles.currentWeekLabel}>Huidige week</Text>
+                    <Text style={styles.currentWeekWeekText}>
+                      {currentWeekPlan.label}
                     </Text>
                   </View>
-                ))}
-              </View>
+                  <Text style={styles.currentWeekMeta}>
+                    {formatWeekRangeLabel(
+                      currentWeekPlan.startDate,
+                      currentWeekPlan.endDateExclusive,
+                    )}
+                  </Text>
+                  <Text style={styles.currentWeekMeta}>
+                    {fmt.format(currentWeekPlan.actual)} van{" "}
+                    {fmt.format(currentWeekPlan.budget)} gebruikt
+                  </Text>
+                </View>
+              ) : null}
+
+              {criticalBudgetRows.length ? (
+                <View style={styles.budgetWarningBox}>
+                  <MaterialIcons
+                    name="priority-high"
+                    size={14}
+                    color={FinColors.red}
+                  />
+                  <Text style={styles.budgetWarningText}>
+                    {criticalBudgetRows.length} categorie
+                    {criticalBudgetRows.length > 1 ? "en" : ""} boven budget.
+                  </Text>
+                </View>
+              ) : null}
+
+              {topCategoryRows.length ? (
+                <View style={styles.variableWidgetSection}>
+                  {topCategoryRows.map((row) => {
+                    const progress = Number.isFinite(row.utilization)
+                      ? Math.min(Math.max(row.utilization, 0), 1)
+                      : 1;
+                    return (
+                      <View
+                        key={`top-category-${row.categoryKey}`}
+                        style={styles.variableWidgetRow}
+                      >
+                        <View style={styles.variableWidgetIconWrap}>
+                          <MaterialIcons
+                            name={getBudgetCategoryIconName(row.categoryKey)}
+                            size={14}
+                            color={FinColors.textPrimary}
+                          />
+                        </View>
+                        <View style={styles.variableWidgetMain}>
+                          <View style={styles.variableWidgetTop}>
+                            <Text style={styles.variableWidgetLabel}>
+                              {row.label}
+                            </Text>
+                            <Text style={styles.variableWidgetMeta}>
+                              {formatUtilization(row.utilization)} gebruikt
+                            </Text>
+                          </View>
+                          <View style={styles.variableWidgetTrack}>
+                            <View
+                              style={[
+                                styles.variableWidgetFill,
+                                { width: `${Math.round(progress * 100)}%` },
+                                row.utilization >= 1 &&
+                                  styles.variableWidgetFillWarning,
+                              ]}
+                            />
+                          </View>
+                          <Text style={styles.variableWidgetAmounts}>
+                            {fmt.format(row.monthlyActual)} van{" "}
+                            {fmt.format(row.monthlyBudget)}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
             </>
           ) : (
             <Text style={styles.budgetEmptyText}>
@@ -472,7 +623,7 @@ export default function DashboardScreen() {
             <View style={styles.actionIcon}>
               <Text style={styles.actionIconText}>...</Text>
             </View>
-            <Text style={styles.actionLabel}>All</Text>
+            <Text style={styles.actionLabel}>Alles</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
@@ -487,15 +638,15 @@ export default function DashboardScreen() {
 
         {/* Recent Transactions */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Transactions</Text>
+          <Text style={styles.sectionTitle}>Recente transacties</Text>
           <TouchableOpacity onPress={() => router.push("/transactions")}>
-            <Text style={styles.seeAll}>See all</Text>
+            <Text style={styles.seeAll}>Alles bekijken</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.txCard}>
           {recentTransactions.length === 0 ? (
-            <Text style={styles.emptyText}>No transactions yet</Text>
+            <Text style={styles.emptyText}>Nog geen transacties</Text>
           ) : (
             recentTransactions.map((tx, i) => (
               <React.Fragment key={tx.id}>
@@ -529,7 +680,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  greeting: { fontSize: 14, color: FinColors.textMuted, marginBottom: 4 },
+  greeting: { fontSize: 14, color: FinColors.textSecondary, marginBottom: 4 },
   headerTitle: {
     fontSize: 24,
     fontWeight: "700",
@@ -564,7 +715,7 @@ const styles = StyleSheet.create({
   },
   balanceLabel: {
     fontSize: 13,
-    color: FinColors.textMuted,
+    color: FinColors.textSecondary,
     fontWeight: "500",
     marginBottom: 8,
   },
@@ -604,7 +755,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: FinColors.textMuted,
+    color: FinColors.textSecondary,
     fontWeight: "500",
     marginBottom: 6,
   },
@@ -628,6 +779,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  budgetWidgetHintWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
   budgetWidgetTitle: {
     fontSize: 15,
     color: FinColors.textPrimary,
@@ -645,7 +801,7 @@ const styles = StyleSheet.create({
   },
   budgetMainLabel: {
     fontSize: 12,
-    color: FinColors.textMuted,
+    color: FinColors.textSecondary,
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.8,
@@ -654,6 +810,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: FinColors.textPrimary,
     fontWeight: "700",
+  },
+  budgetMainValuePrimary: {
+    fontSize: 16,
+    fontWeight: "800",
   },
   budgetValuePositive: {
     color: FinColors.green,
@@ -670,6 +830,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  budgetTopLabelWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
   budgetTopLabel: {
     fontSize: 13,
     color: FinColors.textSecondary,
@@ -678,6 +843,127 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: FinColors.textPrimary,
     fontWeight: "700",
+  },
+  budgetTopValueCritical: {
+    color: FinColors.red,
+  },
+  budgetWarningBox: {
+    marginTop: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: FinColors.red,
+    backgroundColor: FinColors.redBg,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  budgetWarningText: {
+    flex: 1,
+    color: FinColors.textPrimary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  currentWeekBox: {
+    marginTop: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: FinColors.greenBorder,
+    backgroundColor: FinColors.greenBg,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 3,
+  },
+  currentWeekTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  currentWeekLabel: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  currentWeekWeekText: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  currentWeekMeta: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  variableWidgetSection: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: FinColors.borderSubtle,
+    paddingTop: 8,
+    gap: 8,
+  },
+  variableWidgetTitle: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  variableWidgetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  variableWidgetIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+  },
+  variableWidgetMain: {
+    flex: 1,
+    gap: 4,
+  },
+  variableWidgetTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  variableWidgetLabel: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  variableWidgetMeta: {
+    fontSize: 11,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  variableWidgetAmounts: {
+    fontSize: 11,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  variableWidgetTrack: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgElevated,
+    overflow: "hidden",
+  },
+  variableWidgetFill: {
+    height: "100%",
+    backgroundColor: FinColors.green,
+  },
+  variableWidgetFillWarning: {
+    backgroundColor: FinColors.red,
   },
   budgetEmptyText: {
     fontSize: 12,
@@ -709,7 +995,11 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
     fontWeight: "500",
   },
-  actionLabel: { fontSize: 12, color: FinColors.textMuted, fontWeight: "500" },
+  actionLabel: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "500",
+  },
 
   // Section header
   sectionHeader: {
@@ -724,7 +1014,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: FinColors.textPrimary,
   },
-  seeAll: { fontSize: 13, color: FinColors.textMuted, fontWeight: "500" },
+  seeAll: { fontSize: 13, color: FinColors.green, fontWeight: "600" },
 
   // Transaction card
   txCard: {
@@ -790,7 +1080,7 @@ const styles = StyleSheet.create({
   statusValue: { fontSize: 14, fontWeight: "700", color: FinColors.green },
   statusSubtext: {
     fontSize: 12,
-    color: FinColors.textMuted,
+    color: FinColors.textSecondary,
     marginTop: 8,
     lineHeight: 18,
   },
@@ -820,7 +1110,7 @@ const styles = StyleSheet.create({
   },
   backgroundStatusLabel: {
     fontSize: 12,
-    color: FinColors.textMuted,
+    color: FinColors.textSecondary,
     marginBottom: 6,
   },
   backgroundStatusText: {

@@ -7,6 +7,7 @@ import {
     getCounterpartyTransactions,
     getTransactionCategories,
     getTransactionDetail,
+    setTransactionBudgetExcluded,
     setTransactionManualCategory,
     setTransactionReviewed,
     type CounterpartyTxSummary,
@@ -112,6 +113,8 @@ export default function TransactionDetailScreen() {
     all: number;
   } | null>(null);
   const [reviewToggling, setReviewToggling] = React.useState(false);
+  const [budgetExclusionToggling, setBudgetExclusionToggling] =
+    React.useState(false);
 
   // ── Derived maps ───────────────────────────────────────────────────────
   const categoryById = React.useMemo(
@@ -315,6 +318,23 @@ export default function TransactionDetailScreen() {
     [id, reviewToggling],
   );
 
+  const handleBudgetExcludedToggle = React.useCallback(
+    async (value: boolean) => {
+      if (!id || budgetExclusionToggling) return;
+      setBudgetExclusionToggling(true);
+      setTx((prev) => (prev ? { ...prev, budget_excluded: value } : prev));
+      try {
+        await setTransactionBudgetExcluded(id, value);
+      } catch (e) {
+        setTx((prev) => (prev ? { ...prev, budget_excluded: !value } : prev));
+        console.warn("budget excluded toggle error", e);
+      } finally {
+        setBudgetExclusionToggling(false);
+      }
+    },
+    [budgetExclusionToggling, id],
+  );
+
   // ── Render ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -348,19 +368,36 @@ export default function TransactionDetailScreen() {
             {tx.counterparty || "Onbekende tegenpartij"}
           </Text>
           <View style={styles.reviewedBox}>
-            <Text style={styles.reviewedLabel}>Beoordeeld</Text>
-            <Switch
-              value={tx.is_reviewed}
-              onValueChange={handleReviewToggle}
-              disabled={reviewToggling}
-              trackColor={{
-                false: FinColors.bgElevated,
-                true: FinColors.greenBorder,
-              }}
-              thumbColor={
-                tx.is_reviewed ? FinColors.green : FinColors.textMuted
-              }
-            />
+            <View style={styles.statusToggleRow}>
+              <Text style={styles.reviewedLabel}>Beoordeeld</Text>
+              <Switch
+                value={tx.is_reviewed}
+                onValueChange={handleReviewToggle}
+                disabled={reviewToggling}
+                trackColor={{
+                  false: FinColors.bgElevated,
+                  true: FinColors.greenBorder,
+                }}
+                thumbColor={
+                  tx.is_reviewed ? FinColors.green : FinColors.textMuted
+                }
+              />
+            </View>
+            <View style={styles.statusToggleRow}>
+              <Text style={styles.reviewedLabel}>Buiten budget</Text>
+              <Switch
+                value={tx.budget_excluded}
+                onValueChange={handleBudgetExcludedToggle}
+                disabled={budgetExclusionToggling}
+                trackColor={{
+                  false: FinColors.bgElevated,
+                  true: FinColors.red,
+                }}
+                thumbColor={
+                  tx.budget_excluded ? FinColors.red : FinColors.textMuted
+                }
+              />
+            </View>
           </View>
         </View>
         <Text
@@ -802,11 +839,16 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 28,
   },
-  reviewedBox: { alignItems: "center", gap: 4 },
+  reviewedBox: { alignItems: "flex-end", gap: 8 },
+  statusToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   reviewedLabel: {
     color: FinColors.textMuted,
     fontSize: 11,
-    textAlign: "center",
+    textAlign: "right",
   },
   amount: { fontSize: 28, fontWeight: "700" },
   dateText: { color: FinColors.textSecondary, fontSize: 14 },

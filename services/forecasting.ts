@@ -22,6 +22,7 @@ type ForecastTx = {
   recurring_type: RecurringType | null;
   category_id_auto: string | null;
   category_id_user: string | null;
+  budget_excluded: boolean;
   metadata: Record<string, unknown>;
 };
 
@@ -106,7 +107,7 @@ async function fetchTransactionsInRange(
     const { data, error } = await supabase
       .from("transactions")
       .select(
-        "id,date,amount,details,counterparty,analysis_main_group,analysis_category,recurring,recurring_type,category_id_auto,category_id_user,metadata",
+        "id,date,amount,details,counterparty,analysis_main_group,analysis_category,recurring,recurring_type,category_id_auto,category_id_user,budget_excluded,metadata",
       )
       .gte("date", startIso)
       .lt("date", endIso)
@@ -127,6 +128,7 @@ async function fetchTransactionsInRange(
       recurring_type: row.recurring_type || null,
       category_id_auto: row.category_id_auto || null,
       category_id_user: row.category_id_user || null,
+      budget_excluded: Boolean(row.budget_excluded),
       metadata: (row.metadata || {}) as Record<string, unknown>,
     }));
 
@@ -251,23 +253,31 @@ export async function recomputeCurrentMonthCashflowForecast(
 
   const stableIncomePlan = await computeBudgetPlan(reference, "default").catch(
     (error) => {
-      console.warn("[forecast] stable income unavailable, using legacy sources", error);
+      console.warn(
+        "[forecast] stable income unavailable, using legacy sources",
+        error,
+      );
       return null;
     },
   );
 
-  const [categoryMap, historyTransactions, startingBalance] = await Promise.all([
-    fetchCategoryMap(),
-    fetchTransactionsInRange(
-      dateToIso(subtractDays(monthStart, 90)),
-      monthEndIso,
-    ),
-    getLatestStartingBalance(monthStartIso),
-  ]);
+  const [categoryMap, historyTransactions, startingBalance] = await Promise.all(
+    [
+      fetchCategoryMap(),
+      fetchTransactionsInRange(
+        dateToIso(subtractDays(monthStart, 90)),
+        monthEndIso,
+      ),
+      getLatestStartingBalance(monthStartIso),
+    ],
+  );
 
   let expectedIncomeTotal = 0;
   if (stableIncomePlan) {
-    expectedIncomeTotal = Math.max(0, asNumber(stableIncomePlan.trend.income.total, 0));
+    expectedIncomeTotal = Math.max(
+      0,
+      asNumber(stableIncomePlan.flowSummary.expectedIncomeMonthly, 0),
+    );
   } else {
     const incomeSources = await fetchIncomeSources();
     for (const source of incomeSources) {
@@ -296,6 +306,7 @@ export async function recomputeCurrentMonthCashflowForecast(
   >();
 
   for (const tx of historyTransactions) {
+    if (tx.budget_excluded) continue;
     if (!tx.recurring || tx.amount >= 0) continue;
     if (tx.analysis_main_group !== "expense") continue;
     if (
@@ -352,6 +363,7 @@ export async function recomputeCurrentMonthCashflowForecast(
   };
 
   for (const tx of historyTransactions) {
+    if (tx.budget_excluded) continue;
     if (tx.amount >= 0) continue;
     if (tx.analysis_main_group !== "expense") continue;
     if (tx.analysis_category !== "variable_costs") continue;

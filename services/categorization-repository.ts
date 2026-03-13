@@ -352,6 +352,7 @@ export type TransactionDetail = {
   categorized_at: string | null;
   created_at: string | null;
   is_reviewed: boolean;
+  budget_excluded: boolean;
 };
 
 export type CounterpartyTxSummary = {
@@ -370,7 +371,7 @@ export async function getTransactionDetail(
   const { data, error } = await supabase
     .from("transactions")
     .select(
-      "id,date,details,counterparty,amount,currency,type,metadata,category_id_auto,category_id_user,category_confidence,category_source,category_model,categorized_at,created_at,is_reviewed",
+      "id,date,details,counterparty,amount,currency,type,metadata,category_id_auto,category_id_user,category_confidence,category_source,category_model,categorized_at,created_at,is_reviewed,budget_excluded",
     )
     .eq("id", id)
     .single();
@@ -395,6 +396,7 @@ export async function getTransactionDetail(
     categorized_at: d.categorized_at || null,
     created_at: d.created_at || null,
     is_reviewed: Boolean(d.is_reviewed),
+    budget_excluded: Boolean(d.budget_excluded),
   };
 }
 
@@ -483,6 +485,17 @@ export async function setTransactionReviewed(
   const { error } = await supabase
     .from("transactions")
     .update({ is_reviewed: reviewed, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function setTransactionBudgetExcluded(
+  id: string,
+  excluded: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from("transactions")
+    .update({ budget_excluded: excluded, updated_at: new Date().toISOString() })
     .eq("id", id);
   if (error) throw error;
 }

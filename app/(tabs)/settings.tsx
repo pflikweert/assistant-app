@@ -1,6 +1,5 @@
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import {
     clearAllTransactionData,
     pauseBackgroundCategorization,
@@ -12,6 +11,7 @@ import {
     formatCategorizationStatus,
     useCategorizationStatus,
 } from "@/services/categorization-status";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import React from "react";
 import {

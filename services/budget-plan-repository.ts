@@ -1,11 +1,11 @@
 import { supabase } from "@/services/supabase";
 import type {
-  BudgetCategoryKey,
-  BudgetCategoryOverride,
-  BudgetIncomeInclusionSettings,
-  BudgetPlanMode,
-  BudgetPlanSettings,
-  MonthlyBudgetValue,
+    BudgetCategoryKey,
+    BudgetCategoryOverride,
+    BudgetIncomeInclusionSettings,
+    BudgetPlanMode,
+    BudgetPlanSettings,
+    MonthlyBudgetValue,
 } from "@/types/categorization";
 
 const DEFAULT_PLAN_KEY = "default";
@@ -40,6 +40,11 @@ export type UpsertMonthlyBudgetValueInput = {
   categoryKey: BudgetCategoryKey;
   monthlyBudget: number;
   source?: "manual" | "system";
+};
+
+export type ResetMonthlyBudgetValuesInput = {
+  planKey?: string;
+  monthStartIso: string;
 };
 
 function asNumber(value: unknown, fallback = 0): number {
@@ -85,7 +90,9 @@ function asBoolean(value: unknown, fallback: boolean): boolean {
 
 function isMissingColumnError(error: unknown): boolean {
   const code = String((error as { code?: string })?.code || "");
-  const message = String((error as { message?: string })?.message || "").toLowerCase();
+  const message = String(
+    (error as { message?: string })?.message || "",
+  ).toLowerCase();
   if (code === "42703") return true;
   return message.includes("column") && message.includes("does not exist");
 }
@@ -408,4 +415,19 @@ export async function upsertMonthlyBudgetValue(
 
   if (error) throw error;
   return mapMonthlyValueRow(data as RowRecord);
+}
+
+export async function resetMonthlyBudgetValues(
+  input: ResetMonthlyBudgetValuesInput,
+): Promise<void> {
+  const normalizedPlanKey = normalizePlanKey(input.planKey);
+  const normalizedMonthStart = normalizeMonthStartIso(input.monthStartIso);
+
+  const { error } = await supabase
+    .from("monthly_budget_values")
+    .delete()
+    .eq("plan_key", normalizedPlanKey)
+    .eq("month_start", normalizedMonthStart);
+
+  if (error) throw error;
 }
