@@ -3,6 +3,13 @@ import {
     getBudgetPlanSettings,
     getMonthlyBudgetValues,
 } from "@/services/budget-plan-repository";
+import { suggestAutomaticSavingsTarget } from "@/services/budget-coach";
+import {
+  buildCalendarWeekRangesForMonth,
+  rebalanceWeeklyBudgets,
+  resolveBaseWeeklyBudgetsByDailyMonthRates,
+} from "@/services/budget-week-utils";
+import type { CalendarWeekRange } from "@/services/budget-week-utils";
 import { normalizePattern } from "@/services/categorization-repository";
 import { supabase } from "@/services/supabase";
 import type {
@@ -20,6 +27,7 @@ import type {
     BudgetPlanComputation,
     BudgetPlanSettings,
     BudgetRecommendationRow,
+    BudgetSavingsTargetSource,
     BudgetSavingsProgress,
     BudgetTrendSnapshot,
     BudgetVariableBreakdown,
@@ -35,6 +43,7 @@ const PAGE_SIZE = 500;
 const TREND_WINDOW_DAYS = 90;
 const MONTHLY_NORMALIZER_DAYS = 30.4375;
 const WEEKS_PER_MONTH = 4.33;
+const SAVINGS_TARGET_STEP = 25;
 
 type BudgetTx = {
   id: string;
@@ -71,14 +80,17 @@ const EXPENSE_BUCKET_LABELS: Record<ExpenseBucket, string> = {
   savings_transfer: "Sparen",
 };
 
-type WeekRange = {
-  weekNumber: number;
-  label: string;
-  start: Date;
-  endExclusive: Date;
-};
+type WeekRange = CalendarWeekRange;
 
 type VariableMainCategory = "groceries" | "fuel" | "smoking" | "other";
+
+type CompletedMonthBudgetInsight = {
+  recentIncomeTotals: number[];
+  recentVariableTotals: number[];
+  recentSavingsCapacityTotals: number[];
+  incomeVolatility: number;
+  variableVolatility: number;
+};
 
 const VARIABLE_MAIN_ORDER: VariableMainCategory[] = [
   "groceries",
@@ -210,6 +222,11 @@ function roundEuro(value: number) {
   return Math.round(value);
 }
 
+function snapToEuroStep(value: number, step = SAVINGS_TARGET_STEP) {
+  if (step <= 0) return roundEuro(Math.max(value, 0));
+  return Math.max(0, Math.round(value / step) * step);
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -266,6 +283,16 @@ function isSubscriptionCategoryKey(categoryKey: string) {
     categoryKey === "subscriptions" ||
     categoryKey.startsWith("subscriptions_") ||
     categoryKey.startsWith("subscription_")
+  );
+}
+
+function isVariableBudgetCategoryKey(categoryKey: string) {
+  return (
+    categoryKey === "variable_costs" ||
+    categoryKey === "groceries" ||
+    categoryKey === "fuel" ||
+    categoryKey === "smoking" ||
+    categoryKey === "other"
   );
 }
 
@@ -573,6 +600,131 @@ function resolveExpectedIncomeMonthlyFromCompletedMonths(
   return round2(median(recentTotals.map((row) => row.total)));
 }
 
+function computeExpenseTotalsByMonth(
+  rows: BudgetTx[],
+  categoryMap: Map<string, CategoryMeta>,
+): Map<string, BudgetExpenseBreakdown> {
+  const byMonth = new Map<string, BudgetExpenseBreakdown>();
+
+  for (const row of rows) {
+    if (row.budget_excluded) continue;
+
+    const amount = asNumber(row.amount, 0);
+    if (amount >= 0) continue;
+
+    const monthKey = monthKeyFromIsoDate(row.date);
+    if (!monthKey || monthKey.length !== 7) continue;
+
+    const current = byMonth.get(monthKey) || emptyExpenseBreakdown();
+    const categoryId = row.category_id_user || row.category_id_auto;
+    const categoryMeta = categoryId
+      ? categoryMap.get(categoryId) || null
+      : null;
+    const bucket = resolveExpenseBucket(row, categoryMeta);
+    const absAmount = Math.abs(amount);
+
+    if (bucket === "fixed_costs") current.fixedCosts += absAmount;
+    if (bucket === "subscriptions") current.subscriptions += absAmount;
+    if (bucket === "savings_transfer") current.savingsTransfer += absAmount;
+
+    if (bucket === "variable_costs") {
+      current.variableCosts += absAmount;
+      const subbucket = resolveVariableSubbucket(row, categoryMeta);
+      if (subbucket === "groceries") current.variable.groceries += absAmount;
+      if (subbucket === "fuel") current.variable.fuel += absAmount;
+      if (subbucket === "smoking") current.variable.smoking += absAmount;
+      if (subbucket === "other") current.variable.other += absAmount;
+    }
+
+    current.total += absAmount;
+    byMonth.set(monthKey, current);
+  }
+
+  const totals = new Map<string, BudgetExpenseBreakdown>();
+  for (const [monthKey, expenses] of byMonth) {
+    const rounded: BudgetExpenseBreakdown = {
+      fixedCosts: round2(expenses.fixedCosts),
+      subscriptions: round2(expenses.subscriptions),
+      variableCosts: round2(expenses.variableCosts),
+      savingsTransfer: round2(expenses.savingsTransfer),
+      total: round2(expenses.total),
+      variable: {
+        groceries: round2(expenses.variable.groceries),
+        fuel: round2(expenses.variable.fuel),
+        smoking: round2(expenses.variable.smoking),
+        other: round2(expenses.variable.other),
+        total: round2(
+          expenses.variable.groceries +
+            expenses.variable.fuel +
+            expenses.variable.smoking +
+            expenses.variable.other,
+        ),
+      },
+    };
+    totals.set(monthKey, rounded);
+  }
+
+  return totals;
+}
+
+function resolveExpenseBaselinesFromCompletedMonths(
+  rows: BudgetTx[],
+  categoryMap: Map<string, CategoryMeta>,
+  trendStart: Date,
+  currentMonthStart: Date,
+): Map<BudgetCategoryKey, number> {
+  const totalsByMonth = computeExpenseTotalsByMonth(rows, categoryMap);
+  const completedMonths = [...totalsByMonth.entries()]
+    .map(([monthKey, expenses]) => {
+      const monthStart = monthStartFromKey(monthKey);
+      return monthStart ? { monthStart, expenses } : null;
+    })
+    .filter(
+      (
+        row,
+      ): row is {
+        monthStart: Date;
+        expenses: BudgetExpenseBreakdown;
+      } => Boolean(row),
+    )
+    .filter(
+      (row) =>
+        row.monthStart < currentMonthStart && row.monthStart >= trendStart,
+    )
+    .sort(
+      (left, right) => right.monthStart.getTime() - left.monthStart.getTime(),
+    )
+    .slice(0, 3);
+
+  const baselines = new Map<BudgetCategoryKey, number>();
+  if (!completedMonths.length) return baselines;
+
+  const expenseKeys: BudgetCategoryKey[] = [
+    "fixed_costs",
+    "subscriptions",
+    "variable_costs",
+    "groceries",
+    "fuel",
+    "smoking",
+    "other",
+  ];
+
+  for (const key of expenseKeys) {
+    baselines.set(
+      key,
+      round2(
+        median(
+          completedMonths.map((row) =>
+            getBudgetCategoryActual(key, row.expenses),
+          ),
+        ),
+      ),
+    );
+  }
+
+  return baselines;
+}
+
 function multiplyVariableBy(
   value: BudgetVariableBreakdown,
   factor: number,
@@ -650,9 +802,211 @@ function defaultFactorForCategory(
     categoryKey === "smoking" ||
     categoryKey === "other"
   ) {
-    return settings.adjustmentFactor;
+    if (settings.mode === "active_savings") return 0.95;
+    if (settings.mode === "balanced") return 1;
+    return 1;
   }
   return 1;
+}
+
+function calculateRelativeVolatility(values: number[]) {
+  if (values.length < 2) return 0;
+  const baseline = Math.max(median(values), 1);
+  const spread = Math.max(...values) - Math.min(...values);
+  return clamp(spread / baseline, 0, 1.5);
+}
+
+function buildCompletedMonthBudgetInsight(
+  rows: BudgetTx[],
+  categoryMap: Map<string, CategoryMeta>,
+  settings: BudgetPlanSettings,
+  trendStart: Date,
+  currentMonthStart: Date,
+): CompletedMonthBudgetInsight {
+  const incomeTotalsByMonth = computeIncludedIncomeTotalsByMonth(
+    rows,
+    categoryMap,
+    settings,
+  );
+  const expenseTotalsByMonth = computeExpenseTotalsByMonth(rows, categoryMap);
+
+  const recentMonths = [...incomeTotalsByMonth.keys()]
+    .map((monthKey) => {
+      const monthStart = monthStartFromKey(monthKey);
+      return monthStart ? { monthKey, monthStart } : null;
+    })
+    .filter(
+      (
+        row,
+      ): row is {
+        monthKey: string;
+        monthStart: Date;
+      } => Boolean(row),
+    )
+    .filter(
+      (row) =>
+        row.monthStart < currentMonthStart && row.monthStart >= trendStart,
+    )
+    .sort(
+      (left, right) => right.monthStart.getTime() - left.monthStart.getTime(),
+    )
+    .slice(0, 3);
+
+  const recentIncomeTotals: number[] = [];
+  const recentVariableTotals: number[] = [];
+  const recentSavingsCapacityTotals: number[] = [];
+
+  for (const row of recentMonths) {
+    const incomeTotal = round2(incomeTotalsByMonth.get(row.monthKey) || 0);
+    const expenses = expenseTotalsByMonth.get(row.monthKey) || emptyExpenseBreakdown();
+    const historicalSavingsCapacity = Math.max(
+      incomeTotal -
+        expenses.fixedCosts -
+        expenses.subscriptions -
+        expenses.variableCosts,
+      0,
+    );
+
+    recentIncomeTotals.push(incomeTotal);
+    recentVariableTotals.push(round2(expenses.variableCosts));
+    recentSavingsCapacityTotals.push(round2(historicalSavingsCapacity));
+  }
+
+  return {
+    recentIncomeTotals,
+    recentVariableTotals,
+    recentSavingsCapacityTotals,
+    incomeVolatility: calculateRelativeVolatility(recentIncomeTotals),
+    variableVolatility: calculateRelativeVolatility(recentVariableTotals),
+  };
+}
+
+function resolveDeterministicAutomaticSavingsTargets({
+  savingsPotential,
+  flexibleBudgetCapacity,
+  variableBaselineBudget,
+  insight,
+  monthProgress,
+  projectedMonthlyCoreNet,
+}: {
+  savingsPotential: number;
+  flexibleBudgetCapacity: number;
+  variableBaselineBudget: number;
+  insight: CompletedMonthBudgetInsight;
+  monthProgress: number;
+  projectedMonthlyCoreNet: number;
+}) {
+  const positiveProjectedNet = Math.max(projectedMonthlyCoreNet, 0);
+  const historicalMedian = insight.recentSavingsCapacityTotals.length
+    ? median(insight.recentSavingsCapacityTotals)
+    : savingsPotential;
+
+  const recentVariableMedian = insight.recentVariableTotals.length
+    ? median(insight.recentVariableTotals)
+    : variableBaselineBudget;
+  const variableReference = clamp(
+    recentVariableMedian > 0 ? recentVariableMedian : variableBaselineBudget,
+    0,
+    flexibleBudgetCapacity,
+  );
+  const activeCapacity = Math.max(
+    flexibleBudgetCapacity -
+      clamp(
+        Math.max(variableReference * 0.78, flexibleBudgetCapacity * 0.45),
+        Math.min(250, flexibleBudgetCapacity),
+        flexibleBudgetCapacity,
+      ),
+    0,
+  );
+  const balancedCapacity = Math.max(
+    flexibleBudgetCapacity -
+      clamp(
+        Math.max(variableReference * 0.93, flexibleBudgetCapacity * 0.7),
+        Math.min(325, flexibleBudgetCapacity),
+        flexibleBudgetCapacity,
+      ),
+    0,
+  );
+
+  const activeReferenceCandidates = [activeCapacity];
+  if (savingsPotential > 0) {
+    activeReferenceCandidates.push(Math.min(savingsPotential, activeCapacity));
+  }
+  if (historicalMedian > 0) {
+    activeReferenceCandidates.push(Math.min(historicalMedian, activeCapacity));
+  }
+  if (positiveProjectedNet > 0) {
+    activeReferenceCandidates.push(
+      Math.min(positiveProjectedNet * 0.85, activeCapacity),
+    );
+  }
+
+  const balancedReferenceCandidates = [balancedCapacity];
+  if (savingsPotential > 0) {
+    balancedReferenceCandidates.push(
+      Math.min(savingsPotential, balancedCapacity),
+    );
+  }
+  if (historicalMedian > 0) {
+    balancedReferenceCandidates.push(
+      Math.min(historicalMedian * 0.7, balancedCapacity),
+    );
+  }
+  if (positiveProjectedNet > 0) {
+    balancedReferenceCandidates.push(
+      Math.min(positiveProjectedNet * 0.5, balancedCapacity),
+    );
+  }
+
+  const referenceCandidates = [
+    ...activeReferenceCandidates,
+    ...balancedReferenceCandidates,
+  ];
+
+  const realisticCenter = median(referenceCandidates);
+  const riskPenalty = clamp(
+    insight.incomeVolatility * 0.18 +
+      insight.variableVolatility * 0.22 +
+      (positiveProjectedNet <= 0 ? 0.08 : 0) +
+      (monthProgress >= 0.5 && positiveProjectedNet < realisticCenter ? 0.08 : 0),
+    0,
+    0.4,
+  );
+
+  const activeBase = Math.min(
+    activeCapacity,
+    Math.max(
+      median(activeReferenceCandidates),
+      activeCapacity * 0.72,
+      historicalMedian * 0.95,
+      positiveProjectedNet > 0 ? positiveProjectedNet * 0.9 : 0,
+    ),
+  );
+  const activeTarget = snapToEuroStep(
+    Math.max(activeBase * (1 - riskPenalty * 0.4), 0),
+  );
+
+  const balancedBase = Math.min(
+    balancedCapacity,
+    Math.max(
+      median(balancedReferenceCandidates),
+      balancedCapacity * 0.55,
+      historicalMedian * 0.55,
+      positiveProjectedNet > 0 ? positiveProjectedNet * 0.45 : 0,
+    ),
+  );
+  const rawBalancedTarget = snapToEuroStep(
+    Math.max(balancedBase * (1 - riskPenalty * 0.2), 0),
+  );
+  const balancedTarget =
+    activeTarget >= SAVINGS_TARGET_STEP
+      ? Math.min(rawBalancedTarget, activeTarget - SAVINGS_TARGET_STEP)
+      : Math.min(rawBalancedTarget, activeTarget);
+
+  return {
+    activeTarget: clamp(activeTarget, 0, activeCapacity),
+    balancedTarget: clamp(Math.max(balancedTarget, 0), 0, balancedCapacity),
+  };
 }
 
 function resolveUtilization(
@@ -750,25 +1104,7 @@ function buildMonthWeekRanges(
   monthStart: Date,
   monthEndExclusive: Date,
 ): WeekRange[] {
-  const ranges: WeekRange[] = [];
-  let cursor = monthStart;
-  let weekNumber = 1;
-
-  while (cursor < monthEndExclusive) {
-    const endExclusive = addDays(cursor, 7);
-    const boundedEnd =
-      endExclusive < monthEndExclusive ? endExclusive : monthEndExclusive;
-    ranges.push({
-      weekNumber,
-      label: `Week ${weekNumber}`,
-      start: cursor,
-      endExclusive: boundedEnd,
-    });
-    cursor = boundedEnd;
-    weekNumber += 1;
-  }
-
-  return ranges;
+  return buildCalendarWeekRangesForMonth(monthStart, monthEndExclusive);
 }
 
 function buildExpenseDetailItems(
@@ -911,19 +1247,25 @@ function buildOutsideBudgetExpenseSummary(
 }
 
 function computeWeeklyVariablePlan(
-  monthRows: BudgetTx[],
+  weekRows: BudgetTx[],
   categoryMap: Map<string, CategoryMeta>,
-  monthStart: Date,
-  monthEndExclusive: Date,
-  referenceDay: Date,
-  variableMonthlyBudget: number,
+  weekRanges: WeekRange[],
+  timelineReferenceDay: Date,
+  variableMonthlyBudgetByMonthStartIso: Map<string, number>,
+  currentMonthStart: Date,
 ): BudgetWeekPlanRow[] {
-  const ranges = buildMonthWeekRanges(monthStart, monthEndExclusive);
+  const ranges = weekRanges;
   if (!ranges.length) return [];
+
+  const baseWeeklyBudgetByIndex = resolveBaseWeeklyBudgetsByDailyMonthRates(
+    ranges,
+    variableMonthlyBudgetByMonthStartIso,
+    currentMonthStart,
+  );
 
   const weekActuals = ranges.map((range) => {
     let total = 0;
-    for (const row of monthRows) {
+    for (const row of weekRows) {
       if (row.amount >= 0) continue;
       if (row.budget_excluded) continue;
       const txDate = parseIsoDateUtc(row.date);
@@ -936,18 +1278,11 @@ function computeWeeklyVariablePlan(
     return roundEuro(total);
   });
 
-  const baseWeeklyBudget = ranges.length
-    ? variableMonthlyBudget / ranges.length
-    : 0;
-  let remainingPool = variableMonthlyBudget;
+  const rebalance = rebalanceWeeklyBudgets(baseWeeklyBudgetByIndex, weekActuals);
   const rows: BudgetWeekPlanRow[] = [];
 
   ranges.forEach((range, index) => {
-    const weeksLeft = ranges.length - index;
-    const budget =
-      weeksLeft === 1
-        ? roundEuro(Math.max(remainingPool, 0))
-        : roundEuro(Math.max(remainingPool / weeksLeft, 0));
+    const budget = rebalance.budgets[index] || 0;
     const actual = weekActuals[index];
     const remaining = roundEuro(budget - actual);
     const utilization = resolveUtilization(actual, budget);
@@ -963,26 +1298,28 @@ function computeWeeklyVariablePlan(
       remaining,
       utilization,
       isCurrentWeek:
-        referenceDay >= range.start && referenceDay < range.endExclusive,
-      isPastWeek: referenceDay >= range.endExclusive,
+        timelineReferenceDay >= range.start &&
+        timelineReferenceDay < range.endExclusive,
+      isPastWeek: timelineReferenceDay >= range.endExclusive,
       wasRebalanced:
-        index > 0 && Math.abs(budget - roundEuro(baseWeeklyBudget)) >= 1,
+        index > 0 && Math.abs(budget - baseWeeklyBudgetByIndex[index]) >= 1,
       overrunAmount,
+      daysInCurrentMonth: range.daysInCurrentMonth,
+      daysInPreviousMonth: range.daysInPreviousMonth,
+      daysInNextMonth: range.daysInNextMonth,
+      crossesMonthBoundary: range.crossesMonthBoundary,
     });
-
-    remainingPool -= actual;
   });
 
   return rows;
 }
 
 function buildWeeklySpendBreakdown(
-  monthRows: BudgetTx[],
+  weekRows: BudgetTx[],
   categoryMap: Map<string, CategoryMeta>,
-  monthStart: Date,
-  monthEndExclusive: Date,
+  weekRanges: WeekRange[],
 ): BudgetWeekSpendBreakdown[] {
-  const ranges = buildMonthWeekRanges(monthStart, monthEndExclusive);
+  const ranges = weekRanges;
 
   return ranges.map((range) => {
     const categoryTotals = new Map<
@@ -997,7 +1334,7 @@ function buildWeeklySpendBreakdown(
       });
     }
 
-    for (const row of monthRows) {
+    for (const row of weekRows) {
       if (row.amount >= 0) continue;
       if (row.budget_excluded) continue;
       const txDate = parseIsoDateUtc(row.date);
@@ -1049,6 +1386,8 @@ function buildWeeklySpendBreakdown(
 
     return {
       weekNumber: range.weekNumber,
+      startDate: dateToIso(range.start),
+      endDateExclusive: dateToIso(range.endExclusive),
       categories,
     };
   });
@@ -1252,31 +1591,54 @@ function buildCoachReport(
 export async function computeBudgetPlan(
   reference = new Date(),
   planKey = "default",
+  timelineReference = new Date(),
 ): Promise<BudgetPlanComputation> {
   const referenceDay = startOfUtcDay(reference);
+  const timelineReferenceDay = startOfUtcDay(timelineReference);
   const trendEndExclusive = addDays(referenceDay, 1);
   const trendStart = subtractDays(trendEndExclusive, TREND_WINDOW_DAYS);
   const monthStart = startOfMonth(referenceDay);
   const monthEndExclusive = endOfMonthExclusive(referenceDay);
 
-  const dataStart = trendStart < monthStart ? trendStart : monthStart;
+  const weekRanges = buildMonthWeekRanges(monthStart, monthEndExclusive);
+  const weekWindowStart = weekRanges.length ? weekRanges[0].start : monthStart;
+  const weekWindowEndExclusive = weekRanges.length
+    ? weekRanges[weekRanges.length - 1].endExclusive
+    : monthEndExclusive;
+
+  const previousMonthStart = startOfMonth(subtractDays(monthStart, 1));
+  const nextMonthStart = startOfMonth(monthEndExclusive);
+
+  const dataStart = trendStart < weekWindowStart ? trendStart : weekWindowStart;
+  const dataEndExclusive =
+    trendEndExclusive > weekWindowEndExclusive
+      ? trendEndExclusive
+      : weekWindowEndExclusive;
 
   const trendStartIso = dateToIso(trendStart);
   const trendEndIso = dateToIso(trendEndExclusive);
   const monthStartIso = dateToIso(monthStart);
+  const weekWindowStartIso = dateToIso(weekWindowStart);
+  const weekWindowEndIso = dateToIso(weekWindowEndExclusive);
+  const previousMonthStartIso = dateToIso(previousMonthStart);
+  const nextMonthStartIso = dateToIso(nextMonthStart);
 
   const [
     categoryMap,
     transactions,
     settings,
     categoryOverrides,
-    monthlyBudgetValues,
+    currentMonthBudgetValues,
+    previousMonthBudgetValues,
+    nextMonthBudgetValues,
   ] = await Promise.all([
     fetchCategoryMap(),
-    fetchTransactionsInRange(dateToIso(dataStart), trendEndIso),
+    fetchTransactionsInRange(dateToIso(dataStart), dateToIso(dataEndExclusive)),
     getBudgetPlanSettings(planKey),
     getBudgetCategoryOverrides(planKey),
     getMonthlyBudgetValues(monthStartIso, planKey),
+    getMonthlyBudgetValues(previousMonthStartIso, planKey),
+    getMonthlyBudgetValues(nextMonthStartIso, planKey),
   ]);
 
   const trendRows = transactions.filter(
@@ -1285,8 +1647,12 @@ export async function computeBudgetPlan(
   const monthRows = transactions.filter(
     (row) => row.date >= monthStartIso && row.date < trendEndIso,
   );
+  const weekRows = transactions.filter(
+    (row) => row.date >= weekWindowStartIso && row.date < weekWindowEndIso,
+  );
   const includedTrendRows = trendRows.filter((row) => !row.budget_excluded);
   const includedMonthRows = monthRows.filter((row) => !row.budget_excluded);
+  const includedWeekRows = weekRows.filter((row) => !row.budget_excluded);
   const excludedMonthRows = monthRows.filter((row) => row.budget_excluded);
 
   const observedDays = daysBetween(trendStart, trendEndExclusive);
@@ -1330,23 +1696,41 @@ export async function computeBudgetPlan(
       monthStart,
     ) ?? trend.income.total,
   );
+  const completedMonthExpenseBaselines =
+    resolveExpenseBaselinesFromCompletedMonths(
+      includedTrendRows,
+      categoryMap,
+      trendStart,
+      monthStart,
+    );
+  const completedMonthBudgetInsight = buildCompletedMonthBudgetInsight(
+    includedTrendRows,
+    categoryMap,
+    settings,
+    trendStart,
+    monthStart,
+  );
 
   const overridesByKey = new Map(
     categoryOverrides.map((item) => [item.categoryKey, item]),
   );
   const monthValuesByKey = new Map(
-    monthlyBudgetValues.map((item) => [item.categoryKey, item]),
+    currentMonthBudgetValues.map((item) => [item.categoryKey, item]),
   );
 
   const baselineByKey = new Map<BudgetCategoryKey, number>();
   const actualByKey = new Map<BudgetCategoryKey, number>();
 
   for (const categoryKey of RECOMMENDATION_ORDER) {
+    const completedMonthBaseline = completedMonthExpenseBaselines.get(categoryKey);
+    const baselineValue =
+      completedMonthBaseline != null
+        ? completedMonthBaseline
+        : getTrendBaselineForCategory(categoryKey, trend, expectedIncomeMonthly);
+
     baselineByKey.set(
       categoryKey,
-      round2(
-        getTrendBaselineForCategory(categoryKey, trend, expectedIncomeMonthly),
-      ),
+      round2(baselineValue),
     );
     actualByKey.set(
       categoryKey,
@@ -1368,8 +1752,10 @@ export async function computeBudgetPlan(
     const baselineMonthly = baselineByKey.get(categoryKey) || 0;
     const override = overridesByKey.get(categoryKey);
     const monthlyValue = monthValuesByKey.get(categoryKey);
+    const autoManagedVariableCategory =
+      settings.mode !== "custom" && isVariableBudgetCategoryKey(categoryKey);
 
-    if (monthlyValue) {
+    if (monthlyValue && !autoManagedVariableCategory) {
       const monthlyBudget = roundEuro(Math.max(monthlyValue.monthlyBudget, 0));
       const appliedFactor =
         baselineMonthly > 0 ? monthlyBudget / baselineMonthly : defaultFactor;
@@ -1380,7 +1766,7 @@ export async function computeBudgetPlan(
       };
     }
 
-    if (override?.monthlyTargetOverride != null) {
+    if (!autoManagedVariableCategory && override?.monthlyTargetOverride != null) {
       const monthlyBudget = roundEuro(
         Math.max(override.monthlyTargetOverride, 0),
       );
@@ -1395,7 +1781,11 @@ export async function computeBudgetPlan(
       };
     }
 
-    if (allowFactorOverride && override?.factorOverride != null) {
+    if (
+      !autoManagedVariableCategory &&
+      allowFactorOverride &&
+      override?.factorOverride != null
+    ) {
       return {
         monthlyBudget: roundEuro(
           Math.max(baselineMonthly * override.factorOverride, 0),
@@ -1466,10 +1856,116 @@ export async function computeBudgetPlan(
   setRecommendation("subscriptions", subscriptionInput);
 
   const plannedIncomeBase = roundEuro(Math.max(expectedIncomeMonthly, 0));
+  const flexibleBudgetCapacity = roundEuro(
+    Math.max(
+      plannedIncomeBase -
+        fixedInput.monthlyBudget -
+        subscriptionInput.monthlyBudget,
+      0,
+    ),
+  );
+  const variableBaselineBudget = roundEuro(
+    Math.max(
+      baselineByKey.get("variable_costs") || trend.expenses.variableCosts,
+      0,
+    ),
+  );
+  const projectedMonthlyCoreNet =
+    monthProgress > 0
+      ? (monthToDate.income.total -
+          (monthToDate.expenses.fixedCosts +
+            monthToDate.expenses.subscriptions +
+            monthToDate.expenses.variableCosts)) /
+        monthProgress
+      : monthToDate.income.total -
+        (monthToDate.expenses.fixedCosts +
+          monthToDate.expenses.subscriptions +
+          monthToDate.expenses.variableCosts);
+  const savingsPotential = roundEuro(
+    Math.max(
+      flexibleBudgetCapacity - variableBaselineBudget,
+      0,
+    ),
+  );
+  const deterministicTargets = resolveDeterministicAutomaticSavingsTargets({
+    savingsPotential,
+    flexibleBudgetCapacity,
+    variableBaselineBudget,
+    insight: completedMonthBudgetInsight,
+    monthProgress,
+    projectedMonthlyCoreNet,
+  });
+
+  let appliedSavingsTarget = 0;
+  let savingsTargetSource: BudgetSavingsTargetSource = "manual_custom";
+  let usedOpenAISavingsTarget = false;
+
+  if (settings.mode === "custom") {
+    appliedSavingsTarget = roundEuro(Math.max(settings.savingsTargetMonthly, 0));
+    savingsTargetSource = "manual_custom";
+  } else {
+    const deterministicTarget =
+      settings.mode === "active_savings"
+        ? deterministicTargets.activeTarget
+        : deterministicTargets.balancedTarget;
+    const minimumTarget =
+      settings.mode === "active_savings"
+        ? Math.max(snapToEuroStep(deterministicTarget * 0.65), 0)
+        : Math.max(snapToEuroStep(deterministicTarget * 0.5), 0);
+    const maximumTarget =
+      settings.mode === "active_savings"
+        ? Math.max(
+            minimumTarget,
+            Math.min(
+              flexibleBudgetCapacity,
+              Math.max(
+                deterministicTarget,
+                snapToEuroStep(deterministicTarget + 100),
+              ),
+            ),
+          )
+        : Math.max(
+            minimumTarget,
+            Math.min(
+              flexibleBudgetCapacity,
+              Math.max(
+                deterministicTarget,
+                snapToEuroStep(deterministicTargets.activeTarget),
+              ),
+            ),
+          );
+    const automaticSuggestion = await suggestAutomaticSavingsTarget({
+      monthStart: monthStartIso,
+      mode: settings.mode,
+      expectedIncomeMonthly: round2(expectedIncomeMonthly),
+      fixedCostsBudget: fixedInput.monthlyBudget,
+      subscriptionsBudget: subscriptionInput.monthlyBudget,
+      variableBaselineBudget: round2(variableBaselineBudget),
+      savingsPotential,
+      deterministicTarget,
+      minimumTarget,
+      maximumTarget,
+      monthProgress: round2(monthProgress),
+      projectedMonthlyNet: round2(projectedMonthlyCoreNet),
+      recentIncomeTotals: completedMonthBudgetInsight.recentIncomeTotals,
+      recentVariableTotals: completedMonthBudgetInsight.recentVariableTotals,
+      recentSavingsCapacityTotals:
+        completedMonthBudgetInsight.recentSavingsCapacityTotals,
+    });
+
+    appliedSavingsTarget = automaticSuggestion.amount;
+    usedOpenAISavingsTarget = automaticSuggestion.usedOpenAI;
+    savingsTargetSource =
+      settings.mode === "active_savings"
+        ? "automatic_active"
+        : "automatic_balanced";
+  }
+
   const variableDefaultBudget = Math.max(
     plannedIncomeBase -
       fixedInput.monthlyBudget -
-      subscriptionInput.monthlyBudget,
+      subscriptionInput.monthlyBudget -
+      appliedSavingsTarget,
     0,
   );
 
@@ -1496,8 +1992,9 @@ export async function computeBudgetPlan(
     const baselineMonthly = baselineByKey.get(key) || 0;
     const override = overridesByKey.get(key);
     const monthlyValue = monthValuesByKey.get(key);
+    const autoManagedVariableCategory = settings.mode !== "custom";
 
-    if (monthlyValue) {
+    if (monthlyValue && !autoManagedVariableCategory) {
       const monthlyBudget = roundEuro(Math.max(monthlyValue.monthlyBudget, 0));
       explicitSubcategoryBudget += monthlyBudget;
       setRecommendation(key, {
@@ -1511,7 +2008,7 @@ export async function computeBudgetPlan(
       continue;
     }
 
-    if (override?.monthlyTargetOverride != null) {
+    if (!autoManagedVariableCategory && override?.monthlyTargetOverride != null) {
       const monthlyBudget = roundEuro(
         Math.max(override.monthlyTargetOverride, 0),
       );
@@ -1527,7 +2024,7 @@ export async function computeBudgetPlan(
       continue;
     }
 
-    if (override?.factorOverride != null) {
+    if (!autoManagedVariableCategory && override?.factorOverride != null) {
       const monthlyBudget = roundEuro(
         Math.max(baselineMonthly * override.factorOverride, 0),
       );
@@ -1578,14 +2075,11 @@ export async function computeBudgetPlan(
     });
   }
 
-  const savingsTargetInput = resolveBudgetInput(
-    "savings_target",
-    (baselineByKey.get("savings_target") || 0) *
-      defaultFactorForCategory("savings_target", settings),
-    defaultFactorForCategory("savings_target", settings),
-    "trend",
-  );
-  setRecommendation("savings_target", savingsTargetInput);
+  setRecommendation("savings_target", {
+    monthlyBudget: appliedSavingsTarget,
+    appliedFactor: 1,
+    overrideSource: "settings",
+  });
 
   const recommendations = RECOMMENDATION_ORDER.map((categoryKey) =>
     recommendationByKey.get(categoryKey),
@@ -1658,28 +2152,25 @@ export async function computeBudgetPlan(
     (monthlyBudgetByKey.get("fixed_costs") || 0) +
     (monthlyBudgetByKey.get("subscriptions") || 0) +
     (monthlyBudgetByKey.get("variable_costs") || 0);
-
-  const savingsPotential = roundEuro(
-    Math.max(
-      expectedIncomeMonthly -
-        (trend.expenses.fixedCosts +
-          trend.expenses.subscriptions +
-          trend.expenses.variableCosts),
-      0,
+  const recommendedSavings = roundEuro(Math.max(appliedSavingsTarget, 0));
+  const automaticSavingsTargetPreview = {
+    activeSavings: roundEuro(
+      Math.max(
+        settings.mode === "active_savings"
+          ? appliedSavingsTarget
+          : deterministicTargets.activeTarget,
+        0,
+      ),
     ),
-  );
-  const configuredSavingsTarget = monthlyBudgetByKey.get("savings_target") || 0;
-
-  let recommendedSavings = configuredSavingsTarget;
-  if (settings.mode === "active_savings") {
-    recommendedSavings = Math.max(configuredSavingsTarget, savingsPotential);
-  } else if (settings.mode === "balanced") {
-    recommendedSavings = Math.max(
-      configuredSavingsTarget,
-      savingsPotential * 0.75,
-    );
-  }
-  recommendedSavings = roundEuro(Math.max(recommendedSavings, 0));
+    balanced: roundEuro(
+      Math.max(
+        settings.mode === "balanced"
+          ? appliedSavingsTarget
+          : deterministicTargets.balancedTarget,
+        0,
+      ),
+    ),
+  };
 
   const monthlyBudgetTotal = roundEuro(Math.max(baseExpenseBudget, 0));
 
@@ -1707,22 +2198,51 @@ export async function computeBudgetPlan(
       ),
     ),
     variableBudget: roundEuro(monthlyBudgetByKey.get("variable_costs") || 0),
+    variableSubcategoriesBudgetTotal: roundEuro(
+      (monthlyBudgetByKey.get("groceries") || 0) +
+        (monthlyBudgetByKey.get("fuel") || 0) +
+        (monthlyBudgetByKey.get("smoking") || 0) +
+        (monthlyBudgetByKey.get("other") || 0),
+    ),
+    appliedSavingsTarget,
+    automaticSavingsTargetPreview,
+    savingsTargetSource,
+    usedOpenAISavingsTarget,
   };
 
+  const fallbackVariableMonthlyBudget = roundEuro(
+    Math.max(flowSummary.variableBudget, 0),
+  );
+  const resolveVariableMonthlyBudget = (
+    values: Array<{ categoryKey: string; monthlyBudget: number }>,
+  ) => {
+    const override = values.find((item) => item.categoryKey === "variable_costs");
+    if (!override) return fallbackVariableMonthlyBudget;
+    return roundEuro(Math.max(override.monthlyBudget, 0));
+  };
+
+  const variableMonthlyBudgetByMonthStartIso = new Map<string, number>([
+    [
+      previousMonthStartIso,
+      resolveVariableMonthlyBudget(previousMonthBudgetValues),
+    ],
+    [monthStartIso, resolveVariableMonthlyBudget(currentMonthBudgetValues)],
+    [nextMonthStartIso, resolveVariableMonthlyBudget(nextMonthBudgetValues)],
+  ]);
+
   const weeklyVariablePlan = computeWeeklyVariablePlan(
-    includedMonthRows,
+    includedWeekRows,
     categoryMap,
+    weekRanges,
+    timelineReferenceDay,
+    variableMonthlyBudgetByMonthStartIso,
     monthStart,
-    monthEndExclusive,
-    referenceDay,
-    flowSummary.variableBudget,
   );
 
   const weeklySpendBreakdown = buildWeeklySpendBreakdown(
-    includedMonthRows,
+    includedWeekRows,
     categoryMap,
-    monthStart,
-    monthEndExclusive,
+    weekRanges,
   );
 
   for (const row of weeklyVariablePlan) {
@@ -1816,6 +2336,9 @@ export async function computeBudgetPlan(
     warnings,
     savingsPotential,
     recommendedSavings,
+    automaticSavingsTargetPreview,
+    savingsTargetSource,
+    usedOpenAISavingsTarget,
     monthlyBudgetTotal,
     weeklyBudgetTotal,
     flowSummary,

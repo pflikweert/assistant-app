@@ -4,9 +4,9 @@ import { FinColors } from "@/constants/theme";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
 import {
-    buildCategoryRecordMap,
-    getCategoryPathLabel,
-    getEffectiveCategoryId,
+  buildCategoryRecordMap,
+  getCategoryPathLabel,
+  getEffectiveCategoryId,
 } from "@/services/category-display";
 import { supabase } from "@/services/supabase";
 import type { CategoryRecord } from "@/types/categorization";
@@ -14,14 +14,14 @@ import { useIsFocused } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
-    ActivityIndicator,
-    ScrollView,
-    SectionList,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  ScrollView,
+  SectionList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
@@ -551,7 +551,12 @@ export default function TransactionsTab() {
             <TxItem
               item={item}
               categoryMap={categoryMap}
-              onPress={() => router.push(`/transaction-detail?id=${item.id}`)}
+              onPress={() =>
+                router.push({
+                  pathname: "/transaction-detail",
+                  params: { id: item.id },
+                })
+              }
             />
             {index < section.data.length - 1 && <View style={styles.divider} />}
           </>

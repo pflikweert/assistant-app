@@ -61,6 +61,13 @@ export default function RootLayout() {
             headerShown: true,
           }}
         />
+        <Stack.Screen
+          name="subscriptions"
+          options={{
+            title: "Abonnementen",
+            headerShown: true,
+          }}
+        />
       </Stack>
       <StatusBar style="light" />
     </ThemeProvider>

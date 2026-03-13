@@ -2,32 +2,43 @@ import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinColors } from "@/constants/theme";
 import { recategorizeSingleTransaction } from "@/services/categorization";
 import {
-    bulkUpdateCategoryByCounterparty,
-    countCounterpartyTransactions,
-    getCounterpartyTransactions,
-    getTransactionCategories,
-    getTransactionDetail,
-    setTransactionBudgetExcluded,
-    setTransactionManualCategory,
-    setTransactionReviewed,
-    type CounterpartyTxSummary,
-    type TransactionDetail,
+  bulkUpdateCategoryByCounterparty,
+  countCounterpartyTransactions,
+  getCounterpartyTransactions,
+  getTransactionCategories,
+  getTransactionDetail,
+  setTransactionBudgetExcluded,
+  setTransactionManualCategory,
+  setTransactionReviewed,
+  type CounterpartyTxSummary,
+  type TransactionDetail,
 } from "@/services/categorization-repository";
 import {
-    getCategoryPathLabel,
-    getLeafCategories,
+  getCategoryPathLabel,
+  getLeafCategories,
 } from "@/services/category-display";
-import type { CategoryRecord } from "@/types/categorization";
+import {
+  getTransactionSubscriptionMatch,
+  linkTransactionToSubscription,
+  listSubscriptionProfiles,
+  markTransactionAsNotSubscription,
+  type TransactionSubscriptionMatchWithProfile,
+} from "@/services/subscriptions";
+import type {
+  CategoryRecord,
+  SubscriptionProfile,
+} from "@/types/categorization";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
-    ActivityIndicator,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const euroFormatter = new Intl.NumberFormat("nl-NL", {
@@ -44,6 +55,11 @@ function parseSaldo(value: unknown): number | null {
 
 function truncateMsg(s: string, max: number) {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+function normalizeRouteParam(value?: string | string[]) {
+  if (Array.isArray(value)) return value[0];
+  return value;
 }
 
 const SUBJECT_DRIVEN_PROVIDERS = [
@@ -66,6 +82,43 @@ function getSubjectFromDetails(details: string) {
   return details.split("|")[0]?.trim() || details;
 }
 
+const PSP_HINTS = [
+  "paypal",
+  "google play",
+  "google*play",
+  "apple",
+  "itunes",
+  "klarna",
+  "riverty",
+  "afterpay",
+  "billink",
+  "in3",
+  "sprinque",
+];
+
+function normalizeSubscriptionText(value: string | null | undefined) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isLikelySubscriptionPspTransaction(
+  counterparty: string | null,
+  details: string,
+) {
+  const haystack = normalizeSubscriptionText(
+    `${counterparty || ""} ${details || ""}`,
+  );
+  if (!haystack) return false;
+  return PSP_HINTS.some((hint) =>
+    haystack.includes(normalizeSubscriptionText(hint)),
+  );
+}
+
 type AiSuggestion = {
   categoryId: string;
   categoryKey: string;
@@ -86,7 +139,11 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function TransactionDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const transactionId = React.useMemo(
+    () => normalizeRouteParam(params.id),
+    [params.id],
+  );
   const router = useRouter();
 
   const [tx, setTx] = React.useState<TransactionDetail | null>(null);
@@ -115,6 +172,17 @@ export default function TransactionDetailScreen() {
   const [reviewToggling, setReviewToggling] = React.useState(false);
   const [budgetExclusionToggling, setBudgetExclusionToggling] =
     React.useState(false);
+  const [subscriptionProfiles, setSubscriptionProfiles] = React.useState<
+    SubscriptionProfile[]
+  >([]);
+  const [subscriptionMatch, setSubscriptionMatch] =
+    React.useState<TransactionSubscriptionMatchWithProfile | null>(null);
+  const [subscriptionModalOpen, setSubscriptionModalOpen] =
+    React.useState(false);
+  const [subscriptionActionBusy, setSubscriptionActionBusy] =
+    React.useState(false);
+  const [setCategoryToSubscriptions, setSetCategoryToSubscriptions] =
+    React.useState(true);
 
   // ── Derived maps ───────────────────────────────────────────────────────
   const categoryById = React.useMemo(
@@ -159,22 +227,39 @@ export default function TransactionDetailScreen() {
     () => isSubjectDrivenCounterparty(tx?.counterparty),
     [tx?.counterparty],
   );
+  const activeSubscriptionProfiles = React.useMemo(
+    () => subscriptionProfiles.filter((profile) => profile.isActive),
+    [subscriptionProfiles],
+  );
+  const isPspLikeExpense = React.useMemo(() => {
+    if (!tx) return false;
+    if (tx.amount >= 0) return false;
+    return isLikelySubscriptionPspTransaction(tx.counterparty, tx.details);
+  }, [tx]);
 
   // ── Data loading ────────────────────────────────────────────────────────
   const loadData = React.useCallback(async () => {
-    if (!id) return;
+    if (!transactionId) {
+      setTx(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const [detail, cats] = await Promise.all([
-        getTransactionDetail(id),
+      const [detail, cats, profiles, match] = await Promise.all([
+        getTransactionDetail(transactionId),
         getTransactionCategories(),
+        listSubscriptionProfiles(),
+        getTransactionSubscriptionMatch(transactionId),
       ]);
       setTx(detail);
       setCategories(cats);
+      setSubscriptionProfiles(profiles);
+      setSubscriptionMatch(match);
       if (detail?.counterparty) {
         const hist = await getCounterpartyTransactions(
           detail.counterparty,
-          id,
+          transactionId,
           5,
         );
         setHistory(hist);
@@ -184,7 +269,7 @@ export default function TransactionDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [transactionId]);
 
   React.useEffect(() => {
     void loadData();
@@ -193,15 +278,15 @@ export default function TransactionDetailScreen() {
   // ── Manual category ─────────────────────────────────────────────────────
   const handleManualCategory = React.useCallback(
     async (categoryId: string) => {
-      if (!id) return;
+      if (!transactionId) return;
       setSavingCategory(true);
       try {
-        await setTransactionManualCategory(id, categoryId, {
+        await setTransactionManualCategory(transactionId, categoryId, {
           reason: "handmatige wijziging",
           learnFromCounterparty: !isSubjectDrivenCounterparty(tx?.counterparty),
         });
         setShowPicker(false);
-        const detail = await getTransactionDetail(id);
+        const detail = await getTransactionDetail(transactionId);
         setTx(detail);
       } catch (e) {
         console.warn("setCategory error", e);
@@ -209,18 +294,18 @@ export default function TransactionDetailScreen() {
         setSavingCategory(false);
       }
     },
-    [id, tx?.counterparty],
+    [transactionId, tx?.counterparty],
   );
 
   // ── AI reclassification ─────────────────────────────────────────────────
   const handleAiReclassify = React.useCallback(async () => {
-    if (!id || !tx) return;
+    if (!transactionId || !tx) return;
     setAiState("loading");
     setAiSuggestion(null);
     setAiError(null);
     setShowPicker(false);
     try {
-      const result = await recategorizeSingleTransaction(id);
+      const result = await recategorizeSingleTransaction(transactionId);
       if (!result) {
         setAiError("Geen resultaat ontvangen van AI.");
         setAiState("error");
@@ -242,19 +327,23 @@ export default function TransactionDetailScreen() {
       setAiError(truncateMsg(e instanceof Error ? e.message : String(e), 200));
       setAiState("error");
     }
-  }, [id, tx, categoryById]);
+  }, [transactionId, tx, categoryById]);
 
   const handleApplyAi = React.useCallback(
     async (learnRule: boolean) => {
-      if (!id || !aiSuggestion) return;
+      if (!transactionId || !aiSuggestion) return;
       setSavingCategory(true);
       try {
-        await setTransactionManualCategory(id, aiSuggestion.categoryId, {
-          reason: "AI herclassificatie",
-          learnFromCounterparty:
-            learnRule && !isSubjectDrivenCounterparty(tx?.counterparty),
-        });
-        const detail = await getTransactionDetail(id);
+        await setTransactionManualCategory(
+          transactionId,
+          aiSuggestion.categoryId,
+          {
+            reason: "AI herclassificatie",
+            learnFromCounterparty:
+              learnRule && !isSubjectDrivenCounterparty(tx?.counterparty),
+          },
+        );
+        const detail = await getTransactionDetail(transactionId);
         setTx(detail);
         setAiState("idle");
         setAiSuggestion(null);
@@ -278,12 +367,12 @@ export default function TransactionDetailScreen() {
         setSavingCategory(false);
       }
     },
-    [id, aiSuggestion, tx?.counterparty],
+    [transactionId, aiSuggestion, tx?.counterparty],
   );
 
   // ── Bulk update ─────────────────────────────────────────────────────────
   const handleBulkUpdate = React.useCallback(async () => {
-    if (!tx?.counterparty || !tx?.category_id_user || !id) return;
+    if (!tx?.counterparty || !tx?.category_id_user || !transactionId) return;
     setBulkPhase("updating");
     try {
       await bulkUpdateCategoryByCounterparty(
@@ -291,23 +380,27 @@ export default function TransactionDetailScreen() {
         tx.category_id_user,
         bulkScope,
       );
-      const hist = await getCounterpartyTransactions(tx.counterparty, id, 5);
+      const hist = await getCounterpartyTransactions(
+        tx.counterparty,
+        transactionId,
+        5,
+      );
       setHistory(hist);
       setBulkPhase("done");
     } catch (e) {
       console.warn("bulk update error", e);
       setBulkPhase("confirming");
     }
-  }, [tx, id, bulkScope]);
+  }, [tx, transactionId, bulkScope]);
 
   // ── Reviewed toggle ─────────────────────────────────────────────────────
   const handleReviewToggle = React.useCallback(
     async (value: boolean) => {
-      if (!id || reviewToggling) return;
+      if (!transactionId || reviewToggling) return;
       setReviewToggling(true);
       setTx((prev) => (prev ? { ...prev, is_reviewed: value } : prev));
       try {
-        await setTransactionReviewed(id, value);
+        await setTransactionReviewed(transactionId, value);
       } catch (e) {
         setTx((prev) => (prev ? { ...prev, is_reviewed: !value } : prev));
         console.warn("review toggle error", e);
@@ -315,16 +408,16 @@ export default function TransactionDetailScreen() {
         setReviewToggling(false);
       }
     },
-    [id, reviewToggling],
+    [transactionId, reviewToggling],
   );
 
   const handleBudgetExcludedToggle = React.useCallback(
     async (value: boolean) => {
-      if (!id || budgetExclusionToggling) return;
+      if (!transactionId || budgetExclusionToggling) return;
       setBudgetExclusionToggling(true);
       setTx((prev) => (prev ? { ...prev, budget_excluded: value } : prev));
       try {
-        await setTransactionBudgetExcluded(id, value);
+        await setTransactionBudgetExcluded(transactionId, value);
       } catch (e) {
         setTx((prev) => (prev ? { ...prev, budget_excluded: !value } : prev));
         console.warn("budget excluded toggle error", e);
@@ -332,8 +425,55 @@ export default function TransactionDetailScreen() {
         setBudgetExclusionToggling(false);
       }
     },
-    [budgetExclusionToggling, id],
+    [budgetExclusionToggling, transactionId],
   );
+
+  const handleLinkToSubscription = React.useCallback(
+    async (profileId: string) => {
+      if (!transactionId || subscriptionActionBusy) return;
+      setSubscriptionActionBusy(true);
+      try {
+        await linkTransactionToSubscription({
+          transactionId,
+          subscriptionProfileId: profileId,
+          notes: "gekoppeld vanuit transactie-detail",
+          confidence: 1,
+          setCategoryToSubscriptions,
+        });
+
+        const [detail, match] = await Promise.all([
+          getTransactionDetail(transactionId),
+          getTransactionSubscriptionMatch(transactionId),
+        ]);
+        setTx(detail);
+        setSubscriptionMatch(match);
+        setSubscriptionModalOpen(false);
+      } catch (e) {
+        console.warn("link subscription error", e);
+      } finally {
+        setSubscriptionActionBusy(false);
+      }
+    },
+    [transactionId, setCategoryToSubscriptions, subscriptionActionBusy],
+  );
+
+  const handleMarkNoSubscription = React.useCallback(async () => {
+    if (!transactionId || subscriptionActionBusy) return;
+    setSubscriptionActionBusy(true);
+    try {
+      await markTransactionAsNotSubscription(
+        transactionId,
+        "handmatig gemarkeerd vanuit transactie-detail",
+      );
+      const match = await getTransactionSubscriptionMatch(transactionId);
+      setSubscriptionMatch(match);
+      setSubscriptionModalOpen(false);
+    } catch (e) {
+      console.warn("ignore subscription error", e);
+    } finally {
+      setSubscriptionActionBusy(false);
+    }
+  }, [transactionId, subscriptionActionBusy]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   if (loading) {
@@ -356,436 +496,574 @@ export default function TransactionDetailScreen() {
   const omschrijving = tx.details.split("|")[0]?.trim() || tx.details;
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* ── Header ──────────────────────────────────────────────────────── */}
-      <View style={styles.card}>
-        <View style={styles.rowBetween}>
-          <Text style={styles.counterparty} numberOfLines={2}>
-            {tx.counterparty || "Onbekende tegenpartij"}
+    <>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <View style={styles.card}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.counterparty} numberOfLines={2}>
+              {tx.counterparty || "Onbekende tegenpartij"}
+            </Text>
+            <View style={styles.reviewedBox}>
+              <View style={styles.statusToggleRow}>
+                <Text style={styles.reviewedLabel}>Beoordeeld</Text>
+                <Switch
+                  value={tx.is_reviewed}
+                  onValueChange={handleReviewToggle}
+                  disabled={reviewToggling}
+                  trackColor={{
+                    false: FinColors.bgElevated,
+                    true: FinColors.greenBorder,
+                  }}
+                  thumbColor={
+                    tx.is_reviewed ? FinColors.green : FinColors.textMuted
+                  }
+                />
+              </View>
+              <View style={styles.statusToggleRow}>
+                <Text style={styles.reviewedLabel}>Buiten budget</Text>
+                <Switch
+                  value={tx.budget_excluded}
+                  onValueChange={handleBudgetExcludedToggle}
+                  disabled={budgetExclusionToggling}
+                  trackColor={{
+                    false: FinColors.bgElevated,
+                    true: FinColors.red,
+                  }}
+                  thumbColor={
+                    tx.budget_excluded ? FinColors.red : FinColors.textMuted
+                  }
+                />
+              </View>
+            </View>
+          </View>
+          <Text
+            style={[
+              styles.amount,
+              { color: tx.amount < 0 ? FinColors.red : FinColors.green },
+            ]}
+          >
+            {tx.amount < 0 ? "−" : "+"}
+            {euroFormatter.format(Math.abs(tx.amount))}
           </Text>
-          <View style={styles.reviewedBox}>
-            <View style={styles.statusToggleRow}>
-              <Text style={styles.reviewedLabel}>Beoordeeld</Text>
+          <Text style={styles.dateText}>{tx.date}</Text>
+        </View>
+
+        {/* ── Info ────────────────────────────────────────────────────────── */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Transactiegegevens</Text>
+          <InfoRow label="Omschrijving" value={omschrijving} />
+          {tx.type ? <InfoRow label="Type" value={tx.type} /> : null}
+          {tx.currency ? <InfoRow label="Valuta" value={tx.currency} /> : null}
+          {saldoNaTrn != null ? (
+            <InfoRow
+              label="Saldo na transactie"
+              value={euroFormatter.format(saldoNaTrn)}
+            />
+          ) : null}
+          {tx.created_at ? (
+            <InfoRow
+              label="Aangemaakt op"
+              value={new Date(tx.created_at).toLocaleDateString("nl-NL", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            />
+          ) : null}
+        </View>
+
+        {isPspLikeExpense ? (
+          <View style={styles.subscriptionCard}>
+            <Text style={styles.sectionTitle}>Mogelijk abonnement</Text>
+            {subscriptionMatch?.profile ? (
+              <Text style={styles.subscriptionLinkedText}>
+                Gekoppeld aan abonnement: {subscriptionMatch.profile.name}
+              </Text>
+            ) : subscriptionMatch?.match.matchSource === "ignored" ? (
+              <Text style={styles.subscriptionMutedText}>
+                Deze transactie is gemarkeerd als geen abonnement.
+              </Text>
+            ) : (
+              <Text style={styles.subscriptionMutedText}>
+                Deze PSP-betaling lijkt op een abonnement. Koppel om suggesties
+                en beheer centraal te houden.
+              </Text>
+            )}
+
+            <TouchableOpacity
+              style={styles.subscriptionActionBtn}
+              onPress={() => setSubscriptionModalOpen(true)}
+            >
+              <Text style={styles.subscriptionActionBtnText}>
+                Koppel aan abonnement
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* ── Category ────────────────────────────────────────────────────── */}
+        <View style={styles.card}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.sectionTitle}>Categorie</Text>
+            <TouchableOpacity
+              style={styles.smallBtn}
+              onPress={() => {
+                setShowPicker((v) => !v);
+                setAiState("idle");
+              }}
+              disabled={savingCategory}
+            >
+              <Text style={styles.smallBtnText}>
+                {showPicker ? "Sluiten" : "Wijzig"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {effectiveCategory ? (
+            <View style={styles.badgesRow}>
+              {parentCategory ? (
+                <Text style={styles.parentBadge}>{parentCategory.name}</Text>
+              ) : null}
+              <Text style={styles.categoryBadge}>{effectiveCategory.name}</Text>
+            </View>
+          ) : (
+            <Text style={styles.mutedText}>Ongecategoriseerd</Text>
+          )}
+
+          <View style={styles.metaRow}>
+            {tx.category_id_user ? (
+              <Text style={styles.sourcePill}>● Handmatig</Text>
+            ) : tx.category_source ? (
+              <Text style={styles.sourcePill}>
+                ●{" "}
+                {tx.category_source === "rule"
+                  ? "Regel"
+                  : tx.category_source === "openai"
+                    ? "AI"
+                    : tx.category_source === "fallback"
+                      ? "Onbekend"
+                      : tx.category_source}
+              </Text>
+            ) : null}
+            {tx.category_confidence != null && !tx.category_id_user ? (
+              <Text style={styles.mutedText}>
+                {Math.round(tx.category_confidence * 100)}% zekerheid
+              </Text>
+            ) : null}
+          </View>
+
+          {/* ── Category picker ─────────────────────────────────────────── */}
+          {showPicker ? (
+            <View style={styles.pickerWrap}>
+              {savingCategory ? (
+                <ActivityIndicator
+                  color={FinColors.green}
+                  style={{ margin: 16 }}
+                />
+              ) : (
+                categoryGroups.map((group) => (
+                  <View key={group.parent?.id ?? "__root"}>
+                    <Text style={styles.pickerGroup}>
+                      {group.parent?.name ?? "Overige"}
+                    </Text>
+                    {group.leaves.map((cat) => (
+                      <TouchableOpacity
+                        key={cat.id}
+                        style={[
+                          styles.pickerItem,
+                          effectiveCategoryId === cat.id &&
+                            styles.pickerItemActive,
+                        ]}
+                        onPress={() => void handleManualCategory(cat.id)}
+                      >
+                        <Text
+                          style={[
+                            styles.pickerItemText,
+                            effectiveCategoryId === cat.id &&
+                              styles.pickerItemTextActive,
+                          ]}
+                        >
+                          {cat.name}
+                        </Text>
+                        {effectiveCategoryId === cat.id ? (
+                          <Text style={styles.checkmark}>✓</Text>
+                        ) : null}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ))
+              )}
+            </View>
+          ) : null}
+        </View>
+
+        {/* ── AI Reclassification ──────────────────────────────────────────── */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>AI Herclassificatie</Text>
+          <Text style={styles.mutedText}>
+            Opnieuw classificeren via AI — bestaande regels en cache worden
+            genegeerd.
+          </Text>
+          {isSubjectDrivenProvider ? (
+            <Text style={styles.providerHint}>
+              Deze tegenpartij verwerkt meerdere soorten aankopen. AI let daarom
+              extra op de omschrijving per betaling, en bulk-bijwerken op
+              tegenpartij wordt niet voorgesteld.
+            </Text>
+          ) : null}
+
+          {aiState === "idle" || aiState === "error" ? (
+            <>
+              <TouchableOpacity
+                style={[
+                  styles.primaryBtn,
+                  savingCategory && styles.btnDisabled,
+                ]}
+                onPress={() => void handleAiReclassify()}
+                disabled={savingCategory}
+              >
+                <Text style={styles.primaryBtnText}>
+                  Herclassificeer via AI
+                </Text>
+              </TouchableOpacity>
+              {aiState === "error" && aiError ? (
+                <Text style={styles.errorText}>{aiError}</Text>
+              ) : null}
+            </>
+          ) : aiState === "loading" ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color={FinColors.green} size="small" />
+              <Text style={styles.loadingText}>AI analyseert transactie…</Text>
+            </View>
+          ) : aiState === "result" && aiSuggestion ? (
+            <View style={styles.aiResultCard}>
+              {aiSuggestion.isSameAsCurrent ? (
+                <>
+                  <Text style={styles.aiSameText}>
+                    ✓ AI bevestigt de huidige categorie
+                  </Text>
+                  <Text style={styles.aiCategoryLine}>
+                    {aiSuggestion.parentName
+                      ? `${aiSuggestion.parentName} › ${aiSuggestion.categoryName}`
+                      : aiSuggestion.categoryName}
+                  </Text>
+                  <Text style={styles.mutedText}>{aiSuggestion.reason}</Text>
+                  <TouchableOpacity
+                    style={styles.smallBtn}
+                    onPress={() => {
+                      setAiState("idle");
+                      setAiSuggestion(null);
+                    }}
+                  >
+                    <Text style={styles.smallBtnText}>Sluiten</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.mutedText}>Suggestie van AI:</Text>
+                  <Text style={styles.aiCategoryLine}>
+                    {aiSuggestion.parentName
+                      ? `${aiSuggestion.parentName} › ${aiSuggestion.categoryName}`
+                      : aiSuggestion.categoryName}
+                  </Text>
+                  <Text style={styles.aiConf}>
+                    {Math.round(aiSuggestion.confidence * 100)}% zekerheid
+                  </Text>
+                  <Text style={styles.mutedText}>{aiSuggestion.reason}</Text>
+                  <View style={styles.aiActions}>
+                    {!isSubjectDrivenProvider ? (
+                      <TouchableOpacity
+                        style={[styles.aiBtn, styles.aiBtnPrimary]}
+                        onPress={() => void handleApplyAi(true)}
+                        disabled={savingCategory}
+                      >
+                        <Text style={styles.aiBtnTextPrimary}>
+                          Toepassen + regel bijwerken
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    <TouchableOpacity
+                      style={styles.aiBtn}
+                      onPress={() => void handleApplyAi(false)}
+                      disabled={savingCategory}
+                    >
+                      <Text style={styles.aiBtnText}>Alleen toepassen</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.aiBtn, { opacity: 0.6 }]}
+                      onPress={() => {
+                        setAiState("idle");
+                        setAiSuggestion(null);
+                      }}
+                      disabled={savingCategory}
+                    >
+                      <Text style={styles.aiBtnText}>Annuleren</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          ) : null}
+        </View>
+
+        {/* ── Bulk update ──────────────────────────────────────────────────── */}
+        {bulkPhase !== "idle" && tx.counterparty ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              Bijwerken:{" "}
+              <Text style={styles.counterpartyInline}>{tx.counterparty}</Text>
+            </Text>
+            {bulkPhase === "confirming" && bulkCounts ? (
+              <>
+                <Text style={styles.mutedText}>
+                  Wil je ook andere transacties van deze tegenpartij bijwerken?
+                </Text>
+                <View style={styles.scopeRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.scopeBtn,
+                      bulkScope === "uncategorized" && styles.scopeBtnActive,
+                    ]}
+                    onPress={() => setBulkScope("uncategorized")}
+                  >
+                    <Text
+                      style={[
+                        styles.scopeBtnText,
+                        bulkScope === "uncategorized" &&
+                          styles.scopeBtnTextActive,
+                      ]}
+                    >
+                      Ongecategoriseerde ({bulkCounts.uncategorized})
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.scopeBtn,
+                      bulkScope === "all" && styles.scopeBtnActive,
+                    ]}
+                    onPress={() => setBulkScope("all")}
+                  >
+                    <Text
+                      style={[
+                        styles.scopeBtnText,
+                        bulkScope === "all" && styles.scopeBtnTextActive,
+                      ]}
+                    >
+                      Alle ({bulkCounts.all})
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.bulkActions}>
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, { flex: 1 }]}
+                    onPress={() => void handleBulkUpdate()}
+                  >
+                    <Text style={styles.primaryBtnText}>Bijwerken</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.ghostBtn, { flex: 1 }]}
+                    onPress={() => setBulkPhase("idle")}
+                  >
+                    <Text style={styles.ghostBtnText}>Overslaan</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : bulkPhase === "updating" ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color={FinColors.green} size="small" />
+                <Text style={styles.loadingText}>Transacties bijwerken…</Text>
+              </View>
+            ) : bulkPhase === "done" ? (
+              <View style={styles.rowBetween}>
+                <Text style={styles.aiSameText}>✓ Transacties bijgewerkt</Text>
+                <TouchableOpacity
+                  style={styles.smallBtn}
+                  onPress={() => setBulkPhase("idle")}
+                >
+                  <Text style={styles.smallBtnText}>Sluiten</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* ── Counterparty history ─────────────────────────────────────────── */}
+        {tx.counterparty ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              Andere transacties:{" "}
+              <Text style={styles.counterpartyInline}>{tx.counterparty}</Text>
+            </Text>
+            {history.length === 0 ? (
+              <Text style={styles.mutedText}>
+                Geen andere transacties gevonden.
+              </Text>
+            ) : (
+              history.map((item) => {
+                const categoryLabel = getCategoryPathLabel(item, categoryById);
+                const subject = getSubjectFromDetails(item.details);
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.historyItem}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/transaction-detail",
+                        params: { id: item.id },
+                      })
+                    }
+                  >
+                    <View style={styles.historyIconWrap}>
+                      <TransactionCategoryIcon
+                        row={item}
+                        categoryById={categoryById}
+                      />
+                    </View>
+                    <View style={styles.historyLeft}>
+                      <Text style={styles.historyDate}>{item.date}</Text>
+                      <Text style={styles.historyDesc} numberOfLines={2}>
+                        {subject}
+                      </Text>
+                      <Text style={styles.historyCat}>{categoryLabel}</Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.historyAmount,
+                        {
+                          color:
+                            item.amount < 0 ? FinColors.red : FinColors.green,
+                        },
+                      ]}
+                    >
+                      {item.amount < 0 ? "−" : "+"}
+                      {euroFormatter.format(Math.abs(item.amount))}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+            <TouchableOpacity
+              style={styles.viewAllBtn}
+              onPress={() =>
+                router.push(
+                  `/transactions?counterparty=${encodeURIComponent(tx.counterparty!)}`,
+                )
+              }
+            >
+              <Text style={styles.viewAllText}>
+                Bekijk alle transacties van {tx.counterparty} →
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        <View style={{ height: 32 }} />
+      </ScrollView>
+
+      <Modal
+        visible={subscriptionModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSubscriptionModalOpen(false)}
+      >
+        <View style={styles.subscriptionModalOverlay}>
+          <View style={styles.subscriptionModalCard}>
+            <View style={styles.subscriptionModalHeaderRow}>
+              <Text style={styles.subscriptionModalTitle}>
+                Koppel abonnement
+              </Text>
+              <TouchableOpacity
+                style={styles.subscriptionModalCloseBtn}
+                onPress={() => setSubscriptionModalOpen(false)}
+              >
+                <Text style={styles.subscriptionModalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.subscriptionModalSubtitle}>
+              {getSubjectFromDetails(tx.details)}
+            </Text>
+
+            <View style={styles.subscriptionToggleRow}>
+              <Text style={styles.subscriptionToggleLabel}>
+                Zet categorie op abonnementen
+              </Text>
               <Switch
-                value={tx.is_reviewed}
-                onValueChange={handleReviewToggle}
-                disabled={reviewToggling}
+                value={setCategoryToSubscriptions}
+                onValueChange={setSetCategoryToSubscriptions}
                 trackColor={{
                   false: FinColors.bgElevated,
                   true: FinColors.greenBorder,
                 }}
                 thumbColor={
-                  tx.is_reviewed ? FinColors.green : FinColors.textMuted
+                  setCategoryToSubscriptions
+                    ? FinColors.green
+                    : FinColors.textMuted
                 }
               />
             </View>
-            <View style={styles.statusToggleRow}>
-              <Text style={styles.reviewedLabel}>Buiten budget</Text>
-              <Switch
-                value={tx.budget_excluded}
-                onValueChange={handleBudgetExcludedToggle}
-                disabled={budgetExclusionToggling}
-                trackColor={{
-                  false: FinColors.bgElevated,
-                  true: FinColors.red,
-                }}
-                thumbColor={
-                  tx.budget_excluded ? FinColors.red : FinColors.textMuted
-                }
-              />
-            </View>
-          </View>
-        </View>
-        <Text
-          style={[
-            styles.amount,
-            { color: tx.amount < 0 ? FinColors.red : FinColors.green },
-          ]}
-        >
-          {tx.amount < 0 ? "−" : "+"}
-          {euroFormatter.format(Math.abs(tx.amount))}
-        </Text>
-        <Text style={styles.dateText}>{tx.date}</Text>
-      </View>
 
-      {/* ── Info ────────────────────────────────────────────────────────── */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Transactiegegevens</Text>
-        <InfoRow label="Omschrijving" value={omschrijving} />
-        {tx.type ? <InfoRow label="Type" value={tx.type} /> : null}
-        {tx.currency ? <InfoRow label="Valuta" value={tx.currency} /> : null}
-        {saldoNaTrn != null ? (
-          <InfoRow
-            label="Saldo na transactie"
-            value={euroFormatter.format(saldoNaTrn)}
-          />
-        ) : null}
-        {tx.created_at ? (
-          <InfoRow
-            label="Aangemaakt op"
-            value={new Date(tx.created_at).toLocaleDateString("nl-NL", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
-          />
-        ) : null}
-      </View>
-
-      {/* ── Category ────────────────────────────────────────────────────── */}
-      <View style={styles.card}>
-        <View style={styles.rowBetween}>
-          <Text style={styles.sectionTitle}>Categorie</Text>
-          <TouchableOpacity
-            style={styles.smallBtn}
-            onPress={() => {
-              setShowPicker((v) => !v);
-              setAiState("idle");
-            }}
-            disabled={savingCategory}
-          >
-            <Text style={styles.smallBtnText}>
-              {showPicker ? "Sluiten" : "Wijzig"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {effectiveCategory ? (
-          <View style={styles.badgesRow}>
-            {parentCategory ? (
-              <Text style={styles.parentBadge}>{parentCategory.name}</Text>
-            ) : null}
-            <Text style={styles.categoryBadge}>{effectiveCategory.name}</Text>
-          </View>
-        ) : (
-          <Text style={styles.mutedText}>Ongecategoriseerd</Text>
-        )}
-
-        <View style={styles.metaRow}>
-          {tx.category_id_user ? (
-            <Text style={styles.sourcePill}>● Handmatig</Text>
-          ) : tx.category_source ? (
-            <Text style={styles.sourcePill}>
-              ●{" "}
-              {tx.category_source === "rule"
-                ? "Regel"
-                : tx.category_source === "openai"
-                  ? "AI"
-                  : tx.category_source === "fallback"
-                    ? "Onbekend"
-                    : tx.category_source}
-            </Text>
-          ) : null}
-          {tx.category_confidence != null && !tx.category_id_user ? (
-            <Text style={styles.mutedText}>
-              {Math.round(tx.category_confidence * 100)}% zekerheid
-            </Text>
-          ) : null}
-        </View>
-
-        {/* ── Category picker ─────────────────────────────────────────── */}
-        {showPicker ? (
-          <View style={styles.pickerWrap}>
-            {savingCategory ? (
-              <ActivityIndicator
-                color={FinColors.green}
-                style={{ margin: 16 }}
-              />
-            ) : (
-              categoryGroups.map((group) => (
-                <View key={group.parent?.id ?? "__root"}>
-                  <Text style={styles.pickerGroup}>
-                    {group.parent?.name ?? "Overige"}
-                  </Text>
-                  {group.leaves.map((cat) => (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={[
-                        styles.pickerItem,
-                        effectiveCategoryId === cat.id &&
-                          styles.pickerItemActive,
-                      ]}
-                      onPress={() => void handleManualCategory(cat.id)}
-                    >
-                      <Text
-                        style={[
-                          styles.pickerItemText,
-                          effectiveCategoryId === cat.id &&
-                            styles.pickerItemTextActive,
-                        ]}
-                      >
-                        {cat.name}
-                      </Text>
-                      {effectiveCategoryId === cat.id ? (
-                        <Text style={styles.checkmark}>✓</Text>
-                      ) : null}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ))
-            )}
-          </View>
-        ) : null}
-      </View>
-
-      {/* ── AI Reclassification ──────────────────────────────────────────── */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>AI Herclassificatie</Text>
-        <Text style={styles.mutedText}>
-          Opnieuw classificeren via AI — bestaande regels en cache worden
-          genegeerd.
-        </Text>
-        {isSubjectDrivenProvider ? (
-          <Text style={styles.providerHint}>
-            Deze tegenpartij verwerkt meerdere soorten aankopen. AI let daarom
-            extra op de omschrijving per betaling, en bulk-bijwerken op
-            tegenpartij wordt niet voorgesteld.
-          </Text>
-        ) : null}
-
-        {aiState === "idle" || aiState === "error" ? (
-          <>
-            <TouchableOpacity
-              style={[styles.primaryBtn, savingCategory && styles.btnDisabled]}
-              onPress={() => void handleAiReclassify()}
-              disabled={savingCategory}
+            <ScrollView
+              style={styles.subscriptionProfileList}
+              contentContainerStyle={styles.subscriptionProfileListContent}
             >
-              <Text style={styles.primaryBtnText}>Herclassificeer via AI</Text>
-            </TouchableOpacity>
-            {aiState === "error" && aiError ? (
-              <Text style={styles.errorText}>{aiError}</Text>
-            ) : null}
-          </>
-        ) : aiState === "loading" ? (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator color={FinColors.green} size="small" />
-            <Text style={styles.loadingText}>AI analyseert transactie…</Text>
-          </View>
-        ) : aiState === "result" && aiSuggestion ? (
-          <View style={styles.aiResultCard}>
-            {aiSuggestion.isSameAsCurrent ? (
-              <>
-                <Text style={styles.aiSameText}>
-                  ✓ AI bevestigt de huidige categorie
+              {activeSubscriptionProfiles.length === 0 ? (
+                <Text style={styles.subscriptionModalEmptyText}>
+                  Geen actieve abonnementen gevonden.
                 </Text>
-                <Text style={styles.aiCategoryLine}>
-                  {aiSuggestion.parentName
-                    ? `${aiSuggestion.parentName} › ${aiSuggestion.categoryName}`
-                    : aiSuggestion.categoryName}
-                </Text>
-                <Text style={styles.mutedText}>{aiSuggestion.reason}</Text>
-                <TouchableOpacity
-                  style={styles.smallBtn}
-                  onPress={() => {
-                    setAiState("idle");
-                    setAiSuggestion(null);
-                  }}
-                >
-                  <Text style={styles.smallBtnText}>Sluiten</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.mutedText}>Suggestie van AI:</Text>
-                <Text style={styles.aiCategoryLine}>
-                  {aiSuggestion.parentName
-                    ? `${aiSuggestion.parentName} › ${aiSuggestion.categoryName}`
-                    : aiSuggestion.categoryName}
-                </Text>
-                <Text style={styles.aiConf}>
-                  {Math.round(aiSuggestion.confidence * 100)}% zekerheid
-                </Text>
-                <Text style={styles.mutedText}>{aiSuggestion.reason}</Text>
-                <View style={styles.aiActions}>
-                  {!isSubjectDrivenProvider ? (
-                    <TouchableOpacity
-                      style={[styles.aiBtn, styles.aiBtnPrimary]}
-                      onPress={() => void handleApplyAi(true)}
-                      disabled={savingCategory}
-                    >
-                      <Text style={styles.aiBtnTextPrimary}>
-                        Toepassen + regel bijwerken
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
+              ) : (
+                activeSubscriptionProfiles.map((profile) => (
                   <TouchableOpacity
-                    style={styles.aiBtn}
-                    onPress={() => void handleApplyAi(false)}
-                    disabled={savingCategory}
+                    key={profile.id}
+                    style={styles.subscriptionProfileRow}
+                    onPress={() => void handleLinkToSubscription(profile.id)}
+                    disabled={subscriptionActionBusy}
                   >
-                    <Text style={styles.aiBtnText}>Alleen toepassen</Text>
+                    <Text style={styles.subscriptionProfileName}>
+                      {profile.name}
+                    </Text>
+                    <Text style={styles.subscriptionProfileMeta}>
+                      {profile.billingCycle === "quarterly"
+                        ? "Per kwartaal"
+                        : profile.billingCycle === "yearly"
+                          ? "Jaarlijks"
+                          : "Maandelijks"}
+                    </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.aiBtn, { opacity: 0.6 }]}
-                    onPress={() => {
-                      setAiState("idle");
-                      setAiSuggestion(null);
-                    }}
-                    disabled={savingCategory}
-                  >
-                    <Text style={styles.aiBtnText}>Annuleren</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        ) : null}
-      </View>
+                ))
+              )}
+            </ScrollView>
 
-      {/* ── Bulk update ──────────────────────────────────────────────────── */}
-      {bulkPhase !== "idle" && tx.counterparty ? (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>
-            Bijwerken:{" "}
-            <Text style={styles.counterpartyInline}>{tx.counterparty}</Text>
-          </Text>
-          {bulkPhase === "confirming" && bulkCounts ? (
-            <>
-              <Text style={styles.mutedText}>
-                Wil je ook andere transacties van deze tegenpartij bijwerken?
-              </Text>
-              <View style={styles.scopeRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.scopeBtn,
-                    bulkScope === "uncategorized" && styles.scopeBtnActive,
-                  ]}
-                  onPress={() => setBulkScope("uncategorized")}
-                >
-                  <Text
-                    style={[
-                      styles.scopeBtnText,
-                      bulkScope === "uncategorized" &&
-                        styles.scopeBtnTextActive,
-                    ]}
-                  >
-                    Ongecategoriseerde ({bulkCounts.uncategorized})
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.scopeBtn,
-                    bulkScope === "all" && styles.scopeBtnActive,
-                  ]}
-                  onPress={() => setBulkScope("all")}
-                >
-                  <Text
-                    style={[
-                      styles.scopeBtnText,
-                      bulkScope === "all" && styles.scopeBtnTextActive,
-                    ]}
-                  >
-                    Alle ({bulkCounts.all})
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.bulkActions}>
-                <TouchableOpacity
-                  style={[styles.primaryBtn, { flex: 1 }]}
-                  onPress={() => void handleBulkUpdate()}
-                >
-                  <Text style={styles.primaryBtnText}>Bijwerken</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.ghostBtn, { flex: 1 }]}
-                  onPress={() => setBulkPhase("idle")}
-                >
-                  <Text style={styles.ghostBtnText}>Overslaan</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          ) : bulkPhase === "updating" ? (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color={FinColors.green} size="small" />
-              <Text style={styles.loadingText}>Transacties bijwerken…</Text>
-            </View>
-          ) : bulkPhase === "done" ? (
-            <View style={styles.rowBetween}>
-              <Text style={styles.aiSameText}>✓ Transacties bijgewerkt</Text>
+            <View style={styles.subscriptionModalActionsRow}>
               <TouchableOpacity
-                style={styles.smallBtn}
-                onPress={() => setBulkPhase("idle")}
+                style={styles.subscriptionGhostBtn}
+                onPress={() => void handleMarkNoSubscription()}
+                disabled={subscriptionActionBusy}
               >
-                <Text style={styles.smallBtnText}>Sluiten</Text>
+                <Text style={styles.subscriptionGhostBtnText}>
+                  Geen abonnement
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.subscriptionManageBtn}
+                onPress={() => {
+                  setSubscriptionModalOpen(false);
+                  router.push("/subscriptions");
+                }}
+                disabled={subscriptionActionBusy}
+              >
+                <Text style={styles.subscriptionManageBtnText}>Beheer</Text>
               </TouchableOpacity>
             </View>
-          ) : null}
+          </View>
         </View>
-      ) : null}
-
-      {/* ── Counterparty history ─────────────────────────────────────────── */}
-      {tx.counterparty ? (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>
-            Andere transacties:{" "}
-            <Text style={styles.counterpartyInline}>{tx.counterparty}</Text>
-          </Text>
-          {history.length === 0 ? (
-            <Text style={styles.mutedText}>
-              Geen andere transacties gevonden.
-            </Text>
-          ) : (
-            history.map((item) => {
-              const categoryLabel = getCategoryPathLabel(item, categoryById);
-              const subject = getSubjectFromDetails(item.details);
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.historyItem}
-                  onPress={() =>
-                    router.push(`/transaction-detail?id=${item.id}`)
-                  }
-                >
-                  <View style={styles.historyIconWrap}>
-                    <TransactionCategoryIcon
-                      row={item}
-                      categoryById={categoryById}
-                    />
-                  </View>
-                  <View style={styles.historyLeft}>
-                    <Text style={styles.historyDate}>{item.date}</Text>
-                    <Text style={styles.historyDesc} numberOfLines={2}>
-                      {subject}
-                    </Text>
-                    <Text style={styles.historyCat}>{categoryLabel}</Text>
-                  </View>
-                  <Text
-                    style={[
-                      styles.historyAmount,
-                      {
-                        color:
-                          item.amount < 0 ? FinColors.red : FinColors.green,
-                      },
-                    ]}
-                  >
-                    {item.amount < 0 ? "−" : "+"}
-                    {euroFormatter.format(Math.abs(item.amount))}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })
-          )}
-          <TouchableOpacity
-            style={styles.viewAllBtn}
-            onPress={() =>
-              router.push(
-                `/transactions?counterparty=${encodeURIComponent(tx.counterparty!)}`,
-              )
-            }
-          >
-            <Text style={styles.viewAllText}>
-              Bekijk alle transacties van {tx.counterparty} →
-            </Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
-      <View style={{ height: 32 }} />
-    </ScrollView>
+      </Modal>
+    </>
   );
 }
 
@@ -903,6 +1181,152 @@ const styles = StyleSheet.create({
     color: FinColors.textMuted,
     fontSize: 13,
     lineHeight: 18,
+  },
+
+  // Subscription hint
+  subscriptionCard: {
+    backgroundColor: FinColors.greenBg,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: FinColors.greenBorder,
+    padding: 14,
+    gap: 8,
+  },
+  subscriptionLinkedText: {
+    color: FinColors.green,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  subscriptionMutedText: {
+    color: FinColors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  subscriptionActionBtn: {
+    alignSelf: "flex-start",
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: FinColors.greenBorder,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  subscriptionActionBtnText: {
+    color: FinColors.green,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  // Subscription modal
+  subscriptionModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  subscriptionModalCard: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: FinColors.border,
+    backgroundColor: FinColors.bgCard,
+    padding: 14,
+    gap: 10,
+    maxHeight: "80%",
+  },
+  subscriptionModalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  subscriptionModalTitle: {
+    color: FinColors.textPrimary,
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  subscriptionModalCloseBtn: {
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  subscriptionModalCloseText: {
+    color: FinColors.textSecondary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  subscriptionModalSubtitle: {
+    color: FinColors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  subscriptionToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  subscriptionToggleLabel: {
+    color: FinColors.textSecondary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  subscriptionProfileList: {
+    maxHeight: 260,
+  },
+  subscriptionProfileListContent: {
+    gap: 8,
+  },
+  subscriptionModalEmptyText: {
+    color: FinColors.textMuted,
+    fontSize: 13,
+  },
+  subscriptionProfileRow: {
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: FinColors.border,
+    backgroundColor: FinColors.bgElevated,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    gap: 2,
+  },
+  subscriptionProfileName: {
+    color: FinColors.textPrimary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  subscriptionProfileMeta: {
+    color: FinColors.textMuted,
+    fontSize: 12,
+  },
+  subscriptionModalActionsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  subscriptionGhostBtn: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: FinColors.border,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  subscriptionGhostBtnText: {
+    color: FinColors.textSecondary,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  subscriptionManageBtn: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: FinColors.green,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  subscriptionManageBtnText: {
+    color: FinColors.bgBase,
+    fontSize: 13,
+    fontWeight: "700",
   },
 
   // Small button

@@ -1,3 +1,4 @@
+import { BudgetCategoryProgressRow } from "@/components/budget-category-progress-row";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
@@ -48,11 +49,6 @@ type DashboardTx = {
 
 type DashboardTxRow = DashboardTx & { categoryLabel: string };
 
-function formatUtilization(value: number) {
-  if (!Number.isFinite(value)) return ">100%";
-  return `${Math.round(value * 100)}%`;
-}
-
 function getBudgetCategoryIconName(categoryKey: string) {
   if (categoryKey === "fixed_costs") return "home-work";
   if (categoryKey === "subscriptions") return "subscriptions";
@@ -79,6 +75,24 @@ function formatWeekRangeLabel(startDate: string, endDateExclusive: string) {
   endDate.setUTCDate(endDate.getUTCDate() - 1);
   const endIso = endDate.toISOString().slice(0, 10);
   return `${formatShortDateLabel(startDate)} - ${formatShortDateLabel(endIso)}`;
+}
+
+function formatRemainingDaysInWeekLabel(
+  endDateExclusive: string,
+  now = new Date(),
+) {
+  const endDate = new Date(`${endDateExclusive}T00:00:00.000Z`);
+  if (Number.isNaN(endDate.getTime())) return null;
+
+  const utcToday = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+  const dayDiff = Math.ceil(
+    (endDate.getTime() - utcToday.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  const remainingDays = Math.max(0, Math.min(7, dayDiff));
+  const dayLabel = remainingDays === 1 ? "dag" : "dagen";
+  return `${remainingDays} ${dayLabel} resterend`;
 }
 
 function isMissingRelationError(error: unknown) {
@@ -223,6 +237,10 @@ export default function DashboardScreen() {
       budgetPlan.weeklyVariablePlan.find((week) => week.isCurrentWeek) || null
     );
   }, [budgetPlan]);
+  const currentWeekRemainingDays = React.useMemo(() => {
+    if (!currentWeekPlan) return null;
+    return formatRemainingDaysInWeekLabel(currentWeekPlan.endDateExclusive);
+  }, [currentWeekPlan]);
   const criticalBudgetRows = React.useMemo(
     () => topCategoryRows.filter((row) => row.utilization >= 1),
     [topCategoryRows],
@@ -489,6 +507,11 @@ export default function DashboardScreen() {
                       currentWeekPlan.endDateExclusive,
                     )}
                   </Text>
+                  {currentWeekRemainingDays ? (
+                    <Text style={styles.currentWeekMetaHighlight}>
+                      {currentWeekRemainingDays}
+                    </Text>
+                  ) : null}
                   <Text style={styles.currentWeekMeta}>
                     {fmt.format(currentWeekPlan.actual)} van{" "}
                     {fmt.format(currentWeekPlan.budget)} gebruikt
@@ -513,46 +536,15 @@ export default function DashboardScreen() {
               {topCategoryRows.length ? (
                 <View style={styles.variableWidgetSection}>
                   {topCategoryRows.map((row) => {
-                    const progress = Number.isFinite(row.utilization)
-                      ? Math.min(Math.max(row.utilization, 0), 1)
-                      : 1;
                     return (
-                      <View
+                      <BudgetCategoryProgressRow
                         key={`top-category-${row.categoryKey}`}
-                        style={styles.variableWidgetRow}
-                      >
-                        <View style={styles.variableWidgetIconWrap}>
-                          <MaterialIcons
-                            name={getBudgetCategoryIconName(row.categoryKey)}
-                            size={14}
-                            color={FinColors.textPrimary}
-                          />
-                        </View>
-                        <View style={styles.variableWidgetMain}>
-                          <View style={styles.variableWidgetTop}>
-                            <Text style={styles.variableWidgetLabel}>
-                              {row.label}
-                            </Text>
-                            <Text style={styles.variableWidgetMeta}>
-                              {formatUtilization(row.utilization)} gebruikt
-                            </Text>
-                          </View>
-                          <View style={styles.variableWidgetTrack}>
-                            <View
-                              style={[
-                                styles.variableWidgetFill,
-                                { width: `${Math.round(progress * 100)}%` },
-                                row.utilization >= 1 &&
-                                  styles.variableWidgetFillWarning,
-                              ]}
-                            />
-                          </View>
-                          <Text style={styles.variableWidgetAmounts}>
-                            {fmt.format(row.monthlyActual)} van{" "}
-                            {fmt.format(row.monthlyBudget)}
-                          </Text>
-                        </View>
-                      </View>
+                        label={row.label}
+                        iconName={getBudgetCategoryIconName(row.categoryKey)}
+                        utilization={row.utilization}
+                        actual={row.monthlyActual}
+                        budget={row.monthlyBudget}
+                      />
                     );
                   })}
                 </View>
@@ -898,72 +890,17 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
     fontWeight: "600",
   },
+  currentWeekMetaHighlight: {
+    fontSize: 12,
+    color: FinColors.green,
+    fontWeight: "700",
+  },
   variableWidgetSection: {
     marginTop: 8,
     borderTopWidth: 1,
     borderTopColor: FinColors.borderSubtle,
     paddingTop: 8,
     gap: 8,
-  },
-  variableWidgetTitle: {
-    fontSize: 11,
-    color: FinColors.textMuted,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  variableWidgetRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  variableWidgetIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgElevated,
-  },
-  variableWidgetMain: {
-    flex: 1,
-    gap: 4,
-  },
-  variableWidgetTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  variableWidgetLabel: {
-    fontSize: 12,
-    color: FinColors.textSecondary,
-    fontWeight: "600",
-  },
-  variableWidgetMeta: {
-    fontSize: 11,
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-  },
-  variableWidgetAmounts: {
-    fontSize: 11,
-    color: FinColors.textSecondary,
-    fontWeight: "600",
-  },
-  variableWidgetTrack: {
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
-    overflow: "hidden",
-  },
-  variableWidgetFill: {
-    height: "100%",
-    backgroundColor: FinColors.green,
-  },
-  variableWidgetFillWarning: {
-    backgroundColor: FinColors.red,
   },
   budgetEmptyText: {
     fontSize: 12,

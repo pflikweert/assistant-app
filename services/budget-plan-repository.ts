@@ -17,6 +17,8 @@ const DEFAULT_INCLUDE_INCOME: BudgetIncomeInclusionSettings = {
   structuralOther: false,
   variable: false,
 };
+const DEFAULT_APPLY_SAVINGS_TARGET_TO_VARIABLE_BUDGET = false;
+const DEFAULT_SAVINGS_TARGET_MONTHLY = 0;
 
 type RowRecord = Record<string, unknown>;
 
@@ -25,6 +27,8 @@ export type UpsertBudgetPlanSettingsInput = {
   mode?: BudgetPlanMode;
   adjustmentFactor?: number;
   includeIncome?: Partial<BudgetIncomeInclusionSettings>;
+  applySavingsTargetToVariableBudget?: boolean;
+  savingsTargetMonthly?: number;
 };
 
 export type UpsertBudgetCategoryOverrideInput = {
@@ -125,6 +129,9 @@ function mapSettingsRow(
       includeIncome: {
         ...DEFAULT_INCLUDE_INCOME,
       },
+      applySavingsTargetToVariableBudget:
+        DEFAULT_APPLY_SAVINGS_TARGET_TO_VARIABLE_BUDGET,
+      savingsTargetMonthly: DEFAULT_SAVINGS_TARGET_MONTHLY,
       createdAt: null,
       updatedAt: null,
     };
@@ -163,6 +170,14 @@ function mapSettingsRow(
         DEFAULT_INCLUDE_INCOME.variable,
       ),
     },
+    applySavingsTargetToVariableBudget: asBoolean(
+      row.apply_savings_target_to_variable_budget,
+      DEFAULT_APPLY_SAVINGS_TARGET_TO_VARIABLE_BUDGET,
+    ),
+    savingsTargetMonthly: asNonNegativeNumber(
+      row.savings_target_monthly,
+      DEFAULT_SAVINGS_TARGET_MONTHLY,
+    ),
     createdAt: row.created_at ? String(row.created_at) : null,
     updatedAt: row.updated_at ? String(row.updated_at) : null,
   };
@@ -256,11 +271,25 @@ export async function upsertBudgetPlanSettings(
         ? existing.includeIncome.variable
         : Boolean(input.includeIncome.variable),
   };
+  const nextApplySavingsTargetToVariableBudget =
+    input.applySavingsTargetToVariableBudget == null
+      ? existing.applySavingsTargetToVariableBudget
+      : Boolean(input.applySavingsTargetToVariableBudget);
+  const nextSavingsTargetMonthly =
+    input.savingsTargetMonthly == null
+      ? existing.savingsTargetMonthly
+      : asNonNegativeNumber(
+          input.savingsTargetMonthly,
+          existing.savingsTargetMonthly,
+        );
 
   const basePayload = {
     plan_key: normalizedPlanKey,
     mode: nextMode,
     adjustment_factor: nextAdjustmentFactor,
+    apply_savings_target_to_variable_budget:
+      nextApplySavingsTargetToVariableBudget,
+    savings_target_monthly: nextSavingsTargetMonthly,
     updated_at: new Date().toISOString(),
   };
 

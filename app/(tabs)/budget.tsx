@@ -1,3 +1,5 @@
+import { BudgetAmountSlider } from "@/components/budget-amount-slider";
+import { BudgetCategoryProgressRow } from "@/components/budget-category-progress-row";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import { generateBudgetCoachReport } from "@/services/budget-coach";
@@ -48,7 +50,6 @@ const BUDGET_EDIT_ORDER: BudgetCategoryKey[] = [
   "fuel",
   "smoking",
   "other",
-  "savings_target",
 ];
 
 const BUDGET_MODE_OPTIONS: { value: BudgetPlanMode; label: string }[] = [
@@ -73,6 +74,42 @@ const INCOME_SOURCE_OPTIONS: {
   { key: "structuralOther", label: "Overige structurele inkomsten" },
   { key: "variable", label: "Variabele/eenmalige inkomsten" },
 ];
+
+const VARIABLE_BUDGET_BREAKDOWN_KEYS: BudgetCategoryKey[] = [
+  "groceries",
+  "fuel",
+  "smoking",
+  "other",
+];
+const SAVINGS_SLIDER_STEP = 25;
+
+function roundToStepCeil(value: number, step: number) {
+  if (step <= 0) return value;
+  return Math.ceil(value / step) * step;
+}
+
+function sanitizeNonNegativeNumber(value: number, fallback = 0) {
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function getBudgetCategoryDisplayLabel(categoryKey: BudgetCategoryKey) {
+  if (categoryKey === "fixed_costs") return "Vaste lasten";
+  if (categoryKey === "subscriptions") return "Abonnementen";
+  if (categoryKey === "variable_costs") return "Variabele uitgaven (totaal)";
+  if (categoryKey === "groceries") return "Boodschappen";
+  if (categoryKey === "fuel") return "Brandstof";
+  if (categoryKey === "smoking") return "Roken";
+  if (categoryKey === "other") return "Overig";
+  return "Spaardoel";
+}
+
+function isVariableBreakdownKey(categoryKey: BudgetCategoryKey) {
+  return VARIABLE_BUDGET_BREAKDOWN_KEYS.includes(categoryKey);
+}
+
+function isVariableBudgetCategory(categoryKey: BudgetCategoryKey) {
+  return categoryKey === "variable_costs" || isVariableBreakdownKey(categoryKey);
+}
 
 type InlineWeekTransaction = {
   id: string;
@@ -112,6 +149,12 @@ function toLocalIsoDate(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function getCurrentUtcMonthStartIso(now = new Date()) {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-01`;
 }
 
 function getMonthBounds(monthsAgo: number) {
@@ -155,6 +198,55 @@ function formatBudgetModeLabel(mode: BudgetPlanMode) {
   return "Aangepast";
 }
 
+function getBudgetModeDescription(mode: BudgetPlanMode) {
+  if (mode === "active_savings") {
+    return "Kiest automatisch een ambitieus spaardoel op basis van historische inkomsten, uitgaven en AI-inzicht.";
+  }
+  if (mode === "balanced") {
+    return "Kiest automatisch een rustiger spaardoel met meer ruimte voor variabele uitgaven en tegenvallers.";
+  }
+  return "Je kiest zelf hoeveel je aan het einde van de maand wilt overhouden. De slider werkt in stappen van 25 euro.";
+}
+
+function formatSavingsTargetSourceLabel(
+  source: BudgetPlanComputation["savingsTargetSource"],
+  usedOpenAI: boolean,
+) {
+  if (source === "manual_custom") {
+    return "Handmatig ingesteld in budgetbeheer.";
+  }
+  if (source === "automatic_active") {
+    return usedOpenAI
+      ? "Automatisch gekozen op basis van historie en OpenAI-inzicht."
+      : "Automatisch gekozen op basis van historie en maandtempo.";
+  }
+  return usedOpenAI
+    ? "Gebalanceerd doel op basis van historie en OpenAI-inzicht."
+    : "Gebalanceerd doel op basis van historie en maandtempo.";
+}
+
+function formatAppliedSavingsLabel(
+  source: BudgetPlanComputation["savingsTargetSource"],
+) {
+  if (source === "manual_custom") return "Handmatig spaardoel";
+  return "Automatisch spaardoel";
+}
+
+function getAutomaticModePreviewMeta(
+  mode: Exclude<BudgetPlanMode, "custom">,
+  isCurrentMode: boolean,
+) {
+  if (isCurrentMode) {
+    return mode === "active_savings"
+      ? "Dit is het automatische spaardoel dat nu voor deze maand wordt gebruikt."
+      : "Dit is het gebalanceerde automatische spaardoel dat nu voor deze maand wordt gebruikt.";
+  }
+
+  return mode === "active_savings"
+    ? "Verwachte maandtarget voor Actief sparen. Na opslaan wordt dit doel opnieuw op basis van historie, tempo en AI berekend."
+    : "Verwachte maandtarget voor Gebalanceerd. Na opslaan wordt dit doel opnieuw op basis van historie, tempo en AI berekend.";
+}
+
 function getVariableCategoryIconName(categoryKey: string) {
   if (categoryKey === "groceries") return "shopping-basket";
   if (categoryKey === "fuel") return "local-gas-station";
@@ -181,6 +273,76 @@ function formatWeekEndDateLabel(endDateExclusive: string) {
   return formatShortDateLabel(endIso);
 }
 
+function formatRemainingDaysInWeekLabel(
+  endDateExclusive: string,
+  now = new Date(),
+) {
+  const endDate = new Date(`${endDateExclusive}T00:00:00.000Z`);
+  if (Number.isNaN(endDate.getTime())) return null;
+
+  const utcToday = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+  const dayDiff = Math.ceil(
+    (endDate.getTime() - utcToday.getTime()) / (24 * 60 * 60 * 1000),
+  );
+  const remainingDays = Math.max(0, Math.min(7, dayDiff));
+  const dayLabel = remainingDays === 1 ? "dag" : "dagen";
+  return `${remainingDays} ${dayLabel} resterend`;
+}
+
+function formatWeekOverlapLabel(week: {
+  crossesMonthBoundary: boolean;
+  daysInPreviousMonth: number;
+  daysInNextMonth: number;
+}) {
+  if (!week.crossesMonthBoundary) return null;
+
+  const formatDays = (days: number) => `${days} dag${days === 1 ? "" : "en"}`;
+  const parts: string[] = [];
+
+  if (week.daysInPreviousMonth > 0) {
+    parts.push(`${formatDays(week.daysInPreviousMonth)} vorige maand`);
+  }
+  if (week.daysInNextMonth > 0) {
+    parts.push(`${formatDays(week.daysInNextMonth)} volgende maand`);
+  }
+
+  return parts.length ? parts.join(" · ") : null;
+}
+
+function buildWeekCompositionSegments(week: {
+  crossesMonthBoundary: boolean;
+  daysInCurrentMonth: number;
+  daysInPreviousMonth: number;
+  daysInNextMonth: number;
+}) {
+  if (!week.crossesMonthBoundary) return [];
+
+  const segments = [
+    {
+      key: "previous",
+      label: "vorige",
+      days: week.daysInPreviousMonth,
+      color: FinColors.textMuted,
+    },
+    {
+      key: "current",
+      label: "deze",
+      days: week.daysInCurrentMonth,
+      color: FinColors.green,
+    },
+    {
+      key: "next",
+      label: "volgende",
+      days: week.daysInNextMonth,
+      color: FinColors.textSecondary,
+    },
+  ] as const;
+
+  return segments.filter((segment) => segment.days > 0);
+}
+
 function isMissingRelationError(error: unknown) {
   const code = String((error as { code?: string })?.code || "");
   const message = String(
@@ -204,9 +366,10 @@ export default function BudgetScreen() {
   const [recalculatingBudget, setRecalculatingBudget] = React.useState(false);
   const [budgetModeDraft, setBudgetModeDraft] =
     React.useState<BudgetPlanMode>("active_savings");
-  const [budgetFactorDraft, setBudgetFactorDraft] = React.useState("0.90");
   const [budgetIncomeDraft, setBudgetIncomeDraft] =
     React.useState<BudgetIncomeInclusionSettings>(DEFAULT_INCLUDE_INCOME);
+  const [savingsTargetMonthlyDraft, setSavingsTargetMonthlyDraft] =
+    React.useState(0);
   const [budgetDraftValues, setBudgetDraftValues] = React.useState<
     Partial<Record<BudgetCategoryKey, string>>
   >({});
@@ -265,6 +428,31 @@ export default function BudgetScreen() {
     return budgetPlan.weeklyVariablePlan;
   }, [budgetPlan]);
 
+  const isCurrentMonthView = React.useMemo(() => {
+    if (!budgetPlan) return false;
+    return budgetPlan.monthStart === getCurrentUtcMonthStartIso();
+  }, [budgetPlan]);
+
+  const weeklyBudgetContext = React.useMemo(() => {
+    if (!budgetPlan) return null;
+    const monthVariableBudget = Math.round(budgetPlan.flowSummary.variableBudget);
+    const visibleWeeksBudget = weeklyVariableRows.reduce(
+      (sum, row) => sum + row.budget,
+      0,
+    );
+    const delta = visibleWeeksBudget - monthVariableBudget;
+    const overlapWeekCount = weeklyVariableRows.filter(
+      (row) => row.crossesMonthBoundary,
+    ).length;
+
+    return {
+      monthVariableBudget,
+      visibleWeeksBudget,
+      delta,
+      overlapWeekCount,
+    };
+  }, [budgetPlan, weeklyVariableRows]);
+
   const detailItems = React.useMemo(() => {
     if (!budgetPlan || !detailSection) return [];
     if (detailSection === "fixed_costs") {
@@ -316,15 +504,27 @@ export default function BudgetScreen() {
     const weekRow = budgetPlan.weeklyVariablePlan.find(
       (week) => week.weekNumber === selectedWeekNumber,
     );
-    const spendRow = budgetPlan.weeklySpendBreakdown.find(
-      (week) => week.weekNumber === selectedWeekNumber,
-    );
 
-    if (!weekRow || !spendRow) return null;
+    const spendRow = weekRow
+      ? budgetPlan.weeklySpendBreakdown.find(
+          (week) =>
+            week.weekNumber === selectedWeekNumber &&
+            week.startDate === weekRow.startDate &&
+            week.endDateExclusive === weekRow.endDateExclusive,
+        )
+      : null;
+
+    const fallbackSpendRow =
+      spendRow ||
+      budgetPlan.weeklySpendBreakdown.find(
+        (week) => week.weekNumber === selectedWeekNumber,
+      );
+
+    if (!weekRow || !fallbackSpendRow) return null;
 
     return {
       week: weekRow,
-      spend: spendRow,
+      spend: fallbackSpendRow,
     };
   }, [budgetPlan, selectedWeekNumber]);
 
@@ -402,6 +602,80 @@ export default function BudgetScreen() {
     );
   }, [budgetPlan]);
 
+  const autoManagedVariableBudget = budgetModeDraft !== "custom";
+
+  const variableBudgetBreakdownRows = React.useMemo(() => {
+    return VARIABLE_BUDGET_BREAKDOWN_KEYS.map((key) => ({
+      key,
+      label: getBudgetCategoryDisplayLabel(key),
+      amount: variableMonthlyBudgetByMainCategory.get(key) || 0,
+    }));
+  }, [variableMonthlyBudgetByMainCategory]);
+
+  const variableBudgetDraftSummary = React.useMemo(() => {
+    if (!editableBudgetRows.length) {
+      return {
+        total: 0,
+        breakdownTotal: 0,
+        delta: 0,
+      };
+    }
+
+    const parseDraftValue = (key: BudgetCategoryKey) => {
+      const rawValue = budgetDraftValues[key];
+      const parsed = parseBudgetAmountInput(rawValue || "");
+      if (parsed != null) return Math.round(parsed);
+      return editableBudgetRows.find((row) => row.categoryKey === key)?.monthlyBudget || 0;
+    };
+
+    const total = parseDraftValue("variable_costs");
+    const breakdownTotal = VARIABLE_BUDGET_BREAKDOWN_KEYS.reduce(
+      (sum, key) => sum + parseDraftValue(key),
+      0,
+    );
+
+    return {
+      total,
+      breakdownTotal,
+      delta: total - breakdownTotal,
+    };
+  }, [budgetDraftValues, editableBudgetRows]);
+
+  const savingsSliderMax = React.useMemo(() => {
+    const candidates = [
+      500,
+      sanitizeNonNegativeNumber(savingsTargetMonthlyDraft),
+      sanitizeNonNegativeNumber(budgetPlan?.recommendedSavings || 0),
+      sanitizeNonNegativeNumber(
+        budgetPlan?.flowSummary.subtotalAfterSubscriptions || 0,
+      ),
+    ];
+    return Math.max(
+      500,
+      roundToStepCeil(Math.max(...candidates), SAVINGS_SLIDER_STEP),
+    );
+  }, [
+    budgetPlan?.flowSummary.subtotalAfterSubscriptions,
+    budgetPlan?.recommendedSavings,
+    savingsTargetMonthlyDraft,
+  ]);
+
+  const selectedModeTargetPreview = React.useMemo(() => {
+    if (!budgetPlan || budgetModeDraft === "custom") return null;
+
+    const isCurrentMode = budgetPlan.settings.mode === budgetModeDraft;
+    const amount =
+      budgetModeDraft === "active_savings"
+        ? budgetPlan.automaticSavingsTargetPreview.activeSavings
+        : budgetPlan.automaticSavingsTargetPreview.balanced;
+
+    return {
+      amount: sanitizeNonNegativeNumber(amount),
+      isCurrentMode,
+      meta: getAutomaticModePreviewMeta(budgetModeDraft, isCurrentMode),
+    };
+  }, [budgetModeDraft, budgetPlan]);
+
   const warningSummary = React.useMemo(() => {
     const summary = {
       critical: 0,
@@ -459,7 +733,11 @@ export default function BudgetScreen() {
       if (monthOffset !== 0) {
         referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
       }
-      const computed = await computeBudgetPlan(referenceDate, "default");
+      const computed = await computeBudgetPlan(
+        referenceDate,
+        "default",
+        new Date(),
+      );
       setBudgetPlan(computed);
 
       setBudgetCoachLoading(true);
@@ -544,13 +822,19 @@ export default function BudgetScreen() {
     if (!budgetPlan) return;
 
     setBudgetModeDraft(budgetPlan.settings.mode);
-    setBudgetFactorDraft(budgetPlan.settings.adjustmentFactor.toFixed(2));
     setBudgetIncomeDraft({
       salary: budgetPlan.settings.includeIncome.salary,
       childBudget: budgetPlan.settings.includeIncome.childBudget,
       structuralOther: budgetPlan.settings.includeIncome.structuralOther,
       variable: budgetPlan.settings.includeIncome.variable,
     });
+    setSavingsTargetMonthlyDraft(
+      sanitizeNonNegativeNumber(
+        budgetPlan.settings.savingsTargetMonthly > 0
+          ? budgetPlan.settings.savingsTargetMonthly
+          : budgetPlan.recommendedSavings,
+      ),
+    );
 
     const nextDraft: Partial<Record<BudgetCategoryKey, string>> = {};
     for (const row of budgetPlan.recommendations) {
@@ -567,21 +851,26 @@ export default function BudgetScreen() {
     setSavingBudgetEdit(true);
     setBudgetEditOpen(false);
     try {
-      const parsedFactor = parseBudgetAmountInput(budgetFactorDraft);
-      const safeFactor = Math.max(
-        0.01,
-        Math.min(1.5, parsedFactor ?? budgetPlan.settings.adjustmentFactor),
-      );
+      const nextCustomSavingsTarget =
+        budgetModeDraft === "custom"
+          ? Math.round(sanitizeNonNegativeNumber(savingsTargetMonthlyDraft))
+          : budgetPlan.settings.savingsTargetMonthly;
 
       await upsertBudgetPlanSettings({
         planKey: "default",
         mode: budgetModeDraft,
-        adjustmentFactor: safeFactor,
         includeIncome: budgetIncomeDraft,
+        applySavingsTargetToVariableBudget:
+          budgetModeDraft === "custom" && nextCustomSavingsTarget > 0,
+        savingsTargetMonthly: nextCustomSavingsTarget,
       });
 
       const updates: Promise<unknown>[] = [];
       for (const row of editableBudgetRows) {
+        if (autoManagedVariableBudget && isVariableBudgetCategory(row.categoryKey)) {
+          continue;
+        }
+
         const rawValue = budgetDraftValues[row.categoryKey];
         const parsed = parseBudgetAmountInput(rawValue || "");
         if (parsed == null) continue;
@@ -620,13 +909,14 @@ export default function BudgetScreen() {
     }
   }, [
     budgetDraftValues,
-    budgetFactorDraft,
     budgetIncomeDraft,
     budgetModeDraft,
     budgetPlan,
     editableBudgetRows,
+    autoManagedVariableBudget,
     loadBudgetPlan,
     monthOffset,
+    savingsTargetMonthlyDraft,
     selectedMonth.startIso,
   ]);
 
@@ -1000,6 +1290,20 @@ export default function BudgetScreen() {
                   </Text>
                 </Pressable>
 
+                <View style={styles.planningSubscriptionCtaRow}>
+                  <Text style={styles.planningSubscriptionCtaText}>
+                    Werk je abonnementen en PSP-koppelingen bij.
+                  </Text>
+                  <Pressable
+                    style={styles.planningSubscriptionCtaButton}
+                    onPress={() => router.push("/subscriptions")}
+                  >
+                    <Text style={styles.planningSubscriptionCtaButtonText}>
+                      Beheer abonnementen
+                    </Text>
+                  </Pressable>
+                </View>
+
                 <View style={styles.planningSubtotalRow}>
                   <Text style={styles.planningSubtotalLabel}>
                     Subtotaal na abonnementen
@@ -1011,11 +1315,48 @@ export default function BudgetScreen() {
 
                 <View style={styles.variableMonthlyRow}>
                   <Text style={styles.variableMonthlyLabel}>
-                    Variabel budget
+                    Variabele uitgaven (maandtotaal)
                   </Text>
                   <Text style={styles.variableMonthlyValue}>
                     {fmt.format(planningSummary.variableBudget)}
                   </Text>
+                </View>
+
+                {planningSummary.appliedSavingsTarget > 0 ? (
+                  <View style={styles.variableSavingsRow}>
+                    <Text style={styles.variableSavingsLabel}>
+                      {formatAppliedSavingsLabel(
+                        budgetPlan.flowSummary.savingsTargetSource,
+                      )}
+                    </Text>
+                    <Text style={styles.variableSavingsValue}>
+                      {fmt.format(planningSummary.appliedSavingsTarget)}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.variableBreakdownCard}>
+                  <Text style={styles.variableBreakdownTitle}>
+                    Onderverdeling van het maandtotaal
+                  </Text>
+                  <Text style={styles.variableBreakdownHint}>
+                    Boodschappen, brandstof, roken en overig vormen samen het totale variabele maandbudget.
+                  </Text>
+                  {variableBudgetBreakdownRows.map((row) => (
+                    <View key={row.key} style={styles.variableBreakdownRow}>
+                      <Text style={styles.variableBreakdownLabel}>{row.label}</Text>
+                      <Text style={styles.variableBreakdownValue}>
+                        {fmt.format(row.amount)}
+                      </Text>
+                    </View>
+                  ))}
+                  <View style={styles.variableBreakdownDivider} />
+                  <View style={styles.variableBreakdownRow}>
+                    <Text style={styles.variableBreakdownTotalLabel}>Som onderverdeling</Text>
+                    <Text style={styles.variableBreakdownTotalValue}>
+                      {fmt.format(planningSummary.variableSubcategoriesBudgetTotal)}
+                    </Text>
+                  </View>
                 </View>
 
                 <View style={styles.inlineHelpRow}>
@@ -1025,10 +1366,49 @@ export default function BudgetScreen() {
                     color={FinColors.textSecondary}
                   />
                   <Text style={styles.inlineHelpText}>
-                    Weekbudgetten worden automatisch herverdeeld als een week
-                    negatief uitkomt.
+                    Weekbudgetten worden daggewogen verdeeld. Herverdeling gebeurt alleen als een week boven budget uitkomt.
                   </Text>
                 </View>
+
+                {weeklyBudgetContext ? (
+                  <View style={styles.weekExplainerCard}>
+                    <Text style={styles.weekExplainerTitle}>
+                      Waarom wijkt de weeksom soms af?
+                    </Text>
+                    <Text style={styles.weekExplainerText}>
+                      Overlapweken nemen dagen mee uit vorige of volgende maand.
+                      Het dagbudget van die maand telt dan mee in het weekbudget.
+                    </Text>
+                    <View style={styles.weekExplainerRow}>
+                      <Text style={styles.weekExplainerLabel}>Variabel maandbudget</Text>
+                      <Text style={styles.weekExplainerValue}>
+                        {fmt.format(weeklyBudgetContext.monthVariableBudget)}
+                      </Text>
+                    </View>
+                    <View style={styles.weekExplainerRow}>
+                      <Text style={styles.weekExplainerLabel}>Som zichtbare weekbudgetten</Text>
+                      <Text style={styles.weekExplainerValue}>
+                        {fmt.format(weeklyBudgetContext.visibleWeeksBudget)}
+                      </Text>
+                    </View>
+                    <View style={styles.weekExplainerRow}>
+                      <Text style={styles.weekExplainerLabel}>Verschil door overlap</Text>
+                      <Text
+                        style={[
+                          styles.weekExplainerValue,
+                          weeklyBudgetContext.delta === 0
+                            ? styles.weekExplainerValueNeutral
+                            : styles.weekExplainerValueEmphasis,
+                        ]}
+                      >
+                        {fmt.format(weeklyBudgetContext.delta)}
+                      </Text>
+                    </View>
+                    <Text style={styles.weekExplainerMeta}>
+                      {weeklyBudgetContext.overlapWeekCount} overlapweek(en) in deze maandweergave.
+                    </Text>
+                  </View>
+                ) : null}
 
                 <View style={styles.weekRowsWrap}>
                   {weeklyVariableRows.map((week) => {
@@ -1036,15 +1416,22 @@ export default function BudgetScreen() {
                       ? Math.min(Math.max(week.utilization, 0), 1)
                       : 1;
                     const isOverrun = week.remaining < 0;
+                    const showCurrentWeekState =
+                      isCurrentMonthView && week.isCurrentWeek;
                     const weekEndLabel = formatWeekEndDateLabel(
                       week.endDateExclusive,
                     );
+                    const overlapLabel = formatWeekOverlapLabel(week);
+                    const remainingDaysLabel = showCurrentWeekState
+                      ? formatRemainingDaysInWeekLabel(week.endDateExclusive)
+                      : null;
+                    const compositionSegments = buildWeekCompositionSegments(week);
                     return (
                       <Pressable
                         key={week.weekNumber}
                         style={[
                           styles.weekRowCard,
-                          week.isCurrentWeek && styles.weekRowCardCurrent,
+                          showCurrentWeekState && styles.weekRowCardCurrent,
                         ]}
                         onPress={() => openWeekDetail(week.weekNumber)}
                       >
@@ -1053,7 +1440,7 @@ export default function BudgetScreen() {
                             <Text style={styles.weekRowTitle}>
                               {week.label}
                             </Text>
-                            {week.isCurrentWeek ? (
+                            {showCurrentWeekState ? (
                               <View style={styles.weekCurrentBadge}>
                                 <Text style={styles.weekCurrentBadgeText}>
                                   Huidige week
@@ -1078,6 +1465,37 @@ export default function BudgetScreen() {
                             Eind {weekEndLabel}
                           </Text>
                         </View>
+
+                        {remainingDaysLabel ? (
+                          <Text style={styles.weekRemainingDaysText}>
+                            {remainingDaysLabel}
+                          </Text>
+                        ) : null}
+
+                        {overlapLabel ? (
+                          <Text style={styles.weekOverlapText}>{overlapLabel}</Text>
+                        ) : null}
+
+                        {compositionSegments.length ? (
+                          <View style={styles.weekCompositionRow}>
+                            {compositionSegments.map((segment) => (
+                              <View
+                                key={`${week.weekNumber}-${segment.key}`}
+                                style={styles.weekCompositionPill}
+                              >
+                                <View
+                                  style={[
+                                    styles.weekCompositionDot,
+                                    { backgroundColor: segment.color },
+                                  ]}
+                                />
+                                <Text style={styles.weekCompositionText}>
+                                  {segment.days}d {segment.label} maand
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
 
                         <View style={styles.weekAmountRow}>
                           <Text style={styles.weekAmountMeta}>
@@ -1235,6 +1653,12 @@ export default function BudgetScreen() {
 
                 <View style={styles.savingsCard}>
                   <Text style={styles.savingsTitle}>Spaardoel</Text>
+                  <Text style={styles.savingsMetaText}>
+                    {formatSavingsTargetSourceLabel(
+                      budgetPlan.savingsTargetSource,
+                      budgetPlan.usedOpenAISavingsTarget,
+                    )}
+                  </Text>
                   <View style={styles.savingsRow}>
                     <Text style={styles.savingsLabel}>Aanbevolen sparen</Text>
                     <Text style={styles.savingsValue}>
@@ -1502,7 +1926,12 @@ export default function BudgetScreen() {
                 {formatWeekEndDateLabel(
                   selectedWeekDetail.week.endDateExclusive,
                 )}
-                {selectedWeekDetail.week.isCurrentWeek ? " · Huidige week" : ""}
+                {selectedWeekDetail.week.crossesMonthBoundary
+                  ? ` · ${formatWeekOverlapLabel(selectedWeekDetail.week)}`
+                  : ""}
+                {isCurrentMonthView && selectedWeekDetail.week.isCurrentWeek
+                  ? " · Huidige week"
+                  : ""}
               </Text>
             ) : null}
 
@@ -1557,10 +1986,6 @@ export default function BudgetScreen() {
                       : category.amount > 0
                         ? Number.POSITIVE_INFINITY
                         : 0;
-                  const progress = Number.isFinite(budgetUtilization)
-                    ? Math.min(Math.max(budgetUtilization, 0), 1)
-                    : 1;
-                  const isOverBudget = budgetUtilization > 1;
                   const canExpand = category.subcategories.length > 0;
                   const isExpanded = expandedWeekMainCategories.includes(
                     category.key,
@@ -1568,56 +1993,20 @@ export default function BudgetScreen() {
 
                   return (
                     <View key={category.key} style={styles.weekDetailBlock}>
-                      <Pressable
-                        style={styles.weekDetailCategoryRow}
-                        onPress={() =>
+                      <BudgetCategoryProgressRow
+                        label={category.label}
+                        iconName={getVariableCategoryIconName(category.key)}
+                        utilization={budgetUtilization}
+                        actual={category.amount}
+                        budget={categoryWeekBudget}
+                        showChevron={canExpand}
+                        chevronExpanded={isExpanded}
+                        onPress={
                           canExpand
-                            ? toggleWeekMainCategory(category.key)
+                            ? () => toggleWeekMainCategory(category.key)
                             : undefined
                         }
-                      >
-                        <View style={styles.weekDetailCategoryMain}>
-                          <View style={styles.weekDetailCategoryTitleRow}>
-                            <View style={styles.weekDetailCategoryIconWrap}>
-                              <MaterialIcons
-                                name={getVariableCategoryIconName(category.key)}
-                                size={14}
-                                color={FinColors.textPrimary}
-                              />
-                            </View>
-                            <Text style={styles.weekDetailCategoryLabel}>
-                              {category.label}
-                            </Text>
-                            {canExpand ? (
-                              <MaterialIcons
-                                name={
-                                  isExpanded ? "expand-more" : "chevron-right"
-                                }
-                                size={16}
-                                color={FinColors.textSecondary}
-                              />
-                            ) : null}
-                          </View>
-                          <Text style={styles.weekDetailCategoryMeta}>
-                            {categoryWeekBudget > 0
-                              ? `${formatUtilization(budgetUtilization)} van weekbudget`
-                              : "Geen weekbudget ingesteld"}
-                          </Text>
-                        </View>
-                        <Text style={styles.weekDetailCategoryAmount}>
-                          {fmt.format(category.amount)}
-                        </Text>
-                      </Pressable>
-
-                      <View style={styles.weekDetailShareTrack}>
-                        <View
-                          style={[
-                            styles.weekDetailShareFill,
-                            { width: `${Math.round(progress * 100)}%` },
-                            isOverBudget && styles.weekDetailShareFillWarning,
-                          ]}
-                        />
-                      </View>
+                      />
 
                       {isExpanded
                         ? category.subcategories
@@ -1951,118 +2340,229 @@ export default function BudgetScreen() {
               Instellingen voor {selectedMonth.label}
             </Text>
 
-            <Text style={styles.modalSectionTitle}>Budgetmodus</Text>
-            <View style={styles.modeRow}>
-              {BUDGET_MODE_OPTIONS.map((option) => {
-                const selected = budgetModeDraft === option.value;
-                return (
-                  <Pressable
-                    key={option.value}
-                    style={[
-                      styles.modeButton,
-                      selected && styles.modeButtonActive,
-                    ]}
-                    onPress={() => setBudgetModeDraft(option.value)}
-                  >
-                    <Text
-                      style={[
-                        styles.modeButtonText,
-                        selected && styles.modeButtonTextActive,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Text style={styles.modalSectionTitle}>Besparingsfactor</Text>
-            <TextInput
-              value={budgetFactorDraft}
-              onChangeText={setBudgetFactorDraft}
-              placeholder="0.90"
-              placeholderTextColor={FinColors.textMuted}
-              style={styles.factorInput}
-              keyboardType="decimal-pad"
-            />
-
-            <Text style={styles.modalSectionTitle}>Inkomstenbasis</Text>
-            <Text style={styles.modalHintText}>
-              Selecteer welke inkomsten meetellen voor budget en cashflow
-              voorspelling.
-            </Text>
-            <View style={styles.incomeOptionsWrap}>
-              {INCOME_SOURCE_OPTIONS.map((option) => {
-                const selected = budgetIncomeDraft[option.key];
-                return (
-                  <Pressable
-                    key={option.key}
-                    style={[
-                      styles.incomeOptionButton,
-                      selected && styles.incomeOptionButtonActive,
-                    ]}
-                    onPress={() =>
-                      setBudgetIncomeDraft((current) => ({
-                        ...current,
-                        [option.key]: !current[option.key],
-                      }))
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.incomeOptionText,
-                        selected && styles.incomeOptionTextActive,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <Text style={styles.modalSectionTitle}>
-              Maandbudget per categorie
-            </Text>
-            <Pressable
-              style={styles.recalculateButton}
-              onPress={() => {
-                void recalculateExpectedCosts();
-              }}
-              disabled={savingBudgetEdit || recalculatingBudget}
+            <ScrollView
+              style={styles.modalBodyScroll}
+              contentContainerStyle={styles.modalBodyContent}
+              showsVerticalScrollIndicator
             >
-              <Text style={styles.recalculateButtonText}>
-                {recalculatingBudget
-                  ? "Herberekenen..."
-                  : "Verwachte kosten herberekenen"}
-              </Text>
-            </Pressable>
-            <ScrollView style={styles.editList}>
-              {editableBudgetRows.map((row) => (
-                <View key={row.categoryKey} style={styles.editRow}>
-                  <View style={styles.editRowMain}>
-                    <Text style={styles.editRowLabel}>{row.label}</Text>
-                    <Text style={styles.editRowMeta}>
-                      Actueel: {fmt.format(row.monthlyActual)}
+              <Text style={styles.modalSectionTitle}>Budgetmodus</Text>
+              <View style={styles.modeRow}>
+                {BUDGET_MODE_OPTIONS.map((option) => {
+                  const selected = budgetModeDraft === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      style={[
+                        styles.modeButton,
+                        selected && styles.modeButtonActive,
+                      ]}
+                      onPress={() => setBudgetModeDraft(option.value)}
+                    >
+                      <Text
+                        style={[
+                          styles.modeButtonText,
+                          selected && styles.modeButtonTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.modeDescriptionCard}>
+                <Text style={styles.modeDescriptionTitle}>
+                  {formatBudgetModeLabel(budgetModeDraft)}
+                </Text>
+                <Text style={styles.modeDescriptionText}>
+                  {getBudgetModeDescription(budgetModeDraft)}
+                </Text>
+                {selectedModeTargetPreview ? (
+                  <View style={styles.modeTargetPreviewCard}>
+                    <Text style={styles.modeTargetPreviewLabel}>
+                      {selectedModeTargetPreview.isCurrentMode
+                        ? "Spaardoel deze maand"
+                        : "Verwacht spaardoel deze maand"}
+                    </Text>
+                    <Text style={styles.modeTargetPreviewValue}>
+                      {fmt.format(selectedModeTargetPreview.amount)}
+                    </Text>
+                    <Text style={styles.modeTargetPreviewMeta}>
+                      {selectedModeTargetPreview.meta}
                     </Text>
                   </View>
-                  <TextInput
-                    value={
-                      budgetDraftValues[row.categoryKey] ??
-                      row.monthlyBudget.toFixed(0)
-                    }
-                    onChangeText={(text) =>
-                      setBudgetDraftValues((current) => ({
-                        ...current,
-                        [row.categoryKey]: text,
-                      }))
-                    }
-                    style={styles.editInput}
-                    keyboardType="decimal-pad"
+                ) : null}
+              </View>
+
+              {budgetModeDraft === "custom" ? (
+                <>
+                  <Text style={styles.modalSectionTitle}>Eigen spaardoel</Text>
+                  <Text style={styles.modalHintText}>
+                    Stel in hoeveel je aan het einde van deze maand wilt overhouden.
+                  </Text>
+                  <BudgetAmountSlider
+                    value={savingsTargetMonthlyDraft}
+                    min={0}
+                    max={savingsSliderMax}
+                    step={SAVINGS_SLIDER_STEP}
+                    onChange={setSavingsTargetMonthlyDraft}
                   />
+                </>
+              ) : null}
+
+              <Text style={styles.modalSectionTitle}>Inkomstenbasis</Text>
+              <Text style={styles.modalHintText}>
+                Selecteer welke inkomsten meetellen voor budget en cashflow
+                voorspelling.
+              </Text>
+              <View style={styles.incomeOptionsWrap}>
+                {INCOME_SOURCE_OPTIONS.map((option) => {
+                  const selected = budgetIncomeDraft[option.key];
+                  return (
+                    <Pressable
+                      key={option.key}
+                      style={[
+                        styles.incomeOptionButton,
+                        selected && styles.incomeOptionButtonActive,
+                      ]}
+                      onPress={() =>
+                        setBudgetIncomeDraft((current) => ({
+                          ...current,
+                          [option.key]: !current[option.key],
+                        }))
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.incomeOptionText,
+                          selected && styles.incomeOptionTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.categoryEditorCard}>
+                <Text style={styles.modalSectionTitle}>
+                  Maandbudget per categorie
+                </Text>
+                <Text style={styles.modalHintText}>
+                  Verwachte kosten worden opnieuw opgebouwd vanuit de mediaan van de laatste afgeronde maanden. Je kunt hieronder per maand bijsturen.
+                </Text>
+                {autoManagedVariableBudget ? (
+                  <Text style={styles.modalAutoManagedHint}>
+                    Variabele uitgaven worden in deze modus automatisch bepaald door het spaardoel. Alleen vaste lasten en abonnementen pas je hier handmatig aan.
+                  </Text>
+                ) : null}
+                <Pressable
+                  style={styles.recalculateButton}
+                  onPress={() => {
+                    void recalculateExpectedCosts();
+                  }}
+                  disabled={savingBudgetEdit || recalculatingBudget}
+                >
+                  <Text style={styles.recalculateButtonText}>
+                    {recalculatingBudget
+                      ? "Herberekenen..."
+                      : "Verwachte kosten herberekenen"}
+                  </Text>
+                </Pressable>
+                <View style={styles.editList}>
+                  {editableBudgetRows.map((row) => {
+                    const inputDisabled =
+                      autoManagedVariableBudget &&
+                      isVariableBudgetCategory(row.categoryKey);
+
+                    return (
+                      <View
+                        key={row.categoryKey}
+                        style={[
+                          styles.editRow,
+                          row.categoryKey === "variable_costs" && styles.editRowPrimary,
+                          isVariableBreakdownKey(row.categoryKey) && styles.editRowChild,
+                          inputDisabled && styles.editRowDisabled,
+                        ]}
+                      >
+                        <View style={styles.editRowMain}>
+                          <Text
+                            style={[
+                              styles.editRowLabel,
+                              row.categoryKey === "variable_costs" && styles.editRowLabelPrimary,
+                              isVariableBreakdownKey(row.categoryKey) && styles.editRowLabelChild,
+                            ]}
+                          >
+                            {isVariableBreakdownKey(row.categoryKey)
+                              ? `└ ${getBudgetCategoryDisplayLabel(row.categoryKey)}`
+                              : getBudgetCategoryDisplayLabel(row.categoryKey)}
+                          </Text>
+                          <Text style={styles.editRowMeta}>
+                            Richtwaarde: {fmt.format(Math.round(row.baselineMonthly))} · Actueel: {fmt.format(row.monthlyActual)}
+                            {inputDisabled ? " · automatisch" : ""}
+                          </Text>
+                        </View>
+                        <TextInput
+                          value={
+                            budgetDraftValues[row.categoryKey] ??
+                            row.monthlyBudget.toFixed(0)
+                          }
+                          onChangeText={(text) => {
+                            if (inputDisabled) return;
+                            setBudgetDraftValues((current) => ({
+                              ...current,
+                              [row.categoryKey]: text,
+                            }));
+                          }}
+                          editable={!inputDisabled}
+                          style={[
+                            styles.editInput,
+                            inputDisabled && styles.editInputDisabled,
+                          ]}
+                          keyboardType="decimal-pad"
+                        />
+                      </View>
+                    );
+                  })}
                 </View>
-              ))}
+
+                <View style={styles.variableDraftSummaryCard}>
+                  <Text style={styles.variableDraftSummaryTitle}>
+                    Controle variabele uitgaven
+                  </Text>
+                  <View style={styles.variableDraftSummaryRow}>
+                    <Text style={styles.variableDraftSummaryLabel}>
+                      Totaal variabele uitgaven
+                    </Text>
+                    <Text style={styles.variableDraftSummaryValue}>
+                      {fmt.format(variableBudgetDraftSummary.total)}
+                    </Text>
+                  </View>
+                  <View style={styles.variableDraftSummaryRow}>
+                    <Text style={styles.variableDraftSummaryLabel}>
+                      Som onderverdeling
+                    </Text>
+                    <Text style={styles.variableDraftSummaryValue}>
+                      {fmt.format(variableBudgetDraftSummary.breakdownTotal)}
+                    </Text>
+                  </View>
+                  <View style={styles.variableDraftSummaryRow}>
+                    <Text style={styles.variableDraftSummaryLabel}>Verschil</Text>
+                    <Text
+                      style={[
+                        styles.variableDraftSummaryValue,
+                        variableBudgetDraftSummary.delta === 0
+                          ? styles.variableDraftSummaryValueOk
+                          : styles.variableDraftSummaryValueWarning,
+                      ]}
+                    >
+                      {fmt.format(variableBudgetDraftSummary.delta)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -2148,43 +2648,41 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   monthNavButtonText: {
-    fontSize: 16,
+    fontSize: 18,
     color: FinColors.textPrimary,
     fontWeight: "700",
-    lineHeight: 19,
+    lineHeight: 20,
   },
   scroll: {
     paddingHorizontal: 20,
-    paddingBottom: 30,
+    paddingBottom: 32,
     gap: 14,
   },
   planningCard: {
-    marginTop: 8,
-    backgroundColor: FinColors.bgCard,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: FinColors.greenBorder,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
     padding: 16,
     gap: 10,
   },
   planningMainLabel: {
     fontSize: 12,
     color: FinColors.textMuted,
-    fontWeight: "600",
+    fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.8,
   },
   planningMainAmount: {
-    marginTop: 4,
     fontSize: 30,
-    fontWeight: "800",
     color: FinColors.textPrimary,
+    fontWeight: "800",
     letterSpacing: -0.6,
   },
   planningSecondaryText: {
-    marginTop: -2,
     fontSize: 12,
     color: FinColors.textSecondary,
+    lineHeight: 18,
   },
   planningStepRow: {
     marginTop: 2,
@@ -2214,6 +2712,35 @@ const styles = StyleSheet.create({
   planningStepValueNegative: {
     fontSize: 13,
     color: FinColors.red,
+    fontWeight: "700",
+  },
+  planningSubscriptionCtaRow: {
+    marginTop: -2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: FinColors.greenBorder,
+    backgroundColor: FinColors.greenBg,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  planningSubscriptionCtaText: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    lineHeight: 17,
+  },
+  planningSubscriptionCtaButton: {
+    alignSelf: "flex-start",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: FinColors.greenBorder,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  planningSubscriptionCtaButtonText: {
+    color: FinColors.green,
+    fontSize: 12,
     fontWeight: "700",
   },
   planningSubtotalRow: {
@@ -2251,6 +2778,70 @@ const styles = StyleSheet.create({
     color: FinColors.green,
     fontWeight: "800",
   },
+  variableSavingsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  variableSavingsLabel: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  variableSavingsValue: {
+    fontSize: 12,
+    color: FinColors.green,
+    fontWeight: "700",
+  },
+  variableBreakdownCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    padding: 12,
+    gap: 8,
+  },
+  variableBreakdownTitle: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  variableBreakdownHint: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+    lineHeight: 16,
+  },
+  variableBreakdownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  variableBreakdownLabel: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  variableBreakdownValue: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  variableBreakdownDivider: {
+    height: 1,
+    backgroundColor: FinColors.borderSubtle,
+  },
+  variableBreakdownTotalLabel: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  variableBreakdownTotalValue: {
+    fontSize: 12,
+    color: FinColors.green,
+    fontWeight: "800",
+  },
   inlineHelpRow: {
     marginTop: 2,
     flexDirection: "row",
@@ -2262,6 +2853,51 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     color: FinColors.textMuted,
+  },
+  weekExplainerCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    padding: 12,
+    gap: 6,
+  },
+  weekExplainerTitle: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  weekExplainerText: {
+    fontSize: 11,
+    color: FinColors.textSecondary,
+    lineHeight: 16,
+  },
+  weekExplainerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  weekExplainerLabel: {
+    fontSize: 11,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  weekExplainerValue: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  weekExplainerValueNeutral: {
+    color: FinColors.textMuted,
+  },
+  weekExplainerValueEmphasis: {
+    color: FinColors.green,
+  },
+  weekExplainerMeta: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+    lineHeight: 15,
   },
   weekRowsWrap: {
     marginTop: 6,
@@ -2389,6 +3025,43 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
     fontWeight: "600",
   },
+  weekRemainingDaysText: {
+    fontSize: 11,
+    color: FinColors.green,
+    fontWeight: "700",
+  },
+  weekOverlapText: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+    fontWeight: "600",
+  },
+  weekCompositionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  weekCompositionPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    gap: 5,
+  },
+  weekCompositionDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+  },
+  weekCompositionText: {
+    fontSize: 10,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
   weekRowRange: {
     fontSize: 11,
     color: FinColors.textSecondary,
@@ -2477,6 +3150,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: FinColors.textPrimary,
     fontWeight: "700",
+  },
+  savingsMetaText: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+    lineHeight: 16,
   },
   savingsRow: {
     flexDirection: "row",
@@ -2764,12 +3442,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   modalCard: {
-    maxHeight: "85%",
+    maxHeight: "92%",
     borderRadius: 16,
     backgroundColor: FinColors.bgCard,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     padding: 16,
+  },
+  modalBodyScroll: {
+    marginTop: 10,
+  },
+  modalBodyContent: {
+    paddingBottom: 8,
   },
   modalHeaderRow: {
     flexDirection: "row",
@@ -2848,15 +3532,47 @@ const styles = StyleSheet.create({
   modeButtonTextActive: {
     color: FinColors.green,
   },
-  factorInput: {
-    borderRadius: 10,
+  modeDescriptionCard: {
+    marginTop: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     backgroundColor: FinColors.bgElevated,
-    color: FinColors.textPrimary,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    padding: 12,
+    gap: 6,
+  },
+  modeDescriptionTitle: {
     fontSize: 13,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  modeDescriptionText: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    lineHeight: 18,
+  },
+  modeTargetPreviewCard: {
+    marginTop: 6,
+    borderRadius: 10,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 3,
+  },
+  modeTargetPreviewLabel: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+    fontWeight: "700",
+  },
+  modeTargetPreviewValue: {
+    fontSize: 19,
+    color: FinColors.green,
+    fontWeight: "800",
+  },
+  modeTargetPreviewMeta: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: FinColors.textSecondary,
   },
   modalHintText: {
     marginTop: -2,
@@ -2865,10 +3581,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  modalAutoManagedHint: {
+    marginTop: -2,
+    marginBottom: 10,
+    color: FinColors.green,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
   incomeOptionsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  categoryEditorCard: {
+    marginTop: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    padding: 12,
   },
   incomeOptionButton: {
     borderRadius: 10,
@@ -2892,7 +3624,6 @@ const styles = StyleSheet.create({
   },
   editList: {
     marginTop: 8,
-    maxHeight: 260,
   },
   detailList: {
     marginTop: 10,
@@ -2965,60 +3696,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: FinColors.borderSubtle,
     paddingVertical: 10,
-  },
-  weekDetailCategoryRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  weekDetailCategoryMain: {
-    flex: 1,
-    gap: 2,
-  },
-  weekDetailCategoryTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  weekDetailCategoryIconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgElevated,
-  },
-  weekDetailCategoryLabel: {
-    fontSize: 13,
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-  },
-  weekDetailCategoryMeta: {
-    fontSize: 11,
-    color: FinColors.textMuted,
-    fontWeight: "600",
-  },
-  weekDetailCategoryAmount: {
-    fontSize: 13,
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-  },
-  weekDetailShareTrack: {
-    marginTop: 7,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
-    overflow: "hidden",
-  },
-  weekDetailShareFill: {
-    height: "100%",
-    backgroundColor: FinColors.green,
-  },
-  weekDetailShareFillWarning: {
-    backgroundColor: FinColors.red,
   },
   weekDetailSubcategoryRow: {
     flexDirection: "row",
@@ -3157,6 +3834,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: FinColors.borderSubtle,
   },
+  editRowPrimary: {
+    marginTop: 4,
+    paddingTop: 12,
+  },
+  editRowChild: {
+    paddingLeft: 12,
+  },
+  editRowDisabled: {
+    opacity: 0.72,
+  },
   editRowMain: {
     flex: 1,
   },
@@ -3164,6 +3851,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: FinColors.textPrimary,
     fontWeight: "700",
+  },
+  editRowLabelPrimary: {
+    color: FinColors.green,
+  },
+  editRowLabelChild: {
+    color: FinColors.textSecondary,
+    fontWeight: "600",
   },
   editRowMeta: {
     marginTop: 2,
@@ -3181,6 +3875,46 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 13,
     textAlign: "right",
+  },
+  editInputDisabled: {
+    backgroundColor: FinColors.bgCard,
+    color: FinColors.textMuted,
+  },
+  variableDraftSummaryCard: {
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    padding: 12,
+    gap: 8,
+  },
+  variableDraftSummaryTitle: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  variableDraftSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  variableDraftSummaryLabel: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  variableDraftSummaryValue: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  variableDraftSummaryValueOk: {
+    color: FinColors.green,
+  },
+  variableDraftSummaryValueWarning: {
+    color: FinColors.red,
   },
   modalActions: {
     marginTop: 12,

@@ -888,7 +888,11 @@ export default function InsightsScreen() {
     try {
       const referenceDate = new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
       referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
-      const computed = await computeBudgetPlan(referenceDate, "default");
+      const computed = await computeBudgetPlan(
+        referenceDate,
+        "default",
+        new Date(),
+      );
       setBudgetPlan(computed);
     } catch (error) {
       if (isMissingRelationError(error)) {

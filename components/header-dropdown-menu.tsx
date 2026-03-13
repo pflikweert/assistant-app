@@ -5,7 +5,13 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 type MenuItem = {
   label: string;
-  path: "/" | "/transactions" | "/insights" | "/budget" | "/settings";
+  path:
+    | "/"
+    | "/transactions"
+    | "/insights"
+    | "/budget"
+    | "/subscriptions"
+    | "/settings";
 };
 
 const MENU_ITEMS: MenuItem[] = [
@@ -13,6 +19,7 @@ const MENU_ITEMS: MenuItem[] = [
   { label: "Transactions", path: "/transactions" },
   { label: "Insights", path: "/insights" },
   { label: "Budget", path: "/budget" },
+  { label: "Abonnementen", path: "/subscriptions" },
   { label: "Settings", path: "/settings" },
 ];
 

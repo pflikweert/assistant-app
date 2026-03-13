@@ -1,5 +1,6 @@
 import type {
     BudgetCoachReport,
+  BudgetPlanMode,
     BudgetPlanComputation,
 } from "@/types/categorization";
 import Constants from "expo-constants";
@@ -43,6 +44,34 @@ const reportCache = new Map<
   string,
   { report: BudgetCoachReport; cachedAt: number }
 >();
+const savingsTargetCache = new Map<
+  string,
+  {
+    target: {
+      amount: number;
+      usedOpenAI: boolean;
+    };
+    cachedAt: number;
+  }
+>();
+
+type AutomaticSavingsTargetInput = {
+  monthStart: string;
+  mode: Exclude<BudgetPlanMode, "custom">;
+  expectedIncomeMonthly: number;
+  fixedCostsBudget: number;
+  subscriptionsBudget: number;
+  variableBaselineBudget: number;
+  savingsPotential: number;
+  deterministicTarget: number;
+  minimumTarget: number;
+  maximumTarget: number;
+  monthProgress: number;
+  projectedMonthlyNet: number;
+  recentIncomeTotals: number[];
+  recentVariableTotals: number[];
+  recentSavingsCapacityTotals: number[];
+};
 
 function clampReportItems(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -242,6 +271,42 @@ function setCachedReport(cacheKey: string, report: BudgetCoachReport) {
   reportCache.set(cacheKey, { report, cachedAt: Date.now() });
 }
 
+function buildAutomaticSavingsCacheKey(input: AutomaticSavingsTargetInput) {
+  return JSON.stringify(input);
+}
+
+function readCachedAutomaticSavingsTarget(cacheKey: string) {
+  const cached = savingsTargetCache.get(cacheKey);
+  if (!cached) return null;
+  if (Date.now() - cached.cachedAt > OPENAI_CACHE_TTL_MS) {
+    savingsTargetCache.delete(cacheKey);
+    return null;
+  }
+  return cached.target;
+}
+
+function setCachedAutomaticSavingsTarget(
+  cacheKey: string,
+  target: {
+    amount: number;
+    usedOpenAI: boolean;
+  },
+) {
+  savingsTargetCache.set(cacheKey, {
+    target,
+    cachedAt: Date.now(),
+  });
+}
+
+function clampToSavingsTargetBounds(
+  amount: number,
+  minimumTarget: number,
+  maximumTarget: number,
+) {
+  const bounded = Math.min(maximumTarget, Math.max(minimumTarget, amount));
+  return Math.max(0, Math.round(bounded / 25) * 25);
+}
+
 function parseReportContent(content: string): BudgetCoachReport {
   const parsed = JSON.parse(content) as {
     summary?: unknown;
@@ -267,6 +332,8 @@ function buildCoachPromptPayload(plan: BudgetPlanComputation) {
     monthProgress: plan.monthProgress,
     mode: plan.settings.mode,
     adjustmentFactor: plan.settings.adjustmentFactor,
+    savingsTargetSource: plan.savingsTargetSource,
+    usedOpenAISavingsTarget: plan.usedOpenAISavingsTarget,
     trend: {
       incomeTotal: plan.trend.income.total,
       expenseTotal: plan.trend.expenses.total,
@@ -297,6 +364,197 @@ function buildCoachPromptPayload(plan: BudgetPlanComputation) {
     recommendedSavings: plan.recommendedSavings,
     savingsPotential: plan.savingsPotential,
   };
+}
+
+async function requestAutomaticSavingsTarget(
+  apiKey: string,
+  model: string,
+  input: AutomaticSavingsTargetInput,
+): Promise<number> {
+  const payload = {
+    model,
+    temperature: 0.1,
+    max_tokens: 140,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "automatic_budget_savings_target",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            amount: {
+              type: "number",
+            },
+          },
+          required: ["amount"],
+        },
+      },
+    },
+    messages: [
+      {
+        role: "system",
+        content:
+          "Je bepaalt een realistisch Nederlands maandspaardoel. Gebruik alleen de aangeleverde data. Geef uitsluitend een bedrag in euro, als veelvoud van 25, tussen de meegegeven minimum- en maximumgrens. Voor active_savings mag het ambitieus maar realistisch zijn. Voor balanced moet het duidelijk minder streng zijn dan active_savings en meer ruimte laten voor uitgaven.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify(input),
+      },
+    ],
+  };
+
+  const payloadText = JSON.stringify(payload);
+  const estimatedTokens = estimateOpenAIRequestTokens(payloadText);
+
+  await waitForOpenAIRateLimitWindow(estimatedTokens);
+
+  const response = await fetch(OPENAI_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: payloadText,
+  });
+
+  updateOpenAIRateLimitStateFromHeaders(response.headers);
+
+  if (!response.ok) {
+    const errText = await response.text();
+    const retryAfterMs = parseRateLimitDurationMs(
+      response.headers.get("Retry-After"),
+    );
+
+    setOpenAINextAllowedAt(
+      retryAfterMs
+        ? Date.now() + retryAfterMs
+        : openAIRateLimitState.resetRequestsAt,
+    );
+
+    const err = new Error(
+      `OpenAI automatic savings target request failed (${response.status}): ${errText}`,
+    ) as OpenAIRequestError;
+    err.status = response.status;
+    err.retryAfterMs = retryAfterMs ?? undefined;
+    err.resetRequestsAt = openAIRateLimitState.resetRequestsAt;
+    err.resetTokensAt = openAIRateLimitState.resetTokensAt;
+    throw err;
+  }
+
+  const data = (await response.json()) as {
+    choices?: Array<{
+      finish_reason?: string;
+      message?: {
+        content?: string;
+      };
+    }>;
+  };
+
+  if (data.choices?.[0]?.finish_reason === "length") {
+    throw new Error("OpenAI automatic savings target response was truncated.");
+  }
+
+  const content = data.choices?.[0]?.message?.content;
+  if (!content || typeof content !== "string") {
+    throw new Error("OpenAI automatic savings target response was empty.");
+  }
+
+  const parsed = JSON.parse(content) as { amount?: unknown };
+  const rawAmount = Number(parsed.amount);
+  if (!Number.isFinite(rawAmount)) {
+    throw new Error("OpenAI automatic savings target response was invalid.");
+  }
+
+  return clampToSavingsTargetBounds(
+    rawAmount,
+    input.minimumTarget,
+    input.maximumTarget,
+  );
+}
+
+async function requestAutomaticSavingsTargetWithRetry(
+  apiKey: string,
+  model: string,
+  input: AutomaticSavingsTargetInput,
+) {
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await requestAutomaticSavingsTarget(apiKey, model, input);
+    } catch (error) {
+      const typedErr = error as OpenAIRequestError;
+      const isRateLimit = typedErr.status === 429;
+      const isTransient = !typedErr.status || typedErr.status >= 500;
+      const shouldRetry = isRateLimit || isTransient;
+      if (!shouldRetry || attempt >= OPENAI_RETRY_ATTEMPTS) throw error;
+
+      attempt += 1;
+      const delay = getOpenAIRetryDelayMs(attempt, typedErr);
+      setOpenAINextAllowedAt(Date.now() + delay);
+      await wait(delay);
+    }
+  }
+}
+
+export async function suggestAutomaticSavingsTarget(
+  input: AutomaticSavingsTargetInput,
+): Promise<{
+  amount: number;
+  usedOpenAI: boolean;
+}> {
+  const boundedDeterministicTarget = clampToSavingsTargetBounds(
+    input.deterministicTarget,
+    input.minimumTarget,
+    input.maximumTarget,
+  );
+
+  if (input.maximumTarget <= 0 || boundedDeterministicTarget <= 0) {
+    return {
+      amount: 0,
+      usedOpenAI: false,
+    };
+  }
+
+  const apiKey = appEnv.OPENAI_API_KEY;
+  if (!apiKey) {
+    return {
+      amount: boundedDeterministicTarget,
+      usedOpenAI: false,
+    };
+  }
+
+  const cacheKey = buildAutomaticSavingsCacheKey({
+    ...input,
+    deterministicTarget: boundedDeterministicTarget,
+  });
+  const cached = readCachedAutomaticSavingsTarget(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const amount = await requestAutomaticSavingsTargetWithRetry(
+      apiKey,
+      DEFAULT_MODEL,
+      {
+        ...input,
+        deterministicTarget: boundedDeterministicTarget,
+      },
+    );
+    const resolved = {
+      amount,
+      usedOpenAI: true,
+    };
+    setCachedAutomaticSavingsTarget(cacheKey, resolved);
+    return resolved;
+  } catch (error) {
+    console.warn("[budget-coach] automatic savings target generation failed", error);
+    return {
+      amount: boundedDeterministicTarget,
+      usedOpenAI: false,
+    };
+  }
 }
 
 async function requestCoachReport(

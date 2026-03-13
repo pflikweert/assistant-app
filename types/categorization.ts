@@ -34,6 +34,76 @@ export type TransactionCategorizationRecord = {
   spending_pattern?: SpendingPattern | null;
 };
 
+export type SubscriptionBillingCycle = "monthly" | "quarterly" | "yearly";
+
+export type SubscriptionProviderHint =
+  | "paypal"
+  | "google_play"
+  | "apple"
+  | "klarna"
+  | "other";
+
+export type SubscriptionProfile = {
+  id: string;
+  planKey: string;
+  name: string;
+  normalizedName: string;
+  billingCycle: SubscriptionBillingCycle;
+  expectedAmount: number | null;
+  amountTolerance: number;
+  expectedDayOfMonth: number | null;
+  providerHint: SubscriptionProviderHint | null;
+  isActive: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type SubscriptionProfileRuleType =
+  | "counterparty_contains"
+  | "details_contains";
+
+export type SubscriptionProfileRule = {
+  id: string;
+  subscriptionProfileId: string;
+  pattern: string;
+  patternNormalized: string;
+  patternType: SubscriptionProfileRuleType;
+  weight: number;
+  isActive: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type SubscriptionMatchSource = "manual" | "rule" | "heuristic" | "ignored";
+
+export type TransactionSubscriptionMatch = {
+  transactionId: string;
+  subscriptionProfileId: string | null;
+  matchSource: SubscriptionMatchSource;
+  confidence: number | null;
+  notes: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type SubscriptionSuggestion = {
+  subscriptionProfileId: string;
+  subscriptionName: string;
+  confidence: number;
+  confidenceLabel: "hoog" | "middel";
+  reason: string;
+};
+
+export type SubscriptionQueueItem = {
+  transactionId: string;
+  date: string;
+  counterparty: string | null;
+  details: string;
+  amount: number;
+  providerDetected: SubscriptionProviderHint | null;
+  suggestions: SubscriptionSuggestion[];
+};
+
 export type AnalysisMainGroup = "income" | "expense";
 
 export type ExpenseAnalysisCategory =
@@ -124,6 +194,11 @@ export type BudgetCategoryKey =
 
 export type BudgetWarningSeverity = "info" | "warning" | "critical";
 
+export type BudgetSavingsTargetSource =
+  | "automatic_active"
+  | "automatic_balanced"
+  | "manual_custom";
+
 export type BudgetOverrideSource =
   | "trend"
   | "settings"
@@ -142,6 +217,8 @@ export type BudgetPlanSettings = {
   mode: BudgetPlanMode;
   adjustmentFactor: number;
   includeIncome: BudgetIncomeInclusionSettings;
+  applySavingsTargetToVariableBudget: boolean;
+  savingsTargetMonthly: number;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -259,6 +336,14 @@ export type BudgetFlowSummary = {
   subtotalAfterFixed: number;
   subtotalAfterSubscriptions: number;
   variableBudget: number;
+  variableSubcategoriesBudgetTotal: number;
+  appliedSavingsTarget: number;
+  automaticSavingsTargetPreview: {
+    activeSavings: number;
+    balanced: number;
+  };
+  savingsTargetSource: BudgetSavingsTargetSource;
+  usedOpenAISavingsTarget: boolean;
 };
 
 export type BudgetWeekPlanRow = {
@@ -266,6 +351,10 @@ export type BudgetWeekPlanRow = {
   label: string;
   startDate: string;
   endDateExclusive: string;
+  daysInCurrentMonth: number;
+  daysInPreviousMonth: number;
+  daysInNextMonth: number;
+  crossesMonthBoundary: boolean;
   budget: number;
   actual: number;
   remaining: number;
@@ -291,6 +380,8 @@ export type BudgetWeekCategorySpend = {
 
 export type BudgetWeekSpendBreakdown = {
   weekNumber: number;
+  startDate: string;
+  endDateExclusive: string;
   categories: BudgetWeekCategorySpend[];
 };
 
@@ -315,6 +406,12 @@ export type BudgetPlanComputation = {
   warnings: BudgetWarning[];
   savingsPotential: number;
   recommendedSavings: number;
+  automaticSavingsTargetPreview: {
+    activeSavings: number;
+    balanced: number;
+  };
+  savingsTargetSource: BudgetSavingsTargetSource;
+  usedOpenAISavingsTarget: boolean;
   monthlyBudgetTotal: number;
   weeklyBudgetTotal: number;
   flowSummary: BudgetFlowSummary;
