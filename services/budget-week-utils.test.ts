@@ -1,9 +1,9 @@
-import {
-  buildCalendarWeekRangesForMonth,
-  rebalanceWeeklyBudgets,
-  resolveBaseWeeklyBudgetsByDailyMonthRates,
-} from "./budget-week-utils";
 import { describe, expect, it } from "vitest";
+import {
+    buildCalendarWeekRangesForMonth,
+    rebalanceWeeklyBudgets,
+    resolveBaseWeeklyBudgetsByDailyMonthRates,
+} from "./budget-week-utils";
 
 function utcDate(iso: string) {
   return new Date(`${iso}T00:00:00.000Z`);
@@ -14,7 +14,10 @@ describe("buildCalendarWeekRangesForMonth", () => {
     const monthStart = utcDate("2026-03-01");
     const monthEndExclusive = utcDate("2026-04-01");
 
-    const ranges = buildCalendarWeekRangesForMonth(monthStart, monthEndExclusive);
+    const ranges = buildCalendarWeekRangesForMonth(
+      monthStart,
+      monthEndExclusive,
+    );
 
     expect(ranges).toHaveLength(6);
     expect(ranges.every((range) => range.start.getUTCDay() === 1)).toBe(true);
@@ -24,12 +27,15 @@ describe("buildCalendarWeekRangesForMonth", () => {
     expect(
       ranges.every(
         (range) =>
-          (range.endExclusive.getTime() - range.start.getTime()) / 86400000 === 7,
+          (range.endExclusive.getTime() - range.start.getTime()) / 86400000 ===
+          7,
       ),
     ).toBe(true);
 
     expect(ranges[0].start.toISOString().slice(0, 10)).toBe("2026-02-23");
-    expect(ranges[0].endExclusive.toISOString().slice(0, 10)).toBe("2026-03-02");
+    expect(ranges[0].endExclusive.toISOString().slice(0, 10)).toBe(
+      "2026-03-02",
+    );
     expect(ranges[0].daysInPreviousMonth).toBe(6);
     expect(ranges[0].daysInCurrentMonth).toBe(1);
 
@@ -44,7 +50,10 @@ describe("buildCalendarWeekRangesForMonth", () => {
     const monthStart = utcDate("2026-06-01");
     const monthEndExclusive = utcDate("2026-07-01");
 
-    const ranges = buildCalendarWeekRangesForMonth(monthStart, monthEndExclusive);
+    const ranges = buildCalendarWeekRangesForMonth(
+      monthStart,
+      monthEndExclusive,
+    );
 
     expect(ranges[0].start.toISOString().slice(0, 10)).toBe("2026-06-01");
     expect(ranges[0].daysInPreviousMonth).toBe(0);
@@ -56,7 +65,10 @@ describe("buildCalendarWeekRangesForMonth", () => {
     const monthStart = utcDate("2026-01-01");
     const monthEndExclusive = utcDate("2026-02-01");
 
-    const ranges = buildCalendarWeekRangesForMonth(monthStart, monthEndExclusive);
+    const ranges = buildCalendarWeekRangesForMonth(
+      monthStart,
+      monthEndExclusive,
+    );
 
     expect(ranges[0].daysInPreviousMonth).toBeGreaterThan(0);
     expect(ranges[ranges.length - 1].daysInNextMonth).toBeGreaterThan(0);
@@ -67,7 +79,10 @@ describe("resolveBaseWeeklyBudgetsByDailyMonthRates", () => {
   it("weights overlap weeks with previous/current/next month daily rates", () => {
     const monthStart = utcDate("2026-03-01");
     const monthEndExclusive = utcDate("2026-04-01");
-    const ranges = buildCalendarWeekRangesForMonth(monthStart, monthEndExclusive);
+    const ranges = buildCalendarWeekRangesForMonth(
+      monthStart,
+      monthEndExclusive,
+    );
 
     const monthlyBudgetMap = new Map<string, number>([
       ["2026-02-01", 900],

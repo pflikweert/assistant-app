@@ -82,7 +82,9 @@ export function buildCalendarWeekRangesForMonth(
   };
 
   const firstWeekStart = startOfUtcWeekMonday(monthStart);
-  const lastWeekStart = startOfUtcWeekMonday(subtractDays(monthEndExclusive, 1));
+  const lastWeekStart = startOfUtcWeekMonday(
+    subtractDays(monthEndExclusive, 1),
+  );
   const weekWindowEndExclusive = addDays(lastWeekStart, 7);
 
   const ranges: CalendarWeekRange[] = [];
@@ -154,7 +156,10 @@ export function rebalanceWeeklyBudgets(
   budgets: number[];
   finalPool: number;
 } {
-  let remainingPool = baseWeeklyBudgets.reduce((sum, budget) => sum + budget, 0);
+  let remainingPool = baseWeeklyBudgets.reduce(
+    (sum, budget) => sum + budget,
+    0,
+  );
   let remainingWeight = baseWeeklyBudgets.reduce(
     (sum, budget) => sum + Math.max(budget, 0),
     0,

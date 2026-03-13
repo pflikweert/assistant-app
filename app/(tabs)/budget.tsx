@@ -313,6 +313,22 @@ function getAutomaticModePreviewMeta(
     : "Verwachte maandtarget voor Gebalanceerd. Na opslaan wordt dit doel opnieuw op basis van historie, tempo en AI berekend.";
 }
 
+function formatSavingsTargetDraftMetaLabel(mode: BudgetPlanMode) {
+  if (mode === "custom") {
+    return "Handmatig via eigen spaardoel";
+  }
+  return "Automatisch via budgetmodus";
+}
+
+function formatBudgetSourceLabel(
+  source: BudgetPlanComputation["recommendations"][number]["overrideSource"],
+) {
+  if (source === "monthly_override") return "handmatig deze maand";
+  if (source === "category_override") return "categorie-oversturing";
+  if (source === "settings") return "instellingen";
+  return "trend";
+}
+
 function getVariableCategoryIconName(categoryKey: string) {
   if (categoryKey === "groceries") return "shopping-basket";
   if (categoryKey === "fuel") return "local-gas-station";
@@ -910,6 +926,15 @@ export default function BudgetScreen() {
     }));
   }, [variableMonthlyBudgetByMainCategory]);
 
+  const parseDraftBudgetValue = React.useCallback(
+    (key: BudgetCategoryKey) =>
+      parseBudgetAmountDraft(
+        budgetDraftValues[key],
+        getEditableBudgetRowDefault(key),
+      ),
+    [budgetDraftValues, getEditableBudgetRowDefault],
+  );
+
   const variableBudgetDraftSummary = React.useMemo(() => {
     if (!editableBudgetRows.length) {
       return {
@@ -919,16 +944,9 @@ export default function BudgetScreen() {
       };
     }
 
-    const parseDraftValue = (key: BudgetCategoryKey) => {
-      return parseBudgetAmountDraft(
-        budgetDraftValues[key],
-        getEditableBudgetRowDefault(key),
-      );
-    };
-
-    const total = parseDraftValue("variable_costs");
+    const total = parseDraftBudgetValue("variable_costs");
     const breakdownTotal = VARIABLE_BUDGET_BREAKDOWN_KEYS.reduce(
-      (sum, key) => sum + parseDraftValue(key),
+      (sum, key) => sum + parseDraftBudgetValue(key),
       0,
     );
 
@@ -937,7 +955,41 @@ export default function BudgetScreen() {
       breakdownTotal,
       delta: total - breakdownTotal,
     };
-  }, [budgetDraftValues, editableBudgetRows, getEditableBudgetRowDefault]);
+  }, [editableBudgetRows.length, parseDraftBudgetValue]);
+
+  const draftBudgetAllocationSummary = React.useMemo(() => {
+    const incomingBudget = normalizeBudgetAmount(
+      budgetPlan?.flowSummary.expectedIncomeMonthly || 0,
+    );
+    const fixedCosts = parseDraftBudgetValue("fixed_costs");
+    const subscriptions = parseDraftBudgetValue("subscriptions");
+    const variable = parseDraftBudgetValue("variable_costs");
+    const savingsTarget = getRelevantSavingsTargetForDraftMode(
+      budgetModeDraft,
+      savingsTargetMonthlyDraft,
+    );
+    const allocatedTotal = normalizeBudgetAmount(
+      fixedCosts + subscriptions + variable + savingsTarget,
+    );
+    const remaining = incomingBudget - allocatedTotal;
+
+    return {
+      incomingBudget,
+      fixedCosts,
+      subscriptions,
+      variable,
+      savingsTarget,
+      allocatedTotal,
+      remaining,
+      isOverAllocated: remaining < 0,
+    };
+  }, [
+    budgetModeDraft,
+    budgetPlan?.flowSummary.expectedIncomeMonthly,
+    getRelevantSavingsTargetForDraftMode,
+    parseDraftBudgetValue,
+    savingsTargetMonthlyDraft,
+  ]);
 
   const savingsSliderMax = React.useMemo(() => {
     const candidates = [
@@ -2734,10 +2786,83 @@ export default function BudgetScreen() {
                   Maandbudget per categorie
                 </Text>
                 <Text style={styles.modalHintText}>
-                  Verwachte kosten worden opnieuw opgebouwd vanuit de mediaan
-                  van de laatste afgeronde maanden. Je kunt hieronder per maand
-                  bijsturen.
+                  Richtwaarde = trend op basis van de mediaan van de laatste
+                  afgeronde maanden. Actueel = al uitgegeven deze maand.
+                  Invoerveld = budget dat je nu voor deze maand plant.
                 </Text>
+                <View style={styles.budgetAllocationCard}>
+                  <Text style={styles.budgetAllocationTitle}>
+                    Controle: inkomend budget vs verdeling
+                  </Text>
+                  <View style={styles.budgetAllocationRow}>
+                    <Text style={styles.budgetAllocationLabel}>
+                      Totaal inkomend budget
+                    </Text>
+                    <Text style={styles.budgetAllocationValue}>
+                      {fmt.format(draftBudgetAllocationSummary.incomingBudget)}
+                    </Text>
+                  </View>
+                  <View style={styles.budgetAllocationRow}>
+                    <Text style={styles.budgetAllocationLabel}>
+                      - Vaste lasten
+                    </Text>
+                    <Text style={styles.budgetAllocationValueNegative}>
+                      {fmt.format(-draftBudgetAllocationSummary.fixedCosts)}
+                    </Text>
+                  </View>
+                  <View style={styles.budgetAllocationRow}>
+                    <Text style={styles.budgetAllocationLabel}>
+                      - Abonnementen
+                    </Text>
+                    <Text style={styles.budgetAllocationValueNegative}>
+                      {fmt.format(-draftBudgetAllocationSummary.subscriptions)}
+                    </Text>
+                  </View>
+                  <View style={styles.budgetAllocationRow}>
+                    <Text style={styles.budgetAllocationLabel}>
+                      - Variabele uitgaven
+                    </Text>
+                    <Text style={styles.budgetAllocationValueNegative}>
+                      {fmt.format(-draftBudgetAllocationSummary.variable)}
+                    </Text>
+                  </View>
+                  <View style={styles.budgetAllocationRow}>
+                    <Text style={styles.budgetAllocationLabel}>- Spaardoel</Text>
+                    <Text style={styles.budgetAllocationValueNegative}>
+                      {fmt.format(-draftBudgetAllocationSummary.savingsTarget)}
+                    </Text>
+                  </View>
+                  <View style={styles.budgetAllocationDivider} />
+                  <View style={styles.budgetAllocationRow}>
+                    <Text style={styles.budgetAllocationTotalLabel}>
+                      Totaal verdeeld
+                    </Text>
+                    <Text style={styles.budgetAllocationTotalValue}>
+                      {fmt.format(draftBudgetAllocationSummary.allocatedTotal)}
+                    </Text>
+                  </View>
+                  <View style={styles.budgetAllocationRow}>
+                    <Text style={styles.budgetAllocationTotalLabel}>
+                      Resterende ruimte
+                    </Text>
+                    <Text
+                      style={[
+                        styles.budgetAllocationRemainingValue,
+                        draftBudgetAllocationSummary.isOverAllocated
+                          ? styles.budgetAllocationRemainingCritical
+                          : styles.budgetAllocationRemainingPositive,
+                      ]}
+                    >
+                      {fmt.format(draftBudgetAllocationSummary.remaining)}
+                    </Text>
+                  </View>
+                  {draftBudgetAllocationSummary.isOverAllocated ? (
+                    <Text style={styles.budgetAllocationWarningText}>
+                      Je planning zit boven je inkomend budget. Verlaag
+                      categoriebedragen of spaardoel.
+                    </Text>
+                  ) : null}
+                </View>
                 {autoManagedVariableBudget ? (
                   <Text style={styles.modalAutoManagedHint}>
                     Variabele uitgaven worden in deze modus automatisch bepaald
@@ -2791,10 +2916,13 @@ export default function BudgetScreen() {
                               : getBudgetCategoryDisplayLabel(row.categoryKey)}
                           </Text>
                           <Text style={styles.editRowMeta}>
-                            Richtwaarde:{" "}
+                            Trend (mediaan):{" "}
                             {fmt.format(Math.round(row.baselineMonthly))} ·
-                            Actueel: {fmt.format(row.monthlyActual)}
-                            {inputDisabled ? " · automatisch" : ""}
+                            Uitgegeven: {fmt.format(row.monthlyActual)} · Bron:{" "}
+                            {formatBudgetSourceLabel(row.overrideSource)}
+                            {inputDisabled
+                              ? " · automatisch beheerd via spaardoel"
+                              : ""}
                           </Text>
                         </View>
                         <TextInput
@@ -2820,6 +2948,22 @@ export default function BudgetScreen() {
                       </View>
                     );
                   })}
+                  <View style={[styles.editRow, styles.editRowDisabled]}>
+                    <View style={styles.editRowMain}>
+                      <Text style={styles.editRowLabel}>Spaardoel</Text>
+                      <Text style={styles.editRowMeta}>
+                        {formatSavingsTargetDraftMetaLabel(budgetModeDraft)} ·
+                        niet direct wijzigbaar in deze lijst
+                      </Text>
+                    </View>
+                    <View style={styles.editInputReadOnly}>
+                      <Text style={styles.editInputReadOnlyText}>
+                        {formatBudgetAmountDraft(
+                          draftBudgetAllocationSummary.savingsTarget,
+                        )}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
 
                 <View style={styles.variableDraftSummaryCard}>
@@ -3840,6 +3984,72 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: "600",
   },
+  budgetAllocationCard: {
+    marginBottom: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    padding: 10,
+    gap: 6,
+  },
+  budgetAllocationTitle: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  budgetAllocationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  budgetAllocationLabel: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  budgetAllocationValue: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  budgetAllocationValueNegative: {
+    fontSize: 12,
+    color: FinColors.red,
+    fontWeight: "700",
+  },
+  budgetAllocationDivider: {
+    height: 1,
+    backgroundColor: FinColors.borderSubtle,
+    marginVertical: 2,
+  },
+  budgetAllocationTotalLabel: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  budgetAllocationTotalValue: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+  },
+  budgetAllocationRemainingValue: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  budgetAllocationRemainingPositive: {
+    color: FinColors.green,
+  },
+  budgetAllocationRemainingCritical: {
+    color: FinColors.red,
+  },
+  budgetAllocationWarningText: {
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 16,
+    color: FinColors.red,
+  },
   incomeOptionsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -4130,6 +4340,22 @@ const styles = StyleSheet.create({
   editInputDisabled: {
     backgroundColor: FinColors.bgCard,
     color: FinColors.textMuted,
+  },
+  editInputReadOnly: {
+    minWidth: 96,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  editInputReadOnlyText: {
+    color: FinColors.textMuted,
+    fontSize: 13,
+    fontWeight: "700",
   },
   variableDraftSummaryCard: {
     marginTop: 12,
