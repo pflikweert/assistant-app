@@ -4,10 +4,8 @@ import {
   createSubscriptionProfile,
   deleteSubscriptionProfile,
   deleteSubscriptionProfileRule,
-  getSubscriptionQueue,
+  getSubscriptionDashboardData,
   linkTransactionToSubscription,
-  listSubscriptionProfileRules,
-  listSubscriptionProfiles,
   markTransactionAsNotSubscription,
   setSubscriptionProfileActive,
   updateSubscriptionProfile,
@@ -22,7 +20,7 @@ import type {
   SubscriptionQueueItem,
 } from "@/types/categorization";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
@@ -118,6 +116,11 @@ function deriveProfileNameFromQueueItem(item: SubscriptionQueueItem): string {
   return compact.slice(0, 40).trim();
 }
 
+function normalizeRouteParam(value?: string | string[]) {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
 type RuleDraft = {
   pattern: string;
   patternType: SubscriptionProfileRuleType;
@@ -131,7 +134,13 @@ function getDefaultRuleDraft(): RuleDraft {
 }
 
 export default function SubscriptionsScreen() {
+  const params = useLocalSearchParams<{ profileId?: string | string[] }>();
+  const focusProfileId = React.useMemo(
+    () => normalizeRouteParam(params.profileId),
+    [params.profileId],
+  );
   const router = useRouter();
+  const handledFocusProfileIdRef = React.useRef<string | null>(null);
 
   const [loading, setLoading] = React.useState(true);
   const [savingProfile, setSavingProfile] = React.useState(false);
@@ -182,30 +191,18 @@ export default function SubscriptionsScreen() {
 
     try {
       const { monthStartIso, monthEndIso } = getCurrentMonthBounds();
-      const [loadedProfiles, loadedQueue] = await Promise.all([
-        listSubscriptionProfiles(),
-        getSubscriptionQueue(monthStartIso, monthEndIso),
-      ]);
+      const { profiles: loadedProfiles, queueItems, rulesByProfileId } =
+        await getSubscriptionDashboardData(monthStartIso, monthEndIso);
 
-      const profileRulesEntries = await Promise.all(
-        loadedProfiles.map(async (profile) => {
-          const rules = await listSubscriptionProfileRules(profile.id);
-          return [profile.id, rules] as const;
-        }),
-      );
-
-      const nextRulesByProfileId: Record<string, SubscriptionProfileRule[]> =
-        {};
       const nextRuleDraftByProfileId: Record<string, RuleDraft> = {};
 
-      for (const [profileId, rules] of profileRulesEntries) {
-        nextRulesByProfileId[profileId] = rules;
+      for (const profileId of Object.keys(rulesByProfileId)) {
         nextRuleDraftByProfileId[profileId] = getDefaultRuleDraft();
       }
 
       setProfiles(loadedProfiles);
-      setQueueItems(loadedQueue);
-      setRulesByProfileId(nextRulesByProfileId);
+      setQueueItems(queueItems);
+      setRulesByProfileId(rulesByProfileId);
       setRuleDraftByProfileId(nextRuleDraftByProfileId);
     } catch (error) {
       console.warn("[subscriptions] load error", error);
@@ -263,6 +260,17 @@ export default function SubscriptionsScreen() {
     },
     [],
   );
+
+  React.useEffect(() => {
+    if (!focusProfileId || loading) return;
+    if (handledFocusProfileIdRef.current === focusProfileId) return;
+
+    const targetProfile = profiles.find((profile) => profile.id === focusProfileId);
+    if (!targetProfile) return;
+
+    handledFocusProfileIdRef.current = focusProfileId;
+    openEditProfileModal(targetProfile);
+  }, [focusProfileId, loading, openEditProfileModal, profiles]);
 
   const handleSaveProfile = React.useCallback(async () => {
     const trimmedName = String(profileName || "").trim();

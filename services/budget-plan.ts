@@ -1,15 +1,15 @@
+import { suggestAutomaticSavingsTarget } from "@/services/budget-coach";
 import {
     getBudgetCategoryOverrides,
     getBudgetPlanSettings,
     getMonthlyBudgetValues,
 } from "@/services/budget-plan-repository";
-import { suggestAutomaticSavingsTarget } from "@/services/budget-coach";
-import {
-  buildCalendarWeekRangesForMonth,
-  rebalanceWeeklyBudgets,
-  resolveBaseWeeklyBudgetsByDailyMonthRates,
-} from "@/services/budget-week-utils";
 import type { CalendarWeekRange } from "@/services/budget-week-utils";
+import {
+    buildCalendarWeekRangesForMonth,
+    rebalanceWeeklyBudgets,
+    resolveBaseWeeklyBudgetsByDailyMonthRates,
+} from "@/services/budget-week-utils";
 import { normalizePattern } from "@/services/categorization-repository";
 import { supabase } from "@/services/supabase";
 import type {
@@ -27,8 +27,8 @@ import type {
     BudgetPlanComputation,
     BudgetPlanSettings,
     BudgetRecommendationRow,
-    BudgetSavingsTargetSource,
     BudgetSavingsProgress,
+    BudgetSavingsTargetSource,
     BudgetTrendSnapshot,
     BudgetVariableBreakdown,
     BudgetWarning,
@@ -858,7 +858,8 @@ function buildCompletedMonthBudgetInsight(
 
   for (const row of recentMonths) {
     const incomeTotal = round2(incomeTotalsByMonth.get(row.monthKey) || 0);
-    const expenses = expenseTotalsByMonth.get(row.monthKey) || emptyExpenseBreakdown();
+    const expenses =
+      expenseTotalsByMonth.get(row.monthKey) || emptyExpenseBreakdown();
     const historicalSavingsCapacity = Math.max(
       incomeTotal -
         expenses.fixedCosts -
@@ -968,7 +969,9 @@ function resolveDeterministicAutomaticSavingsTargets({
     insight.incomeVolatility * 0.18 +
       insight.variableVolatility * 0.22 +
       (positiveProjectedNet <= 0 ? 0.08 : 0) +
-      (monthProgress >= 0.5 && positiveProjectedNet < realisticCenter ? 0.08 : 0),
+      (monthProgress >= 0.5 && positiveProjectedNet < realisticCenter
+        ? 0.08
+        : 0),
     0,
     0.4,
   );
@@ -1278,7 +1281,10 @@ function computeWeeklyVariablePlan(
     return roundEuro(total);
   });
 
-  const rebalance = rebalanceWeeklyBudgets(baseWeeklyBudgetByIndex, weekActuals);
+  const rebalance = rebalanceWeeklyBudgets(
+    baseWeeklyBudgetByIndex,
+    weekActuals,
+  );
   const rows: BudgetWeekPlanRow[] = [];
 
   ranges.forEach((range, index) => {
@@ -1722,16 +1728,18 @@ export async function computeBudgetPlan(
   const actualByKey = new Map<BudgetCategoryKey, number>();
 
   for (const categoryKey of RECOMMENDATION_ORDER) {
-    const completedMonthBaseline = completedMonthExpenseBaselines.get(categoryKey);
+    const completedMonthBaseline =
+      completedMonthExpenseBaselines.get(categoryKey);
     const baselineValue =
       completedMonthBaseline != null
         ? completedMonthBaseline
-        : getTrendBaselineForCategory(categoryKey, trend, expectedIncomeMonthly);
+        : getTrendBaselineForCategory(
+            categoryKey,
+            trend,
+            expectedIncomeMonthly,
+          );
 
-    baselineByKey.set(
-      categoryKey,
-      round2(baselineValue),
-    );
+    baselineByKey.set(categoryKey, round2(baselineValue));
     actualByKey.set(
       categoryKey,
       round2(getBudgetCategoryActual(categoryKey, monthToDate.expenses)),
@@ -1766,7 +1774,10 @@ export async function computeBudgetPlan(
       };
     }
 
-    if (!autoManagedVariableCategory && override?.monthlyTargetOverride != null) {
+    if (
+      !autoManagedVariableCategory &&
+      override?.monthlyTargetOverride != null
+    ) {
       const monthlyBudget = roundEuro(
         Math.max(override.monthlyTargetOverride, 0),
       );
@@ -1882,10 +1893,7 @@ export async function computeBudgetPlan(
           monthToDate.expenses.subscriptions +
           monthToDate.expenses.variableCosts);
   const savingsPotential = roundEuro(
-    Math.max(
-      flexibleBudgetCapacity - variableBaselineBudget,
-      0,
-    ),
+    Math.max(flexibleBudgetCapacity - variableBaselineBudget, 0),
   );
   const deterministicTargets = resolveDeterministicAutomaticSavingsTargets({
     savingsPotential,
@@ -1901,7 +1909,9 @@ export async function computeBudgetPlan(
   let usedOpenAISavingsTarget = false;
 
   if (settings.mode === "custom") {
-    appliedSavingsTarget = roundEuro(Math.max(settings.savingsTargetMonthly, 0));
+    appliedSavingsTarget = roundEuro(
+      Math.max(settings.savingsTargetMonthly, 0),
+    );
     savingsTargetSource = "manual_custom";
   } else {
     const deterministicTarget =
@@ -2008,7 +2018,10 @@ export async function computeBudgetPlan(
       continue;
     }
 
-    if (!autoManagedVariableCategory && override?.monthlyTargetOverride != null) {
+    if (
+      !autoManagedVariableCategory &&
+      override?.monthlyTargetOverride != null
+    ) {
       const monthlyBudget = roundEuro(
         Math.max(override.monthlyTargetOverride, 0),
       );
@@ -2216,7 +2229,9 @@ export async function computeBudgetPlan(
   const resolveVariableMonthlyBudget = (
     values: Array<{ categoryKey: string; monthlyBudget: number }>,
   ) => {
-    const override = values.find((item) => item.categoryKey === "variable_costs");
+    const override = values.find(
+      (item) => item.categoryKey === "variable_costs",
+    );
     if (!override) return fallbackVariableMonthlyBudget;
     return roundEuro(Math.max(override.monthlyBudget, 0));
   };

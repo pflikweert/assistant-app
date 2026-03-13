@@ -18,6 +18,7 @@ import {
   getLeafCategories,
 } from "@/services/category-display";
 import {
+  createSubscriptionProfile,
   getTransactionSubscriptionMatch,
   linkTransactionToSubscription,
   listSubscriptionProfiles,
@@ -27,6 +28,7 @@ import {
 import type {
   CategoryRecord,
   SubscriptionProfile,
+  SubscriptionProviderHint,
 } from "@/types/categorization";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
@@ -37,6 +39,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -80,6 +83,53 @@ function isSubjectDrivenCounterparty(counterparty: string | null | undefined) {
 
 function getSubjectFromDetails(details: string) {
   return details.split("|")[0]?.trim() || details;
+}
+
+function suggestSubscriptionNameFromTransaction(
+  counterparty: string | null,
+  details: string,
+) {
+  const subject = getSubjectFromDetails(details).replace(/\s+/g, " ").trim();
+  if (subject) {
+    if (subject.length <= 48) return subject;
+    return subject.slice(0, 48).trim();
+  }
+
+  const cp = String(counterparty || "").replace(/\s+/g, " ").trim();
+  if (cp) return cp;
+  return "Nieuw abonnement";
+}
+
+function detectProviderHintFromTransaction(
+  counterparty: string | null,
+  details: string,
+): SubscriptionProviderHint | null {
+  const haystack = normalizeSubscriptionText(
+    `${counterparty || ""} ${details || ""}`,
+  );
+  if (!haystack) return null;
+
+  if (haystack.includes("paypal")) return "paypal";
+  if (haystack.includes("google play") || haystack.includes("googleplay")) {
+    return "google_play";
+  }
+  if (
+    haystack.includes("apple") ||
+    haystack.includes("itunes") ||
+    haystack.includes("apple com bill")
+  ) {
+    return "apple";
+  }
+  if (
+    haystack.includes("klarna") ||
+    haystack.includes("riverty") ||
+    haystack.includes("afterpay") ||
+    haystack.includes("billink") ||
+    haystack.includes("in3")
+  ) {
+    return "klarna";
+  }
+  return null;
 }
 
 const PSP_HINTS = [
@@ -183,6 +233,10 @@ export default function TransactionDetailScreen() {
     React.useState(false);
   const [setCategoryToSubscriptions, setSetCategoryToSubscriptions] =
     React.useState(true);
+  const [newSubscriptionName, setNewSubscriptionName] = React.useState("");
+  const [newSubscriptionError, setNewSubscriptionError] = React.useState<
+    string | null
+  >(null);
 
   // ── Derived maps ───────────────────────────────────────────────────────
   const categoryById = React.useMemo(
@@ -231,11 +285,20 @@ export default function TransactionDetailScreen() {
     () => subscriptionProfiles.filter((profile) => profile.isActive),
     [subscriptionProfiles],
   );
+  const linkedSubscriptionProfile = subscriptionMatch?.profile || null;
   const isPspLikeExpense = React.useMemo(() => {
     if (!tx) return false;
     if (tx.amount >= 0) return false;
     return isLikelySubscriptionPspTransaction(tx.counterparty, tx.details);
   }, [tx]);
+
+  React.useEffect(() => {
+    if (!subscriptionModalOpen || !tx) return;
+    setNewSubscriptionError(null);
+    setNewSubscriptionName(
+      suggestSubscriptionNameFromTransaction(tx.counterparty, tx.details),
+    );
+  }, [subscriptionModalOpen, tx]);
 
   // ── Data loading ────────────────────────────────────────────────────────
   const loadData = React.useCallback(async () => {
@@ -475,6 +538,71 @@ export default function TransactionDetailScreen() {
     }
   }, [transactionId, subscriptionActionBusy]);
 
+  const handleCreateAndLinkSubscription = React.useCallback(async () => {
+    if (!transactionId || !tx || subscriptionActionBusy) return;
+
+    const name = String(newSubscriptionName || "").trim();
+    if (!name) {
+      setNewSubscriptionError("Voer een naam voor het abonnement in.");
+      return;
+    }
+
+    setSubscriptionActionBusy(true);
+    setNewSubscriptionError(null);
+    try {
+      const created = await createSubscriptionProfile({
+        name,
+        billingCycle: "monthly",
+        expectedAmount: Math.abs(tx.amount),
+        providerHint: detectProviderHintFromTransaction(
+          tx.counterparty,
+          tx.details,
+        ),
+        isActive: true,
+      });
+
+      await linkTransactionToSubscription({
+        transactionId,
+        subscriptionProfileId: created.id,
+        notes: "nieuw profiel vanuit transactie-detail",
+        confidence: 1,
+        setCategoryToSubscriptions,
+      });
+
+      const [detail, profiles, match] = await Promise.all([
+        getTransactionDetail(transactionId),
+        listSubscriptionProfiles(),
+        getTransactionSubscriptionMatch(transactionId),
+      ]);
+      setTx(detail);
+      setSubscriptionProfiles(profiles);
+      setSubscriptionMatch(match);
+      setSubscriptionModalOpen(false);
+    } catch (e) {
+      console.warn("create and link subscription error", e);
+      setNewSubscriptionError("Kon abonnement niet aanmaken.");
+    } finally {
+      setSubscriptionActionBusy(false);
+    }
+  }, [
+    newSubscriptionName,
+    setCategoryToSubscriptions,
+    subscriptionActionBusy,
+    transactionId,
+    tx,
+  ]);
+
+  const handleOpenSubscriptionAction = React.useCallback(() => {
+    if (linkedSubscriptionProfile?.id) {
+      router.push({
+        pathname: "/subscriptions",
+        params: { profileId: linkedSubscriptionProfile.id },
+      });
+      return;
+    }
+    setSubscriptionModalOpen(true);
+  }, [linkedSubscriptionProfile?.id, router]);
+
   // ── Render ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -577,12 +705,14 @@ export default function TransactionDetailScreen() {
           ) : null}
         </View>
 
-        {isPspLikeExpense ? (
+        {isPspLikeExpense || linkedSubscriptionProfile ? (
           <View style={styles.subscriptionCard}>
-            <Text style={styles.sectionTitle}>Mogelijk abonnement</Text>
-            {subscriptionMatch?.profile ? (
+            <Text style={styles.sectionTitle}>
+              {linkedSubscriptionProfile ? "Abonnement" : "Mogelijk abonnement"}
+            </Text>
+            {linkedSubscriptionProfile ? (
               <Text style={styles.subscriptionLinkedText}>
-                Gekoppeld aan abonnement: {subscriptionMatch.profile.name}
+                Gekoppeld aan abonnement: {linkedSubscriptionProfile.name}
               </Text>
             ) : subscriptionMatch?.match.matchSource === "ignored" ? (
               <Text style={styles.subscriptionMutedText}>
@@ -597,10 +727,12 @@ export default function TransactionDetailScreen() {
 
             <TouchableOpacity
               style={styles.subscriptionActionBtn}
-              onPress={() => setSubscriptionModalOpen(true)}
+              onPress={handleOpenSubscriptionAction}
             >
               <Text style={styles.subscriptionActionBtnText}>
-                Koppel aan abonnement
+                {linkedSubscriptionProfile
+                  ? "Bekijk abonnement"
+                  : "Koppel aan abonnement"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1013,9 +1145,41 @@ export default function TransactionDetailScreen() {
               contentContainerStyle={styles.subscriptionProfileListContent}
             >
               {activeSubscriptionProfiles.length === 0 ? (
-                <Text style={styles.subscriptionModalEmptyText}>
-                  Geen actieve abonnementen gevonden.
-                </Text>
+                <View style={styles.subscriptionQuickCreateWrap}>
+                  <Text style={styles.subscriptionModalEmptyText}>
+                    Geen actieve abonnementen gevonden.
+                  </Text>
+                  <Text style={styles.subscriptionQuickCreateHint}>
+                    Maak direct een nieuw abonnement aan en koppel deze
+                    transactie.
+                  </Text>
+                  <TextInput
+                    style={styles.subscriptionQuickCreateInput}
+                    value={newSubscriptionName}
+                    onChangeText={setNewSubscriptionName}
+                    placeholder="Naam (bijv. Netflix)"
+                    placeholderTextColor={FinColors.textMuted}
+                    autoCapitalize="words"
+                  />
+                  {newSubscriptionError ? (
+                    <Text style={styles.subscriptionQuickCreateError}>
+                      {newSubscriptionError}
+                    </Text>
+                  ) : null}
+                  <TouchableOpacity
+                    style={styles.subscriptionQuickCreateBtn}
+                    onPress={() => void handleCreateAndLinkSubscription()}
+                    disabled={subscriptionActionBusy}
+                  >
+                    {subscriptionActionBusy ? (
+                      <ActivityIndicator size="small" color={FinColors.bgBase} />
+                    ) : (
+                      <Text style={styles.subscriptionQuickCreateBtnText}>
+                        Aanmaken en koppelen
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               ) : (
                 activeSubscriptionProfiles.map((profile) => (
                   <TouchableOpacity
@@ -1057,7 +1221,9 @@ export default function TransactionDetailScreen() {
                 }}
                 disabled={subscriptionActionBusy}
               >
-                <Text style={styles.subscriptionManageBtnText}>Beheer</Text>
+                <Text style={styles.subscriptionManageBtnText}>
+                  Beheer / nieuw
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1280,6 +1446,45 @@ const styles = StyleSheet.create({
   subscriptionModalEmptyText: {
     color: FinColors.textMuted,
     fontSize: 13,
+  },
+  subscriptionQuickCreateWrap: {
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    padding: 10,
+    gap: 8,
+  },
+  subscriptionQuickCreateHint: {
+    color: FinColors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  subscriptionQuickCreateInput: {
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    color: FinColors.textPrimary,
+    fontSize: 13,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  subscriptionQuickCreateError: {
+    color: FinColors.red,
+    fontSize: 12,
+  },
+  subscriptionQuickCreateBtn: {
+    borderRadius: 8,
+    backgroundColor: FinColors.green,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  subscriptionQuickCreateBtnText: {
+    color: FinColors.bgBase,
+    fontSize: 13,
+    fontWeight: "700",
   },
   subscriptionProfileRow: {
     borderRadius: 10,

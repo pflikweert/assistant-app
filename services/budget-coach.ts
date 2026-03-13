@@ -1,7 +1,7 @@
 import type {
     BudgetCoachReport,
-  BudgetPlanMode,
     BudgetPlanComputation,
+    BudgetPlanMode,
 } from "@/types/categorization";
 import Constants from "expo-constants";
 
@@ -549,7 +549,10 @@ export async function suggestAutomaticSavingsTarget(
     setCachedAutomaticSavingsTarget(cacheKey, resolved);
     return resolved;
   } catch (error) {
-    console.warn("[budget-coach] automatic savings target generation failed", error);
+    console.warn(
+      "[budget-coach] automatic savings target generation failed",
+      error,
+    );
     return {
       amount: boundedDeterministicTarget,
       usedOpenAI: false,

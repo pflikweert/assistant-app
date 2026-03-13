@@ -649,7 +649,8 @@ function buildCompletedMonthBudgetInsight(
 
   for (const row of recentMonths) {
     const incomeTotal = round2(incomeTotalsByMonth.get(row.monthKey) || 0);
-    const expenses = expenseTotalsByMonth.get(row.monthKey) || emptyExpenseBreakdown();
+    const expenses =
+      expenseTotalsByMonth.get(row.monthKey) || emptyExpenseBreakdown();
     const historicalSavingsCapacity = Math.max(
       incomeTotal -
         expenses.fixedCosts -
@@ -868,7 +869,9 @@ function buildMonthWeekRanges(monthStart, monthEndExclusive) {
   };
 
   const firstWeekStart = startOfUtcWeekMonday(monthStart);
-  const lastWeekStart = startOfUtcWeekMonday(subtractDays(monthEndExclusive, 1));
+  const lastWeekStart = startOfUtcWeekMonday(
+    subtractDays(monthEndExclusive, 1),
+  );
   const weekWindowEndExclusive = addDays(lastWeekStart, 7);
 
   const ranges = [];
@@ -1513,10 +1516,7 @@ function createBudgetInputResolver(
     ),
   );
   const savingsPotential = roundEuro(
-    Math.max(
-      flexibleBudgetCapacity - variableBaselineBudget,
-      0,
-    ),
+    Math.max(flexibleBudgetCapacity - variableBaselineBudget, 0),
   );
   const projectedMonthlyCoreNet =
     monthProgress > 0
@@ -1564,7 +1564,9 @@ function createBudgetInputResolver(
   );
 
   const resolveVariableMonthlyBudget = (values) => {
-    const override = values.find((item) => item.categoryKey === "variable_costs");
+    const override = values.find(
+      (item) => item.categoryKey === "variable_costs",
+    );
     if (!override) return variableMonthlyBudget;
     return roundEuro(Math.max(override.monthlyBudget, 0));
   };
@@ -1628,7 +1630,9 @@ function createBudgetInputResolver(
       month: dateToIso(sampleMonthStart).slice(0, 7),
       weekCount: sampleRanges.length,
       allWeeksSevenDays,
-      firstStartsMonday: firstRange ? firstRange.start.getUTCDay() === 1 : false,
+      firstStartsMonday: firstRange
+        ? firstRange.start.getUTCDay() === 1
+        : false,
       lastEndsMondayExclusive: lastRange
         ? lastRange.endExclusive.getUTCDay() === 1
         : false,
@@ -1687,9 +1691,8 @@ function createBudgetInputResolver(
         previousMonthStartIso,
       ),
       [monthStartIso]: variableMonthlyBudgetByMonthStartIso.get(monthStartIso),
-      [nextMonthStartIso]: variableMonthlyBudgetByMonthStartIso.get(
-        nextMonthStartIso,
-      ),
+      [nextMonthStartIso]:
+        variableMonthlyBudgetByMonthStartIso.get(nextMonthStartIso),
     },
     calendarSamples: {
       mondayStartSample,
@@ -1714,7 +1717,9 @@ function createBudgetInputResolver(
         : false,
       overlapWeekCountExpected2: overlapWeeks.length === 2,
       overlapWeekMetadataConsistent: overlapWeeks.every(
-        (row) => row.daysInCurrentMonth < 7 && (row.daysInPreviousMonth > 0 || row.daysInNextMonth > 0),
+        (row) =>
+          row.daysInCurrentMonth < 7 &&
+          (row.daysInPreviousMonth > 0 || row.daysInNextMonth > 0),
       ),
       mondayStartMonthCalendarWeeksValid:
         mondayStartSample.allWeeksSevenDays &&

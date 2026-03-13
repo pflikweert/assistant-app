@@ -74,7 +74,11 @@ export type SubscriptionProfileRule = {
   updatedAt: string | null;
 };
 
-export type SubscriptionMatchSource = "manual" | "rule" | "heuristic" | "ignored";
+export type SubscriptionMatchSource =
+  | "manual"
+  | "rule"
+  | "heuristic"
+  | "ignored";
 
 export type TransactionSubscriptionMatch = {
   transactionId: string;

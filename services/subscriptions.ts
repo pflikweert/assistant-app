@@ -27,6 +27,9 @@ type QueueTransactionRow = {
   counterparty: string | null;
   details: string;
   amount: number;
+  analysisCategory: string | null;
+  categoryIdAuto: string | null;
+  categoryIdUser: string | null;
 };
 
 type SubscriptionHistoryItem = {
@@ -37,6 +40,12 @@ type SubscriptionHistoryItem = {
 type SupabaseLikeError = {
   code?: string;
   message?: string;
+};
+
+type LoadedSubscriptionProfiles = {
+  profiles: SubscriptionProfile[];
+  activeProfiles: SubscriptionProfile[];
+  rulesByProfileId: SubscriptionRulesByProfileId;
 };
 
 export type CreateSubscriptionProfileInput = {
@@ -80,6 +89,17 @@ export type UpsertTransactionSubscriptionMatchInput = {
 export type TransactionSubscriptionMatchWithProfile = {
   match: TransactionSubscriptionMatch;
   profile: SubscriptionProfile | null;
+};
+
+export type SubscriptionRulesByProfileId = Record<
+  string,
+  SubscriptionProfileRule[]
+>;
+
+export type SubscriptionDashboardData = {
+  profiles: SubscriptionProfile[];
+  rulesByProfileId: SubscriptionRulesByProfileId;
+  queueItems: SubscriptionQueueItem[];
 };
 
 export type LinkTransactionToSubscriptionInput = {
@@ -238,6 +258,16 @@ function chunkArray<T>(values: T[], chunkSize: number): T[][] {
   return chunks;
 }
 
+function createRulesByProfileId(profileIds: string[]): SubscriptionRulesByProfileId {
+  return Array.from(new Set(profileIds)).reduce<SubscriptionRulesByProfileId>(
+    (acc, profileId) => {
+      acc[profileId] = [];
+      return acc;
+    },
+    {},
+  );
+}
+
 function mapProfileRow(row: RowRecord): SubscriptionProfile {
   return {
     id: String(row.id || ""),
@@ -290,6 +320,11 @@ function normalizeQueueTransaction(row: RowRecord): QueueTransactionRow {
     counterparty: row.counterparty == null ? null : String(row.counterparty),
     details: String(row.details || ""),
     amount: asNumber(row.amount, 0),
+    analysisCategory: row.analysis_category
+      ? String(row.analysis_category)
+      : null,
+    categoryIdAuto: row.category_id_auto ? String(row.category_id_auto) : null,
+    categoryIdUser: row.category_id_user ? String(row.category_id_user) : null,
   };
 }
 
@@ -299,7 +334,7 @@ const PROVIDER_RULES: {
 }[] = [
   {
     provider: "paypal",
-    tokens: ["paypal", "pp*"],
+    tokens: ["paypal"],
   },
   {
     provider: "google_play",
@@ -315,15 +350,30 @@ const PROVIDER_RULES: {
   },
 ];
 
-const GENERIC_PSP_TOKENS = [
-  "psp",
+const GENERIC_PSP_PROVIDER_TOKENS = [
   "payment provider",
   "merchant of record",
-  "checkout",
-  "digital purchase",
-  "charge",
-  "subscription",
+  "mangopay",
+  "adyen",
+  "mollie",
+  "stripe",
+  "checkout com",
+  "paddle",
+  "fastspring",
 ];
+
+function containsProviderToken(haystack: string, tokenRaw: string): boolean {
+  const token = normalizePattern(tokenRaw);
+  if (!token) return false;
+
+  const tokenWords = token.split(" ").filter(Boolean);
+  if (tokenWords.length === 1) {
+    const haystackWords = haystack.split(" ").filter(Boolean);
+    return haystackWords.includes(token);
+  }
+
+  return haystack.includes(token);
+}
 
 function detectProvider(
   counterparty: string | null,
@@ -333,22 +383,47 @@ function detectProvider(
   if (!haystack) return null;
 
   for (const rule of PROVIDER_RULES) {
-    if (
-      rule.tokens.some((token) => haystack.includes(normalizePattern(token)))
-    ) {
+    if (rule.tokens.some((token) => containsProviderToken(haystack, token))) {
       return rule.provider;
     }
   }
 
   if (
-    GENERIC_PSP_TOKENS.some((token) =>
-      haystack.includes(normalizePattern(token)),
+    GENERIC_PSP_PROVIDER_TOKENS.some((token) =>
+      containsProviderToken(haystack, token),
     )
   ) {
     return "other";
   }
 
   return null;
+}
+
+function isKnownSubscriptionTransaction(
+  tx: QueueTransactionRow,
+  subscriptionCategoryIds: Set<string>,
+): boolean {
+  if (tx.analysisCategory === "subscriptions") return true;
+  const categoryId = tx.categoryIdUser || tx.categoryIdAuto;
+  if (!categoryId) return false;
+  return subscriptionCategoryIds.has(categoryId);
+}
+
+async function listSubscriptionCategoryIds(): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("categories")
+    .select("id")
+    .like("key", "subscriptions%");
+
+  if (error) throw error;
+
+  const ids = new Set<string>();
+  for (const row of (data || []) as RowRecord[]) {
+    const id = String(row.id || "");
+    if (!id) continue;
+    ids.add(id);
+  }
+  return ids;
 }
 
 function getFrequencyWindowDays(cycle: SubscriptionBillingCycle): {
@@ -368,6 +443,18 @@ function formatCycleLabel(cycle: SubscriptionBillingCycle): string {
   if (cycle === "quarterly") return "per kwartaal";
   if (cycle === "yearly") return "jaarlijks";
   return "maandelijks";
+}
+
+function findPreviousHistoryItem(
+  history: SubscriptionHistoryItem[],
+  txDate: string,
+): SubscriptionHistoryItem | null {
+  for (const entry of history) {
+    if (String(entry.date) < String(txDate)) {
+      return entry;
+    }
+  }
+  return null;
 }
 
 export function scoreSubscriptionSuggestion(
@@ -426,11 +513,7 @@ export function scoreSubscriptionSuggestion(
     }
   }
 
-  const previousMatch = history
-    .filter((entry) => String(entry.date) < String(tx.date))
-    .sort((left, right) =>
-      String(right.date).localeCompare(String(left.date)),
-    )[0];
+  const previousMatch = findPreviousHistoryItem(history, tx.date);
 
   let frequencyMatched = false;
   if (previousMatch) {
@@ -604,6 +687,59 @@ export async function listSubscriptionProfileRules(
     throw error;
   }
   return ((data || []) as RowRecord[]).map(mapRuleRow);
+}
+
+export async function listSubscriptionProfileRulesByProfileIds(
+  profileIds: string[],
+): Promise<SubscriptionRulesByProfileId> {
+  const rulesByProfileId = createRulesByProfileId(profileIds);
+  const uniqueProfileIds = Array.from(new Set(profileIds.filter(Boolean)));
+  if (!uniqueProfileIds.length) return rulesByProfileId;
+
+  const rows: SubscriptionProfileRule[] = [];
+
+  for (const chunk of chunkArray(uniqueProfileIds, 200)) {
+    const { data, error } = await supabase
+      .from("subscription_profile_rules")
+      .select(
+        "id,subscription_profile_id,pattern,pattern_normalized,pattern_type,weight,is_active,created_at,updated_at",
+      )
+      .in("subscription_profile_id", chunk)
+      .order("subscription_profile_id", { ascending: true })
+      .order("weight", { ascending: false })
+      .order("pattern", { ascending: true });
+
+    if (error) {
+      if (isMissingSubscriptionRelationError(error)) return rulesByProfileId;
+      throw error;
+    }
+
+    rows.push(...((data || []) as RowRecord[]).map(mapRuleRow));
+  }
+
+  for (const rule of rows) {
+    if (!rulesByProfileId[rule.subscriptionProfileId]) {
+      rulesByProfileId[rule.subscriptionProfileId] = [];
+    }
+    rulesByProfileId[rule.subscriptionProfileId].push(rule);
+  }
+
+  return rulesByProfileId;
+}
+
+async function loadSubscriptionProfiles(
+  planKey = DEFAULT_PLAN_KEY,
+): Promise<LoadedSubscriptionProfiles> {
+  const profiles = await listSubscriptionProfiles(planKey);
+  const rulesByProfileId = await listSubscriptionProfileRulesByProfileIds(
+    profiles.map((profile) => profile.id),
+  );
+
+  return {
+    profiles,
+    activeProfiles: profiles.filter((profile) => profile.isActive),
+    rulesByProfileId,
+  };
 }
 
 export async function upsertSubscriptionProfileRule(
@@ -796,38 +932,22 @@ function toSuggestion(
   };
 }
 
-export async function getSubscriptionQueue(
+async function buildSubscriptionQueue(
   monthStartIso: string,
   monthEndIso: string,
-  planKey = DEFAULT_PLAN_KEY,
+  activeProfiles: SubscriptionProfile[],
+  rulesByProfileId: SubscriptionRulesByProfileId,
 ): Promise<SubscriptionQueueItem[]> {
-  const normalizedPlanKey = normalizePlanKey(planKey);
-  const profiles = await listSubscriptionProfiles(normalizedPlanKey);
-  const activeProfiles = profiles.filter((profile) => profile.isActive);
-
-  const profileRules: SubscriptionProfileRule[] = [];
-  for (const profile of activeProfiles) {
-    const rules = await listSubscriptionProfileRules(profile.id);
-    profileRules.push(...rules.filter((rule) => rule.isActive));
-  }
-
-  const rulesByProfileId = profileRules.reduce<
-    Record<string, SubscriptionProfileRule[]>
-  >((acc, rule) => {
-    if (!acc[rule.subscriptionProfileId]) {
-      acc[rule.subscriptionProfileId] = [];
-    }
-    acc[rule.subscriptionProfileId].push(rule);
-    return acc;
-  }, {});
-
   const profileHistoryById = await getProfileHistoryByMatchedTransactions(
     activeProfiles.map((profile) => profile.id),
   );
+  const subscriptionCategoryIds = await listSubscriptionCategoryIds();
 
   const { data: txRows, error: txError } = await supabase
     .from("transactions")
-    .select("id,date,counterparty,details,amount")
+    .select(
+      "id,date,counterparty,details,amount,analysis_category,category_id_auto,category_id_user",
+    )
     .gte("date", monthStartIso)
     .lt("date", monthEndIso)
     .lt("amount", 0)
@@ -840,8 +960,12 @@ export async function getSubscriptionQueue(
     .map((tx) => ({
       tx,
       providerDetected: detectProvider(tx.counterparty, tx.details),
+      isKnownSubscription: isKnownSubscriptionTransaction(
+        tx,
+        subscriptionCategoryIds,
+      ),
     }))
-    .filter((row) => row.providerDetected != null);
+    .filter((row) => row.providerDetected != null || row.isKnownSubscription);
 
   const candidateIds = allCandidates.map((row) => row.tx.id);
   if (!candidateIds.length) return [];
@@ -916,6 +1040,44 @@ export async function getSubscriptionQueue(
       };
     })
     .sort((left, right) => String(right.date).localeCompare(String(left.date)));
+}
+
+export async function getSubscriptionQueue(
+  monthStartIso: string,
+  monthEndIso: string,
+  planKey = DEFAULT_PLAN_KEY,
+): Promise<SubscriptionQueueItem[]> {
+  const normalizedPlanKey = normalizePlanKey(planKey);
+  const { activeProfiles, rulesByProfileId } =
+    await loadSubscriptionProfiles(normalizedPlanKey);
+
+  return buildSubscriptionQueue(
+    monthStartIso,
+    monthEndIso,
+    activeProfiles,
+    rulesByProfileId,
+  );
+}
+
+export async function getSubscriptionDashboardData(
+  monthStartIso: string,
+  monthEndIso: string,
+  planKey = DEFAULT_PLAN_KEY,
+): Promise<SubscriptionDashboardData> {
+  const normalizedPlanKey = normalizePlanKey(planKey);
+  const { profiles, activeProfiles, rulesByProfileId } =
+    await loadSubscriptionProfiles(normalizedPlanKey);
+
+  return {
+    profiles,
+    rulesByProfileId,
+    queueItems: await buildSubscriptionQueue(
+      monthStartIso,
+      monthEndIso,
+      activeProfiles,
+      rulesByProfileId,
+    ),
+  };
 }
 
 export async function getTransactionSubscriptionMatch(

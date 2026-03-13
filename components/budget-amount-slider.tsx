@@ -2,11 +2,11 @@ import { FinColors } from "@/constants/theme";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import React from "react";
 import {
-  Pressable,
-  StyleSheet,
-  Text,
-  type GestureResponderEvent,
-  View,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
+    type GestureResponderEvent,
 } from "react-native";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
@@ -48,7 +48,8 @@ export function BudgetAmountSlider({
   const safeMax = Math.max(safeMin, sanitizeNumber(max, safeMin));
   const safeStep = Math.max(1, sanitizeNumber(step, 25));
   const boundedValue = clamp(sanitizeNumber(value, safeMin), safeMin, safeMax);
-  const progress = safeMax > safeMin ? (boundedValue - safeMin) / (safeMax - safeMin) : 0;
+  const progress =
+    safeMax > safeMin ? (boundedValue - safeMin) / (safeMax - safeMin) : 0;
 
   const setFromTouch = React.useCallback(
     (locationX: number) => {
