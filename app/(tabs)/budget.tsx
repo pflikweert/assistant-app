@@ -3,6 +3,11 @@ import { BudgetCategoryProgressRow } from "@/components/budget-category-progress
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import { generateBudgetCoachReport } from "@/services/budget-coach";
+import {
+  allocateWeekBudgetsByMainCategory,
+  resolveLockedVariableMainCategories,
+  shouldPersistCategoryOnBudgetSave,
+} from "@/services/budget-lock-utils";
 import { computeBudgetPlan } from "@/services/budget-plan";
 import {
     resetMonthlyBudgetValues,
@@ -454,6 +459,9 @@ export default function BudgetScreen() {
     React.useState(0);
   const [budgetDraftValues, setBudgetDraftValues] =
     React.useState<BudgetDraftValues>({});
+  const [trendLockedCategories, setTrendLockedCategories] = React.useState<
+    BudgetCategoryKey[]
+  >([]);
   const [detailSection, setDetailSection] = React.useState<
     "fixed_costs" | "subscriptions" | null
   >(null);
@@ -610,28 +618,47 @@ export default function BudgetScreen() {
     ]);
   }, [budgetPlan]);
 
+  const trendLockedVariableCategories = React.useMemo(() => {
+    if (!budgetPlan) return new Set<BudgetCategoryKey>();
+    return resolveLockedVariableMainCategories(
+      budgetPlan.settings.mode,
+      budgetPlan.recommendations,
+    );
+  }, [budgetPlan]);
+
+  const lockedVariableCategoryLabelsForNotice = React.useMemo(() => {
+    const orderedKeys: BudgetCategoryKey[] = [
+      "groceries",
+      "fuel",
+      "smoking",
+      "other",
+    ];
+    return orderedKeys
+      .filter((key) => trendLockedVariableCategories.has(key))
+      .map((key) => getBudgetCategoryDisplayLabel(key));
+  }, [trendLockedVariableCategories]);
+
   const selectedWeekBudgetByMainCategory = React.useMemo(() => {
     if (!selectedWeekDetail) return new Map<string, number>();
-
-    const totalMonthlyVariableBudget = [
-      ...variableMonthlyBudgetByMainCategory.values(),
-    ].reduce((sum, value) => sum + value, 0);
-
-    const rows = [...variableMonthlyBudgetByMainCategory.entries()].map(
-      ([key, monthlyBudget]) => {
-        const weekBudget =
-          totalMonthlyVariableBudget > 0
-            ? Math.round(
-                selectedWeekDetail.week.budget *
-                  (monthlyBudget / totalMonthlyVariableBudget),
-              )
-            : 0;
-        return [key, weekBudget] as const;
-      },
+    const weekIndex = weeklyVariableRows.findIndex(
+      (week) =>
+        week.weekNumber === selectedWeekDetail.week.weekNumber &&
+        week.startDate === selectedWeekDetail.week.startDate &&
+        week.endDateExclusive === selectedWeekDetail.week.endDateExclusive,
     );
-
-    return new Map<string, number>(rows);
-  }, [selectedWeekDetail, variableMonthlyBudgetByMainCategory]);
+    return allocateWeekBudgetsByMainCategory({
+      monthlyBudgetByMainCategory: variableMonthlyBudgetByMainCategory,
+      weekBudget: selectedWeekDetail.week.budget,
+      weekIndex: weekIndex >= 0 ? weekIndex : 0,
+      weekCount: weeklyVariableRows.length,
+      lockedCategoryKeys: trendLockedVariableCategories,
+    });
+  }, [
+    selectedWeekDetail,
+    trendLockedVariableCategories,
+    variableMonthlyBudgetByMainCategory,
+    weeklyVariableRows,
+  ]);
 
   const resolveCategoryIdsForSubcategory = React.useCallback(
     (subcategoryKey: string) => {
@@ -677,6 +704,20 @@ export default function BudgetScreen() {
     [editableBudgetRowByKey],
   );
 
+  const trendLockedCategorySet = React.useMemo(
+    () => new Set<BudgetCategoryKey>(trendLockedCategories),
+    [trendLockedCategories],
+  );
+
+  const getTrendBudgetForCategory = React.useCallback(
+    (key: BudgetCategoryKey) =>
+      normalizeBudgetAmount(
+        editableBudgetRowByKey.get(key)?.baselineMonthly ??
+          getEditableBudgetRowDefault(key),
+      ),
+    [editableBudgetRowByKey, getEditableBudgetRowDefault],
+  );
+
   const getRelevantSavingsTargetForDraftMode = React.useCallback(
     (
       mode: BudgetPlanMode,
@@ -696,43 +737,7 @@ export default function BudgetScreen() {
     [budgetPlan, savingsTargetMonthlyDraft],
   );
 
-  const deriveVariableBreakdownDraftValues = React.useCallback(
-    (totalVariableBudget: number, values: BudgetDraftValues) => {
-      const normalizedTotal = normalizeBudgetAmount(totalVariableBudget);
-      const currentBreakdown = VARIABLE_BUDGET_BREAKDOWN_KEYS.map(
-        (key) => parseBudgetAmountInput(values[key] || "") ?? 0,
-      );
-      const currentBreakdownTotal = currentBreakdown.reduce(
-        (sum, value) => sum + value,
-        0,
-      );
-      const fallbackBreakdown = VARIABLE_BUDGET_BREAKDOWN_KEYS.map((key) =>
-        getEditableBudgetRowDefault(key),
-      );
-      const fallbackBreakdownTotal = fallbackBreakdown.reduce(
-        (sum, value) => sum + value,
-        0,
-      );
-
-      const weights =
-        currentBreakdownTotal > 0
-          ? currentBreakdown
-          : fallbackBreakdownTotal > 0
-            ? fallbackBreakdown
-            : VARIABLE_BUDGET_BREAKDOWN_KEYS.map(() => 1);
-      const allocations = allocateIntegerBudget(normalizedTotal, weights);
-      const nextValues: BudgetDraftValues = {};
-
-      VARIABLE_BUDGET_BREAKDOWN_KEYS.forEach((key, index) => {
-        nextValues[key] = formatBudgetAmountDraft(allocations[index] || 0);
-      });
-
-      return nextValues;
-    },
-    [getEditableBudgetRowDefault],
-  );
-
-  const rebuildManagedVariableDraftValues = React.useCallback(
+  const computeAvailableVariableBudget = React.useCallback(
     (
       values: BudgetDraftValues,
       overrides?: {
@@ -740,7 +745,7 @@ export default function BudgetScreen() {
         savingsTargetMonthly?: number;
       },
     ) => {
-      if (!budgetPlan) return values;
+      if (!budgetPlan) return 0;
 
       const mode = overrides?.mode ?? budgetModeDraft;
       const nextSavingsTargetMonthly =
@@ -753,7 +758,8 @@ export default function BudgetScreen() {
         values.subscriptions,
         getEditableBudgetRowDefault("subscriptions"),
       );
-      const variableBudget = normalizeBudgetAmount(
+
+      return normalizeBudgetAmount(
         Math.max(
           normalizeBudgetAmount(budgetPlan.flowSummary.expectedIncomeMonthly) -
             fixedCostsBudget -
@@ -765,6 +771,87 @@ export default function BudgetScreen() {
           0,
         ),
       );
+    },
+    [
+      budgetModeDraft,
+      budgetPlan,
+      getEditableBudgetRowDefault,
+      getRelevantSavingsTargetForDraftMode,
+      savingsTargetMonthlyDraft,
+    ],
+  );
+
+  const deriveVariableBreakdownDraftValues = React.useCallback(
+    (
+      totalVariableBudget: number,
+      values: BudgetDraftValues,
+      options?: {
+        lockedKeys?: ReadonlySet<BudgetCategoryKey>;
+      },
+    ) => {
+      const normalizedTotal = normalizeBudgetAmount(totalVariableBudget);
+      const lockedKeys = options?.lockedKeys ?? trendLockedCategorySet;
+      const nextValues: BudgetDraftValues = {};
+
+      let lockedTotal = 0;
+      for (const key of VARIABLE_BUDGET_BREAKDOWN_KEYS) {
+        if (!lockedKeys.has(key)) continue;
+        const lockedValue = getTrendBudgetForCategory(key);
+        lockedTotal += lockedValue;
+        nextValues[key] = formatBudgetAmountDraft(lockedValue);
+      }
+
+      const unlockedKeys = VARIABLE_BUDGET_BREAKDOWN_KEYS.filter(
+        (key) => !lockedKeys.has(key),
+      );
+      const unlockedBudget = Math.max(normalizedTotal - lockedTotal, 0);
+      const currentBreakdown = unlockedKeys.map(
+        (key) => parseBudgetAmountInput(values[key] || "") ?? 0,
+      );
+      const currentBreakdownTotal = currentBreakdown.reduce(
+        (sum, value) => sum + value,
+        0,
+      );
+      const fallbackBreakdown = unlockedKeys.map((key) =>
+        getEditableBudgetRowDefault(key),
+      );
+      const fallbackBreakdownTotal = fallbackBreakdown.reduce(
+        (sum, value) => sum + value,
+        0,
+      );
+
+      const weights =
+        currentBreakdownTotal > 0
+          ? currentBreakdown
+          : fallbackBreakdownTotal > 0
+            ? fallbackBreakdown
+            : unlockedKeys.map(() => 1);
+      const allocations = allocateIntegerBudget(unlockedBudget, weights);
+
+      unlockedKeys.forEach((key, index) => {
+        nextValues[key] = formatBudgetAmountDraft(allocations[index] || 0);
+      });
+
+      return nextValues;
+    },
+    [
+      getEditableBudgetRowDefault,
+      getTrendBudgetForCategory,
+      trendLockedCategorySet,
+    ],
+  );
+
+  const rebuildManagedVariableDraftValues = React.useCallback(
+    (
+      values: BudgetDraftValues,
+      overrides?: {
+        mode?: BudgetPlanMode;
+        savingsTargetMonthly?: number;
+      },
+    ) => {
+      if (!budgetPlan) return values;
+
+      const variableBudget = computeAvailableVariableBudget(values, overrides);
 
       return {
         ...values,
@@ -773,12 +860,9 @@ export default function BudgetScreen() {
       };
     },
     [
-      budgetModeDraft,
       budgetPlan,
+      computeAvailableVariableBudget,
       deriveVariableBreakdownDraftValues,
-      getEditableBudgetRowDefault,
-      getRelevantSavingsTargetForDraftMode,
-      savingsTargetMonthlyDraft,
     ],
   );
 
@@ -824,37 +908,22 @@ export default function BudgetScreen() {
         }
 
         if (categoryKey === "variable_costs") {
-          const totalVariableBudget = parseBudgetAmountDraft(sanitizedValue, 0);
           return {
             ...nextValues,
-            ...deriveVariableBreakdownDraftValues(
-              totalVariableBudget,
-              nextValues,
+            variable_costs: formatBudgetAmountDraft(
+              computeAvailableVariableBudget(nextValues),
             ),
           };
         }
 
         if (isVariableBreakdownKey(categoryKey)) {
-          const breakdownTotal = VARIABLE_BUDGET_BREAKDOWN_KEYS.reduce(
-            (sum, key) =>
-              sum +
-              parseBudgetAmountDraft(
-                key === categoryKey ? sanitizedValue : nextValues[key],
-                0,
-              ),
-            0,
-          );
-
-          return {
-            ...nextValues,
-            variable_costs: formatBudgetAmountDraft(breakdownTotal),
-          };
+          return nextValues;
         }
 
         return nextValues;
       });
     },
-    [deriveVariableBreakdownDraftValues, rebuildManagedVariableDraftValues],
+    [computeAvailableVariableBudget, rebuildManagedVariableDraftValues],
   );
 
   const handleBudgetDraftValueBlur = React.useCallback(
@@ -873,30 +942,16 @@ export default function BudgetScreen() {
         }
 
         if (categoryKey === "variable_costs") {
-          const totalVariableBudget = parseBudgetAmountDraft(
-            nextValues.variable_costs,
-            0,
+          nextValues.variable_costs = formatBudgetAmountDraft(
+            computeAvailableVariableBudget(nextValues),
           );
-          nextValues.variable_costs =
-            formatBudgetAmountDraft(totalVariableBudget);
-          return {
-            ...nextValues,
-            ...deriveVariableBreakdownDraftValues(
-              totalVariableBudget,
-              nextValues,
-            ),
-          };
+          return nextValues;
         }
 
         if (isVariableBreakdownKey(categoryKey)) {
           nextValues[categoryKey] = formatBudgetAmountDraft(
             parseBudgetAmountDraft(nextValues[categoryKey], 0),
           );
-          const breakdownTotal = VARIABLE_BUDGET_BREAKDOWN_KEYS.reduce(
-            (sum, key) => sum + parseBudgetAmountDraft(nextValues[key], 0),
-            0,
-          );
-          nextValues.variable_costs = formatBudgetAmountDraft(breakdownTotal);
           return nextValues;
         }
 
@@ -910,9 +965,49 @@ export default function BudgetScreen() {
       });
     },
     [
-      deriveVariableBreakdownDraftValues,
+      computeAvailableVariableBudget,
       getEditableBudgetRowDefault,
       rebuildManagedVariableDraftValues,
+    ],
+  );
+
+  const toggleTrendLockForCategory = React.useCallback(
+    (categoryKey: BudgetCategoryKey) => {
+      if (!isVariableBreakdownKey(categoryKey)) return;
+
+      setTrendLockedCategories((current) => {
+        const alreadyLocked = current.includes(categoryKey);
+        const nextLocked = alreadyLocked
+          ? current.filter((key) => key !== categoryKey)
+          : [...current, categoryKey];
+        const nextLockedSet = new Set<BudgetCategoryKey>(nextLocked);
+
+        setBudgetDraftValues((draftCurrent) => {
+          const nextValues: BudgetDraftValues = { ...draftCurrent };
+
+          if (!alreadyLocked) {
+            nextValues[categoryKey] = formatBudgetAmountDraft(
+              getTrendBudgetForCategory(categoryKey),
+            );
+          }
+
+          const availableVariable = computeAvailableVariableBudget(nextValues);
+          return {
+            ...nextValues,
+            variable_costs: formatBudgetAmountDraft(availableVariable),
+            ...deriveVariableBreakdownDraftValues(availableVariable, nextValues, {
+              lockedKeys: nextLockedSet,
+            }),
+          };
+        });
+
+        return nextLocked;
+      });
+    },
+    [
+      computeAvailableVariableBudget,
+      deriveVariableBreakdownDraftValues,
+      getTrendBudgetForCategory,
     ],
   );
 
@@ -938,24 +1033,29 @@ export default function BudgetScreen() {
   const variableBudgetDraftSummary = React.useMemo(() => {
     if (!editableBudgetRows.length) {
       return {
-        total: 0,
+        available: 0,
         breakdownTotal: 0,
         delta: 0,
       };
     }
 
-    const total = parseDraftBudgetValue("variable_costs");
+    const available = computeAvailableVariableBudget(budgetDraftValues);
     const breakdownTotal = VARIABLE_BUDGET_BREAKDOWN_KEYS.reduce(
       (sum, key) => sum + parseDraftBudgetValue(key),
       0,
     );
 
     return {
-      total,
+      available,
       breakdownTotal,
-      delta: total - breakdownTotal,
+      delta: available - breakdownTotal,
     };
-  }, [editableBudgetRows.length, parseDraftBudgetValue]);
+  }, [
+    budgetDraftValues,
+    computeAvailableVariableBudget,
+    editableBudgetRows.length,
+    parseDraftBudgetValue,
+  ]);
 
   const draftBudgetAllocationSummary = React.useMemo(() => {
     const incomingBudget = normalizeBudgetAmount(
@@ -963,7 +1063,7 @@ export default function BudgetScreen() {
     );
     const fixedCosts = parseDraftBudgetValue("fixed_costs");
     const subscriptions = parseDraftBudgetValue("subscriptions");
-    const variable = parseDraftBudgetValue("variable_costs");
+    const variable = computeAvailableVariableBudget(budgetDraftValues);
     const savingsTarget = getRelevantSavingsTargetForDraftMode(
       budgetModeDraft,
       savingsTargetMonthlyDraft,
@@ -985,7 +1085,9 @@ export default function BudgetScreen() {
     };
   }, [
     budgetModeDraft,
+    budgetDraftValues,
     budgetPlan?.flowSummary.expectedIncomeMonthly,
+    computeAvailableVariableBudget,
     getRelevantSavingsTargetForDraftMode,
     parseDraftBudgetValue,
     savingsTargetMonthlyDraft,
@@ -1192,18 +1294,41 @@ export default function BudgetScreen() {
         : budgetPlan.recommendedSavings,
     );
     const nextDraft: BudgetDraftValues = {};
+    const inferredTrendLocks: BudgetCategoryKey[] = [];
     for (const row of editableBudgetRows) {
       nextDraft[row.categoryKey] = formatBudgetAmountDraft(row.monthlyBudget);
+      if (
+        isVariableBreakdownKey(row.categoryKey) &&
+        row.overrideSource === "monthly_override" &&
+        normalizeBudgetAmount(row.monthlyBudget) ===
+          normalizeBudgetAmount(row.baselineMonthly)
+      ) {
+        inferredTrendLocks.push(row.categoryKey);
+      }
     }
 
+    setTrendLockedCategories(inferredTrendLocks);
+    const inferredTrendLockSet = new Set<BudgetCategoryKey>(inferredTrendLocks);
+    const initialVariableBudget = computeAvailableVariableBudget(nextDraft, {
+      mode: budgetPlan.settings.mode,
+      savingsTargetMonthly: nextSavingsTarget,
+    });
     setBudgetDraftValues(
-      rebuildManagedVariableDraftValues(nextDraft, {
-        mode: budgetPlan.settings.mode,
-        savingsTargetMonthly: nextSavingsTarget,
-      }),
+      {
+        ...nextDraft,
+        variable_costs: formatBudgetAmountDraft(initialVariableBudget),
+        ...deriveVariableBreakdownDraftValues(initialVariableBudget, nextDraft, {
+          lockedKeys: inferredTrendLockSet,
+        }),
+      },
     );
     setBudgetEditOpen(true);
-  }, [budgetPlan, editableBudgetRows, rebuildManagedVariableDraftValues]);
+  }, [
+    budgetPlan,
+    computeAvailableVariableBudget,
+    deriveVariableBreakdownDraftValues,
+    editableBudgetRows,
+  ]);
 
   const saveBudgetEdit = React.useCallback(async () => {
     if (!budgetPlan) return;
@@ -1228,8 +1353,11 @@ export default function BudgetScreen() {
       const updates: Promise<unknown>[] = [];
       for (const row of editableBudgetRows) {
         if (
-          autoManagedVariableBudget &&
-          isVariableBudgetCategory(row.categoryKey)
+          !shouldPersistCategoryOnBudgetSave({
+            categoryKey: row.categoryKey,
+            autoManagedVariableBudget,
+            lockedCategoryKeys: trendLockedCategorySet,
+          })
         ) {
           continue;
         }
@@ -1249,20 +1377,18 @@ export default function BudgetScreen() {
         );
       }
 
+      await resetMonthlyBudgetValues({
+        planKey: "default",
+        monthStartIso: selectedMonth.startIso,
+      });
+
       if (updates.length) {
         await Promise.all(updates);
       }
 
-      if (monthOffset === 0) {
-        await recomputeCurrentMonthCashflowForecast(new Date()).catch(
-          (error) => {
-            console.warn(
-              "[budget] forecast recompute after save failed",
-              error,
-            );
-          },
-        );
-      }
+      await recomputeCurrentMonthCashflowForecast(new Date()).catch((error) => {
+        console.warn("[budget] forecast recompute after save failed", error);
+      });
 
       await loadBudgetPlan();
     } catch (error) {
@@ -1278,9 +1404,9 @@ export default function BudgetScreen() {
     editableBudgetRows,
     autoManagedVariableBudget,
     loadBudgetPlan,
-    monthOffset,
     savingsTargetMonthlyDraft,
     selectedMonth.startIso,
+    trendLockedCategorySet,
   ]);
 
   const recalculateExpectedCosts = React.useCallback(async () => {
@@ -1290,6 +1416,24 @@ export default function BudgetScreen() {
         planKey: "default",
         monthStartIso: selectedMonth.startIso,
       });
+
+      if (trendLockedCategories.length > 0) {
+        const lockUpdates = trendLockedCategories
+          .filter((key) => isVariableBreakdownKey(key))
+          .map((key) =>
+            upsertMonthlyBudgetValue({
+              planKey: "default",
+              monthStartIso: selectedMonth.startIso,
+              categoryKey: key,
+              monthlyBudget: getTrendBudgetForCategory(key),
+              source: "manual",
+            }),
+          );
+
+        if (lockUpdates.length) {
+          await Promise.all(lockUpdates);
+        }
+      }
 
       if (monthOffset === 0) {
         await recomputeCurrentMonthCashflowForecast(new Date()).catch(
@@ -1309,7 +1453,13 @@ export default function BudgetScreen() {
     } finally {
       setRecalculatingBudget(false);
     }
-  }, [loadBudgetPlan, monthOffset, selectedMonth.startIso]);
+  }, [
+    getTrendBudgetForCategory,
+    loadBudgetPlan,
+    monthOffset,
+    selectedMonth.startIso,
+    trendLockedCategories,
+  ]);
 
   const openDetailTransactions = React.useCallback(() => {
     if (!detailSection) return;
@@ -1741,6 +1891,20 @@ export default function BudgetScreen() {
                   </Text>
                 </View>
 
+                {lockedVariableCategoryLabelsForNotice.length ? (
+                  <View style={styles.weekRebalanceLockNotice}>
+                    <MaterialIcons
+                      name="lock"
+                      size={14}
+                      color={FinColors.green}
+                    />
+                    <Text style={styles.weekRebalanceLockNoticeText}>
+                      Vastgezet: {lockedVariableCategoryLabelsForNotice.join(", ")}{" "}
+                      uitgesloten van herverdeling.
+                    </Text>
+                  </View>
+                ) : null}
+
                 <View style={styles.weekRowsWrap}>
                   {weeklyVariableRows.map((week) => {
                     const cappedProgress = Number.isFinite(week.utilization)
@@ -1887,7 +2051,7 @@ export default function BudgetScreen() {
                           ) : null}
                         </View>
 
-                        {isOverrun ? (
+                        {isOverrun && week.overrunAmount > 0 ? (
                           <Text style={styles.weekWarningText}>
                             Week over budget; resterende weekbudgetten zijn
                             opnieuw verdeeld.
@@ -2306,6 +2470,16 @@ export default function BudgetScreen() {
                       : fmt.format(selectedWeekDetail.week.remaining)}
                   </Text>
                 </View>
+              </View>
+            ) : null}
+
+            {lockedVariableCategoryLabelsForNotice.length ? (
+              <View style={styles.weekRebalanceLockNotice}>
+                <MaterialIcons name="lock" size={14} color={FinColors.green} />
+                <Text style={styles.weekRebalanceLockNoticeText}>
+                  Vastgezet: {lockedVariableCategoryLabelsForNotice.join(", ")}{" "}
+                  uitgesloten van herverdeling.
+                </Text>
               </View>
             ) : null}
 
@@ -2786,9 +2960,9 @@ export default function BudgetScreen() {
                   Maandbudget per categorie
                 </Text>
                 <Text style={styles.modalHintText}>
-                  Richtwaarde = trend op basis van de mediaan van de laatste
-                  afgeronde maanden. Actueel = al uitgegeven deze maand.
-                  Invoerveld = budget dat je nu voor deze maand plant.
+                  Trendbedrag = historische richtlijn. Uitgegeven = al
+                  uitgegeven deze maand. Invoerveld = budget dat je nu voor
+                  deze maand plant.
                 </Text>
                 <View style={styles.budgetAllocationCard}>
                   <Text style={styles.budgetAllocationTitle}>
@@ -2820,7 +2994,7 @@ export default function BudgetScreen() {
                   </View>
                   <View style={styles.budgetAllocationRow}>
                     <Text style={styles.budgetAllocationLabel}>
-                      - Variabele uitgaven
+                      - Beschikbaar variabele uitgaven
                     </Text>
                     <Text style={styles.budgetAllocationValueNegative}>
                       {fmt.format(-draftBudgetAllocationSummary.variable)}
@@ -2866,8 +3040,9 @@ export default function BudgetScreen() {
                 {autoManagedVariableBudget ? (
                   <Text style={styles.modalAutoManagedHint}>
                     Variabele uitgaven worden in deze modus automatisch bepaald
-                    door het spaardoel. Alleen vaste lasten en abonnementen pas
-                    je hier handmatig aan.
+                    door het spaardoel. Vaste lasten en abonnementen pas je
+                    handmatig aan; variabele categorieen kun je op trendbedrag
+                    vastzetten.
                   </Text>
                 ) : null}
                 <Pressable
@@ -2885,9 +3060,21 @@ export default function BudgetScreen() {
                 </Pressable>
                 <View style={styles.editList}>
                   {editableBudgetRows.map((row) => {
-                    const inputDisabled =
+                    const rowTrendLocked = trendLockedCategorySet.has(
+                      row.categoryKey,
+                    );
+                    const rowIsVariableBreakdown = isVariableBreakdownKey(
+                      row.categoryKey,
+                    );
+                    const rowIsVariableTotal =
+                      row.categoryKey === "variable_costs";
+                    const autoManagedDisabled =
                       autoManagedVariableBudget &&
                       isVariableBudgetCategory(row.categoryKey);
+                    const inputDisabled =
+                      rowIsVariableTotal ||
+                      autoManagedDisabled ||
+                      rowTrendLocked;
 
                     return (
                       <View
@@ -2916,19 +3103,62 @@ export default function BudgetScreen() {
                               : getBudgetCategoryDisplayLabel(row.categoryKey)}
                           </Text>
                           <Text style={styles.editRowMeta}>
-                            Trend (mediaan):{" "}
+                            Trendbedrag:{" "}
                             {fmt.format(Math.round(row.baselineMonthly))} ·
                             Uitgegeven: {fmt.format(row.monthlyActual)} · Bron:{" "}
                             {formatBudgetSourceLabel(row.overrideSource)}
                             {inputDisabled
-                              ? " · automatisch beheerd via spaardoel"
+                              ? rowTrendLocked
+                                ? " · vast op trendbedrag"
+                                : rowIsVariableTotal
+                                  ? " · automatisch afgeleid"
+                                  : autoManagedDisabled
+                                    ? " · automatisch beheerd via spaardoel"
+                                    : ""
                               : ""}
                           </Text>
+                          {rowIsVariableBreakdown ? (
+                            <Pressable
+                              style={[
+                                styles.trendLockButton,
+                                rowTrendLocked && styles.trendLockButtonActive,
+                              ]}
+                              onPress={() =>
+                                toggleTrendLockForCategory(row.categoryKey)
+                              }
+                              disabled={savingBudgetEdit || recalculatingBudget}
+                            >
+                              <MaterialIcons
+                                name={rowTrendLocked ? "lock" : "lock-open"}
+                                size={12}
+                                color={
+                                  rowTrendLocked
+                                    ? FinColors.green
+                                    : FinColors.textSecondary
+                                }
+                              />
+                              <Text
+                                style={[
+                                  styles.trendLockButtonText,
+                                  rowTrendLocked &&
+                                    styles.trendLockButtonTextActive,
+                                ]}
+                              >
+                                {rowTrendLocked
+                                  ? "Trendbedrag vast"
+                                  : "Gebruik trendbedrag"}
+                              </Text>
+                            </Pressable>
+                          ) : null}
                         </View>
                         <TextInput
                           value={
-                            budgetDraftValues[row.categoryKey] ??
-                            formatBudgetAmountDraft(row.monthlyBudget)
+                            row.categoryKey === "variable_costs"
+                              ? formatBudgetAmountDraft(
+                                  draftBudgetAllocationSummary.variable,
+                                )
+                              : budgetDraftValues[row.categoryKey] ??
+                                formatBudgetAmountDraft(row.monthlyBudget)
                           }
                           onChangeText={(text) => {
                             if (inputDisabled) return;
@@ -2972,10 +3202,10 @@ export default function BudgetScreen() {
                   </Text>
                   <View style={styles.variableDraftSummaryRow}>
                     <Text style={styles.variableDraftSummaryLabel}>
-                      Totaal variabele uitgaven
+                      Beschikbaar variabel budget
                     </Text>
                     <Text style={styles.variableDraftSummaryValue}>
-                      {fmt.format(variableBudgetDraftSummary.total)}
+                      {fmt.format(variableBudgetDraftSummary.available)}
                     </Text>
                   </View>
                   <View style={styles.variableDraftSummaryRow}>
@@ -2993,7 +3223,7 @@ export default function BudgetScreen() {
                     <Text
                       style={[
                         styles.variableDraftSummaryValue,
-                        variableBudgetDraftSummary.delta === 0
+                        variableBudgetDraftSummary.delta >= 0
                           ? styles.variableDraftSummaryValueOk
                           : styles.variableDraftSummaryValueWarning,
                       ]}
@@ -3297,6 +3527,25 @@ const styles = StyleSheet.create({
   weekRowsWrap: {
     marginTop: 6,
     gap: 8,
+  },
+  weekRebalanceLockNotice: {
+    marginTop: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: FinColors.greenBorder,
+    backgroundColor: FinColors.greenBg,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+  },
+  weekRebalanceLockNoticeText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 16,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
   },
   outsideBudgetCard: {
     marginTop: 8,
@@ -4324,6 +4573,31 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 11,
     color: FinColors.textMuted,
+  },
+  trendLockButton: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  trendLockButtonActive: {
+    borderColor: FinColors.greenBorder,
+    backgroundColor: FinColors.greenBg,
+  },
+  trendLockButtonText: {
+    fontSize: 11,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  trendLockButtonTextActive: {
+    color: FinColors.green,
   },
   editInput: {
     minWidth: 96,

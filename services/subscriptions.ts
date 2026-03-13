@@ -13,6 +13,7 @@ import type {
     SubscriptionProviderHint,
     SubscriptionQueueItem,
     SubscriptionSuggestion,
+    SubscriptionValidationCandidate,
     TransactionSubscriptionMatch,
 } from "@/types/categorization";
 
@@ -110,6 +111,24 @@ export type LinkTransactionToSubscriptionInput = {
   setCategoryToSubscriptions?: boolean;
 };
 
+export type LinkTransactionsToSubscriptionInput = {
+  transactionIds: string[];
+  subscriptionProfileId: string;
+  notes?: string | null;
+  confidence?: number | null;
+  setCategoryToSubscriptions?: boolean;
+};
+
+export type MonthlyValidationCandidatesInput = {
+  sourceTransactionId: string;
+  sourceDate: string;
+  sourceProviderHint: SubscriptionProviderHint | null;
+  expectedAmount: number | null;
+  amountTolerance: number;
+  expectedDayOfMonth: number | null;
+  maxCandidates?: number;
+};
+
 function asNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -187,7 +206,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function normalizeAmountTolerance(value: unknown): number {
-  return Math.max(0, asNumber(value, 2));
+  return Math.max(0, asNumber(value, 0));
 }
 
 function normalizeExpectedDayOfMonth(value: unknown): number | null {
@@ -258,7 +277,9 @@ function chunkArray<T>(values: T[], chunkSize: number): T[][] {
   return chunks;
 }
 
-function createRulesByProfileId(profileIds: string[]): SubscriptionRulesByProfileId {
+function createRulesByProfileId(
+  profileIds: string[],
+): SubscriptionRulesByProfileId {
   return Array.from(new Set(profileIds)).reduce<SubscriptionRulesByProfileId>(
     (acc, profileId) => {
       acc[profileId] = [];
@@ -932,6 +953,115 @@ function toSuggestion(
   };
 }
 
+function toValidationCandidate(
+  tx: QueueTransactionRow,
+  providerDetected: SubscriptionProviderHint | null,
+): SubscriptionValidationCandidate {
+  return {
+    transactionId: tx.id,
+    date: tx.date,
+    counterparty: tx.counterparty,
+    details: tx.details,
+    amount: tx.amount,
+    providerDetected,
+  };
+}
+
+function isWithinDayWindow(
+  dateIso: string,
+  expectedDayOfMonth: number,
+  window = 3,
+): boolean {
+  const txDay = dayOfMonthUtc(dateIso);
+  if (txDay == null) return false;
+  return Math.abs(txDay - expectedDayOfMonth) <= window;
+}
+
+export async function listMonthlySubscriptionValidationCandidates(
+  input: MonthlyValidationCandidatesInput,
+): Promise<SubscriptionValidationCandidate[]> {
+  const sourceTransactionId = String(input.sourceTransactionId || "").trim();
+  const sourceDate = String(input.sourceDate || "").slice(0, 10);
+  const sourceProvider = normalizeProviderHint(input.sourceProviderHint);
+
+  if (!sourceTransactionId || !sourceDate || !sourceProvider) {
+    return [];
+  }
+
+  const expectedAmount = normalizeExpectedAmount(input.expectedAmount);
+  const amountTolerance = normalizeAmountTolerance(input.amountTolerance);
+  const expectedDayOfMonth = normalizeExpectedDayOfMonth(
+    input.expectedDayOfMonth,
+  );
+  const maxCandidates = clamp(Math.round(input.maxCandidates || 3), 1, 10);
+
+  let query = supabase
+    .from("transactions")
+    .select(
+      "id,date,counterparty,details,amount,analysis_category,category_id_auto,category_id_user",
+    )
+    .lt("date", sourceDate)
+    .lt("amount", 0)
+    .order("date", { ascending: false })
+    .limit(300);
+
+  if (expectedAmount != null) {
+    const minAmount = Math.max(0, expectedAmount - amountTolerance);
+    const maxAmount = expectedAmount + amountTolerance;
+
+    // Amounts are negative in expenses, so bounds are mirrored.
+    query = query.gte("amount", -maxAmount).lte("amount", -minAmount);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const rows = ((data || []) as RowRecord[])
+    .map(normalizeQueueTransaction)
+    .filter((tx) => tx.id && tx.id !== sourceTransactionId);
+
+  if (!rows.length) return [];
+
+  const { data: matchRows, error: matchError } = await supabase
+    .from("transaction_subscription_matches")
+    .select("transaction_id")
+    .in(
+      "transaction_id",
+      rows.map((row) => row.id),
+    );
+
+  if (matchError) {
+    if (!isMissingSubscriptionRelationError(matchError)) {
+      throw matchError;
+    }
+  }
+
+  const alreadyMatchedIds = new Set(
+    ((matchRows || []) as RowRecord[]).map((row) =>
+      String(row.transaction_id || ""),
+    ),
+  );
+
+  return rows
+    .filter((tx) => !alreadyMatchedIds.has(tx.id))
+    .map((tx) => ({
+      tx,
+      providerDetected: detectProvider(tx.counterparty, tx.details),
+    }))
+    .filter((row) => row.providerDetected === sourceProvider)
+    .filter((row) => {
+      if (expectedAmount == null) return true;
+      const diff = Math.abs(Math.abs(row.tx.amount) - expectedAmount);
+      return diff <= amountTolerance;
+    })
+    .filter((row) => {
+      if (expectedDayOfMonth == null) return true;
+      return isWithinDayWindow(row.tx.date, expectedDayOfMonth, 3);
+    })
+    .slice(0, maxCandidates)
+    .map((row) => toValidationCandidate(row.tx, row.providerDetected));
+}
+
 async function buildSubscriptionQueue(
   monthStartIso: string,
   monthEndIso: string,
@@ -1165,4 +1295,30 @@ export async function linkTransactionToSubscription(
   }
 
   return mapped;
+}
+
+export async function linkTransactionsToSubscription(
+  input: LinkTransactionsToSubscriptionInput,
+): Promise<TransactionSubscriptionMatch[]> {
+  const uniqueTransactionIds = Array.from(
+    new Set(
+      (input.transactionIds || [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  const results: TransactionSubscriptionMatch[] = [];
+  for (const transactionId of uniqueTransactionIds) {
+    const match = await linkTransactionToSubscription({
+      transactionId,
+      subscriptionProfileId: input.subscriptionProfileId,
+      notes: input.notes,
+      confidence: input.confidence,
+      setCategoryToSubscriptions: input.setCategoryToSubscriptions,
+    });
+    results.push(match);
+  }
+
+  return results;
 }

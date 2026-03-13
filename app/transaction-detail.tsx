@@ -2,46 +2,46 @@ import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinColors } from "@/constants/theme";
 import { recategorizeSingleTransaction } from "@/services/categorization";
 import {
-  bulkUpdateCategoryByCounterparty,
-  countCounterpartyTransactions,
-  getCounterpartyTransactions,
-  getTransactionCategories,
-  getTransactionDetail,
-  setTransactionBudgetExcluded,
-  setTransactionManualCategory,
-  setTransactionReviewed,
-  type CounterpartyTxSummary,
-  type TransactionDetail,
+    bulkUpdateCategoryByCounterparty,
+    countCounterpartyTransactions,
+    getCounterpartyTransactions,
+    getTransactionCategories,
+    getTransactionDetail,
+    setTransactionBudgetExcluded,
+    setTransactionManualCategory,
+    setTransactionReviewed,
+    type CounterpartyTxSummary,
+    type TransactionDetail,
 } from "@/services/categorization-repository";
 import {
-  getCategoryPathLabel,
-  getLeafCategories,
+    getCategoryPathLabel,
+    getLeafCategories,
 } from "@/services/category-display";
 import {
-  createSubscriptionProfile,
-  getTransactionSubscriptionMatch,
-  linkTransactionToSubscription,
-  listSubscriptionProfiles,
-  markTransactionAsNotSubscription,
-  type TransactionSubscriptionMatchWithProfile,
+    createSubscriptionProfile,
+    getTransactionSubscriptionMatch,
+    linkTransactionToSubscription,
+    listSubscriptionProfiles,
+    markTransactionAsNotSubscription,
+    type TransactionSubscriptionMatchWithProfile,
 } from "@/services/subscriptions";
 import type {
-  CategoryRecord,
-  SubscriptionProfile,
-  SubscriptionProviderHint,
+    CategoryRecord,
+    SubscriptionProfile,
+    SubscriptionProviderHint,
 } from "@/types/categorization";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
-  ActivityIndicator,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 const euroFormatter = new Intl.NumberFormat("nl-NL", {
@@ -85,17 +85,59 @@ function getSubjectFromDetails(details: string) {
   return details.split("|")[0]?.trim() || details;
 }
 
+function toTitleCaseWords(value: string) {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ")
+    .trim();
+}
+
+function getDayOfMonthFromIso(value: string): number | null {
+  const date = new Date(`${String(value || "").slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.getUTCDate();
+}
+
 function suggestSubscriptionNameFromTransaction(
   counterparty: string | null,
   details: string,
 ) {
-  const subject = getSubjectFromDetails(details).replace(/\s+/g, " ").trim();
-  if (subject) {
-    if (subject.length <= 48) return subject;
-    return subject.slice(0, 48).trim();
+  const subject = getSubjectFromDetails(details);
+  const withoutLeadingReference = subject.replace(/^\d+[\/-]*/, "").trim();
+  const firstPart =
+    withoutLeadingReference.split("|")[0] || withoutLeadingReference;
+  const providerTrimmed = firstPart
+    .replace(/^paypal\s*/i, "")
+    .replace(/^google\s*play\s*/i, "")
+    .replace(/^apple\s*/i, "")
+    .replace(/^klarna\s*/i, "")
+    .trim();
+
+  const starPart = providerTrimmed.includes("*")
+    ? providerTrimmed
+        .split("*")
+        .map((part) => part.trim())
+        .find((part) => /[a-zA-Z]{3,}/.test(part)) || providerTrimmed
+    : providerTrimmed;
+
+  const cleaned = starPart
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/\b(www|com|nl|eu)\b/gi, " ")
+    .replace(/[^a-zA-Z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned) {
+    const titled = toTitleCaseWords(cleaned);
+    if (titled.length <= 48) return titled;
+    return titled.slice(0, 48).trim();
   }
 
-  const cp = String(counterparty || "").replace(/\s+/g, " ").trim();
+  const cp = String(counterparty || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (cp) return cp;
   return "Nieuw abonnement";
 }
@@ -554,6 +596,8 @@ export default function TransactionDetailScreen() {
         name,
         billingCycle: "monthly",
         expectedAmount: Math.abs(tx.amount),
+        amountTolerance: 0,
+        expectedDayOfMonth: getDayOfMonthFromIso(tx.date),
         providerHint: detectProviderHintFromTransaction(
           tx.counterparty,
           tx.details,
@@ -1172,7 +1216,10 @@ export default function TransactionDetailScreen() {
                     disabled={subscriptionActionBusy}
                   >
                     {subscriptionActionBusy ? (
-                      <ActivityIndicator size="small" color={FinColors.bgBase} />
+                      <ActivityIndicator
+                        size="small"
+                        color={FinColors.bgBase}
+                      />
                     ) : (
                       <Text style={styles.subscriptionQuickCreateBtnText}>
                         Aanmaken en koppelen

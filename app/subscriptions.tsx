@@ -1,37 +1,40 @@
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import {
-  createSubscriptionProfile,
-  deleteSubscriptionProfile,
-  deleteSubscriptionProfileRule,
-  getSubscriptionDashboardData,
-  linkTransactionToSubscription,
-  markTransactionAsNotSubscription,
-  setSubscriptionProfileActive,
-  updateSubscriptionProfile,
-  upsertSubscriptionProfileRule,
+    createSubscriptionProfile,
+    deleteSubscriptionProfile,
+    deleteSubscriptionProfileRule,
+    getSubscriptionDashboardData,
+    linkTransactionsToSubscription,
+    linkTransactionToSubscription,
+    listMonthlySubscriptionValidationCandidates,
+    markTransactionAsNotSubscription,
+    setSubscriptionProfileActive,
+    updateSubscriptionProfile,
+    upsertSubscriptionProfileRule,
 } from "@/services/subscriptions";
 import type {
-  SubscriptionBillingCycle,
-  SubscriptionProfile,
-  SubscriptionProfileRule,
-  SubscriptionProfileRuleType,
-  SubscriptionProviderHint,
-  SubscriptionQueueItem,
+    SubscriptionBillingCycle,
+    SubscriptionProfile,
+    SubscriptionProfileRule,
+    SubscriptionProfileRuleType,
+    SubscriptionProviderHint,
+    SubscriptionQueueItem,
+    SubscriptionValidationCandidate,
 } from "@/types/categorization";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
-  ActivityIndicator,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 const euroFormatter = new Intl.NumberFormat("nl-NL", {
@@ -92,6 +95,12 @@ function parseIntegerOrNull(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function getDayOfMonthFromIso(value: string): number | null {
+  const date = new Date(`${String(value || "").slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.getUTCDate();
+}
+
 function formatDateLabel(value: string): string {
   const date = new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime())) return value;
@@ -108,12 +117,56 @@ function extractSubject(details: string): string {
   return subject || "Onbekende omschrijving";
 }
 
+function toTitleCaseWords(value: string): string {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ")
+    .trim();
+}
+
 function deriveProfileNameFromQueueItem(item: SubscriptionQueueItem): string {
   const subject = extractSubject(item.details);
-  const compact = subject.replace(/\s+/g, " ").trim();
+  const withoutLeadingReference = subject.replace(/^\d+[\/-]*/, "").trim();
+  const firstPart =
+    withoutLeadingReference.split("|")[0] || withoutLeadingReference;
+  const providerTrimmed = firstPart
+    .replace(/^paypal\s*/i, "")
+    .replace(/^google\s*play\s*/i, "")
+    .replace(/^apple\s*/i, "")
+    .replace(/^klarna\s*/i, "")
+    .trim();
+
+  const starPart = providerTrimmed.includes("*")
+    ? providerTrimmed
+        .split("*")
+        .map((part) => part.trim())
+        .find((part) => /[a-zA-Z]{3,}/.test(part)) || providerTrimmed
+    : providerTrimmed;
+
+  const cleaned = starPart
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/\b(www|com|nl|eu)\b/gi, " ")
+    .replace(/[^a-zA-Z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const compact = cleaned || subject.replace(/\s+/g, " ").trim();
   if (!compact) return "Nieuw abonnement";
-  if (compact.length <= 40) return compact;
-  return compact.slice(0, 40).trim();
+  const titled = toTitleCaseWords(compact);
+  if (titled.length <= 40) return titled;
+  return titled.slice(0, 40).trim();
+}
+
+function getProviderHintLabel(
+  provider: SubscriptionProviderHint | null,
+): string {
+  if (!provider) return "Onbekend";
+  return (
+    PROVIDER_HINT_OPTIONS.find((option) => option.value === provider)?.label ||
+    provider
+  );
 }
 
 function normalizeRouteParam(value?: string | string[]) {
@@ -161,29 +214,33 @@ export default function SubscriptionsScreen() {
   >({});
 
   const [setCategoryOnLink, setSetCategoryOnLink] = React.useState(true);
-  const [chooseProfileTx, setChooseProfileTx] = React.useState<
-    SubscriptionQueueItem | null
-  >(null);
+  const [chooseProfileTx, setChooseProfileTx] =
+    React.useState<SubscriptionQueueItem | null>(null);
 
   const [profileModalOpen, setProfileModalOpen] = React.useState(false);
-  const [editingProfile, setEditingProfile] = React.useState<SubscriptionProfile | null>(
-    null,
-  );
-  const [createForTransaction, setCreateForTransaction] = React.useState<
-    SubscriptionQueueItem | null
-  >(null);
+  const [editingProfile, setEditingProfile] =
+    React.useState<SubscriptionProfile | null>(null);
+  const [createForTransaction, setCreateForTransaction] =
+    React.useState<SubscriptionQueueItem | null>(null);
 
   const [profileName, setProfileName] = React.useState("");
-  const [billingCycle, setBillingCycle] = React.useState<SubscriptionBillingCycle>(
-    "monthly",
-  );
+  const [billingCycle, setBillingCycle] =
+    React.useState<SubscriptionBillingCycle>("monthly");
   const [expectedAmountInput, setExpectedAmountInput] = React.useState("");
-  const [toleranceInput, setToleranceInput] = React.useState("2");
+  const [toleranceInput, setToleranceInput] = React.useState("0");
   const [expectedDayInput, setExpectedDayInput] = React.useState("");
-  const [providerHint, setProviderHint] = React.useState<
-    SubscriptionProviderHint | null
-  >(null);
+  const [providerHint, setProviderHint] =
+    React.useState<SubscriptionProviderHint | null>(null);
   const [profileIsActive, setProfileIsActive] = React.useState(true);
+  const [validationCandidates, setValidationCandidates] = React.useState<
+    SubscriptionValidationCandidate[]
+  >([]);
+  const [selectedValidationCandidateIds, setSelectedValidationCandidateIds] =
+    React.useState<string[]>([]);
+  const [validationLoading, setValidationLoading] = React.useState(false);
+  const [validationError, setValidationError] = React.useState<string | null>(
+    null,
+  );
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -191,8 +248,11 @@ export default function SubscriptionsScreen() {
 
     try {
       const { monthStartIso, monthEndIso } = getCurrentMonthBounds();
-      const { profiles: loadedProfiles, queueItems, rulesByProfileId } =
-        await getSubscriptionDashboardData(monthStartIso, monthEndIso);
+      const {
+        profiles: loadedProfiles,
+        queueItems,
+        rulesByProfileId,
+      } = await getSubscriptionDashboardData(monthStartIso, monthEndIso);
 
       const nextRuleDraftByProfileId: Record<string, RuleDraft> = {};
 
@@ -222,10 +282,14 @@ export default function SubscriptionsScreen() {
     setProfileName("");
     setBillingCycle("monthly");
     setExpectedAmountInput("");
-    setToleranceInput("2");
+    setToleranceInput("0");
     setExpectedDayInput("");
     setProviderHint(null);
     setProfileIsActive(true);
+    setValidationCandidates([]);
+    setSelectedValidationCandidateIds([]);
+    setValidationError(null);
+    setValidationLoading(false);
   }, []);
 
   const openCreateProfileModal = React.useCallback(
@@ -235,6 +299,11 @@ export default function SubscriptionsScreen() {
       setCreateForTransaction(queueItem || null);
       if (queueItem) {
         setProfileName(deriveProfileNameFromQueueItem(queueItem));
+        setBillingCycle("monthly");
+        setProviderHint(queueItem.providerDetected || null);
+        setExpectedAmountInput(String(Math.abs(queueItem.amount)));
+        const detectedDay = getDayOfMonthFromIso(queueItem.date);
+        setExpectedDayInput(detectedDay == null ? "" : String(detectedDay));
       }
       setProfileModalOpen(true);
     },
@@ -252,20 +321,125 @@ export default function SubscriptionsScreen() {
       );
       setToleranceInput(String(profile.amountTolerance));
       setExpectedDayInput(
-        profile.expectedDayOfMonth == null ? "" : String(profile.expectedDayOfMonth),
+        profile.expectedDayOfMonth == null
+          ? ""
+          : String(profile.expectedDayOfMonth),
       );
       setProviderHint(profile.providerHint);
       setProfileIsActive(profile.isActive);
+      setValidationCandidates([]);
+      setSelectedValidationCandidateIds([]);
+      setValidationError(null);
       setProfileModalOpen(true);
     },
     [],
   );
 
+  const toggleValidationCandidate = React.useCallback(
+    (transactionId: string) => {
+      setSelectedValidationCandidateIds((current) => {
+        if (current.includes(transactionId)) {
+          return current.filter((id) => id !== transactionId);
+        }
+        return [...current, transactionId];
+      });
+    },
+    [],
+  );
+
+  React.useEffect(() => {
+    if (!profileModalOpen || editingProfile || !createForTransaction) {
+      setValidationCandidates([]);
+      setSelectedValidationCandidateIds([]);
+      setValidationError(null);
+      setValidationLoading(false);
+      return;
+    }
+
+    if (billingCycle !== "monthly") {
+      setValidationCandidates([]);
+      setSelectedValidationCandidateIds([]);
+      setValidationError(null);
+      setValidationLoading(false);
+      return;
+    }
+
+    const effectiveProvider =
+      providerHint || createForTransaction.providerDetected;
+    if (!effectiveProvider) {
+      setValidationCandidates([]);
+      setSelectedValidationCandidateIds([]);
+      setValidationError(
+        "Provider kon niet worden herkend voor historische validatie.",
+      );
+      setValidationLoading(false);
+      return;
+    }
+
+    const expectedAmount =
+      parseNumberOrNull(expectedAmountInput) ??
+      Math.abs(createForTransaction.amount);
+    const expectedDay =
+      parseIntegerOrNull(expectedDayInput) ??
+      getDayOfMonthFromIso(createForTransaction.date);
+    const tolerance = Math.max(parseNumberOrNull(toleranceInput) ?? 0, 0);
+
+    let cancelled = false;
+    setValidationLoading(true);
+    setValidationError(null);
+
+    void listMonthlySubscriptionValidationCandidates({
+      sourceTransactionId: createForTransaction.transactionId,
+      sourceDate: createForTransaction.date,
+      sourceProviderHint: effectiveProvider,
+      expectedAmount,
+      amountTolerance: tolerance,
+      expectedDayOfMonth: expectedDay,
+      maxCandidates: 3,
+    })
+      .then((candidates) => {
+        if (cancelled) return;
+        setValidationCandidates(candidates);
+        setSelectedValidationCandidateIds(
+          candidates.map((candidate) => candidate.transactionId),
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Kon vorige transacties niet valideren.";
+        setValidationError(message);
+        setValidationCandidates([]);
+        setSelectedValidationCandidateIds([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setValidationLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    billingCycle,
+    createForTransaction,
+    editingProfile,
+    expectedAmountInput,
+    expectedDayInput,
+    profileModalOpen,
+    providerHint,
+    toleranceInput,
+  ]);
+
   React.useEffect(() => {
     if (!focusProfileId || loading) return;
     if (handledFocusProfileIdRef.current === focusProfileId) return;
 
-    const targetProfile = profiles.find((profile) => profile.id === focusProfileId);
+    const targetProfile = profiles.find(
+      (profile) => profile.id === focusProfileId,
+    );
     if (!targetProfile) return;
 
     handledFocusProfileIdRef.current = focusProfileId;
@@ -293,7 +467,8 @@ export default function SubscriptionsScreen() {
           name: trimmedName,
           billingCycle,
           expectedAmount,
-          amountTolerance: tolerance == null ? undefined : Math.max(tolerance, 0),
+          amountTolerance:
+            tolerance == null ? undefined : Math.max(tolerance, 0),
           expectedDayOfMonth: expectedDay,
           providerHint,
           isActive: profileIsActive,
@@ -303,7 +478,8 @@ export default function SubscriptionsScreen() {
           name: trimmedName,
           billingCycle,
           expectedAmount,
-          amountTolerance: tolerance == null ? undefined : Math.max(tolerance, 0),
+          amountTolerance:
+            tolerance == null ? undefined : Math.max(tolerance, 0),
           expectedDayOfMonth: expectedDay,
           providerHint,
           isActive: profileIsActive,
@@ -318,6 +494,21 @@ export default function SubscriptionsScreen() {
           notes: "nieuw profiel vanuit abonnementeninbox",
           setCategoryToSubscriptions: setCategoryOnLink,
         });
+
+        if (
+          billingCycle === "monthly" &&
+          selectedValidationCandidateIds.length > 0
+        ) {
+          await linkTransactionsToSubscription({
+            transactionIds: selectedValidationCandidateIds.filter(
+              (id) => id !== createForTransaction.transactionId,
+            ),
+            subscriptionProfileId: savedProfile.id,
+            confidence: 1,
+            notes: "historische koppeling vanuit abonnementeninbox",
+            setCategoryToSubscriptions: setCategoryOnLink,
+          });
+        }
       }
 
       setProfileModalOpen(false);
@@ -342,6 +533,7 @@ export default function SubscriptionsScreen() {
     profileIsActive,
     profileName,
     providerHint,
+    selectedValidationCandidateIds,
     setCategoryOnLink,
     toleranceInput,
   ]);
@@ -542,13 +734,14 @@ export default function SubscriptionsScreen() {
 
             {profiles.length === 0 ? (
               <Text style={styles.mutedText}>
-                Nog geen abonnementen ingesteld. Voeg een profiel toe om PSP-betalingen te koppelen.
+                Nog geen abonnementen ingesteld. Voeg een profiel toe om
+                PSP-betalingen te koppelen.
               </Text>
             ) : (
               profiles.map((profile) => {
                 const rules = rulesByProfileId[profile.id] || [];
-                const draft = ruleDraftByProfileId[profile.id] ||
-                  getDefaultRuleDraft();
+                const draft =
+                  ruleDraftByProfileId[profile.id] || getDefaultRuleDraft();
 
                 return (
                   <View key={profile.id} style={styles.profileCard}>
@@ -577,7 +770,9 @@ export default function SubscriptionsScreen() {
                           true: FinColors.greenBorder,
                         }}
                         thumbColor={
-                          profile.isActive ? FinColors.green : FinColors.textMuted
+                          profile.isActive
+                            ? FinColors.green
+                            : FinColors.textMuted
                         }
                       />
                     </View>
@@ -593,14 +788,23 @@ export default function SubscriptionsScreen() {
                         style={styles.ghostBtn}
                         onPress={() => void handleDeleteProfile(profile.id)}
                       >
-                        <Text style={[styles.ghostBtnText, { color: FinColors.red }]}>Verwijder</Text>
+                        <Text
+                          style={[
+                            styles.ghostBtnText,
+                            { color: FinColors.red },
+                          ]}
+                        >
+                          Verwijder
+                        </Text>
                       </TouchableOpacity>
                     </View>
 
                     <View style={styles.rulesWrap}>
                       <Text style={styles.rulesTitle}>Rules / aliases</Text>
                       {rules.length === 0 ? (
-                        <Text style={styles.mutedText}>Nog geen regels ingesteld.</Text>
+                        <Text style={styles.mutedText}>
+                          Nog geen regels ingesteld.
+                        </Text>
                       ) : (
                         rules.map((rule) => (
                           <View key={rule.id} style={styles.ruleRow}>
@@ -678,7 +882,9 @@ export default function SubscriptionsScreen() {
                           style={styles.ruleInput}
                           value={draft.pattern}
                           onChangeText={(value) =>
-                            handleRuleDraftChange(profile.id, { pattern: value })
+                            handleRuleDraftChange(profile.id, {
+                              pattern: value,
+                            })
                           }
                           placeholder="Bijv. netflix of spotify premium"
                           placeholderTextColor={FinColors.textMuted}
@@ -687,7 +893,9 @@ export default function SubscriptionsScreen() {
                           style={styles.primaryBtnSmall}
                           onPress={() => void handleAddRule(profile.id)}
                         >
-                          <Text style={styles.primaryBtnSmallText}>Toevoegen</Text>
+                          <Text style={styles.primaryBtnSmallText}>
+                            Toevoegen
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -700,24 +908,35 @@ export default function SubscriptionsScreen() {
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Onbekende PSP-betalingen</Text>
-              <TouchableOpacity style={styles.smallActionBtn} onPress={() => void loadData()}>
+              <TouchableOpacity
+                style={styles.smallActionBtn}
+                onPress={() => void loadData()}
+              >
                 <Text style={styles.smallActionBtnText}>Vernieuwen</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>Zet categorie op abonnementen</Text>
+              <Text style={styles.toggleLabel}>
+                Zet categorie op abonnementen
+              </Text>
               <Switch
                 value={setCategoryOnLink}
                 onValueChange={setSetCategoryOnLink}
-                trackColor={{ false: FinColors.bgElevated, true: FinColors.greenBorder }}
-                thumbColor={setCategoryOnLink ? FinColors.green : FinColors.textMuted}
+                trackColor={{
+                  false: FinColors.bgElevated,
+                  true: FinColors.greenBorder,
+                }}
+                thumbColor={
+                  setCategoryOnLink ? FinColors.green : FinColors.textMuted
+                }
               />
             </View>
 
             {queueItems.length === 0 ? (
               <Text style={styles.mutedText}>
-                Geen openstaande PSP-transacties zonder abonnementskoppeling in deze maand.
+                Geen openstaande PSP-transacties zonder abonnementskoppeling in
+                deze maand.
               </Text>
             ) : (
               queueItems.map((item) => {
@@ -726,8 +945,12 @@ export default function SubscriptionsScreen() {
                 return (
                   <View key={item.transactionId} style={styles.queueCard}>
                     <View style={styles.queueHeaderRow}>
-                      <Text style={styles.queueDate}>{formatDateLabel(item.date)}</Text>
-                      <Text style={styles.queueAmount}>-{euroFormatter.format(Math.abs(item.amount))}</Text>
+                      <Text style={styles.queueDate}>
+                        {formatDateLabel(item.date)}
+                      </Text>
+                      <Text style={styles.queueAmount}>
+                        -{euroFormatter.format(Math.abs(item.amount))}
+                      </Text>
                     </View>
                     <Text style={styles.queueCounterparty} numberOfLines={1}>
                       {item.counterparty || "Onbekende tegenpartij"}
@@ -738,14 +961,22 @@ export default function SubscriptionsScreen() {
 
                     {topSuggestion ? (
                       <View style={styles.suggestionBox}>
-                        <Text style={styles.suggestionTitle}>Top suggestie</Text>
-                        <Text style={styles.suggestionValue}>
-                          {topSuggestion.subscriptionName} · {Math.round(topSuggestion.confidence * 100)}% ({topSuggestion.confidenceLabel})
+                        <Text style={styles.suggestionTitle}>
+                          Top suggestie
                         </Text>
-                        <Text style={styles.suggestionReason}>{topSuggestion.reason}</Text>
+                        <Text style={styles.suggestionValue}>
+                          {topSuggestion.subscriptionName} ·{" "}
+                          {Math.round(topSuggestion.confidence * 100)}% (
+                          {topSuggestion.confidenceLabel})
+                        </Text>
+                        <Text style={styles.suggestionReason}>
+                          {topSuggestion.reason}
+                        </Text>
                       </View>
                     ) : (
-                      <Text style={styles.mutedText}>Geen betrouwbare suggestie gevonden.</Text>
+                      <Text style={styles.mutedText}>
+                        Geen betrouwbare suggestie gevonden.
+                      </Text>
                     )}
 
                     <View style={styles.queueActionsWrap}>
@@ -771,21 +1002,32 @@ export default function SubscriptionsScreen() {
                           onPress={() => setChooseProfileTx(item)}
                           disabled={isBusy}
                         >
-                          <Text style={styles.ghostBtnText}>Kies abonnement</Text>
+                          <Text style={styles.ghostBtnText}>
+                            Kies abonnement
+                          </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.ghostBtn}
                           onPress={() => openCreateProfileModal(item)}
                           disabled={isBusy}
                         >
-                          <Text style={styles.ghostBtnText}>Nieuw abonnement</Text>
+                          <Text style={styles.ghostBtnText}>
+                            Nieuw abonnement
+                          </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.ghostBtn}
                           onPress={() => void handleMarkNotSubscription(item)}
                           disabled={isBusy}
                         >
-                          <Text style={[styles.ghostBtnText, { color: FinColors.red }]}>Geen abonnement</Text>
+                          <Text
+                            style={[
+                              styles.ghostBtnText,
+                              { color: FinColors.red },
+                            ]}
+                          >
+                            Geen abonnement
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -793,10 +1035,14 @@ export default function SubscriptionsScreen() {
                     <TouchableOpacity
                       style={styles.detailLinkBtn}
                       onPress={() =>
-                        router.push(`/transaction-detail?id=${item.transactionId}`)
+                        router.push(
+                          `/transaction-detail?id=${item.transactionId}`,
+                        )
                       }
                     >
-                      <Text style={styles.detailLinkText}>Open transactie →</Text>
+                      <Text style={styles.detailLinkText}>
+                        Open transactie →
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 );
@@ -819,7 +1065,11 @@ export default function SubscriptionsScreen() {
                 {editingProfile ? "Abonnement bewerken" : "Nieuw abonnement"}
               </Text>
               <TouchableOpacity onPress={() => setProfileModalOpen(false)}>
-                <MaterialIcons name="close" size={18} color={FinColors.textSecondary} />
+                <MaterialIcons
+                  name="close"
+                  size={18}
+                  color={FinColors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
 
@@ -830,6 +1080,10 @@ export default function SubscriptionsScreen() {
               placeholder="Naam (bijv. Netflix)"
               placeholderTextColor={FinColors.textMuted}
             />
+
+            <Text style={styles.modalFieldHint}>
+              Gebruik hier de dienstnaam, niet de ruwe transactietekst.
+            </Text>
 
             <Text style={styles.modalSectionLabel}>Factuurcyclus</Text>
             <View style={styles.modalChipRow}>
@@ -845,7 +1099,8 @@ export default function SubscriptionsScreen() {
                   <Text
                     style={[
                       styles.modalChipText,
-                      billingCycle === option.value && styles.modalChipTextActive,
+                      billingCycle === option.value &&
+                        styles.modalChipTextActive,
                     ]}
                   >
                     {option.label}
@@ -854,12 +1109,15 @@ export default function SubscriptionsScreen() {
               ))}
             </View>
 
+            <Text style={styles.modalSectionLabel}>
+              Verwacht bedrag en tolerantie
+            </Text>
             <View style={styles.inlineInputRow}>
               <TextInput
                 style={[styles.modalInput, { flex: 1 }]}
                 value={expectedAmountInput}
                 onChangeText={setExpectedAmountInput}
-                placeholder="Verwacht bedrag (optioneel)"
+                placeholder="Verwacht bedrag"
                 placeholderTextColor={FinColors.textMuted}
                 keyboardType="decimal-pad"
               />
@@ -867,11 +1125,16 @@ export default function SubscriptionsScreen() {
                 style={[styles.modalInput, { width: 110 }]}
                 value={toleranceInput}
                 onChangeText={setToleranceInput}
-                placeholder="Marge"
+                placeholder="Tolerantie EUR"
                 placeholderTextColor={FinColors.textMuted}
                 keyboardType="decimal-pad"
               />
             </View>
+
+            <Text style={styles.modalFieldHint}>
+              Tolerantie bepaalt hoeveel het bedrag mag afwijken. Standaard: 0
+              EUR.
+            </Text>
 
             <View style={styles.inlineInputRow}>
               <TextInput
@@ -882,16 +1145,30 @@ export default function SubscriptionsScreen() {
                 placeholderTextColor={FinColors.textMuted}
                 keyboardType="number-pad"
               />
-              <View style={[styles.providerSelectWrap, { flex: 1.2 }]}> 
+              <View style={[styles.providerSelectWrap, { flex: 1.2 }]}>
                 <Text style={styles.modalSectionLabel}>Provider hint</Text>
+                {createForTransaction?.providerDetected ? (
+                  <Text style={styles.modalFieldHint}>
+                    Gedetecteerd vanuit transactie:{" "}
+                    {getProviderHintLabel(
+                      createForTransaction.providerDetected,
+                    )}
+                  </Text>
+                ) : null}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={styles.modalChipRow}>
                     <TouchableOpacity
-                      style={[styles.modalChip, providerHint == null && styles.modalChipActive]}
+                      style={[
+                        styles.modalChip,
+                        providerHint == null && styles.modalChipActive,
+                      ]}
                       onPress={() => setProviderHint(null)}
                     >
                       <Text
-                        style={[styles.modalChipText, providerHint == null && styles.modalChipTextActive]}
+                        style={[
+                          styles.modalChipText,
+                          providerHint == null && styles.modalChipTextActive,
+                        ]}
                       >
                         Geen
                       </Text>
@@ -901,14 +1178,16 @@ export default function SubscriptionsScreen() {
                         key={option.value}
                         style={[
                           styles.modalChip,
-                          providerHint === option.value && styles.modalChipActive,
+                          providerHint === option.value &&
+                            styles.modalChipActive,
                         ]}
                         onPress={() => setProviderHint(option.value)}
                       >
                         <Text
                           style={[
                             styles.modalChipText,
-                            providerHint === option.value && styles.modalChipTextActive,
+                            providerHint === option.value &&
+                              styles.modalChipTextActive,
                           ]}
                         >
                           {option.label}
@@ -925,15 +1204,117 @@ export default function SubscriptionsScreen() {
               <Switch
                 value={profileIsActive}
                 onValueChange={setProfileIsActive}
-                trackColor={{ false: FinColors.bgElevated, true: FinColors.greenBorder }}
-                thumbColor={profileIsActive ? FinColors.green : FinColors.textMuted}
+                trackColor={{
+                  false: FinColors.bgElevated,
+                  true: FinColors.greenBorder,
+                }}
+                thumbColor={
+                  profileIsActive ? FinColors.green : FinColors.textMuted
+                }
               />
             </View>
 
             {createForTransaction ? (
-              <Text style={styles.mutedText}>
-                Dit profiel wordt direct gekoppeld aan de geselecteerde PSP-transactie.
-              </Text>
+              <View style={styles.validationInfoWrap}>
+                <Text style={styles.mutedText}>
+                  Dit profiel wordt direct gekoppeld aan de geselecteerde
+                  PSP-transactie.
+                </Text>
+                {billingCycle === "monthly" ? (
+                  <>
+                    <Text style={styles.modalSectionLabel}>
+                      Controle vorige betalingen (max 3)
+                    </Text>
+                    <Text style={styles.modalFieldHint}>
+                      Selecteer eerdere matches. Deze worden direct gekoppeld
+                      bij opslaan.
+                    </Text>
+
+                    {validationLoading ? (
+                      <View style={styles.validationLoadingRow}>
+                        <ActivityIndicator
+                          size="small"
+                          color={FinColors.green}
+                        />
+                        <Text style={styles.mutedText}>
+                          Vorige transacties laden…
+                        </Text>
+                      </View>
+                    ) : validationError ? (
+                      <Text style={styles.errorText}>{validationError}</Text>
+                    ) : validationCandidates.length === 0 ? (
+                      <Text style={styles.mutedText}>
+                        Geen eerdere maandelijkse kandidaten gevonden.
+                      </Text>
+                    ) : (
+                      <View style={styles.validationListWrap}>
+                        {validationCandidates.map((candidate) => {
+                          const selected =
+                            selectedValidationCandidateIds.includes(
+                              candidate.transactionId,
+                            );
+                          return (
+                            <TouchableOpacity
+                              key={candidate.transactionId}
+                              style={[
+                                styles.validationItem,
+                                selected && styles.validationItemSelected,
+                              ]}
+                              onPress={() =>
+                                toggleValidationCandidate(
+                                  candidate.transactionId,
+                                )
+                              }
+                            >
+                              <View style={styles.validationItemHeaderRow}>
+                                <MaterialIcons
+                                  name={
+                                    selected
+                                      ? "check-box"
+                                      : "check-box-outline-blank"
+                                  }
+                                  size={18}
+                                  color={
+                                    selected
+                                      ? FinColors.green
+                                      : FinColors.textMuted
+                                  }
+                                />
+                                <Text style={styles.validationItemDate}>
+                                  {formatDateLabel(candidate.date)}
+                                </Text>
+                                <Text style={styles.validationItemAmount}>
+                                  -
+                                  {euroFormatter.format(
+                                    Math.abs(candidate.amount),
+                                  )}
+                                </Text>
+                              </View>
+                              <Text
+                                style={styles.validationItemSubject}
+                                numberOfLines={2}
+                              >
+                                {extractSubject(candidate.details)}
+                              </Text>
+                              <Text style={styles.validationItemMeta}>
+                                {candidate.counterparty ||
+                                  "Onbekende tegenpartij"}{" "}
+                                ·{" "}
+                                {getProviderHintLabel(
+                                  candidate.providerDetected,
+                                )}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                        <Text style={styles.modalFieldHint}>
+                          Geselecteerd: {selectedValidationCandidateIds.length}
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                ) : null}
+              </View>
             ) : null}
 
             <View style={styles.modalActionsRow}>
@@ -971,20 +1352,26 @@ export default function SubscriptionsScreen() {
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalTitle}>Kies abonnement</Text>
               <TouchableOpacity onPress={() => setChooseProfileTx(null)}>
-                <MaterialIcons name="close" size={18} color={FinColors.textSecondary} />
+                <MaterialIcons
+                  name="close"
+                  size={18}
+                  color={FinColors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
 
             {chooseProfileTx ? (
               <Text style={styles.mutedText}>
-                {extractSubject(chooseProfileTx.details)} · -{euroFormatter.format(Math.abs(chooseProfileTx.amount))}
+                {extractSubject(chooseProfileTx.details)} · -
+                {euroFormatter.format(Math.abs(chooseProfileTx.amount))}
               </Text>
             ) : null}
 
             <View style={styles.modalListWrap}>
               {profiles.filter((profile) => profile.isActive).length === 0 ? (
                 <Text style={styles.mutedText}>
-                  Geen actieve profielen beschikbaar. Maak eerst een nieuw profiel aan.
+                  Geen actieve profielen beschikbaar. Maak eerst een nieuw
+                  profiel aan.
                 </Text>
               ) : (
                 profiles
@@ -995,10 +1382,16 @@ export default function SubscriptionsScreen() {
                       style={styles.modalListItem}
                       onPress={() => {
                         if (!chooseProfileTx) return;
-                        void handleLinkTransaction(chooseProfileTx, profile.id, 1);
+                        void handleLinkTransaction(
+                          chooseProfileTx,
+                          profile.id,
+                          1,
+                        );
                       }}
                     >
-                      <Text style={styles.modalListItemTitle}>{profile.name}</Text>
+                      <Text style={styles.modalListItemTitle}>
+                        {profile.name}
+                      </Text>
                       <Text style={styles.modalListItemMeta}>
                         {BILLING_CYCLE_OPTIONS.find(
                           (option) => option.value === profile.billingCycle,
@@ -1382,6 +1775,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+  modalFieldHint: {
+    color: FinColors.textMuted,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: -2,
+  },
   modalChipRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1413,6 +1812,55 @@ const styles = StyleSheet.create({
   },
   providerSelectWrap: {
     gap: 6,
+  },
+  validationInfoWrap: {
+    gap: 8,
+  },
+  validationLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  validationListWrap: {
+    gap: 8,
+  },
+  validationItem: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    gap: 4,
+  },
+  validationItemSelected: {
+    borderColor: FinColors.greenBorder,
+    backgroundColor: FinColors.greenBg,
+  },
+  validationItemHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  validationItemDate: {
+    color: FinColors.textPrimary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  validationItemAmount: {
+    marginLeft: "auto",
+    color: FinColors.red,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  validationItemSubject: {
+    color: FinColors.textPrimary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  validationItemMeta: {
+    color: FinColors.textMuted,
+    fontSize: 11,
   },
   modalActionsRow: {
     flexDirection: "row",

@@ -108,6 +108,15 @@ export type SubscriptionQueueItem = {
   suggestions: SubscriptionSuggestion[];
 };
 
+export type SubscriptionValidationCandidate = {
+  transactionId: string;
+  date: string;
+  counterparty: string | null;
+  details: string;
+  amount: number;
+  providerDetected: SubscriptionProviderHint | null;
+};
+
 export type AnalysisMainGroup = "income" | "expense";
 
 export type ExpenseAnalysisCategory =

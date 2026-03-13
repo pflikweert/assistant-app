@@ -10,6 +10,10 @@ import {
     rebalanceWeeklyBudgets,
     resolveBaseWeeklyBudgetsByDailyMonthRates,
 } from "@/services/budget-week-utils";
+import {
+  isAutoModeTrendLock,
+  resolveLockedVariableMainCategories,
+} from "@/services/budget-lock-utils";
 import { normalizePattern } from "@/services/categorization-repository";
 import { supabase } from "@/services/supabase";
 import type {
@@ -1256,6 +1260,7 @@ function computeWeeklyVariablePlan(
   timelineReferenceDay: Date,
   variableMonthlyBudgetByMonthStartIso: Map<string, number>,
   currentMonthStart: Date,
+  excludedMainCategoriesFromRebalance: ReadonlySet<VariableMainCategory>,
 ): BudgetWeekPlanRow[] {
   const ranges = weekRanges;
   if (!ranges.length) return [];
@@ -1281,18 +1286,37 @@ function computeWeeklyVariablePlan(
     return roundEuro(total);
   });
 
+  const weekActualsForRebalance = ranges.map((range) => {
+    let total = 0;
+    for (const row of weekRows) {
+      if (row.amount >= 0) continue;
+      if (row.budget_excluded) continue;
+      const txDate = parseIsoDateUtc(row.date);
+      if (txDate < range.start || txDate >= range.endExclusive) continue;
+      const categoryMeta = resolveCategoryMetaForTransaction(row, categoryMap);
+      const expenseBucket = resolveExpenseBucket(row, categoryMeta);
+      if (expenseBucket !== "variable_costs") continue;
+      const mainCategory = resolveVariableSubbucket(row, categoryMeta);
+      if (excludedMainCategoriesFromRebalance.has(mainCategory)) continue;
+      total += Math.abs(row.amount);
+    }
+    return roundEuro(total);
+  });
+
   const rebalance = rebalanceWeeklyBudgets(
     baseWeeklyBudgetByIndex,
-    weekActuals,
+    weekActualsForRebalance,
   );
   const rows: BudgetWeekPlanRow[] = [];
 
   ranges.forEach((range, index) => {
     const budget = rebalance.budgets[index] || 0;
     const actual = weekActuals[index];
+    const rebalanceActual = weekActualsForRebalance[index];
     const remaining = roundEuro(budget - actual);
     const utilization = resolveUtilization(actual, budget);
-    const overrunAmount = remaining < 0 ? Math.abs(remaining) : 0;
+    const overrunAmount =
+      rebalanceActual > budget ? roundEuro(rebalanceActual - budget) : 0;
 
     rows.push({
       weekNumber: range.weekNumber,
@@ -2003,8 +2027,16 @@ export async function computeBudgetPlan(
     const override = overridesByKey.get(key);
     const monthlyValue = monthValuesByKey.get(key);
     const autoManagedVariableCategory = settings.mode !== "custom";
+    const isAutoModeTrendLockMatch = isAutoModeTrendLock(
+      settings.mode,
+      baselineMonthly,
+      monthlyValue?.monthlyBudget,
+    );
 
-    if (monthlyValue && !autoManagedVariableCategory) {
+    if (
+      (monthlyValue && !autoManagedVariableCategory) ||
+      isAutoModeTrendLockMatch
+    ) {
       const monthlyBudget = roundEuro(Math.max(monthlyValue.monthlyBudget, 0));
       explicitSubcategoryBudget += monthlyBudget;
       setRecommendation(key, {
@@ -2227,7 +2259,7 @@ export async function computeBudgetPlan(
     Math.max(flowSummary.variableBudget, 0),
   );
   const resolveVariableMonthlyBudget = (
-    values: Array<{ categoryKey: string; monthlyBudget: number }>,
+    values: { categoryKey: string; monthlyBudget: number }[],
   ) => {
     const override = values.find(
       (item) => item.categoryKey === "variable_costs",
@@ -2245,6 +2277,11 @@ export async function computeBudgetPlan(
     [nextMonthStartIso, resolveVariableMonthlyBudget(nextMonthBudgetValues)],
   ]);
 
+  const excludedMainCategoriesFromRebalance =
+    resolveLockedVariableMainCategories(settings.mode, recommendations) as Set<
+      VariableMainCategory
+    >;
+
   const weeklyVariablePlan = computeWeeklyVariablePlan(
     includedWeekRows,
     categoryMap,
@@ -2252,6 +2289,7 @@ export async function computeBudgetPlan(
     timelineReferenceDay,
     variableMonthlyBudgetByMonthStartIso,
     monthStart,
+    excludedMainCategoriesFromRebalance,
   );
 
   const weeklySpendBreakdown = buildWeeklySpendBreakdown(

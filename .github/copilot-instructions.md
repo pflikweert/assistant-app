@@ -1,6 +1,7 @@
 # Copilot Instructions: 7-daagse overlapweken in budgetplanning
 
 > Voor abonnementen/PSP-matching: gebruik `./.github/copilot-subscriptions-instructions.md`.
+> Voor auth + multi-user + multi-account refactor: gebruik `./.github/copilot-auth-multi-tenant-instructions.md`.
 
 ## Doel
 Implementeer weekplanning als **altijd 7 dagen (maandag t/m zondag)**, ook als een week over maandgrenzen loopt.  
