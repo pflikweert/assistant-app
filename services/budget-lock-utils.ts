@@ -1,7 +1,7 @@
 import type {
-  BudgetCategoryKey,
-  BudgetPlanMode,
-  BudgetRecommendationRow,
+    BudgetCategoryKey,
+    BudgetPlanMode,
+    BudgetRecommendationRow,
 } from "@/types/categorization";
 
 export const VARIABLE_MAIN_CATEGORY_KEYS: BudgetCategoryKey[] = [
@@ -22,9 +22,12 @@ export function isAutoModeTrendLock(
   mode: BudgetPlanMode,
   baselineMonthly: number,
   monthlyBudgetValue: number | null | undefined,
+  lockTrend: boolean | null | undefined = null,
   toleranceEuro = 1,
 ) {
   if (mode === "custom") return false;
+  if (lockTrend === true) return true;
+  if (lockTrend === false) return false;
   if (monthlyBudgetValue == null) return false;
   return (
     Math.abs(Math.round(monthlyBudgetValue) - Math.round(baselineMonthly)) <=
@@ -40,13 +43,17 @@ export function resolveLockedVariableMainCategories(
   }[],
 ) {
   const locked = new Set<BudgetCategoryKey>();
-  if (mode === "custom") return locked;
 
   for (const recommendation of recommendations) {
     if (!VARIABLE_MAIN_CATEGORY_KEYS.includes(recommendation.categoryKey)) {
       continue;
     }
-    if (recommendation.overrideSource !== "monthly_override") continue;
+
+    const includeTrendLock = recommendation.overrideSource === "trend_lock";
+    const includeMonthlyOverride =
+      mode !== "custom" && recommendation.overrideSource === "monthly_override";
+
+    if (!includeTrendLock && !includeMonthlyOverride) continue;
     locked.add(recommendation.categoryKey);
   }
 
@@ -69,7 +76,9 @@ export function allocateIntegerBudget(total: number, weights: number[]) {
   if (!weights.length) return [] as number[];
   if (normalizedTotal <= 0) return weights.map(() => 0);
 
-  let normalizedWeights = weights.map((weight) => Math.max(Number(weight) || 0, 0));
+  let normalizedWeights = weights.map((weight) =>
+    Math.max(Number(weight) || 0, 0),
+  );
   let weightTotal = normalizedWeights.reduce((sum, weight) => sum + weight, 0);
 
   if (weightTotal <= 0) {
@@ -139,7 +148,10 @@ export function allocateWeekBudgetsByMainCategory(params: {
     (sum, value) => sum + value,
     0,
   );
-  const remainingWeekBudget = Math.max(Math.round(weekBudget) - lockedWeekTotal, 0);
+  const remainingWeekBudget = Math.max(
+    Math.round(weekBudget) - lockedWeekTotal,
+    0,
+  );
   const unlockedRows = rows.filter(([key]) => !lockedCategoryKeys.has(key));
   const unlockedAllocations = allocateIntegerBudget(
     remainingWeekBudget,

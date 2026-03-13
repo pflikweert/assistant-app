@@ -216,7 +216,8 @@ export type BudgetOverrideSource =
   | "trend"
   | "settings"
   | "category_override"
-  | "monthly_override";
+  | "monthly_override"
+  | "trend_lock";
 
 export type BudgetIncomeInclusionSettings = {
   salary: boolean;
@@ -251,6 +252,7 @@ export type MonthlyBudgetValue = {
   categoryKey: BudgetCategoryKey;
   monthlyBudget: number;
   source: "manual" | "system";
+  lockTrend: boolean | null;
   createdAt: string | null;
   updatedAt: string | null;
 };

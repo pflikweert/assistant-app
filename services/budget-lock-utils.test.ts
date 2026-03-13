@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import type { BudgetRecommendationRow } from "../types/categorization";
 import {
-  allocateWeekBudgetsByMainCategory,
-  isAutoModeTrendLock,
-  resolveLockedVariableMainCategories,
-  shouldPersistCategoryOnBudgetSave,
+    allocateWeekBudgetsByMainCategory,
+    isAutoModeTrendLock,
+    resolveLockedVariableMainCategories,
+    shouldPersistCategoryOnBudgetSave,
 } from "./budget-lock-utils";
 import { buildCalendarWeekRangesForMonth } from "./budget-week-utils";
-import type { BudgetRecommendationRow } from "../types/categorization";
 
 function utcDate(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
@@ -17,6 +17,11 @@ describe("isAutoModeTrendLock", () => {
   it("returns true in auto mode when monthly value matches baseline", () => {
     expect(isAutoModeTrendLock("active_savings", 210, 210)).toBe(true);
     expect(isAutoModeTrendLock("balanced", 210.4, 211)).toBe(true);
+  });
+
+  it("honors explicit lockTrend state", () => {
+    expect(isAutoModeTrendLock("active_savings", 210, 190, true)).toBe(true);
+    expect(isAutoModeTrendLock("active_savings", 210, 210, false)).toBe(false);
   });
 
   it("returns false when mode is custom or value is not near baseline", () => {
@@ -52,6 +57,58 @@ describe("resolveLockedVariableMainCategories", () => {
     expect(locked.has("groceries")).toBe(false);
     expect(locked.has("subscriptions")).toBe(false);
   });
+
+  it("includes trend_lock in custom mode but excludes monthly_override", () => {
+    const recommendations = [
+      {
+        categoryKey: "smoking",
+        overrideSource: "trend_lock",
+      },
+      {
+        categoryKey: "fuel",
+        overrideSource: "monthly_override",
+      },
+      {
+        categoryKey: "subscriptions",
+        overrideSource: "trend_lock",
+      },
+    ] as Pick<BudgetRecommendationRow, "categoryKey" | "overrideSource">[];
+
+    const locked = resolveLockedVariableMainCategories(
+      "custom",
+      recommendations,
+    );
+
+    expect(locked.has("smoking")).toBe(true);
+    expect(locked.has("fuel")).toBe(false);
+    expect(locked.has("subscriptions")).toBe(false);
+  });
+
+  it("includes both trend_lock and monthly_override in auto mode", () => {
+    const recommendations = [
+      {
+        categoryKey: "groceries",
+        overrideSource: "monthly_override",
+      },
+      {
+        categoryKey: "fuel",
+        overrideSource: "trend_lock",
+      },
+      {
+        categoryKey: "subscriptions",
+        overrideSource: "monthly_override",
+      },
+    ] as Pick<BudgetRecommendationRow, "categoryKey" | "overrideSource">[];
+
+    const locked = resolveLockedVariableMainCategories(
+      "active_savings",
+      recommendations,
+    );
+
+    expect(locked.has("groceries")).toBe(true);
+    expect(locked.has("fuel")).toBe(true);
+    expect(locked.has("subscriptions")).toBe(false);
+  });
 });
 
 describe("allocateWeekBudgetsByMainCategory", () => {
@@ -81,7 +138,10 @@ describe("allocateWeekBudgetsByMainCategory", () => {
   it("keeps locked category flat across March 2026 weeks and redistributes remaining budget", () => {
     const monthStart = utcDate("2026-03-01");
     const monthEndExclusive = utcDate("2026-04-01");
-    const weekRanges = buildCalendarWeekRangesForMonth(monthStart, monthEndExclusive);
+    const weekRanges = buildCalendarWeekRangesForMonth(
+      monthStart,
+      monthEndExclusive,
+    );
     expect(weekRanges.length).toBe(6);
 
     const monthlyBudgets = new Map<string, number>([
@@ -116,9 +176,9 @@ describe("allocateWeekBudgetsByMainCategory", () => {
       expect(sum).toBe(weekBudgets[index]);
     }
 
-    expect((perWeek[0].get("groceries") || 0) > (perWeek[5].get("groceries") || 0)).toBe(
-      true,
-    );
+    expect(
+      (perWeek[0].get("groceries") || 0) > (perWeek[5].get("groceries") || 0),
+    ).toBe(true);
   });
 });
 

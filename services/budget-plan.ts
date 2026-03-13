@@ -1,5 +1,9 @@
 import { suggestAutomaticSavingsTarget } from "@/services/budget-coach";
 import {
+    isAutoModeTrendLock,
+    resolveLockedVariableMainCategories,
+} from "@/services/budget-lock-utils";
+import {
     getBudgetCategoryOverrides,
     getBudgetPlanSettings,
     getMonthlyBudgetValues,
@@ -10,10 +14,6 @@ import {
     rebalanceWeeklyBudgets,
     resolveBaseWeeklyBudgetsByDailyMonthRates,
 } from "@/services/budget-week-utils";
-import {
-  isAutoModeTrendLock,
-  resolveLockedVariableMainCategories,
-} from "@/services/budget-lock-utils";
 import { normalizePattern } from "@/services/categorization-repository";
 import { supabase } from "@/services/supabase";
 import type {
@@ -1794,7 +1794,8 @@ export async function computeBudgetPlan(
       return {
         monthlyBudget,
         appliedFactor,
-        overrideSource: "monthly_override",
+        overrideSource:
+          monthlyValue.lockTrend === true ? "trend_lock" : "monthly_override",
       };
     }
 
@@ -2031,13 +2032,16 @@ export async function computeBudgetPlan(
       settings.mode,
       baselineMonthly,
       monthlyValue?.monthlyBudget,
+      monthlyValue?.lockTrend,
     );
 
     if (
       (monthlyValue && !autoManagedVariableCategory) ||
       isAutoModeTrendLockMatch
     ) {
-      const monthlyBudget = roundEuro(Math.max(monthlyValue.monthlyBudget, 0));
+      const monthlyBudget = roundEuro(
+        Math.max(monthlyValue?.monthlyBudget ?? baselineMonthly, 0),
+      );
       explicitSubcategoryBudget += monthlyBudget;
       setRecommendation(key, {
         monthlyBudget,
@@ -2045,7 +2049,8 @@ export async function computeBudgetPlan(
           baselineMonthly > 0
             ? monthlyBudget / baselineMonthly
             : settings.adjustmentFactor,
-        overrideSource: "monthly_override",
+        overrideSource:
+          monthlyValue?.lockTrend === true ? "trend_lock" : "monthly_override",
       });
       continue;
     }
@@ -2278,9 +2283,10 @@ export async function computeBudgetPlan(
   ]);
 
   const excludedMainCategoriesFromRebalance =
-    resolveLockedVariableMainCategories(settings.mode, recommendations) as Set<
-      VariableMainCategory
-    >;
+    resolveLockedVariableMainCategories(
+      settings.mode,
+      recommendations,
+    ) as Set<VariableMainCategory>;
 
   const weeklyVariablePlan = computeWeeklyVariablePlan(
     includedWeekRows,

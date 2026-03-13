@@ -44,6 +44,7 @@ export type UpsertMonthlyBudgetValueInput = {
   categoryKey: BudgetCategoryKey;
   monthlyBudget: number;
   source?: "manual" | "system";
+  lockTrend?: boolean | null;
 };
 
 export type ResetMonthlyBudgetValuesInput = {
@@ -90,6 +91,18 @@ function asBoolean(value: unknown, fallback: boolean): boolean {
     if (normalized === "false") return false;
   }
   return fallback;
+}
+
+function asNullableBoolean(value: unknown): boolean | null {
+  if (value == null) return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return null;
 }
 
 function isMissingColumnError(error: unknown): boolean {
@@ -202,6 +215,7 @@ function mapMonthlyValueRow(row: RowRecord): MonthlyBudgetValue {
     categoryKey: String(row.category_key || "other") as BudgetCategoryKey,
     monthlyBudget: asNonNegativeNumber(row.monthly_budget, 0),
     source: sourceRaw === "system" ? "system" : "manual",
+    lockTrend: asNullableBoolean(row.lock_trend),
     createdAt: row.created_at ? String(row.created_at) : null,
     updatedAt: row.updated_at ? String(row.updated_at) : null,
   };
@@ -401,17 +415,33 @@ export async function getMonthlyBudgetValues(
   const normalizedPlanKey = normalizePlanKey(planKey);
   const normalizedMonthStart = normalizeMonthStartIso(monthStartIso);
 
-  const { data, error } = await supabase
+  const withLockTrend = await supabase
     .from("monthly_budget_values")
     .select(
-      "plan_key,month_start,category_key,monthly_budget,source,created_at,updated_at",
+      "plan_key,month_start,category_key,monthly_budget,source,lock_trend,created_at,updated_at",
     )
     .eq("plan_key", normalizedPlanKey)
     .eq("month_start", normalizedMonthStart)
     .order("category_key", { ascending: true });
 
+  let dataRows = (withLockTrend.data || null) as RowRecord[] | null;
+  let error = withLockTrend.error;
+
+  if (error && isMissingColumnError(error)) {
+    const retry = await supabase
+      .from("monthly_budget_values")
+      .select(
+        "plan_key,month_start,category_key,monthly_budget,source,created_at,updated_at",
+      )
+      .eq("plan_key", normalizedPlanKey)
+      .eq("month_start", normalizedMonthStart)
+      .order("category_key", { ascending: true });
+    dataRows = (retry.data || null) as RowRecord[] | null;
+    error = retry.error;
+  }
+
   if (error) throw error;
-  return ((data || []) as RowRecord[]).map(mapMonthlyValueRow);
+  return (dataRows || []).map(mapMonthlyValueRow);
 }
 
 export async function upsertMonthlyBudgetValue(
@@ -423,27 +453,57 @@ export async function upsertMonthlyBudgetValue(
 
   const nextSource = input.source === "system" ? "system" : "manual";
   const nextMonthlyBudget = asNonNegativeNumber(input.monthlyBudget, 0);
+  const nextLockTrend =
+    input.lockTrend == null ? null : Boolean(input.lockTrend);
 
-  const { data, error } = await supabase
+  const payloadWithLockTrend = {
+    plan_key: normalizedPlanKey,
+    month_start: normalizedMonthStart,
+    category_key: input.categoryKey,
+    monthly_budget: nextMonthlyBudget,
+    source: nextSource,
+    lock_trend: nextLockTrend,
+    updated_at: new Date().toISOString(),
+  };
+
+  const payloadWithoutLockTrend = {
+    plan_key: normalizedPlanKey,
+    month_start: normalizedMonthStart,
+    category_key: input.categoryKey,
+    monthly_budget: nextMonthlyBudget,
+    source: nextSource,
+    updated_at: new Date().toISOString(),
+  };
+
+  const withLockTrend = await supabase
     .from("monthly_budget_values")
-    .upsert(
-      {
-        plan_key: normalizedPlanKey,
-        month_start: normalizedMonthStart,
-        category_key: input.categoryKey,
-        monthly_budget: nextMonthlyBudget,
-        source: nextSource,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "plan_key,month_start,category_key" },
-    )
+    .upsert(payloadWithLockTrend, {
+      onConflict: "plan_key,month_start,category_key",
+    })
     .select(
-      "plan_key,month_start,category_key,monthly_budget,source,created_at,updated_at",
+      "plan_key,month_start,category_key,monthly_budget,source,lock_trend,created_at,updated_at",
     )
     .single();
 
+  let dataRow = (withLockTrend.data || null) as RowRecord | null;
+  let error = withLockTrend.error;
+
+  if (error && isMissingColumnError(error)) {
+    const retry = await supabase
+      .from("monthly_budget_values")
+      .upsert(payloadWithoutLockTrend, {
+        onConflict: "plan_key,month_start,category_key",
+      })
+      .select(
+        "plan_key,month_start,category_key,monthly_budget,source,created_at,updated_at",
+      )
+      .single();
+    dataRow = (retry.data || null) as RowRecord | null;
+    error = retry.error;
+  }
+
   if (error) throw error;
-  return mapMonthlyValueRow(data as RowRecord);
+  return mapMonthlyValueRow(dataRow as RowRecord);
 }
 
 export async function resetMonthlyBudgetValues(

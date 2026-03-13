@@ -4,9 +4,9 @@ import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import { generateBudgetCoachReport } from "@/services/budget-coach";
 import {
-  allocateWeekBudgetsByMainCategory,
-  resolveLockedVariableMainCategories,
-  shouldPersistCategoryOnBudgetSave,
+    allocateWeekBudgetsByMainCategory,
+    resolveLockedVariableMainCategories,
+    shouldPersistCategoryOnBudgetSave,
 } from "@/services/budget-lock-utils";
 import { computeBudgetPlan } from "@/services/budget-plan";
 import {
@@ -995,9 +995,13 @@ export default function BudgetScreen() {
           return {
             ...nextValues,
             variable_costs: formatBudgetAmountDraft(availableVariable),
-            ...deriveVariableBreakdownDraftValues(availableVariable, nextValues, {
-              lockedKeys: nextLockedSet,
-            }),
+            ...deriveVariableBreakdownDraftValues(
+              availableVariable,
+              nextValues,
+              {
+                lockedKeys: nextLockedSet,
+              },
+            ),
           };
         });
 
@@ -1299,9 +1303,12 @@ export default function BudgetScreen() {
       nextDraft[row.categoryKey] = formatBudgetAmountDraft(row.monthlyBudget);
       if (
         isVariableBreakdownKey(row.categoryKey) &&
-        row.overrideSource === "monthly_override" &&
-        normalizeBudgetAmount(row.monthlyBudget) ===
-          normalizeBudgetAmount(row.baselineMonthly)
+        (row.overrideSource === "trend_lock" ||
+          // Backward-compat: auto-mode rows saved before trend_lock existed
+          (budgetPlan.settings.mode !== "custom" &&
+            row.overrideSource === "monthly_override" &&
+            normalizeBudgetAmount(row.monthlyBudget) ===
+              normalizeBudgetAmount(row.baselineMonthly)))
       ) {
         inferredTrendLocks.push(row.categoryKey);
       }
@@ -1313,15 +1320,13 @@ export default function BudgetScreen() {
       mode: budgetPlan.settings.mode,
       savingsTargetMonthly: nextSavingsTarget,
     });
-    setBudgetDraftValues(
-      {
-        ...nextDraft,
-        variable_costs: formatBudgetAmountDraft(initialVariableBudget),
-        ...deriveVariableBreakdownDraftValues(initialVariableBudget, nextDraft, {
-          lockedKeys: inferredTrendLockSet,
-        }),
-      },
-    );
+    setBudgetDraftValues({
+      ...nextDraft,
+      variable_costs: formatBudgetAmountDraft(initialVariableBudget),
+      ...deriveVariableBreakdownDraftValues(initialVariableBudget, nextDraft, {
+        lockedKeys: inferredTrendLockSet,
+      }),
+    });
     setBudgetEditOpen(true);
   }, [
     budgetPlan,
@@ -1350,15 +1355,23 @@ export default function BudgetScreen() {
         savingsTargetMonthly: nextCustomSavingsTarget,
       });
 
-      const updates: Promise<unknown>[] = [];
+      const updateInputs: {
+        categoryKey: BudgetCategoryKey;
+        monthlyBudget: number;
+        lockTrend: boolean | null;
+      }[] = [];
+
       for (const row of editableBudgetRows) {
-        if (
-          !shouldPersistCategoryOnBudgetSave({
-            categoryKey: row.categoryKey,
-            autoManagedVariableBudget,
-            lockedCategoryKeys: trendLockedCategorySet,
-          })
-        ) {
+        const rowIsVariableBreakdown = isVariableBreakdownKey(row.categoryKey);
+        const shouldPersistRow =
+          autoManagedVariableBudget && rowIsVariableBreakdown
+            ? true
+            : shouldPersistCategoryOnBudgetSave({
+                categoryKey: row.categoryKey,
+                autoManagedVariableBudget,
+                lockedCategoryKeys: trendLockedCategorySet,
+              });
+        if (!shouldPersistRow) {
           continue;
         }
 
@@ -1366,15 +1379,13 @@ export default function BudgetScreen() {
         const parsed = parseBudgetAmountInput(rawValue || "");
         if (parsed == null) continue;
 
-        updates.push(
-          upsertMonthlyBudgetValue({
-            planKey: "default",
-            monthStartIso: selectedMonth.startIso,
-            categoryKey: row.categoryKey,
-            monthlyBudget: normalizeBudgetAmount(parsed),
-            source: "manual",
-          }),
-        );
+        updateInputs.push({
+          categoryKey: row.categoryKey,
+          monthlyBudget: normalizeBudgetAmount(parsed),
+          lockTrend: rowIsVariableBreakdown
+            ? trendLockedCategorySet.has(row.categoryKey)
+            : null,
+        });
       }
 
       await resetMonthlyBudgetValues({
@@ -1382,8 +1393,19 @@ export default function BudgetScreen() {
         monthStartIso: selectedMonth.startIso,
       });
 
-      if (updates.length) {
-        await Promise.all(updates);
+      if (updateInputs.length) {
+        await Promise.all(
+          updateInputs.map((update) =>
+            upsertMonthlyBudgetValue({
+              planKey: "default",
+              monthStartIso: selectedMonth.startIso,
+              categoryKey: update.categoryKey,
+              monthlyBudget: update.monthlyBudget,
+              source: "manual",
+              lockTrend: update.lockTrend,
+            }),
+          ),
+        );
       }
 
       await recomputeCurrentMonthCashflowForecast(new Date()).catch((error) => {
@@ -1417,22 +1439,20 @@ export default function BudgetScreen() {
         monthStartIso: selectedMonth.startIso,
       });
 
-      if (trendLockedCategories.length > 0) {
-        const lockUpdates = trendLockedCategories
-          .filter((key) => isVariableBreakdownKey(key))
-          .map((key) =>
-            upsertMonthlyBudgetValue({
-              planKey: "default",
-              monthStartIso: selectedMonth.startIso,
-              categoryKey: key,
-              monthlyBudget: getTrendBudgetForCategory(key),
-              source: "manual",
-            }),
-          );
+      const trendLockedSet = new Set<BudgetCategoryKey>(trendLockedCategories);
+      const lockUpdates = VARIABLE_BUDGET_BREAKDOWN_KEYS.map((key) =>
+        upsertMonthlyBudgetValue({
+          planKey: "default",
+          monthStartIso: selectedMonth.startIso,
+          categoryKey: key,
+          monthlyBudget: getTrendBudgetForCategory(key),
+          source: "manual",
+          lockTrend: trendLockedSet.has(key),
+        }),
+      );
 
-        if (lockUpdates.length) {
-          await Promise.all(lockUpdates);
-        }
+      if (lockUpdates.length) {
+        await Promise.all(lockUpdates);
       }
 
       if (monthOffset === 0) {
@@ -1899,7 +1919,8 @@ export default function BudgetScreen() {
                       color={FinColors.green}
                     />
                     <Text style={styles.weekRebalanceLockNoticeText}>
-                      Vastgezet: {lockedVariableCategoryLabelsForNotice.join(", ")}{" "}
+                      Vastgezet:{" "}
+                      {lockedVariableCategoryLabelsForNotice.join(", ")}{" "}
                       uitgesloten van herverdeling.
                     </Text>
                   </View>
@@ -2961,8 +2982,8 @@ export default function BudgetScreen() {
                 </Text>
                 <Text style={styles.modalHintText}>
                   Trendbedrag = historische richtlijn. Uitgegeven = al
-                  uitgegeven deze maand. Invoerveld = budget dat je nu voor
-                  deze maand plant.
+                  uitgegeven deze maand. Invoerveld = budget dat je nu voor deze
+                  maand plant.
                 </Text>
                 <View style={styles.budgetAllocationCard}>
                   <Text style={styles.budgetAllocationTitle}>
@@ -3001,7 +3022,9 @@ export default function BudgetScreen() {
                     </Text>
                   </View>
                   <View style={styles.budgetAllocationRow}>
-                    <Text style={styles.budgetAllocationLabel}>- Spaardoel</Text>
+                    <Text style={styles.budgetAllocationLabel}>
+                      - Spaardoel
+                    </Text>
                     <Text style={styles.budgetAllocationValueNegative}>
                       {fmt.format(-draftBudgetAllocationSummary.savingsTarget)}
                     </Text>
@@ -3157,8 +3180,8 @@ export default function BudgetScreen() {
                               ? formatBudgetAmountDraft(
                                   draftBudgetAllocationSummary.variable,
                                 )
-                              : budgetDraftValues[row.categoryKey] ??
-                                formatBudgetAmountDraft(row.monthlyBudget)
+                              : (budgetDraftValues[row.categoryKey] ??
+                                formatBudgetAmountDraft(row.monthlyBudget))
                           }
                           onChangeText={(text) => {
                             if (inputDisabled) return;
