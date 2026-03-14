@@ -1,23 +1,38 @@
-import React, { useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
+import React, { useState } from "react";
+import {
+    ActivityIndicator,
+    Alert,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 // @ts-ignore
-import Papa from "papaparse";
-import { supabase } from "@/services/supabase";
 import { FinColors } from "@/constants/theme";
+import { runCategorizationInBackground } from "@/services/categorization";
+import {
+    createBankAccount,
+    findBankAccountByHash,
+    hashAccountNumber,
+    listBankAccounts,
+    normalizeAccountNumber,
+    maskAccountNumber,
+    BankAccount,
+    BankAccountType,
+    ACCOUNT_TYPES,
+} from "@/services/bank-accounts";
+import { requireCurrentUserId } from "@/services/current-user";
+import { supabase } from "@/services/supabase";
+import Papa from "papaparse";
 
 type PreviewRow = { date: string; description: string; amount: string };
+type CsvRow = Record<string, string>;
 
 export default function CSVImportScreen() {
   const navigation = useNavigation();
@@ -26,8 +41,25 @@ export default function CSVImportScreen() {
   const [success, setSuccess] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
   const [processed, setProcessed] = useState(0);
+  const [insertedCount, setInsertedCount] = useState(0);
+  const [updatedCount, setUpdatedCount] = useState(0);
   const [preview, setPreview] = useState<PreviewRow[]>([]);
+  const [pendingRowCount, setPendingRowCount] = useState<number | null>(null);
   const [pendingCsv, setPendingCsv] = useState<string | null>(null);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [newAccountName, setNewAccountName] = useState("");
+  const [newAccountNumber, setNewAccountNumber] = useState("");
+  const [newAccountType, setNewAccountType] =
+    useState<BankAccountType>("checking");
+  const [newAccountProvider, setNewAccountProvider] = useState("");
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [detectedAccountNumber, setDetectedAccountNumber] =
+    useState<string | null>(null);
+  const selectedAccount = React.useMemo(
+    () => bankAccounts.find((account) => account.id === selectedAccountId) ?? null,
+    [bankAccounts, selectedAccountId],
+  );
 
   // Prevent leaving during import
   React.useEffect(() => {
@@ -44,20 +76,116 @@ export default function CSVImportScreen() {
     navigation.setOptions({ headerLeft: loading ? () => null : undefined });
   }, [navigation, loading]);
 
-  const buildPreview = (csv: string): PreviewRow[] => {
+  const loadBankAccounts = React.useCallback(async () => {
+    try {
+      const rows = await listBankAccounts();
+      setBankAccounts(rows);
+      setSelectedAccountId((current) => {
+        if (current) return current;
+        if (rows.length === 1) return rows[0].id;
+        return current;
+      });
+    } catch (error) {
+      console.warn("[csv-import] bank account load error", error);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadBankAccounts();
+  }, [loadBankAccounts]);
+
+  const detectAccountFromRow = React.useCallback(async (row: CsvRow | null) => {
+    if (!row) {
+      setDetectedAccountNumber(null);
+      return;
+    }
+    const candidate =
+      row["Tegenrekening IBAN/BBAN"] ||
+      row["IBAN"] ||
+      row["Rekeningnummer"] ||
+      row["Rekening"] ||
+      row["Rekening nummer"];
+    const normalized = normalizeAccountNumber(candidate);
+    if (!normalized) {
+      setDetectedAccountNumber(null);
+      return;
+    }
+    setDetectedAccountNumber(normalized);
+    setNewAccountNumber(normalized);
+    setNewAccountName((current) => current || `Import ${normalized.slice(-4)}`);
+    try {
+      const hash = await hashAccountNumber(normalized);
+      const existing = await findBankAccountByHash(hash);
+      if (existing) {
+        setSelectedAccountId(existing.id);
+      }
+    } catch (error) {
+      console.warn("[csv-import] detect account", error);
+    }
+  }, []);
+
+  const handleAddBankAccount = async () => {
+    const name = newAccountName.trim();
+    if (!name) {
+      Alert.alert("Naam verplicht", "Geef de rekening een herkenbare naam.");
+      return;
+    }
+    setCreatingAccount(true);
+    try {
+      const created = await createBankAccount({
+        name,
+        accountNumber: newAccountNumber || null,
+        accountType: newAccountType,
+        provider: newAccountProvider.trim() || null,
+      });
+      await loadBankAccounts();
+      setSelectedAccountId(created.id);
+      setNewAccountName("");
+      setNewAccountNumber("");
+      setNewAccountProvider("");
+      setDetectedAccountNumber(null);
+    } catch (error: any) {
+      const msg = error?.message || "Kon de rekening niet opslaan.";
+      Alert.alert("Error", msg);
+    } finally {
+      setCreatingAccount(false);
+    }
+  };
+
+  const buildPreview = (
+    csv: string,
+  ): {
+    previewRows: PreviewRow[];
+    rowCount: number;
+    sampleRow: CsvRow | null;
+  } => {
     const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
-    return (data as any[]).slice(0, 5).map((r: any) => ({
-      date: r["Datum"] || r.Date || "—",
-      description:
-        r["Omschrijving-1"] || r["Naam tegenpartij"] || r["Naam / Omschrijving"] || "—",
-      amount: r["Bedrag"] || r.Amount || "—",
-    }));
+    const rows = (data as CsvRow[]) || [];
+    const sampleRow = rows[0] || null;
+    return {
+      rowCount: rows.length,
+      previewRows: rows.slice(0, 5).map((r: CsvRow) => ({
+        date: r["Datum"] || r.Date || "—",
+        description:
+          r["Omschrijving-1"] ||
+          r["Naam tegenpartij"] ||
+          r["Naam / Omschrijving"] ||
+          "—",
+        amount: r["Bedrag"] || r.Amount || "—",
+      })),
+      sampleRow,
+    };
   };
 
   const pickFile = async () => {
     setMessage(null);
     setSuccess(false);
+    setTotal(null);
+    setProcessed(0);
+    setInsertedCount(0);
+    setUpdatedCount(0);
     setPreview([]);
+    setPendingRowCount(null);
     setPendingCsv(null);
 
     if (Platform.OS === "web") {
@@ -68,9 +196,12 @@ export default function CSVImportScreen() {
         const file = e.target?.files?.[0];
         if (!file) return;
         const text = await file.text();
-        setPreview(buildPreview(text));
+        const { previewRows, rowCount, sampleRow } = buildPreview(text);
+        setPreview(previewRows);
+        setPendingRowCount(rowCount);
         setPendingCsv(text);
         setMessage(null);
+        void detectAccountFromRow(sampleRow);
       };
       input.click();
       return;
@@ -80,9 +211,12 @@ export default function CSVImportScreen() {
       if (res.type === "cancel") return;
       if (res?.uri) {
         const text = await FileSystem.readAsStringAsync(res.uri);
-        setPreview(buildPreview(text));
+        const { previewRows, rowCount, sampleRow } = buildPreview(text);
+        setPreview(previewRows);
+        setPendingRowCount(rowCount);
         setPendingCsv(text);
         setMessage(null);
+        void detectAccountFromRow(sampleRow);
       }
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -91,12 +225,19 @@ export default function CSVImportScreen() {
 
   const doImport = async () => {
     if (!pendingCsv) return;
+    if (!selectedAccount) {
+      Alert.alert(
+        "Selecteer een rekening",
+        "Kies of maak eerst een rekening aan voordat je importeert.",
+      );
+      return;
+    }
     setLoading(true);
     setSuccess(false);
-    setMessage("Importing…");
+    setMessage("Importeren...");
     await Promise.resolve();
     try {
-      await handleCsvContent(pendingCsv);
+      await handleCsvContent(pendingCsv, selectedAccount.id);
     } catch (err: any) {
       const msg = err?.message || String(err);
       setMessage(`Import failed: ${msg}`);
@@ -106,7 +247,7 @@ export default function CSVImportScreen() {
     }
   };
 
-  async function handleCsvContent(csv: string) {
+  async function handleCsvContent(csv: string, bankAccountId: string) {
     const { data, errors } = Papa.parse(csv, {
       header: true,
       skipEmptyLines: true,
@@ -136,51 +277,227 @@ export default function CSVImportScreen() {
       const type = r["Code"] || r["Type"];
       const metadata: Record<string, string> = {};
       Object.entries(r).forEach(([k, v]) => {
-        if (!["Datum","Bedrag","Munt","Omschrijving-1","Omschrijving-2","Omschrijving-3","Naam tegenpartij","Naam uiteindelijke partij","Tegenrekening IBAN/BBAN","Naam / Omschrijving","Code","Type"].includes(k)) {
+        if (
+          ![
+            "Datum",
+            "Bedrag",
+            "Munt",
+            "Omschrijving-1",
+            "Omschrijving-2",
+            "Omschrijving-3",
+            "Naam tegenpartij",
+            "Naam uiteindelijke partij",
+            "Tegenrekening IBAN/BBAN",
+            "Naam / Omschrijving",
+            "Code",
+            "Type",
+          ].includes(k)
+        ) {
           metadata[k] = v;
         }
       });
       const seqRaw = r["Volgnr"] || metadata["Volgnr"] || "";
       const seq = parseInt(String(seqRaw).replace(/^0+/, ""), 10) || 0;
-      return { date, details: description, counterparty, amount, currency, type, metadata, seq };
+      return {
+        date,
+        details: description,
+        counterparty,
+        amount,
+        currency,
+        type,
+        metadata,
+        seq,
+      };
     });
     rows.sort((a, b) => a.seq - b.seq);
     setTotal(rows.length);
     setProcessed(0);
+    setInsertedCount(0);
+    setUpdatedCount(0);
     let imported = 0;
+    let insertedRows = 0;
+    let updated = 0;
+    const importedIds: string[] = [];
+
+    const userId = await requireCurrentUserId();
 
     for (const tx of rows) {
-      setMessage(`Importing ${imported + 1} / ${rows.length}…`);
+      setMessage(
+        `Verwerken ${imported + 1} / ${rows.length}... (${insertedRows} nieuw, ${updated} bijgewerkt)`,
+      );
       const { data: existing, error: selErr } = await supabase
         .from("transactions")
         .select("id")
+        .eq("user_id", userId)
+        .eq("bank_account_id", bankAccountId)
         .eq("date", tx.date)
         .eq("details", tx.details)
         .eq("amount", tx.amount)
         .limit(1);
       if (selErr) throw selErr;
-      const payload: any = { date: tx.date, details: tx.details, counterparty: tx.counterparty, amount: tx.amount, currency: tx.currency, type: tx.type, metadata: tx.metadata || {} };
+      const payload: any = {
+        user_id: userId,
+        bank_account_id: bankAccountId,
+        date: tx.date,
+        details: tx.details,
+        counterparty: tx.counterparty,
+        amount: tx.amount,
+        currency: tx.currency,
+        type: tx.type,
+        metadata: tx.metadata || {},
+      };
       if (existing?.length) {
-        const { error: updErr } = await supabase.from("transactions").update(payload).eq("id", existing[0].id);
+        const { error: updErr } = await supabase
+          .from("transactions")
+          .update(payload)
+          .eq("user_id", userId)
+          .eq("bank_account_id", bankAccountId)
+          .eq("id", existing[0].id);
         if (updErr) throw updErr;
+        importedIds.push(existing[0].id);
+        updated += 1;
+        setUpdatedCount(updated);
       } else {
-        const { error: insErr } = await supabase.from("transactions").insert(payload);
+        const { data: insertedRow, error: insErr } = await supabase
+          .from("transactions")
+          .insert(payload)
+          .select("id")
+          .single();
         if (insErr) throw insErr;
+        if (insertedRow?.id) importedIds.push(insertedRow.id);
+        insertedRows += 1;
+        setInsertedCount(insertedRows);
       }
       imported++;
       setProcessed(imported);
     }
     setSuccess(true);
-    setMessage(`${imported} transaction${imported === 1 ? "" : "s"} imported successfully.`);
+    setMessage(
+      `${imported} transacties verwerkt: ${insertedRows} nieuw, ${updated} bijgewerkt. Categorisatie is op de achtergrond gestart.`,
+    );
+    runCategorizationInBackground(importedIds);
     setPendingCsv(null);
   }
 
   const pct = total ? Math.round((processed / total) * 100) : 0;
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
       <Text style={styles.title}>Import Bank Transactions</Text>
-      <Text style={styles.subtitle}>Upload a Rabobank CSV export to sync your transactions.</Text>
+      <Text style={styles.subtitle}>
+        Upload a Rabobank CSV export to sync your transactions.
+      </Text>
+
+      <View style={styles.accountSection}>
+        <Text style={styles.sectionTitle}>Rekeningcontext</Text>
+        {bankAccounts.length ? (
+          <View style={styles.accountListRow}>
+            {bankAccounts.map((account) => {
+              const isSelected = account.id === selectedAccountId;
+              return (
+                <TouchableOpacity
+                  key={account.id}
+                  style={[
+                    styles.accountPill,
+                    isSelected && styles.accountPillSelected,
+                  ]}
+                  onPress={() => setSelectedAccountId(account.id)}
+                >
+                  <Text
+                    style={[
+                      styles.accountPillName,
+                      isSelected && styles.accountPillNameSelected,
+                    ]}
+                  >
+                    {account.name}
+                  </Text>
+                  <Text style={styles.accountPillMeta}>
+                    {account.account_type} ·{" "}
+                    {account.account_masked ?? account.currency}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={styles.hintText}>
+            Geen rekeningen gevonden, voeg hieronder een rekening toe.
+          </Text>
+        )}
+        {selectedAccount && (
+          <Text style={styles.selectedAccountText}>
+            Geselecteerd: {selectedAccount.name} ·{" "}
+            {selectedAccount.account_masked ?? selectedAccount.currency}
+          </Text>
+        )}
+        {!selectedAccount && detectedAccountNumber && (
+          <Text style={styles.detectedLabel}>
+            CSV bevat rekening {maskAccountNumber(detectedAccountNumber)}.
+          </Text>
+        )}
+      </View>
+
+      <View style={styles.accountForm}>
+        <Text style={styles.sectionTitle}>Nieuwe rekening toevoegen</Text>
+        <TextInput
+          value={newAccountName}
+          onChangeText={setNewAccountName}
+          placeholder="Naam voor deze rekening"
+          style={styles.textInput}
+        />
+        <TextInput
+          value={newAccountNumber}
+          onChangeText={setNewAccountNumber}
+          placeholder="IBAN of rekeningnummer"
+          style={styles.textInput}
+        />
+        <TextInput
+          value={newAccountProvider}
+          onChangeText={setNewAccountProvider}
+          placeholder="Provider (optioneel)"
+          style={styles.textInput}
+        />
+        <Text style={styles.fieldLabel}>Type</Text>
+        <View style={styles.accountTypeList}>
+          {ACCOUNT_TYPES.map((type) => (
+            <TouchableOpacity
+              key={type}
+              style={[
+                styles.accountTypePill,
+                newAccountType === type && styles.accountTypePillSelected,
+              ]}
+              onPress={() => setNewAccountType(type)}
+            >
+              <Text
+                style={[
+                  styles.accountTypeText,
+                  newAccountType === type && styles.accountTypeTextSelected,
+                ]}
+              >
+                {type}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TouchableOpacity
+          style={[
+            styles.createAccountBtn,
+            creatingAccount && styles.importBtnDisabled,
+          ]}
+          disabled={creatingAccount}
+          onPress={handleAddBankAccount}
+        >
+          <Text style={styles.createAccountBtnText}>
+            {creatingAccount ? "Rekening opslaan..." : "Rekening toevoegen"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+
 
       {/* Upload card */}
       <TouchableOpacity
@@ -193,7 +510,9 @@ export default function CSVImportScreen() {
         </View>
         <Text style={styles.uploadLabel}>Upload Rabobank CSV</Text>
         <Text style={styles.uploadHint}>
-          {pendingCsv ? "File selected — review below" : "Tap to select a .csv file"}
+          {pendingCsv
+            ? "File selected — review below"
+            : "Tap to select a .csv file"}
         </Text>
         <View style={styles.uploadBtn}>
           <Text style={styles.uploadBtnText}>
@@ -206,20 +525,55 @@ export default function CSVImportScreen() {
       {preview.length > 0 && (
         <View style={styles.previewCard}>
           <Text style={styles.previewTitle}>Preview</Text>
+          {pendingRowCount != null ? (
+            <Text style={styles.previewSummary}>
+              {pendingRowCount} rijen gevonden in CSV
+            </Text>
+          ) : null}
           {/* Header */}
           <View style={[styles.previewRow, styles.previewHeaderRow]}>
-            <Text style={[styles.previewCell, styles.previewHeader, { flex: 1.2 }]}>Date</Text>
-            <Text style={[styles.previewCell, styles.previewHeader, { flex: 3 }]}>Description</Text>
-            <Text style={[styles.previewCell, styles.previewHeader, { flex: 1.5, textAlign: "right" }]}>Amount</Text>
+            <Text
+              style={[styles.previewCell, styles.previewHeader, { flex: 1.2 }]}
+            >
+              Date
+            </Text>
+            <Text
+              style={[styles.previewCell, styles.previewHeader, { flex: 3 }]}
+            >
+              Description
+            </Text>
+            <Text
+              style={[
+                styles.previewCell,
+                styles.previewHeader,
+                { flex: 1.5, textAlign: "right" },
+              ]}
+            >
+              Amount
+            </Text>
           </View>
           {preview.map((row, i) => (
-            <View key={i} style={[styles.previewRow, i % 2 === 0 && styles.previewRowAlt]}>
-              <Text style={[styles.previewCell, { flex: 1.2 }]}>{row.date}</Text>
-              <Text style={[styles.previewCell, { flex: 3 }]} numberOfLines={1}>{row.description}</Text>
-              <Text style={[styles.previewCell, { flex: 1.5, textAlign: "right" }]}>{row.amount}</Text>
+            <View
+              key={i}
+              style={[styles.previewRow, i % 2 === 0 && styles.previewRowAlt]}
+            >
+              <Text style={[styles.previewCell, { flex: 1.2 }]}>
+                {row.date}
+              </Text>
+              <Text style={[styles.previewCell, { flex: 3 }]} numberOfLines={1}>
+                {row.description}
+              </Text>
+              <Text
+                style={[styles.previewCell, { flex: 1.5, textAlign: "right" }]}
+              >
+                {row.amount}
+              </Text>
             </View>
           ))}
-          <Text style={styles.previewNote}>Showing first {preview.length} rows</Text>
+          <Text style={styles.previewNote}>
+            Eerste {preview.length} rijen van{" "}
+            {pendingRowCount ?? preview.length}
+          </Text>
         </View>
       )}
 
@@ -231,7 +585,15 @@ export default function CSVImportScreen() {
             <Text style={styles.progressText}>{message}</Text>
           </View>
           <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${pct}%` as any }]} />
+            <View
+              style={[styles.progressBarFill, { width: `${pct}%` as any }]}
+            />
+          </View>
+          <View style={styles.progressStatsRow}>
+            <Text style={styles.progressStatText}>Nieuw: {insertedCount}</Text>
+            <Text style={styles.progressStatText}>
+              Bijgewerkt: {updatedCount}
+            </Text>
           </View>
           <Text style={styles.progressPct}>{pct}%</Text>
         </View>
@@ -265,8 +627,74 @@ export default function CSVImportScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: FinColors.bgBase },
   content: { padding: 20, paddingTop: 8, gap: 16 },
-  title: { fontSize: 24, fontWeight: "800", color: FinColors.textPrimary, marginBottom: 4 },
-  subtitle: { fontSize: 13, color: FinColors.textMuted, marginBottom: 8, lineHeight: 20 },
+  title: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: FinColors.textMuted,
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  accountSection: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    marginBottom: 12,
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  accountListRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  accountPill: {
+    backgroundColor: FinColors.bgElevated,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    minWidth: 130,
+  },
+  accountPillSelected: {
+    borderColor: FinColors.green,
+    backgroundColor: FinColors.greenBg,
+  },
+  accountPillName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
+  accountPillNameSelected: {
+    color: FinColors.green,
+  },
+  accountPillMeta: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+  },
+  hintText: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+  },
+  selectedAccountText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
+  detectedLabel: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+  },
 
   uploadCard: {
     backgroundColor: FinColors.bgCard,
@@ -278,7 +706,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  uploadCardReady: { borderColor: FinColors.greenBorder, backgroundColor: FinColors.greenBg },
+  uploadCardReady: {
+    borderColor: FinColors.greenBorder,
+    backgroundColor: FinColors.greenBg,
+  },
   uploadIconWrap: {
     width: 56,
     height: 56,
@@ -288,7 +719,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 4,
   },
-  uploadLabel: { fontSize: 15, fontWeight: "700", color: FinColors.textPrimary },
+  uploadLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
   uploadHint: { fontSize: 12, color: FinColors.textMuted, textAlign: "center" },
   uploadBtn: {
     marginTop: 8,
@@ -299,7 +734,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  uploadBtnText: { fontSize: 13, fontWeight: "600", color: FinColors.textPrimary },
+  uploadBtnText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
 
   previewCard: {
     backgroundColor: FinColors.bgCard,
@@ -308,13 +747,99 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  previewTitle: { fontSize: 13, fontWeight: "700", color: FinColors.textPrimary, marginBottom: 10 },
+  previewTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    marginBottom: 10,
+  },
+  previewSummary: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    marginBottom: 10,
+  },
   previewRow: { flexDirection: "row", paddingVertical: 7 },
   previewRowAlt: { backgroundColor: "rgba(148,163,184,0.04)", borderRadius: 6 },
-  previewHeaderRow: { borderBottomWidth: 1, borderBottomColor: FinColors.borderSubtle, marginBottom: 4 },
+  previewHeaderRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+    marginBottom: 4,
+  },
   previewCell: { fontSize: 11, color: FinColors.textSecondary },
-  previewHeader: { fontWeight: "700", color: FinColors.textMuted, fontSize: 10, textTransform: "uppercase" },
-  previewNote: { fontSize: 10, color: FinColors.textMuted, marginTop: 8, textAlign: "right" },
+  previewHeader: {
+    fontWeight: "700",
+    color: FinColors.textMuted,
+    fontSize: 10,
+    textTransform: "uppercase",
+  },
+  previewNote: {
+    fontSize: 10,
+    color: FinColors.textMuted,
+    marginTop: 8,
+    textAlign: "right",
+  },
+  accountForm: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    marginBottom: 12,
+    gap: 10,
+  },
+  textInput: {
+    backgroundColor: FinColors.bgElevated,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    color: FinColors.textPrimary,
+    padding: 10,
+    fontSize: 13,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+  },
+  accountTypeList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 4,
+  },
+  accountTypePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgBase,
+  },
+  accountTypePillSelected: {
+    borderColor: FinColors.green,
+    backgroundColor: FinColors.greenBg,
+  },
+  accountTypeText: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+  },
+  accountTypeTextSelected: {
+    color: FinColors.green,
+  },
+  createAccountBtn: {
+    marginTop: 8,
+    backgroundColor: FinColors.textPrimary,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  createAccountBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.bgBase,
+  },
+  importBtnDisabled: {
+    opacity: 0.6,
+  },
 
   progressCard: {
     backgroundColor: FinColors.bgCard,
@@ -326,9 +851,32 @@ const styles = StyleSheet.create({
   },
   progressHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
   progressText: { fontSize: 12, color: FinColors.textSecondary, flex: 1 },
-  progressBarBg: { height: 4, backgroundColor: FinColors.bgElevated, borderRadius: 4 },
-  progressBarFill: { height: 4, backgroundColor: FinColors.green, borderRadius: 4 },
-  progressPct: { fontSize: 11, color: FinColors.green, fontWeight: "700", textAlign: "right" },
+  progressBarBg: {
+    height: 4,
+    backgroundColor: FinColors.bgElevated,
+    borderRadius: 4,
+  },
+  progressBarFill: {
+    height: 4,
+    backgroundColor: FinColors.green,
+    borderRadius: 4,
+  },
+  progressPct: {
+    fontSize: 11,
+    color: FinColors.green,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+  progressStatsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  progressStatText: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+    fontWeight: "600",
+  },
 
   successCard: {
     backgroundColor: FinColors.greenBg,
@@ -341,7 +889,12 @@ const styles = StyleSheet.create({
     borderColor: FinColors.greenBorder,
   },
   successIcon: { fontSize: 20, color: FinColors.green },
-  successText: { fontSize: 14, fontWeight: "600", color: FinColors.green, flex: 1 },
+  successText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: FinColors.green,
+    flex: 1,
+  },
 
   errorCard: {
     backgroundColor: FinColors.redBg,
