@@ -1,4 +1,5 @@
 import { supabase } from "@/services/supabase";
+import { requireCurrentUserId } from "@/services/current-user";
 import type {
     BudgetCategoryKey,
     BudgetCategoryOverride,
@@ -221,10 +222,11 @@ function mapMonthlyValueRow(row: RowRecord): MonthlyBudgetValue {
   };
 }
 
-async function ensurePlanRow(planKey: string) {
+async function ensurePlanRow(planKey: string, userId: string) {
   const { data, error } = await supabase
     .from("budget_plan_settings")
     .select("plan_key")
+    .eq("user_id", userId)
     .eq("plan_key", planKey)
     .maybeSingle();
 
@@ -234,6 +236,7 @@ async function ensurePlanRow(planKey: string) {
   const { error: insertError } = await supabase
     .from("budget_plan_settings")
     .insert({
+      user_id: userId,
       plan_key: planKey,
       mode: DEFAULT_MODE,
       adjustment_factor: DEFAULT_ADJUSTMENT_FACTOR,
@@ -245,10 +248,12 @@ async function ensurePlanRow(planKey: string) {
 export async function getBudgetPlanSettings(
   planKey = DEFAULT_PLAN_KEY,
 ): Promise<BudgetPlanSettings> {
+  const userId = await requireCurrentUserId();
   const normalizedPlanKey = normalizePlanKey(planKey);
   const { data, error } = await supabase
     .from("budget_plan_settings")
     .select("*")
+    .eq("user_id", userId)
     .eq("plan_key", normalizedPlanKey)
     .maybeSingle();
 
@@ -259,6 +264,7 @@ export async function getBudgetPlanSettings(
 export async function upsertBudgetPlanSettings(
   input: UpsertBudgetPlanSettingsInput,
 ): Promise<BudgetPlanSettings> {
+  const userId = await requireCurrentUserId();
   const normalizedPlanKey = normalizePlanKey(input.planKey);
   const existing = await getBudgetPlanSettings(normalizedPlanKey);
 
@@ -298,6 +304,7 @@ export async function upsertBudgetPlanSettings(
         );
 
   const basePayload = {
+    user_id: userId,
     plan_key: normalizedPlanKey,
     mode: nextMode,
     adjustment_factor: nextAdjustmentFactor,
@@ -317,15 +324,17 @@ export async function upsertBudgetPlanSettings(
 
   let { data, error } = await supabase
     .from("budget_plan_settings")
-    .upsert(incomePayload, { onConflict: "plan_key" })
+    .upsert(incomePayload, { onConflict: "user_id,plan_key" })
     .select("*")
+    .eq("user_id", userId)
     .single();
 
   if (error && isMissingColumnError(error)) {
     const retry = await supabase
       .from("budget_plan_settings")
-      .upsert(basePayload, { onConflict: "plan_key" })
+      .upsert(basePayload, { onConflict: "user_id,plan_key" })
       .select("*")
+      .eq("user_id", userId)
       .single();
     data = retry.data;
     error = retry.error;
@@ -338,12 +347,14 @@ export async function upsertBudgetPlanSettings(
 export async function getBudgetCategoryOverrides(
   planKey = DEFAULT_PLAN_KEY,
 ): Promise<BudgetCategoryOverride[]> {
+  const userId = await requireCurrentUserId();
   const normalizedPlanKey = normalizePlanKey(planKey);
   const { data, error } = await supabase
     .from("budget_category_overrides")
     .select(
       "plan_key,category_key,monthly_target_override,factor_override,created_at,updated_at",
     )
+    .eq("user_id", userId)
     .eq("plan_key", normalizedPlanKey)
     .order("category_key", { ascending: true });
 
@@ -354,12 +365,14 @@ export async function getBudgetCategoryOverrides(
 export async function upsertBudgetCategoryOverride(
   input: UpsertBudgetCategoryOverrideInput,
 ): Promise<BudgetCategoryOverride> {
+  const userId = await requireCurrentUserId();
   const normalizedPlanKey = normalizePlanKey(input.planKey);
-  await ensurePlanRow(normalizedPlanKey);
+  await ensurePlanRow(normalizedPlanKey, userId);
 
   const { data: existingRow, error: existingError } = await supabase
     .from("budget_category_overrides")
     .select("monthly_target_override,factor_override")
+    .eq("user_id", userId)
     .eq("plan_key", normalizedPlanKey)
     .eq("category_key", input.categoryKey)
     .maybeSingle();
@@ -391,17 +404,19 @@ export async function upsertBudgetCategoryOverride(
     .from("budget_category_overrides")
     .upsert(
       {
+        user_id: userId,
         plan_key: normalizedPlanKey,
         category_key: input.categoryKey,
         monthly_target_override: nextMonthlyTarget,
         factor_override: nextFactor,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "plan_key,category_key" },
+      { onConflict: "user_id,plan_key,category_key" },
     )
     .select(
       "plan_key,category_key,monthly_target_override,factor_override,created_at,updated_at",
     )
+    .eq("user_id", userId)
     .single();
 
   if (error) throw error;
@@ -412,6 +427,7 @@ export async function getMonthlyBudgetValues(
   monthStartIso: string,
   planKey = DEFAULT_PLAN_KEY,
 ): Promise<MonthlyBudgetValue[]> {
+  const userId = await requireCurrentUserId();
   const normalizedPlanKey = normalizePlanKey(planKey);
   const normalizedMonthStart = normalizeMonthStartIso(monthStartIso);
 
@@ -420,6 +436,7 @@ export async function getMonthlyBudgetValues(
     .select(
       "plan_key,month_start,category_key,monthly_budget,source,lock_trend,created_at,updated_at",
     )
+    .eq("user_id", userId)
     .eq("plan_key", normalizedPlanKey)
     .eq("month_start", normalizedMonthStart)
     .order("category_key", { ascending: true });
@@ -433,6 +450,7 @@ export async function getMonthlyBudgetValues(
       .select(
         "plan_key,month_start,category_key,monthly_budget,source,created_at,updated_at",
       )
+      .eq("user_id", userId)
       .eq("plan_key", normalizedPlanKey)
       .eq("month_start", normalizedMonthStart)
       .order("category_key", { ascending: true });
@@ -447,9 +465,10 @@ export async function getMonthlyBudgetValues(
 export async function upsertMonthlyBudgetValue(
   input: UpsertMonthlyBudgetValueInput,
 ): Promise<MonthlyBudgetValue> {
+  const userId = await requireCurrentUserId();
   const normalizedPlanKey = normalizePlanKey(input.planKey);
   const normalizedMonthStart = normalizeMonthStartIso(input.monthStartIso);
-  await ensurePlanRow(normalizedPlanKey);
+  await ensurePlanRow(normalizedPlanKey, userId);
 
   const nextSource = input.source === "system" ? "system" : "manual";
   const nextMonthlyBudget = asNonNegativeNumber(input.monthlyBudget, 0);
@@ -457,6 +476,7 @@ export async function upsertMonthlyBudgetValue(
     input.lockTrend == null ? null : Boolean(input.lockTrend);
 
   const payloadWithLockTrend = {
+    user_id: userId,
     plan_key: normalizedPlanKey,
     month_start: normalizedMonthStart,
     category_key: input.categoryKey,
@@ -467,6 +487,7 @@ export async function upsertMonthlyBudgetValue(
   };
 
   const payloadWithoutLockTrend = {
+    user_id: userId,
     plan_key: normalizedPlanKey,
     month_start: normalizedMonthStart,
     category_key: input.categoryKey,
@@ -478,11 +499,12 @@ export async function upsertMonthlyBudgetValue(
   const withLockTrend = await supabase
     .from("monthly_budget_values")
     .upsert(payloadWithLockTrend, {
-      onConflict: "plan_key,month_start,category_key",
+      onConflict: "user_id,plan_key,month_start,category_key",
     })
     .select(
       "plan_key,month_start,category_key,monthly_budget,source,lock_trend,created_at,updated_at",
     )
+    .eq("user_id", userId)
     .single();
 
   let dataRow = (withLockTrend.data || null) as RowRecord | null;
@@ -492,11 +514,12 @@ export async function upsertMonthlyBudgetValue(
     const retry = await supabase
       .from("monthly_budget_values")
       .upsert(payloadWithoutLockTrend, {
-        onConflict: "plan_key,month_start,category_key",
+        onConflict: "user_id,plan_key,month_start,category_key",
       })
       .select(
         "plan_key,month_start,category_key,monthly_budget,source,created_at,updated_at",
       )
+      .eq("user_id", userId)
       .single();
     dataRow = (retry.data || null) as RowRecord | null;
     error = retry.error;
@@ -509,12 +532,14 @@ export async function upsertMonthlyBudgetValue(
 export async function resetMonthlyBudgetValues(
   input: ResetMonthlyBudgetValuesInput,
 ): Promise<void> {
+  const userId = await requireCurrentUserId();
   const normalizedPlanKey = normalizePlanKey(input.planKey);
   const normalizedMonthStart = normalizeMonthStartIso(input.monthStartIso);
 
   const { error } = await supabase
     .from("monthly_budget_values")
     .delete()
+    .eq("user_id", userId)
     .eq("plan_key", normalizedPlanKey)
     .eq("month_start", normalizedMonthStart);
 

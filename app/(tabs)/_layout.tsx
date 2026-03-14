@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
 import React from "react";
 import { StyleSheet, View } from "react-native";
+import { useSession } from "../_layout";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { FinColors } from "@/constants/theme";
@@ -149,9 +150,16 @@ function TabIcon({
 }
 
 export default function TabLayout() {
+  const { user } = useSession();
+
   React.useEffect(() => {
+    if (!user) return;
     runPendingCategorizationInBackground();
-  }, []);
+  }, [user]);
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <Tabs

@@ -9,16 +9,30 @@ import {
     ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
 } from "react-native";
 // @ts-ignore
 import { FinColors } from "@/constants/theme";
 import { runCategorizationInBackground } from "@/services/categorization";
+import {
+    createBankAccount,
+    findBankAccountByHash,
+    hashAccountNumber,
+    listBankAccounts,
+    normalizeAccountNumber,
+    maskAccountNumber,
+    BankAccount,
+    BankAccountType,
+    ACCOUNT_TYPES,
+} from "@/services/bank-accounts";
+import { requireCurrentUserId } from "@/services/current-user";
 import { supabase } from "@/services/supabase";
 import Papa from "papaparse";
 
 type PreviewRow = { date: string; description: string; amount: string };
+type CsvRow = Record<string, string>;
 
 export default function CSVImportScreen() {
   const navigation = useNavigation();
@@ -32,6 +46,20 @@ export default function CSVImportScreen() {
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [pendingRowCount, setPendingRowCount] = useState<number | null>(null);
   const [pendingCsv, setPendingCsv] = useState<string | null>(null);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [newAccountName, setNewAccountName] = useState("");
+  const [newAccountNumber, setNewAccountNumber] = useState("");
+  const [newAccountType, setNewAccountType] =
+    useState<BankAccountType>("checking");
+  const [newAccountProvider, setNewAccountProvider] = useState("");
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [detectedAccountNumber, setDetectedAccountNumber] =
+    useState<string | null>(null);
+  const selectedAccount = React.useMemo(
+    () => bankAccounts.find((account) => account.id === selectedAccountId) ?? null,
+    [bankAccounts, selectedAccountId],
+  );
 
   // Prevent leaving during import
   React.useEffect(() => {
@@ -48,14 +76,95 @@ export default function CSVImportScreen() {
     navigation.setOptions({ headerLeft: loading ? () => null : undefined });
   }, [navigation, loading]);
 
+  const loadBankAccounts = React.useCallback(async () => {
+    try {
+      const rows = await listBankAccounts();
+      setBankAccounts(rows);
+      setSelectedAccountId((current) => {
+        if (current) return current;
+        if (rows.length === 1) return rows[0].id;
+        return current;
+      });
+    } catch (error) {
+      console.warn("[csv-import] bank account load error", error);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadBankAccounts();
+  }, [loadBankAccounts]);
+
+  const detectAccountFromRow = React.useCallback(async (row: CsvRow | null) => {
+    if (!row) {
+      setDetectedAccountNumber(null);
+      return;
+    }
+    const candidate =
+      row["Tegenrekening IBAN/BBAN"] ||
+      row["IBAN"] ||
+      row["Rekeningnummer"] ||
+      row["Rekening"] ||
+      row["Rekening nummer"];
+    const normalized = normalizeAccountNumber(candidate);
+    if (!normalized) {
+      setDetectedAccountNumber(null);
+      return;
+    }
+    setDetectedAccountNumber(normalized);
+    setNewAccountNumber(normalized);
+    setNewAccountName((current) => current || `Import ${normalized.slice(-4)}`);
+    try {
+      const hash = await hashAccountNumber(normalized);
+      const existing = await findBankAccountByHash(hash);
+      if (existing) {
+        setSelectedAccountId(existing.id);
+      }
+    } catch (error) {
+      console.warn("[csv-import] detect account", error);
+    }
+  }, []);
+
+  const handleAddBankAccount = async () => {
+    const name = newAccountName.trim();
+    if (!name) {
+      Alert.alert("Naam verplicht", "Geef de rekening een herkenbare naam.");
+      return;
+    }
+    setCreatingAccount(true);
+    try {
+      const created = await createBankAccount({
+        name,
+        accountNumber: newAccountNumber || null,
+        accountType: newAccountType,
+        provider: newAccountProvider.trim() || null,
+      });
+      await loadBankAccounts();
+      setSelectedAccountId(created.id);
+      setNewAccountName("");
+      setNewAccountNumber("");
+      setNewAccountProvider("");
+      setDetectedAccountNumber(null);
+    } catch (error: any) {
+      const msg = error?.message || "Kon de rekening niet opslaan.";
+      Alert.alert("Error", msg);
+    } finally {
+      setCreatingAccount(false);
+    }
+  };
+
   const buildPreview = (
     csv: string,
-  ): { previewRows: PreviewRow[]; rowCount: number } => {
+  ): {
+    previewRows: PreviewRow[];
+    rowCount: number;
+    sampleRow: CsvRow | null;
+  } => {
     const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
-    const rows = (data as any[]) || [];
+    const rows = (data as CsvRow[]) || [];
+    const sampleRow = rows[0] || null;
     return {
       rowCount: rows.length,
-      previewRows: rows.slice(0, 5).map((r: any) => ({
+      previewRows: rows.slice(0, 5).map((r: CsvRow) => ({
         date: r["Datum"] || r.Date || "—",
         description:
           r["Omschrijving-1"] ||
@@ -64,6 +173,7 @@ export default function CSVImportScreen() {
           "—",
         amount: r["Bedrag"] || r.Amount || "—",
       })),
+      sampleRow,
     };
   };
 
@@ -86,11 +196,12 @@ export default function CSVImportScreen() {
         const file = e.target?.files?.[0];
         if (!file) return;
         const text = await file.text();
-        const { previewRows, rowCount } = buildPreview(text);
+        const { previewRows, rowCount, sampleRow } = buildPreview(text);
         setPreview(previewRows);
         setPendingRowCount(rowCount);
         setPendingCsv(text);
         setMessage(null);
+        void detectAccountFromRow(sampleRow);
       };
       input.click();
       return;
@@ -100,11 +211,12 @@ export default function CSVImportScreen() {
       if (res.type === "cancel") return;
       if (res?.uri) {
         const text = await FileSystem.readAsStringAsync(res.uri);
-        const { previewRows, rowCount } = buildPreview(text);
+        const { previewRows, rowCount, sampleRow } = buildPreview(text);
         setPreview(previewRows);
         setPendingRowCount(rowCount);
         setPendingCsv(text);
         setMessage(null);
+        void detectAccountFromRow(sampleRow);
       }
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -113,12 +225,19 @@ export default function CSVImportScreen() {
 
   const doImport = async () => {
     if (!pendingCsv) return;
+    if (!selectedAccount) {
+      Alert.alert(
+        "Selecteer een rekening",
+        "Kies of maak eerst een rekening aan voordat je importeert.",
+      );
+      return;
+    }
     setLoading(true);
     setSuccess(false);
     setMessage("Importeren...");
     await Promise.resolve();
     try {
-      await handleCsvContent(pendingCsv);
+      await handleCsvContent(pendingCsv, selectedAccount.id);
     } catch (err: any) {
       const msg = err?.message || String(err);
       setMessage(`Import failed: ${msg}`);
@@ -128,7 +247,7 @@ export default function CSVImportScreen() {
     }
   };
 
-  async function handleCsvContent(csv: string) {
+  async function handleCsvContent(csv: string, bankAccountId: string) {
     const { data, errors } = Papa.parse(csv, {
       header: true,
       skipEmptyLines: true,
@@ -200,6 +319,8 @@ export default function CSVImportScreen() {
     let updated = 0;
     const importedIds: string[] = [];
 
+    const userId = await requireCurrentUserId();
+
     for (const tx of rows) {
       setMessage(
         `Verwerken ${imported + 1} / ${rows.length}... (${insertedRows} nieuw, ${updated} bijgewerkt)`,
@@ -207,12 +328,16 @@ export default function CSVImportScreen() {
       const { data: existing, error: selErr } = await supabase
         .from("transactions")
         .select("id")
+        .eq("user_id", userId)
+        .eq("bank_account_id", bankAccountId)
         .eq("date", tx.date)
         .eq("details", tx.details)
         .eq("amount", tx.amount)
         .limit(1);
       if (selErr) throw selErr;
       const payload: any = {
+        user_id: userId,
+        bank_account_id: bankAccountId,
         date: tx.date,
         details: tx.details,
         counterparty: tx.counterparty,
@@ -225,6 +350,8 @@ export default function CSVImportScreen() {
         const { error: updErr } = await supabase
           .from("transactions")
           .update(payload)
+          .eq("user_id", userId)
+          .eq("bank_account_id", bankAccountId)
           .eq("id", existing[0].id);
         if (updErr) throw updErr;
         importedIds.push(existing[0].id);
@@ -264,6 +391,113 @@ export default function CSVImportScreen() {
       <Text style={styles.subtitle}>
         Upload a Rabobank CSV export to sync your transactions.
       </Text>
+
+      <View style={styles.accountSection}>
+        <Text style={styles.sectionTitle}>Rekeningcontext</Text>
+        {bankAccounts.length ? (
+          <View style={styles.accountListRow}>
+            {bankAccounts.map((account) => {
+              const isSelected = account.id === selectedAccountId;
+              return (
+                <TouchableOpacity
+                  key={account.id}
+                  style={[
+                    styles.accountPill,
+                    isSelected && styles.accountPillSelected,
+                  ]}
+                  onPress={() => setSelectedAccountId(account.id)}
+                >
+                  <Text
+                    style={[
+                      styles.accountPillName,
+                      isSelected && styles.accountPillNameSelected,
+                    ]}
+                  >
+                    {account.name}
+                  </Text>
+                  <Text style={styles.accountPillMeta}>
+                    {account.account_type} ·{" "}
+                    {account.account_masked ?? account.currency}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={styles.hintText}>
+            Geen rekeningen gevonden, voeg hieronder een rekening toe.
+          </Text>
+        )}
+        {selectedAccount && (
+          <Text style={styles.selectedAccountText}>
+            Geselecteerd: {selectedAccount.name} ·{" "}
+            {selectedAccount.account_masked ?? selectedAccount.currency}
+          </Text>
+        )}
+        {!selectedAccount && detectedAccountNumber && (
+          <Text style={styles.detectedLabel}>
+            CSV bevat rekening {maskAccountNumber(detectedAccountNumber)}.
+          </Text>
+        )}
+      </View>
+
+      <View style={styles.accountForm}>
+        <Text style={styles.sectionTitle}>Nieuwe rekening toevoegen</Text>
+        <TextInput
+          value={newAccountName}
+          onChangeText={setNewAccountName}
+          placeholder="Naam voor deze rekening"
+          style={styles.textInput}
+        />
+        <TextInput
+          value={newAccountNumber}
+          onChangeText={setNewAccountNumber}
+          placeholder="IBAN of rekeningnummer"
+          style={styles.textInput}
+        />
+        <TextInput
+          value={newAccountProvider}
+          onChangeText={setNewAccountProvider}
+          placeholder="Provider (optioneel)"
+          style={styles.textInput}
+        />
+        <Text style={styles.fieldLabel}>Type</Text>
+        <View style={styles.accountTypeList}>
+          {ACCOUNT_TYPES.map((type) => (
+            <TouchableOpacity
+              key={type}
+              style={[
+                styles.accountTypePill,
+                newAccountType === type && styles.accountTypePillSelected,
+              ]}
+              onPress={() => setNewAccountType(type)}
+            >
+              <Text
+                style={[
+                  styles.accountTypeText,
+                  newAccountType === type && styles.accountTypeTextSelected,
+                ]}
+              >
+                {type}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TouchableOpacity
+          style={[
+            styles.createAccountBtn,
+            creatingAccount && styles.importBtnDisabled,
+          ]}
+          disabled={creatingAccount}
+          onPress={handleAddBankAccount}
+        >
+          <Text style={styles.createAccountBtnText}>
+            {creatingAccount ? "Rekening opslaan..." : "Rekening toevoegen"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+
 
       {/* Upload card */}
       <TouchableOpacity
@@ -405,6 +639,62 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     lineHeight: 20,
   },
+  accountSection: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    marginBottom: 12,
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  accountListRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  accountPill: {
+    backgroundColor: FinColors.bgElevated,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    minWidth: 130,
+  },
+  accountPillSelected: {
+    borderColor: FinColors.green,
+    backgroundColor: FinColors.greenBg,
+  },
+  accountPillName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
+  accountPillNameSelected: {
+    color: FinColors.green,
+  },
+  accountPillMeta: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+  },
+  hintText: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+  },
+  selectedAccountText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
+  detectedLabel: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+  },
 
   uploadCard: {
     backgroundColor: FinColors.bgCard,
@@ -487,6 +777,68 @@ const styles = StyleSheet.create({
     color: FinColors.textMuted,
     marginTop: 8,
     textAlign: "right",
+  },
+  accountForm: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    marginBottom: 12,
+    gap: 10,
+  },
+  textInput: {
+    backgroundColor: FinColors.bgElevated,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    color: FinColors.textPrimary,
+    padding: 10,
+    fontSize: 13,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+  },
+  accountTypeList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 4,
+  },
+  accountTypePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgBase,
+  },
+  accountTypePillSelected: {
+    borderColor: FinColors.green,
+    backgroundColor: FinColors.greenBg,
+  },
+  accountTypeText: {
+    fontSize: 12,
+    color: FinColors.textPrimary,
+  },
+  accountTypeTextSelected: {
+    color: FinColors.green,
+  },
+  createAccountBtn: {
+    marginTop: 8,
+    backgroundColor: FinColors.textPrimary,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  createAccountBtnText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.bgBase,
+  },
+  importBtnDisabled: {
+    opacity: 0.6,
   },
 
   progressCard: {

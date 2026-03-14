@@ -1,5 +1,6 @@
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
+import { useSession } from "@/app/_layout";
 import {
     clearAllTransactionData,
     pauseBackgroundCategorization,
@@ -12,6 +13,7 @@ import {
     useCategorizationStatus,
 } from "@/services/categorization-status";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import type { Href } from "expo-router";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
@@ -206,8 +208,10 @@ function SectionHeader({ title }: { title: string }) {
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { logout, user } = useSession();
   const [darkMode, setDarkMode] = React.useState(true);
   const [isClearing, setIsClearing] = React.useState(false);
+  const [isSigningOut, setIsSigningOut] = React.useState(false);
   const [showConfirmModal, setShowConfirmModal] = React.useState(false);
   const [showSuccessModal, setShowSuccessModal] = React.useState(false);
   const [showErrorModal, setShowErrorModal] = React.useState(false);
@@ -217,6 +221,20 @@ export default function SettingsScreen() {
   const isBusy =
     backgroundStatus.phase === "queued" || backgroundStatus.phase === "running";
   const isPaused = backgroundStatus.phase === "paused";
+  const userEmail = user?.email || "Geen e-mail beschikbaar";
+  const userName =
+    String(
+      user?.user_metadata?.full_name ||
+        user?.user_metadata?.name ||
+        user?.email?.split("@")[0] ||
+        "Gebruiker",
+    ).trim() || "Gebruiker";
+  const userInitials = userName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("");
 
   const handleResetPress = () => {
     console.log("[Settings] Reset button pressed");
@@ -243,6 +261,24 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleLogout = async () => {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    try {
+      await logout();
+      router.replace("/auth/login" as Href);
+    } catch (logoutError) {
+      const logoutMessage =
+        logoutError instanceof Error
+          ? logoutError.message
+          : "Uitloggen mislukt";
+      setErrorMessage(logoutMessage);
+      setShowErrorModal(true);
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
@@ -257,11 +293,11 @@ export default function SettingsScreen() {
         {/* Profile card */}
         <View style={styles.profileCard}>
           <View style={styles.avatarLarge}>
-            <Text style={styles.avatarText}>JD</Text>
+            <Text style={styles.avatarText}>{userInitials || "G"}</Text>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>Jan de Vries</Text>
-            <Text style={styles.profileEmail}>jan@example.com</Text>
+            <Text style={styles.profileName}>{userName}</Text>
+            <Text style={styles.profileEmail}>{userEmail}</Text>
           </View>
         </View>
 
@@ -279,6 +315,12 @@ export default function SettingsScreen() {
             subtitle="Add or remove bank accounts"
             onPress={() => {}}
           />
+           <View style={styles.divider} />
+           <SettingsRow
+             label="Wachtwoord wijzigen"
+             subtitle="Wijzig je accountwachtwoord"
+             onPress={() => router.push("/account/change-password")}
+           />
         </View>
 
         {/* Preferences */}
@@ -426,8 +468,17 @@ export default function SettingsScreen() {
         </View>
 
         {/* Sign out */}
-        <TouchableOpacity style={styles.signOutBtn} activeOpacity={0.7}>
-          <Text style={styles.signOutText}>Sign out</Text>
+        <TouchableOpacity
+          style={styles.signOutBtn}
+          activeOpacity={0.7}
+          onPress={handleLogout}
+          disabled={isSigningOut}
+        >
+          {isSigningOut ? (
+            <ActivityIndicator size="small" color={FinColors.red} />
+          ) : (
+            <Text style={styles.signOutText}>Sign out</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
 

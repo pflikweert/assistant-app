@@ -1423,16 +1423,18 @@ function buildWeeklySpendBreakdown(
   });
 }
 
+// Haal user_id uit SessionContext (hook mag alleen in component, dus geef user_id als param door)
 async function fetchTransactionsInRange(
   startIso: string,
   endIso: string,
+  userId?: string,
 ): Promise<BudgetTx[]> {
   const rows: BudgetTx[] = [];
   let offset = 0;
 
   while (true) {
     const to = offset + PAGE_SIZE - 1;
-    const { data, error } = await supabase
+    let query = supabase
       .from("transactions")
       .select(
         "id,date,amount,details,counterparty,analysis_main_group,analysis_category,category_id_auto,category_id_user,budget_excluded",
@@ -1441,6 +1443,12 @@ async function fetchTransactionsInRange(
       .lt("date", endIso)
       .order("date", { ascending: false })
       .range(offset, to);
+
+    if (userId) {
+      query = query.eq("user_id", userId);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
@@ -1472,10 +1480,13 @@ async function fetchTransactionsInRange(
   return rows;
 }
 
-async function fetchCategoryMap(): Promise<Map<string, CategoryMeta>> {
-  const { data, error } = await supabase
-    .from("categories")
-    .select("id,key,name,budget_group");
+async function fetchCategoryMap(userId?: string): Promise<Map<string, CategoryMeta>> {
+  let query = supabase.from("categories").select("id,key,name,budget_group");
+  if (userId) {
+    query = query.or(`user_id.is.null,user_id.eq.${userId}`);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
 

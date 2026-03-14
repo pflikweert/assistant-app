@@ -1,4 +1,5 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
+import { requireCurrentUserId } from "@/services/current-user";
 import { supabase } from "@/services/supabase";
 import type { RecurringType } from "@/types/categorization";
 import { normalizePattern } from "./categorization-repository";
@@ -98,6 +99,7 @@ function frequencyAppliesInMonth(
 async function fetchTransactionsInRange(
   startIso: string,
   endIso: string,
+  userId: string,
 ): Promise<ForecastTx[]> {
   const rows: ForecastTx[] = [];
   let offset = 0;
@@ -109,6 +111,7 @@ async function fetchTransactionsInRange(
       .select(
         "id,date,amount,details,counterparty,analysis_main_group,analysis_category,recurring,recurring_type,category_id_auto,category_id_user,budget_excluded,metadata",
       )
+      .eq("user_id", userId)
       .gte("date", startIso)
       .lt("date", endIso)
       .order("date", { ascending: false })
@@ -156,10 +159,11 @@ async function fetchCategoryMap() {
   return map;
 }
 
-async function getLatestStartingBalance(monthStartIso: string) {
+async function getLatestStartingBalance(monthStartIso: string, userId: string) {
   const { data, error } = await supabase
     .from("transactions")
     .select("metadata,date")
+    .eq("user_id", userId)
     .lt("date", monthStartIso)
     .order("date", { ascending: false })
     .limit(30);
@@ -176,12 +180,13 @@ async function getLatestStartingBalance(monthStartIso: string) {
   return null;
 }
 
-async function fetchIncomeSources(): Promise<IncomeSourceRow[]> {
+async function fetchIncomeSources(userId: string): Promise<IncomeSourceRow[]> {
   const { data, error } = await supabase
     .from("forecast_income_sources")
     .select(
       "source_key,expected_income,income_frequency,income_day_of_month,last_detected_at",
-    );
+    )
+    .eq("user_id", userId);
 
   if (error) throw error;
 
@@ -245,6 +250,7 @@ function buildVariableBucket(
 export async function recomputeCurrentMonthCashflowForecast(
   reference = new Date(),
 ) {
+  const userId = await requireCurrentUserId();
   const monthStart = startOfMonth(reference);
   const monthEndExclusive = endOfMonthExclusive(reference);
 
@@ -267,8 +273,9 @@ export async function recomputeCurrentMonthCashflowForecast(
       fetchTransactionsInRange(
         dateToIso(subtractDays(monthStart, 90)),
         monthEndIso,
+        userId,
       ),
-      getLatestStartingBalance(monthStartIso),
+      getLatestStartingBalance(monthStartIso, userId),
     ],
   );
 
@@ -279,7 +286,7 @@ export async function recomputeCurrentMonthCashflowForecast(
       asNumber(stableIncomePlan.flowSummary.expectedIncomeMonthly, 0),
     );
   } else {
-    const incomeSources = await fetchIncomeSources();
+    const incomeSources = await fetchIncomeSources(userId);
     for (const source of incomeSources) {
       const anchorDate = new Date(source.last_detected_at);
       if (
@@ -420,6 +427,7 @@ export async function recomputeCurrentMonthCashflowForecast(
 
   const { error } = await supabase.from("monthly_cashflow_forecasts").upsert(
     {
+      user_id: userId,
       month_start: monthStartIso,
       starting_balance: startingBalance,
       expected_income_total: expectedIncomeTotal,
@@ -439,7 +447,7 @@ export async function recomputeCurrentMonthCashflowForecast(
       computed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "month_start" },
+    { onConflict: "user_id,month_start" },
   );
 
   if (error) throw error;

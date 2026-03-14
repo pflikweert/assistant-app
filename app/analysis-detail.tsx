@@ -5,6 +5,7 @@ import {
     buildCategoryRecordMap,
     getCategoryPathLabel,
 } from "@/services/category-display";
+import { requireCurrentUserId } from "@/services/current-user";
 import { supabase } from "@/services/supabase";
 import type {
     CategoryRecord,
@@ -637,6 +638,7 @@ export default function AnalysisDetailScreen() {
       setLoading(true);
       setExpandedSubcategories({});
       try {
+        const userId = await requireCurrentUserId();
         const [cats, rows] = await Promise.all([
           getTransactionCategories(),
           supabase
@@ -644,6 +646,7 @@ export default function AnalysisDetailScreen() {
             .select(
               "id,date,amount,counterparty,details,category_id_auto,category_id_user",
             )
+            .eq("user_id", userId)
             .eq("analysis_category", validGroup)
             .lt("amount", 0)
             .gte("date", lookbackStart)

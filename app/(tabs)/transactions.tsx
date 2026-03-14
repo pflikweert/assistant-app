@@ -3,6 +3,7 @@ import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
+import { requireCurrentUserId } from "@/services/current-user";
 import {
   buildCategoryRecordMap,
   getCategoryPathLabel,
@@ -250,9 +251,11 @@ export default function TransactionsTab() {
 
   const loadMonthOptions = React.useCallback(async () => {
     try {
+      const userId = await requireCurrentUserId();
       const base = supabase
         .from("transactions")
         .select("date")
+        .eq("user_id", userId)
         .order("date", { ascending: true })
         .limit(1);
 
@@ -273,12 +276,14 @@ export default function TransactionsTab() {
     async (p: number) => {
       setLoading(true);
       try {
+        const userId = await requireCurrentUserId();
         const start = p * PAGE_SIZE;
         let query = supabase
           .from("transactions")
           .select(
             "id,details,counterparty,date,amount,metadata,category_id_auto,category_id_user",
           )
+          .eq("user_id", userId)
           .order("date", { ascending: false })
           .order("metadata->>Volgnr", { ascending: false })
           .range(start, start + PAGE_SIZE - 1);

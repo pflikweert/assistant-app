@@ -22,23 +22,27 @@ export type CategorizationStatus = {
 
 const listeners = new Set<() => void>();
 
-let status: CategorizationStatus = {
-  phase: "idle",
-  mode: null,
-  queuedCount: 0,
-  totalCount: 0,
-  processedCount: 0,
-  updatedCount: 0,
-  ruleCount: 0,
-  openAiCount: 0,
-  skippedCount: 0,
-  message: "Geen achtergrondtaken actief.",
-  lastCompletedAt: null,
-  lastError: null,
-  lastRunMode: null,
-  isStopRequested: false,
-  isPauseRequested: false,
-};
+function createInitialCategorizationStatus(): CategorizationStatus {
+  return {
+    phase: "idle",
+    mode: null,
+    queuedCount: 0,
+    totalCount: 0,
+    processedCount: 0,
+    updatedCount: 0,
+    ruleCount: 0,
+    openAiCount: 0,
+    skippedCount: 0,
+    message: "Geen achtergrondtaken actief.",
+    lastCompletedAt: null,
+    lastError: null,
+    lastRunMode: null,
+    isStopRequested: false,
+    isPauseRequested: false,
+  };
+}
+
+let status: CategorizationStatus = createInitialCategorizationStatus();
 
 function emit() {
   for (const listener of listeners) listener();
@@ -68,6 +72,16 @@ export function updateCategorizationStatus(
 ) {
   status =
     typeof updater === "function" ? updater(status) : { ...status, ...updater };
+  emit();
+}
+
+export function resetCategorizationStatus(
+  overrides: Partial<CategorizationStatus> = {},
+) {
+  status = {
+    ...createInitialCategorizationStatus(),
+    ...overrides,
+  };
   emit();
 }
 

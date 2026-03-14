@@ -8,5 +8,6 @@
     "tabs": true,
     "/index.tsx": true,
     "git remote": true
-  }
+  },
+  "chatgpt.openOnStartup": true
 }

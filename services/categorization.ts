@@ -11,6 +11,7 @@ import {
 } from "./categorization-repository";
 import {
     type CategorizationRunMode,
+    resetCategorizationStatus,
     updateCategorizationStatus,
 } from "./categorization-status";
 import { getLeafCategories } from "./category-display";
@@ -205,6 +206,17 @@ function persistOpenAICache() {
       OPENAI_CACHE_STORAGE_KEY,
       JSON.stringify(Array.from(openAIDecisionCache.entries())),
     );
+  } catch {
+    // Ignore local persistence failures.
+  }
+}
+
+function clearPersistedOpenAICache() {
+  const storage = getBrowserStorage();
+  if (!storage) return;
+
+  try {
+    storage.setItem(OPENAI_CACHE_STORAGE_KEY, JSON.stringify([]));
   } catch {
     // Ignore local persistence failures.
   }
@@ -1589,6 +1601,24 @@ export function stopBackgroundCategorization() {
   }));
 }
 
+export function clearCategorizationClientState() {
+  queuedTransactionIds.clear();
+  isBackgroundFlushRunning = false;
+  isPendingSweepRunning = false;
+  forceQueuedRecategorization = false;
+  pauseRequested = false;
+  stopRequested = false;
+  openAIDecisionCache.clear();
+  openAICacheLoaded = false;
+  openAIRateLimitState.remainingRequests = null;
+  openAIRateLimitState.remainingTokens = null;
+  openAIRateLimitState.resetRequestsAt = null;
+  openAIRateLimitState.resetTokensAt = null;
+  openAIRateLimitState.nextAllowedAt = 0;
+  clearPersistedOpenAICache();
+  resetCategorizationStatus();
+}
+
 export async function clearAllTransactionData() {
   try {
     console.log("[clearAllTransactionData] Starting...");
@@ -1603,21 +1633,10 @@ export async function clearAllTransactionData() {
       "[clearAllTransactionData] All transaction data cleared from DB",
     );
 
-    // Reset categorization status
-    updateCategorizationStatus((current) => ({
-      ...current,
-      phase: "idle",
-      queuedCount: 0,
-      totalCount: 0,
-      processedCount: 0,
-      updatedCount: 0,
-      ruleCount: 0,
-      openAiCount: 0,
-      skippedCount: 0,
-      lastError: null,
+    resetCategorizationStatus({
       lastCompletedAt: new Date().toISOString(),
       message: "Alle transactiegegevens gewist. Klaar voor import.",
-    }));
+    });
     console.log("[clearAllTransactionData] Status updated");
   } catch (error) {
     console.error("[clearAllTransactionData] Error:", error);

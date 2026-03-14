@@ -1,4 +1,5 @@
 import { supabase } from "@/services/supabase";
+import { requireCurrentUserId } from "@/services/current-user";
 import type {
     AutoCategorizationUpdate,
     CategorizationAuditEntry,
@@ -48,9 +49,11 @@ function asNumber(value: unknown, fallback = 0): number {
 export function createSupabaseCategorizationRepository(): CategorizationRepository {
   return {
     async getCategories() {
+      const userId = await requireCurrentUserId();
       const { data, error } = await supabase
         .from("categories")
         .select("id,key,name,parent_id,budget_group,sort_order")
+        .or(`user_id.is.null,user_id.eq.${userId}`)
         .order("sort_order", { ascending: true })
         .order("name", { ascending: true });
       if (error) throw error;
@@ -58,25 +61,34 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
     },
 
     async getActiveRules() {
+      const userId = await requireCurrentUserId();
       const { data, error } = await supabase
         .from("category_rules")
         .select(
-          "id,category_id,pattern,pattern_normalized,pattern_type,confidence,hit_count,is_active,is_system",
+          "id,category_id,pattern,pattern_normalized,pattern_type,confidence,hit_count,is_active,is_system,scope,user_id",
         )
         .eq("is_active", true)
         .order("hit_count", { ascending: false });
       if (error) throw error;
-      return ((data || []) as any[]).map((row) => ({
-        ...row,
-        confidence: asNumber(row.confidence, 0.9),
-        hit_count: asNumber(row.hit_count, 0),
-      }));
+      return ((data || []) as any[])
+        .filter((row) => {
+          const scope = String(row.scope || "");
+          if (scope === "user") return row.user_id === userId;
+          return row.user_id == null;
+        })
+        .map((row) => ({
+          ...row,
+          confidence: asNumber(row.confidence, 0.9),
+          hit_count: asNumber(row.hit_count, 0),
+        }));
     },
 
     async getPendingTransactionIds(limit) {
+      const userId = await requireCurrentUserId();
       const { data, error } = await supabase
         .from("transactions")
         .select("id")
+        .eq("user_id", userId)
         .is("category_id_user", null)
         .is("category_id_auto", null)
         .order("date", { ascending: false })
@@ -86,10 +98,12 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
     },
 
     async getRecategorizableTransactionIds(limit, offset = 0) {
+      const userId = await requireCurrentUserId();
       const to = Math.max(offset + limit - 1, offset);
       const { data, error } = await supabase
         .from("transactions")
         .select("id")
+        .eq("user_id", userId)
         .is("category_id_user", null)
         .order("date", { ascending: false })
         .range(offset, to);
@@ -98,10 +112,12 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
     },
 
     async getAllTransactionIds(limit, offset = 0) {
+      const userId = await requireCurrentUserId();
       const to = Math.max(offset + limit - 1, offset);
       const { data, error } = await supabase
         .from("transactions")
         .select("id")
+        .eq("user_id", userId)
         .order("date", { ascending: false })
         .range(offset, to);
       if (error) throw error;
@@ -109,12 +125,14 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
     },
 
     async getTransactionsByIds(ids) {
+      const userId = await requireCurrentUserId();
       if (!ids.length) return [];
       const { data, error } = await supabase
         .from("transactions")
         .select(
           "id,details,counterparty,amount,date,category_id_auto,category_id_user",
         )
+        .eq("user_id", userId)
         .in("id", ids);
       if (error) throw error;
       return ((data || []) as any[]).map((row) => ({
@@ -129,6 +147,7 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
     },
 
     async updateAutoCategory(update) {
+      const userId = await requireCurrentUserId();
       const { error } = await supabase
         .from("transactions")
         .update({
@@ -139,11 +158,13 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
           categorized_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
+        .eq("user_id", userId)
         .eq("id", update.transactionId);
       if (error) throw error;
     },
 
     async clearAutoCategories(transactionIds) {
+      const userId = await requireCurrentUserId();
       if (!transactionIds.length) return;
       const { error } = await supabase
         .from("transactions")
@@ -155,13 +176,16 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
           categorized_at: null,
           updated_at: new Date().toISOString(),
         })
+        .eq("user_id", userId)
         .in("id", transactionIds)
         .is("category_id_user", null);
       if (error) throw error;
     },
 
     async insertAudit(entry) {
+      const userId = await requireCurrentUserId();
       const { error } = await supabase.from("categorization_audit").insert({
+        user_id: userId,
         transaction_id: entry.transactionId,
         previous_category_id: entry.previousCategoryId,
         new_category_id: entry.newCategoryId,
@@ -174,12 +198,16 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
     },
 
     async incrementRuleHit(ruleId) {
+      const userId = await requireCurrentUserId();
       const { data, error } = await supabase
         .from("category_rules")
-        .select("hit_count")
+        .select("hit_count,user_id,scope")
         .eq("id", ruleId)
         .single();
       if (error) throw error;
+      if (data?.user_id !== userId || String(data?.scope || "") !== "user") {
+        return;
+      }
       const current = asNumber(data?.hit_count, 0);
       const { error: updError } = await supabase
         .from("category_rules")
@@ -187,14 +215,17 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
           hit_count: current + 1,
           updated_at: new Date().toISOString(),
         })
+        .eq("user_id", userId)
         .eq("id", ruleId);
       if (updError) throw updError;
     },
 
     async setManualCategory(transactionId, categoryId, model) {
+      const userId = await requireCurrentUserId();
       const { data, error } = await supabase
         .from("transactions")
         .select("category_id_user,category_id_auto,counterparty")
+        .eq("user_id", userId)
         .eq("id", transactionId)
         .single();
       if (error) throw error;
@@ -214,6 +245,7 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
           categorized_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
+        .eq("user_id", userId)
         .eq("id", transactionId);
       if (updError) throw updError;
 
@@ -221,7 +253,37 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
     },
 
     async upsertCounterpartyRule(normalizedPattern, rawPattern, categoryId) {
-      const payload = {
+      const userId = await requireCurrentUserId();
+      const { data: existing, error: existingError } = await supabase
+        .from("category_rules")
+        .select("id,hit_count")
+        .eq("user_id", userId)
+        .eq("scope", "user")
+        .eq("pattern_normalized", normalizedPattern)
+        .eq("pattern_type", "counterparty_contains")
+        .maybeSingle();
+      if (existingError) throw existingError;
+
+      if (existing?.id) {
+        const { error: updateError } = await supabase
+          .from("category_rules")
+          .update({
+            category_id: categoryId,
+            pattern: rawPattern,
+            confidence: 0.96,
+            is_active: true,
+            hit_count: asNumber(existing.hit_count, 0) + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", userId)
+          .eq("id", existing.id);
+        if (updateError) throw updateError;
+        return;
+      }
+
+      const { error: insertError } = await supabase.from("category_rules").insert({
+        user_id: userId,
+        scope: "user",
         category_id: categoryId,
         pattern: rawPattern,
         pattern_normalized: normalizedPattern,
@@ -230,31 +292,28 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
         hit_count: 1,
         is_active: true,
         is_system: false,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase
-        .from("category_rules")
-        .upsert(payload, { onConflict: "pattern_normalized,pattern_type" });
-      if (error) throw error;
+      });
+      if (insertError) throw insertError;
     },
 
     async clearAllTransactionData() {
+      const userId = await requireCurrentUserId();
       console.log("[clearAllTransactionData] Deleting all transaction data...");
 
-      const { count, error: countError } = await supabase
+      const { count: scopedCount, error: scopedCountError } = await supabase
         .from("transactions")
-        .select("id", { count: "exact", head: true });
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId);
 
-      if (countError) {
+      if (scopedCountError) {
         console.error(
           "[clearAllTransactionData] Error counting transactions:",
-          countError,
+          scopedCountError,
         );
-        throw countError;
+        throw scopedCountError;
       }
 
-      const transactionCount = count ?? 0;
+      const transactionCount = scopedCount ?? 0;
       console.log(
         `[clearAllTransactionData] Found ${transactionCount} transactions to delete`,
       );
@@ -267,7 +326,7 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
       const { error: deleteError } = await supabase
         .from("transactions")
         .delete()
-        .not("id", "is", null);
+        .eq("user_id", userId);
 
       if (deleteError) {
         console.error(
@@ -368,11 +427,13 @@ export type CounterpartyTxSummary = {
 export async function getTransactionDetail(
   id: string,
 ): Promise<TransactionDetail | null> {
+  const userId = await requireCurrentUserId();
   const { data, error } = await supabase
     .from("transactions")
     .select(
       "id,date,details,counterparty,amount,currency,type,metadata,category_id_auto,category_id_user,category_confidence,category_source,category_model,categorized_at,created_at,is_reviewed,budget_excluded",
     )
+    .eq("user_id", userId)
     .eq("id", id)
     .single();
   if (error) throw error;
@@ -405,11 +466,13 @@ export async function getCounterpartyTransactions(
   excludeId: string,
   limit = 5,
 ): Promise<CounterpartyTxSummary[]> {
+  const userId = await requireCurrentUserId();
   const { data, error } = await supabase
     .from("transactions")
     .select(
       "id,date,details,counterparty,amount,category_id_auto,category_id_user",
     )
+    .eq("user_id", userId)
     .eq("counterparty", counterparty)
     .neq("id", excludeId)
     .order("date", { ascending: false })
@@ -430,9 +493,11 @@ export async function countCounterpartyTransactions(
   counterparty: string,
   scope: "all" | "uncategorized",
 ): Promise<number> {
+  const userId = await requireCurrentUserId();
   const base = supabase
     .from("transactions")
     .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
     .eq("counterparty", counterparty);
   const { count, error } =
     scope === "uncategorized"
@@ -447,9 +512,11 @@ export async function bulkUpdateCategoryByCounterparty(
   categoryId: string,
   scope: "all" | "uncategorized",
 ): Promise<number> {
+  const userId = await requireCurrentUserId();
   const countBase = supabase
     .from("transactions")
     .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
     .eq("counterparty", counterparty);
   const { count, error: countError } =
     scope === "uncategorized"
@@ -468,6 +535,7 @@ export async function bulkUpdateCategoryByCounterparty(
       categorized_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
+    .eq("user_id", userId)
     .eq("counterparty", counterparty);
   const { error: updateError } =
     scope === "uncategorized"
@@ -482,9 +550,11 @@ export async function setTransactionReviewed(
   id: string,
   reviewed: boolean,
 ): Promise<void> {
+  const userId = await requireCurrentUserId();
   const { error } = await supabase
     .from("transactions")
     .update({ is_reviewed: reviewed, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
     .eq("id", id);
   if (error) throw error;
 }
@@ -493,9 +563,11 @@ export async function setTransactionBudgetExcluded(
   id: string,
   excluded: boolean,
 ): Promise<void> {
+  const userId = await requireCurrentUserId();
   const { error } = await supabase
     .from("transactions")
     .update({ budget_excluded: excluded, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
     .eq("id", id);
   if (error) throw error;
 }

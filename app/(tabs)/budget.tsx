@@ -19,6 +19,7 @@ import {
     setTransactionBudgetExcluded,
 } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
+import { requireCurrentUserId } from "@/services/current-user";
 import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
 import { supabase } from "@/services/supabase";
 import type {
@@ -1523,11 +1524,13 @@ export default function BudgetScreen() {
       });
 
       try {
+        const userId = await requireCurrentUserId();
         let query = supabase
           .from("transactions")
           .select(
             "id,date,amount,details,counterparty,category_id_auto,category_id_user,budget_excluded",
           )
+          .eq("user_id", userId)
           .gte("date", weekStart)
           .lt("date", weekEndExclusive)
           .lt("amount", 0)

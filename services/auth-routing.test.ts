@@ -1,0 +1,71 @@
+import { describe, expect, it } from "vitest";
+
+import { getAuthRedirectPath, isAuthRoute } from "./auth-routing";
+
+describe("isAuthRoute", () => {
+  it("recognizes auth group routes", () => {
+    expect(isAuthRoute(["auth", "login"])).toBe(true);
+    expect(isAuthRoute(["auth", "register"])).toBe(true);
+  });
+
+  it("keeps the legacy login route recognized during migration", () => {
+    expect(isAuthRoute(["login"])).toBe(true);
+  });
+
+  it("returns false for app routes", () => {
+    expect(isAuthRoute(["(tabs)", "index"])).toBe(false);
+    expect(isAuthRoute(["csv-import"])).toBe(false);
+  });
+});
+
+describe("getAuthRedirectPath", () => {
+  it("waits until auth bootstrap completes", () => {
+    expect(
+      getAuthRedirectPath({
+        loading: true,
+        isAuthenticated: false,
+        segments: [],
+      }),
+    ).toBeNull();
+  });
+
+  it("redirects anonymous users to login when they hit app routes", () => {
+    expect(
+      getAuthRedirectPath({
+        loading: false,
+        isAuthenticated: false,
+        segments: ["(tabs)", "index"],
+      }),
+    ).toBe("/auth/login");
+  });
+
+  it("keeps anonymous users on auth routes", () => {
+    expect(
+      getAuthRedirectPath({
+        loading: false,
+        isAuthenticated: false,
+        segments: ["auth", "forgot-password"],
+      }),
+    ).toBeNull();
+  });
+
+  it("redirects authenticated users away from auth routes", () => {
+    expect(
+      getAuthRedirectPath({
+        loading: false,
+        isAuthenticated: true,
+        segments: ["auth", "login"],
+      }),
+    ).toBe("/");
+  });
+
+  it("keeps authenticated users on app routes", () => {
+    expect(
+      getAuthRedirectPath({
+        loading: false,
+        isAuthenticated: true,
+        segments: ["csv-import"],
+      }),
+    ).toBeNull();
+  });
+});

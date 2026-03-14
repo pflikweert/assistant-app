@@ -1,4 +1,5 @@
 import { supabase } from "@/services/supabase";
+import { requireCurrentUserId } from "@/services/current-user";
 import type {
     AnalysisCategory,
     AnalysisMainGroup,
@@ -284,13 +285,17 @@ async function getCategoryMetaMap(): Promise<
   return map;
 }
 
-async function getTransactionsByIds(ids: string[]): Promise<AnalysisTx[]> {
+async function getTransactionsByIds(
+  ids: string[],
+  userId: string,
+): Promise<AnalysisTx[]> {
   if (!ids.length) return [];
   const { data, error } = await supabase
     .from("transactions")
     .select(
       "id,date,details,counterparty,amount,category_id_auto,category_id_user,analysis_main_group,analysis_category,recurring,recurring_type,spending_pattern",
     )
+    .eq("user_id", userId)
     .in("id", ids);
 
   if (error) throw error;
@@ -316,6 +321,7 @@ async function getTransactionsByIds(ids: string[]): Promise<AnalysisTx[]> {
 async function getTransactionsInWindow(
   startIso: string,
   endIso: string,
+  userId: string,
 ): Promise<AnalysisTx[]> {
   const rows: AnalysisTx[] = [];
   let offset = 0;
@@ -327,6 +333,7 @@ async function getTransactionsInWindow(
       .select(
         "id,date,details,counterparty,amount,category_id_auto,category_id_user,analysis_main_group,analysis_category,recurring,recurring_type,spending_pattern",
       )
+      .eq("user_id", userId)
       .gte("date", startIso)
       .lt("date", endIso)
       .order("date", { ascending: false })
@@ -533,7 +540,10 @@ function mergeIncomeSources(
   });
 }
 
-async function applyAnalysisUpdates(updates: TransactionAnalysisUpdate[]) {
+async function applyAnalysisUpdates(
+  updates: TransactionAnalysisUpdate[],
+  userId: string,
+) {
   for (const update of updates) {
     const { error } = await supabase
       .from("transactions")
@@ -546,16 +556,21 @@ async function applyAnalysisUpdates(updates: TransactionAnalysisUpdate[]) {
         analysis_updated_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
+      .eq("user_id", userId)
       .eq("id", update.transactionId);
 
     if (error) throw error;
   }
 }
 
-async function upsertIncomeSources(sources: ForecastIncomeSource[]) {
+async function upsertIncomeSources(
+  sources: ForecastIncomeSource[],
+  userId: string,
+) {
   if (!sources.length) return;
 
   const payload = sources.map((source) => ({
+    user_id: userId,
     source_key: source.sourceKey,
     source_label: source.sourceLabel,
     expected_income: source.expectedIncome,
@@ -567,7 +582,7 @@ async function upsertIncomeSources(sources: ForecastIncomeSource[]) {
 
   const { error } = await supabase
     .from("forecast_income_sources")
-    .upsert(payload, { onConflict: "source_key" });
+    .upsert(payload, { onConflict: "user_id,source_key" });
 
   if (error) throw error;
 }
@@ -575,12 +590,13 @@ async function upsertIncomeSources(sources: ForecastIncomeSource[]) {
 export async function enrichTransactionAnalysis(
   transactionIds: string[],
 ): Promise<AnalysisSummary> {
+  const userId = await requireCurrentUserId();
   const uniqueIds = Array.from(new Set(transactionIds.filter(Boolean)));
   if (!uniqueIds.length) {
     return { scanned: 0, updated: 0, incomeSourcesUpserted: 0 };
   }
 
-  const currentRows = await getTransactionsByIds(uniqueIds);
+  const currentRows = await getTransactionsByIds(uniqueIds, userId);
   if (!currentRows.length) {
     return { scanned: 0, updated: 0, incomeSourcesUpserted: 0 };
   }
@@ -594,6 +610,7 @@ export async function enrichTransactionAnalysis(
   const allWindowTransactions = await getTransactionsInWindow(
     dateToIso(startDate),
     dateToIso(new Date(endDate.getTime() + 24 * 60 * 60 * 1000)),
+    userId,
   );
 
   const categoryMap = await getCategoryMetaMap();
@@ -608,12 +625,12 @@ export async function enrichTransactionAnalysis(
   }
 
   if (updates.length) {
-    await applyAnalysisUpdates(updates);
+    await applyAnalysisUpdates(updates, userId);
   }
 
   const incomeSources = Array.from(incomeCollector.values());
   if (incomeSources.length) {
-    await upsertIncomeSources(incomeSources);
+    await upsertIncomeSources(incomeSources, userId);
   }
 
   return {

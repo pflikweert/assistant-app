@@ -6,6 +6,7 @@ import {
     setTransactionManualCategory,
 } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
+import { requireCurrentUserId } from "@/services/current-user";
 import {
     buildCategoryNameMap,
     getCategoryLabel,
@@ -127,6 +128,7 @@ export default function TransactionsScreen({
     async (pageNumber: number) => {
       setLoading(true);
       try {
+        const userId = await requireCurrentUserId();
         if (categoryKeyFilter && categoryFilterIds.length === 0) {
           setTransactions([]);
           setHasMore(false);
@@ -139,7 +141,8 @@ export default function TransactionsScreen({
           .from("transactions")
           .select(
             "id,details,counterparty,date,amount,metadata,category_id_auto,category_id_user,category_confidence,category_source",
-          );
+          )
+          .eq("user_id", userId);
 
         if (counterpartyFilter) {
           query = query.eq("counterparty", counterpartyFilter);

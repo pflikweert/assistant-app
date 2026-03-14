@@ -1,20 +1,21 @@
 import {
-    normalizePattern,
-    setTransactionManualCategory,
+  normalizePattern,
+  setTransactionManualCategory,
 } from "@/services/categorization-repository";
+import { requireCurrentUserId } from "@/services/current-user";
 import { supabase } from "@/services/supabase";
 import type {
-    CategoryRecord,
-    SubscriptionBillingCycle,
-    SubscriptionMatchSource,
-    SubscriptionProfile,
-    SubscriptionProfileRule,
-    SubscriptionProfileRuleType,
-    SubscriptionProviderHint,
-    SubscriptionQueueItem,
-    SubscriptionSuggestion,
-    SubscriptionValidationCandidate,
-    TransactionSubscriptionMatch,
+  CategoryRecord,
+  SubscriptionBillingCycle,
+  SubscriptionMatchSource,
+  SubscriptionProfile,
+  SubscriptionProfileRule,
+  SubscriptionProfileRuleType,
+  SubscriptionProviderHint,
+  SubscriptionQueueItem,
+  SubscriptionSuggestion,
+  SubscriptionValidationCandidate,
+  TransactionSubscriptionMatch,
 } from "@/types/categorization";
 
 const DEFAULT_PLAN_KEY = "default";
@@ -569,12 +570,14 @@ export function scoreSubscriptionSuggestion(
 export async function listSubscriptionProfiles(
   planKey = DEFAULT_PLAN_KEY,
 ): Promise<SubscriptionProfile[]> {
+  const userId = await requireCurrentUserId();
   const normalizedPlanKey = normalizePlanKey(planKey);
   const { data, error } = await supabase
     .from("subscription_profiles")
     .select(
       "id,plan_key,name,normalized_name,billing_cycle,expected_amount,amount_tolerance,expected_day_of_month,provider_hint,is_active,created_at,updated_at",
     )
+    .eq("user_id", userId)
     .eq("plan_key", normalizedPlanKey)
     .order("name", { ascending: true });
 
@@ -588,6 +591,7 @@ export async function listSubscriptionProfiles(
 export async function createSubscriptionProfile(
   input: CreateSubscriptionProfileInput,
 ): Promise<SubscriptionProfile> {
+  const userId = await requireCurrentUserId();
   const name = String(input.name || "").trim();
   if (!name) {
     throw new Error("Naam van abonnement is verplicht.");
@@ -599,6 +603,7 @@ export async function createSubscriptionProfile(
   }
 
   const payload = {
+    user_id: userId,
     plan_key: normalizePlanKey(input.planKey),
     name,
     normalized_name: normalizedName,
@@ -629,6 +634,7 @@ export async function updateSubscriptionProfile(
   id: string,
   input: UpdateSubscriptionProfileInput,
 ): Promise<SubscriptionProfile> {
+  const userId = await requireCurrentUserId();
   const payload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -665,6 +671,7 @@ export async function updateSubscriptionProfile(
   const { data, error } = await supabase
     .from("subscription_profiles")
     .update(payload)
+    .eq("user_id", userId)
     .eq("id", id)
     .select(
       "id,plan_key,name,normalized_name,billing_cycle,expected_amount,amount_tolerance,expected_day_of_month,provider_hint,is_active,created_at,updated_at",
@@ -683,9 +690,11 @@ export async function setSubscriptionProfileActive(
 }
 
 export async function deleteSubscriptionProfile(id: string): Promise<void> {
+  const userId = await requireCurrentUserId();
   const { error } = await supabase
     .from("subscription_profiles")
     .delete()
+    .eq("user_id", userId)
     .eq("id", id);
 
   if (error) throw error;
@@ -694,11 +703,13 @@ export async function deleteSubscriptionProfile(id: string): Promise<void> {
 export async function listSubscriptionProfileRules(
   profileId: string,
 ): Promise<SubscriptionProfileRule[]> {
+  const userId = await requireCurrentUserId();
   const { data, error } = await supabase
     .from("subscription_profile_rules")
     .select(
       "id,subscription_profile_id,pattern,pattern_normalized,pattern_type,weight,is_active,created_at,updated_at",
     )
+    .eq("user_id", userId)
     .eq("subscription_profile_id", profileId)
     .order("weight", { ascending: false })
     .order("pattern", { ascending: true });
@@ -713,6 +724,7 @@ export async function listSubscriptionProfileRules(
 export async function listSubscriptionProfileRulesByProfileIds(
   profileIds: string[],
 ): Promise<SubscriptionRulesByProfileId> {
+  const userId = await requireCurrentUserId();
   const rulesByProfileId = createRulesByProfileId(profileIds);
   const uniqueProfileIds = Array.from(new Set(profileIds.filter(Boolean)));
   if (!uniqueProfileIds.length) return rulesByProfileId;
@@ -720,12 +732,13 @@ export async function listSubscriptionProfileRulesByProfileIds(
   const rows: SubscriptionProfileRule[] = [];
 
   for (const chunk of chunkArray(uniqueProfileIds, 200)) {
-    const { data, error } = await supabase
-      .from("subscription_profile_rules")
-      .select(
-        "id,subscription_profile_id,pattern,pattern_normalized,pattern_type,weight,is_active,created_at,updated_at",
-      )
-      .in("subscription_profile_id", chunk)
+      const { data, error } = await supabase
+        .from("subscription_profile_rules")
+        .select(
+          "id,subscription_profile_id,pattern,pattern_normalized,pattern_type,weight,is_active,created_at,updated_at",
+        )
+        .eq("user_id", userId)
+        .in("subscription_profile_id", chunk)
       .order("subscription_profile_id", { ascending: true })
       .order("weight", { ascending: false })
       .order("pattern", { ascending: true });
@@ -766,12 +779,14 @@ async function loadSubscriptionProfiles(
 export async function upsertSubscriptionProfileRule(
   input: UpsertSubscriptionProfileRuleInput,
 ): Promise<SubscriptionProfileRule> {
+  const userId = await requireCurrentUserId();
   const pattern = String(input.pattern || "").trim();
   if (!pattern) {
     throw new Error("Pattern is verplicht.");
   }
 
   const payload: Record<string, unknown> = {
+    user_id: userId,
     subscription_profile_id: input.subscriptionProfileId,
     pattern,
     pattern_normalized: normalizePattern(pattern),
@@ -787,7 +802,7 @@ export async function upsertSubscriptionProfileRule(
 
   const onConflict = input.id
     ? "id"
-    : "subscription_profile_id,pattern_normalized,pattern_type";
+    : "user_id,subscription_profile_id,pattern_normalized,pattern_type";
 
   const { data, error } = await supabase
     .from("subscription_profile_rules")
@@ -802,9 +817,11 @@ export async function upsertSubscriptionProfileRule(
 }
 
 export async function deleteSubscriptionProfileRule(id: string): Promise<void> {
+  const userId = await requireCurrentUserId();
   const { error } = await supabase
     .from("subscription_profile_rules")
     .delete()
+    .eq("user_id", userId)
     .eq("id", id);
 
   if (error) throw error;
@@ -813,7 +830,9 @@ export async function deleteSubscriptionProfileRule(id: string): Promise<void> {
 export async function upsertTransactionSubscriptionMatch(
   input: UpsertTransactionSubscriptionMatchInput,
 ): Promise<TransactionSubscriptionMatch> {
+  const userId = await requireCurrentUserId();
   const payload = {
+    user_id: userId,
     transaction_id: input.transactionId,
     subscription_profile_id: input.subscriptionProfileId,
     match_source: normalizeMatchSource(input.matchSource),
@@ -825,7 +844,7 @@ export async function upsertTransactionSubscriptionMatch(
 
   const { data, error } = await supabase
     .from("transaction_subscription_matches")
-    .upsert(payload, { onConflict: "transaction_id" })
+    .upsert(payload, { onConflict: "user_id,transaction_id" })
     .select(
       "transaction_id,subscription_profile_id,match_source,confidence,notes,created_at,updated_at",
     )
@@ -851,9 +870,11 @@ export async function markTransactionAsNotSubscription(
 export async function clearTransactionSubscriptionMatch(
   transactionId: string,
 ): Promise<void> {
+  const userId = await requireCurrentUserId();
   const { error } = await supabase
     .from("transaction_subscription_matches")
     .delete()
+    .eq("user_id", userId)
     .eq("transaction_id", transactionId);
 
   if (error) throw error;
@@ -861,6 +882,7 @@ export async function clearTransactionSubscriptionMatch(
 
 async function getTransactionRowsByIds(
   transactionIds: string[],
+  userId: string,
 ): Promise<Record<string, QueueTransactionRow>> {
   if (!transactionIds.length) return {};
 
@@ -869,6 +891,7 @@ async function getTransactionRowsByIds(
     const { data, error } = await supabase
       .from("transactions")
       .select("id,date,counterparty,details,amount")
+      .eq("user_id", userId)
       .in("id", chunk);
     if (error) throw error;
     rows.push(...((data || []) as RowRecord[]).map(normalizeQueueTransaction));
@@ -882,6 +905,7 @@ async function getTransactionRowsByIds(
 
 async function getProfileHistoryByMatchedTransactions(
   profileIds: string[],
+  userId: string,
 ): Promise<Record<string, SubscriptionHistoryItem[]>> {
   const emptyHistory = profileIds.reduce<
     Record<string, SubscriptionHistoryItem[]>
@@ -894,6 +918,7 @@ async function getProfileHistoryByMatchedTransactions(
   const { data: matchRows, error: matchError } = await supabase
     .from("transaction_subscription_matches")
     .select("transaction_id,subscription_profile_id,match_source")
+    .eq("user_id", userId)
     .in("subscription_profile_id", profileIds)
     .neq("match_source", "ignored");
 
@@ -912,7 +937,7 @@ async function getProfileHistoryByMatchedTransactions(
   const allTransactionIds = Array.from(
     new Set(matches.map((row) => row.transactionId)),
   );
-  const transactionById = await getTransactionRowsByIds(allTransactionIds);
+  const transactionById = await getTransactionRowsByIds(allTransactionIds, userId);
 
   for (const row of matches) {
     const tx = transactionById[row.transactionId];
@@ -980,6 +1005,7 @@ function isWithinDayWindow(
 export async function listMonthlySubscriptionValidationCandidates(
   input: MonthlyValidationCandidatesInput,
 ): Promise<SubscriptionValidationCandidate[]> {
+  const userId = await requireCurrentUserId();
   const sourceTransactionId = String(input.sourceTransactionId || "").trim();
   const sourceDate = String(input.sourceDate || "").slice(0, 10);
   const sourceProvider = normalizeProviderHint(input.sourceProviderHint);
@@ -1000,6 +1026,7 @@ export async function listMonthlySubscriptionValidationCandidates(
     .select(
       "id,date,counterparty,details,amount,analysis_category,category_id_auto,category_id_user",
     )
+    .eq("user_id", userId)
     .lt("date", sourceDate)
     .lt("amount", 0)
     .order("date", { ascending: false })
@@ -1025,6 +1052,7 @@ export async function listMonthlySubscriptionValidationCandidates(
   const { data: matchRows, error: matchError } = await supabase
     .from("transaction_subscription_matches")
     .select("transaction_id")
+    .eq("user_id", userId)
     .in(
       "transaction_id",
       rows.map((row) => row.id),
@@ -1068,8 +1096,10 @@ async function buildSubscriptionQueue(
   activeProfiles: SubscriptionProfile[],
   rulesByProfileId: SubscriptionRulesByProfileId,
 ): Promise<SubscriptionQueueItem[]> {
+  const userId = await requireCurrentUserId();
   const profileHistoryById = await getProfileHistoryByMatchedTransactions(
     activeProfiles.map((profile) => profile.id),
+    userId,
   );
   const subscriptionCategoryIds = await listSubscriptionCategoryIds();
 
@@ -1078,6 +1108,7 @@ async function buildSubscriptionQueue(
     .select(
       "id,date,counterparty,details,amount,analysis_category,category_id_auto,category_id_user",
     )
+    .eq("user_id", userId)
     .gte("date", monthStartIso)
     .lt("date", monthEndIso)
     .lt("amount", 0)
@@ -1103,6 +1134,7 @@ async function buildSubscriptionQueue(
   const { data: matchRows, error: matchError } = await supabase
     .from("transaction_subscription_matches")
     .select("transaction_id")
+    .eq("user_id", userId)
     .in("transaction_id", candidateIds);
 
   if (matchError) {
@@ -1213,11 +1245,13 @@ export async function getSubscriptionDashboardData(
 export async function getTransactionSubscriptionMatch(
   transactionId: string,
 ): Promise<TransactionSubscriptionMatchWithProfile | null> {
+  const userId = await requireCurrentUserId();
   const { data, error } = await supabase
     .from("transaction_subscription_matches")
     .select(
       "transaction_id,subscription_profile_id,match_source,confidence,notes,created_at,updated_at",
     )
+    .eq("user_id", userId)
     .eq("transaction_id", transactionId)
     .maybeSingle();
 
@@ -1240,6 +1274,7 @@ export async function getTransactionSubscriptionMatch(
     .select(
       "id,plan_key,name,normalized_name,billing_cycle,expected_amount,amount_tolerance,expected_day_of_month,provider_hint,is_active,created_at,updated_at",
     )
+    .eq("user_id", userId)
     .eq("id", mapped.subscriptionProfileId)
     .maybeSingle();
 

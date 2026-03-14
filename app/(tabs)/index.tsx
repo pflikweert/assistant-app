@@ -1,3 +1,4 @@
+// (Verwijderd: dubbele HomeScreen export, alleen dashboard exporteren)
 import { BudgetCategoryProgressRow } from "@/components/budget-category-progress-row";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
@@ -13,6 +14,7 @@ import {
     getCategorizationCoverage,
     getCategoryPathLabel,
 } from "@/services/category-display";
+import { requireCurrentUserId } from "@/services/current-user";
 import { supabase } from "@/services/supabase";
 import type {
     BudgetPlanComputation,
@@ -257,11 +259,13 @@ export default function DashboardScreen() {
 
   const load = React.useCallback(async () => {
     try {
+      const userId = await requireCurrentUserId();
       const { data } = await supabase
         .from("transactions")
         .select(
           "id,counterparty,date,amount,metadata,category_id_auto,category_id_user",
         )
+        .eq("user_id", userId)
         .order("date", { ascending: false })
         .order("metadata->>Volgnr", { ascending: false })
         .limit(50);

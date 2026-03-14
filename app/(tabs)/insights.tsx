@@ -16,6 +16,7 @@ import {
     getLeafCategories,
     needsCategorizationReview,
 } from "@/services/category-display";
+import { requireCurrentUserId } from "@/services/current-user";
 import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
 import { supabase } from "@/services/supabase";
 import type {
@@ -713,6 +714,7 @@ export default function InsightsScreen() {
 
   const load = React.useCallback(async () => {
     try {
+      const userId = await requireCurrentUserId();
       const baseSelect =
         "id,amount,details,counterparty,date,category_id_auto,category_id_user,category_confidence,category_source";
       const analysisSelect =
@@ -725,6 +727,7 @@ export default function InsightsScreen() {
             ? baseSelect
             : `${baseSelect},${analysisSelect}`,
         )
+        .eq("user_id", userId)
         .gte("date", selectedMonth.startIso)
         .lt("date", selectedMonth.endIso)
         .order("date", { ascending: false })
@@ -740,6 +743,7 @@ export default function InsightsScreen() {
 
         queryResult = await transactionsQuery
           .select(baseSelect)
+          .eq("user_id", userId)
           .gte("date", selectedMonth.startIso)
           .lt("date", selectedMonth.endIso)
           .order("date", { ascending: false })
@@ -798,12 +802,14 @@ export default function InsightsScreen() {
     forecastLoadInFlight.current = true;
 
     try {
+      const userId = await requireCurrentUserId();
       const fetchForecastRow = async () =>
         supabase
           .from("monthly_cashflow_forecasts")
           .select(
             "month_start,expected_income_total,expected_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3",
           )
+          .eq("user_id", userId)
           .eq("month_start", selectedMonth.startIso)
           .maybeSingle();
 
