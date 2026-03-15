@@ -1,5 +1,6 @@
 import { BudgetAmountSlider } from "@/components/budget-amount-slider";
 import { BudgetCategoryProgressRow } from "@/components/budget-category-progress-row";
+import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { FinColors } from "@/constants/theme";
@@ -22,6 +23,10 @@ import {
   setTransactionBudgetExcluded,
 } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
+import {
+  buildCategoryRecordMap,
+  getCategoryPathLabel,
+} from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
 import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
 import { supabase } from "@/services/supabase";
@@ -38,6 +43,7 @@ import type {
   BudgetPlanMode,
   BudgetRecommendationRow,
   BudgetWeekPlanRow,
+  CategoryRecord,
 } from "@/types/categorization";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useIsFocused } from "@react-navigation/native";
@@ -128,6 +134,84 @@ type WeekAttentionRow = {
   weeklyActual: number;
   utilization: number;
 };
+type BudgetInlineTransactionRowProps = {
+  tx: InlineWeekTransaction;
+  categoryById: Map<string, CategoryRecord>;
+  isUpdating: boolean;
+  onOpen: () => void;
+  onToggle: () => void;
+};
+
+function BudgetInlineTransactionRow({
+  tx,
+  categoryById,
+  isUpdating,
+  onOpen,
+  onToggle,
+}: BudgetInlineTransactionRowProps) {
+  const categoryLabel = getCategoryPathLabel(tx, categoryById);
+  const metaParts = [formatDetailDateLabel(tx.date)];
+  if (tx.counterparty) {
+    metaParts.push(tx.counterparty);
+  }
+
+  return (
+    <View style={styles.inlineTransactionRow}>
+      <Pressable style={styles.inlineTransactionMainPressable} onPress={onOpen}>
+        <View style={styles.inlineTransactionLeading}>
+          <TransactionCategoryIcon
+            row={tx}
+            categoryById={categoryById}
+            size={16}
+            bubbleSize={34}
+          />
+          <View style={styles.inlineTransactionContent}>
+            <Text style={styles.inlineTransactionTitle}>{tx.title}</Text>
+            <Text style={styles.inlineTransactionCategory}>{categoryLabel}</Text>
+            <Text style={styles.inlineTransactionsMeta}>
+              {metaParts.join(" · ")}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+      <View style={styles.inlineTransactionRight}>
+        <Text style={styles.inlineTransactionAmount}>
+          {fmt.format(Math.abs(tx.amount))}
+        </Text>
+        <Pressable
+          style={[
+            styles.inlineExcludeToggle,
+            tx.budgetExcluded && styles.inlineExcludeToggleActive,
+          ]}
+          onPress={onToggle}
+          disabled={isUpdating}
+        >
+          <View style={styles.inlineExcludeToggleInner}>
+            <MaterialIcons
+              name={
+                tx.budgetExcluded
+                  ? "remove-circle-outline"
+                  : "check-circle-outline"
+              }
+              size={12}
+              color={
+                tx.budgetExcluded ? FinColors.warningText : FinColors.green
+              }
+            />
+            <Text
+              style={[
+                styles.inlineExcludeToggleText,
+                tx.budgetExcluded && styles.inlineExcludeToggleTextActive,
+              ]}
+            >
+              {tx.budgetExcluded ? "Buiten" : "Binnen"}
+            </Text>
+          </View>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 function roundToStepCeil(value: number, step: number) {
   if (step <= 0) return value;
@@ -430,6 +514,9 @@ export default function BudgetScreen() {
   const [categoryIdsByKey, setCategoryIdsByKey] = React.useState<
     Record<string, string[]>
   >({});
+  const [categoryRecords, setCategoryRecords] = React.useState<CategoryRecord[]>(
+    [],
+  );
   const [expandedOutsideBudgetItems, setExpandedOutsideBudgetItems] =
     React.useState<string[]>([]);
   const [outsideBudgetTransactionsByItem, setOutsideBudgetTransactionsByItem] =
@@ -493,6 +580,7 @@ export default function BudgetScreen() {
     void getTransactionCategories()
       .then((rows) => {
         if (cancelled) return;
+        setCategoryRecords(rows);
         const nextMap: Record<string, string[]> = {};
         for (const row of rows) {
           const key = String(row.key || "").toLowerCase().trim();
@@ -509,6 +597,11 @@ export default function BudgetScreen() {
       cancelled = true;
     };
   }, [isFocused]);
+
+  const categoryById = React.useMemo(
+    () => buildCategoryRecordMap(categoryRecords),
+    [categoryRecords],
+  );
 
   React.useEffect(() => {
     if (!pendingTransactionDetailId) return;
@@ -1614,6 +1707,8 @@ export default function BudgetScreen() {
             counterparty: row.counterparty,
             amount: row.amount,
             budgetExcluded: row.budget_excluded,
+            category_id_auto: row.category_id_auto,
+            category_id_user: row.category_id_user,
           })),
         }));
       } catch (error) {
@@ -1741,7 +1836,9 @@ export default function BudgetScreen() {
         const userId = await requireCurrentUserId();
         const { data, error } = await supabase
           .from("transactions")
-          .select("id,date,amount,details,counterparty,budget_excluded")
+          .select(
+            "id,date,amount,details,counterparty,budget_excluded,category_id_auto,category_id_user",
+          )
           .eq("user_id", userId)
           .in("id", item.transactionIds)
           .order("date", { ascending: false });
@@ -1755,6 +1852,12 @@ export default function BudgetScreen() {
           counterparty: row.counterparty ? String(row.counterparty) : null,
           amount: Number(row.amount || 0),
           budgetExcluded: Boolean(row.budget_excluded),
+          category_id_auto: row.category_id_auto
+            ? String(row.category_id_auto)
+            : null,
+          category_id_user: row.category_id_user
+            ? String(row.category_id_user)
+            : null,
         }));
 
         setOutsideBudgetTransactionsByItem((current) => ({
@@ -2410,27 +2513,9 @@ export default function BudgetScreen() {
                     </Text>
                   </View>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Vaste lasten</Text>
+                    <Text style={styles.summaryLabel}>Gepland totaal</Text>
                     <Text style={styles.summaryValueNegative}>
-                      -{fmt.format(draftBudgetAllocationSummary.fixedCosts)}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Abonnementen</Text>
-                    <Text style={styles.summaryValueNegative}>
-                      -{fmt.format(draftBudgetAllocationSummary.subscriptions)}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Variabele ruimte</Text>
-                    <Text style={styles.summaryValueNegative}>
-                      -{fmt.format(draftBudgetAllocationSummary.variable)}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Spaardoel</Text>
-                    <Text style={styles.summaryValueNegative}>
-                      -{fmt.format(draftBudgetAllocationSummary.savingsTarget)}
+                      -{fmt.format(draftBudgetAllocationSummary.allocatedTotal)}
                     </Text>
                   </View>
                   <View style={styles.summaryDivider} />
@@ -2448,6 +2533,12 @@ export default function BudgetScreen() {
                     </Text>
                   </View>
                 </View>
+                <Text style={styles.compactBreakdownText}>
+                  Vaste lasten {fmt.format(draftBudgetAllocationSummary.fixedCosts)} ·
+                  Abonnementen {fmt.format(draftBudgetAllocationSummary.subscriptions)} ·
+                  Variabel {fmt.format(draftBudgetAllocationSummary.variable)} ·
+                  Sparen {fmt.format(draftBudgetAllocationSummary.savingsTarget)}
+                </Text>
                 {draftBudgetAllocationSummary.isOverAllocated ? (
                   <Text style={styles.warningInlineText}>
                     Je planning zit boven je inkomend budget. Verlaag categoriebedragen of spaardoel.
@@ -2995,107 +3086,27 @@ export default function BudgetScreen() {
                                                 );
 
                                               return (
-                                                <View
+                                                <BudgetInlineTransactionRow
                                                   key={tx.id}
-                                                  style={
-                                                    styles.inlineTransactionRow
+                                                  tx={tx}
+                                                  categoryById={categoryById}
+                                                  isUpdating={isUpdating}
+                                                  onOpen={() =>
+                                                    openInlineTransactionDetail(
+                                                      tx.id,
+                                                    )
                                                   }
-                                                >
-                                                  <Pressable
-                                                    style={
-                                                      styles.inlineTransactionMainPressable
-                                                    }
-                                                    onPress={() =>
-                                                      openInlineTransactionDetail(
-                                                        tx.id,
-                                                      )
-                                                    }
-                                                  >
-                                                    <Text
-                                                      style={
-                                                        styles.inlineTransactionTitle
-                                                      }
-                                                    >
-                                                      {tx.title}
-                                                    </Text>
-                                                    <Text
-                                                      style={
-                                                        styles.inlineTransactionsMeta
-                                                      }
-                                                    >
-                                                      {formatDetailDateLabel(
-                                                        tx.date,
-                                                      )}
-                                                      {tx.counterparty
-                                                        ? ` · ${tx.counterparty}`
-                                                        : ""}
-                                                    </Text>
-                                                  </Pressable>
-                                                  <View
-                                                    style={
-                                                      styles.inlineTransactionRight
-                                                    }
-                                                  >
-                                                    <Text
-                                                      style={
-                                                        styles.inlineTransactionAmount
-                                                      }
-                                                    >
-                                                      {fmt.format(
-                                                        Math.abs(tx.amount),
-                                                      )}
-                                                    </Text>
-                                                    <Pressable
-                                                      style={[
-                                                        styles.inlineExcludeToggle,
-                                                        tx.budgetExcluded &&
-                                                          styles.inlineExcludeToggleActive,
-                                                      ]}
-                                                      onPress={() =>
-                                                        void toggleInlineTransactionBudgetExcluded(
-                                                          cacheKey,
-                                                          tx.id,
-                                                          !tx.budgetExcluded,
-                                                        )
-                                                      }
-                                                      disabled={isUpdating}
-                                                    >
-                                                      <View
-                                                        style={
-                                                          styles.inlineExcludeToggleInner
-                                                        }
-                                                      >
-                                                        <MaterialIcons
-                                                          name={
-                                                            tx.budgetExcluded
-                                                              ? "remove-circle-outline"
-                                                              : "check-circle-outline"
-                                                          }
-                                                          size={12}
-                                                          color={
-                                                            tx.budgetExcluded
-                                                              ? FinColors.warningText
-                                                              : FinColors.green
-                                                          }
-                                                        />
-                                                        <Text
-                                                          style={[
-                                                            styles.inlineExcludeToggleText,
-                                                            tx.budgetExcluded &&
-                                                              styles.inlineExcludeToggleTextActive,
-                                                          ]}
-                                                        >
-                                                          {tx.budgetExcluded
-                                                            ? "Buiten"
-                                                            : "Binnen"}
-                                                        </Text>
-                                                      </View>
-                                                    </Pressable>
-                                                  </View>
-                                                </View>
+                                                  onToggle={() =>
+                                                    void toggleInlineTransactionBudgetExcluded(
+                                                      cacheKey,
+                                                      tx.id,
+                                                      !tx.budgetExcluded,
+                                                    )
+                                                  }
+                                                />
                                               );
                                             })
-                                          : null}
+                                        : null}
                                       </View>
                                     ) : null}
                                   </View>
@@ -3239,88 +3250,22 @@ export default function BudgetScreen() {
                                       inlineUpdatingTransactionIds.includes(tx.id);
 
                                     return (
-                                      <View
+                                      <BudgetInlineTransactionRow
                                         key={tx.id}
-                                        style={styles.inlineTransactionRow}
-                                      >
-                                        <Pressable
-                                          style={
-                                            styles.inlineTransactionMainPressable
-                                          }
-                                          onPress={() =>
-                                            openInlineTransactionDetail(tx.id)
-                                          }
-                                        >
-                                          <Text
-                                            style={styles.inlineTransactionTitle}
-                                          >
-                                            {tx.title}
-                                          </Text>
-                                          <Text
-                                            style={styles.inlineTransactionsMeta}
-                                          >
-                                            {formatDetailDateLabel(tx.date)}
-                                            {tx.counterparty
-                                              ? ` · ${tx.counterparty}`
-                                              : ""}
-                                          </Text>
-                                        </Pressable>
-                                        <View
-                                          style={styles.inlineTransactionRight}
-                                        >
-                                          <Text
-                                            style={styles.inlineTransactionAmount}
-                                          >
-                                            {fmt.format(Math.abs(tx.amount))}
-                                          </Text>
-                                          <Pressable
-                                            style={[
-                                              styles.inlineExcludeToggle,
-                                              tx.budgetExcluded &&
-                                                styles.inlineExcludeToggleActive,
-                                            ]}
-                                            onPress={() =>
-                                              void toggleOutsideBudgetTransactionBudgetExcluded(
-                                                cacheKey,
-                                                tx.id,
-                                                !tx.budgetExcluded,
-                                              )
-                                            }
-                                            disabled={isUpdating}
-                                          >
-                                            <View
-                                              style={
-                                                styles.inlineExcludeToggleInner
-                                              }
-                                            >
-                                              <MaterialIcons
-                                                name={
-                                                  tx.budgetExcluded
-                                                    ? "remove-circle-outline"
-                                                    : "check-circle-outline"
-                                                }
-                                                size={12}
-                                                color={
-                                                  tx.budgetExcluded
-                                                    ? FinColors.warningText
-                                                    : FinColors.green
-                                                }
-                                              />
-                                              <Text
-                                                style={[
-                                                  styles.inlineExcludeToggleText,
-                                                  tx.budgetExcluded &&
-                                                    styles.inlineExcludeToggleTextActive,
-                                                ]}
-                                              >
-                                                {tx.budgetExcluded
-                                                  ? "Buiten"
-                                                  : "Binnen"}
-                                              </Text>
-                                            </View>
-                                          </Pressable>
-                                        </View>
-                                      </View>
+                                        tx={tx}
+                                        categoryById={categoryById}
+                                        isUpdating={isUpdating}
+                                        onOpen={() =>
+                                          openInlineTransactionDetail(tx.id)
+                                        }
+                                        onToggle={() =>
+                                          void toggleOutsideBudgetTransactionBudgetExcluded(
+                                            cacheKey,
+                                            tx.id,
+                                            !tx.budgetExcluded,
+                                          )
+                                        }
+                                      />
                                     );
                                   })
                                 : null}
@@ -3712,6 +3657,11 @@ const styles = StyleSheet.create({
   },
   summaryValueCritical: {
     color: FinColors.red,
+  },
+  compactBreakdownText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
   },
   summaryDivider: {
     height: 1,
@@ -4320,10 +4270,24 @@ const styles = StyleSheet.create({
   inlineTransactionMainPressable: {
     flex: 1,
   },
+  inlineTransactionLeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  inlineTransactionContent: {
+    flex: 1,
+    minWidth: 0,
+  },
   inlineTransactionTitle: {
     fontSize: 13,
     fontWeight: "700",
     color: FinColors.textPrimary,
+  },
+  inlineTransactionCategory: {
+    marginTop: 2,
+    fontSize: 12,
+    color: FinColors.textSecondary,
   },
   inlineTransactionRight: {
     flexDirection: "row",

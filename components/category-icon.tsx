@@ -56,16 +56,27 @@ export function TransactionCategoryIcon({
   row,
   categoryById,
   size = 20,
+  bubbleSize = 42,
 }: {
   row: CategorizedRow;
   categoryById: Map<string, CategoryRecord>;
   size?: number;
+  bubbleSize?: number;
 }) {
   const rootKey = getRootCategoryKey(row, categoryById);
   const iconName = getIconNameForRootKey(rootKey);
 
   return (
-    <View style={styles.iconBubble}>
+    <View
+      style={[
+        styles.iconBubble,
+        {
+          width: bubbleSize,
+          height: bubbleSize,
+          borderRadius: Math.round(bubbleSize / 3),
+        },
+      ]}
+    >
       <MaterialIcons
         name={iconName}
         size={size}
@@ -77,9 +88,6 @@ export function TransactionCategoryIcon({
 
 const styles = StyleSheet.create({
   iconBubble: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
     backgroundColor: FinColors.bgElevated,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
