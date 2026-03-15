@@ -159,4 +159,80 @@ describe("estimateRecentExpenseForecastFromHistory", () => {
     expect(forecast.variable.groceries).toBe(140);
     expect(forecast.variableCosts).toBe(140);
   });
+
+  it("falls back to current month actuals when there are no completed months yet", () => {
+    const categoryMap = new Map([
+      ["cat-groceries", { id: "cat-groceries", key: "groceries" }],
+    ]);
+
+    const forecast = estimateRecentExpenseForecastFromHistory({
+      currentMonthStart: new Date("2026-03-01T00:00:00.000Z"),
+      categoryMap,
+      transactions: [
+        {
+          date: "2026-03-05",
+          amount: -75,
+          details: "Albert Heijn",
+          counterparty: "Albert Heijn",
+          analysis_main_group: "expense",
+          analysis_category: "variable_costs",
+          category_id_auto: "cat-groceries",
+          category_id_user: null,
+          budget_excluded: false,
+        },
+      ],
+    });
+
+    expect(forecast.variable.groceries).toBe(75);
+    expect(forecast.variableCosts).toBe(75);
+  });
+
+  it("ignores older outlier months outside the recent history window", () => {
+    const categoryMap = new Map([
+      ["cat-groceries", { id: "cat-groceries", key: "groceries" }],
+    ]);
+
+    const forecast = estimateRecentExpenseForecastFromHistory({
+      currentMonthStart: new Date("2026-03-01T00:00:00.000Z"),
+      categoryMap,
+      transactions: [
+        {
+          date: "2025-12-05",
+          amount: -1000,
+          details: "Albert Heijn",
+          counterparty: "Albert Heijn",
+          analysis_main_group: "expense",
+          analysis_category: "variable_costs",
+          category_id_auto: "cat-groceries",
+          category_id_user: null,
+          budget_excluded: false,
+        },
+        {
+          date: "2026-01-05",
+          amount: -100,
+          details: "Albert Heijn",
+          counterparty: "Albert Heijn",
+          analysis_main_group: "expense",
+          analysis_category: "variable_costs",
+          category_id_auto: "cat-groceries",
+          category_id_user: null,
+          budget_excluded: false,
+        },
+        {
+          date: "2026-02-05",
+          amount: -100,
+          details: "Albert Heijn",
+          counterparty: "Albert Heijn",
+          analysis_main_group: "expense",
+          analysis_category: "variable_costs",
+          category_id_auto: "cat-groceries",
+          category_id_user: null,
+          budget_excluded: false,
+        },
+      ],
+    });
+
+    expect(forecast.variable.groceries).toBe(100);
+    expect(forecast.variableCosts).toBe(100);
+  });
 });

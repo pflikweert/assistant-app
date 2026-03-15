@@ -14,16 +14,20 @@
   - Forecast fallbacklogica verbeterd met recente volledige maanden
   - `Nog vrij te besteden`, status en weektempo semantisch gelijkgetrokken op dashboard, budget en insights
   - Unit tests toegevoegd voor budget risk, forecast fallback en locklogica
+  - Week attentionlogica verplaatst naar gedeelde helper met unit tests
+  - Forecasttests uitgebreid voor weinig historie en oude uitschieters
   - Categorie-detail drilldown vanuit budget maandtab
+  - Budget weeklabels verduidelijkt met kalenderweeknotatie en overlaplabels in weekdetail
+  - Categorieoverzicht op de maandtab verrijkt met categorie-iconen
+  - Transactie-iconen app-breed gekoppeld aan de echte transactiecategorie met centrale mapping en unit tests
   - Google Material iconensysteem met lokale fonts geïmplementeerd en app-breed vervangen
 
 ## Aanbevolen Volgende Fase
 
-- Eerst afronden:
-  - Extra tests voor week attentionlogica
+- Fase 2 code is afgerond.
+- Nog handmatig nalopen:
   - Laatste visuele check in simulator of web voor status- en tempocopy
-  - Eventueel forecastscenario's uitbreiden voor uitzonderlijke maanden of weinig historie
-  - Iconen visueel nalopen op variantkeuze en spacing per scherm
+  - Iconen visueel nalopen op variantkeuze, mapping en spacing per scherm
 - Daarna oppakken:
   - Herverdeling-preview in beheer voor opslaan
   - `Wat is veranderd` laag in Insights
@@ -35,10 +39,13 @@
 
 ## Fase 2
 
-- Extra tests voor week attentionlogica
-- Laatste visuele check in simulator of web voor status- en tempocopy
-- Eventueel forecastscenario's uitbreiden voor uitzonderlijke maanden of weinig historie
-- Iconen visueel nalopen op variantkeuze en spacing per scherm
+- Afgerond in code:
+  - Extra tests voor week attentionlogica
+  - Forecastscenario's uitgebreid voor weinig historie en oude uitschieters
+  - Gedeelde helper voor week attention zodat budget-UI en tests dezelfde logica gebruiken
+- Handmatige QA:
+  - Laatste visuele check in simulator of web voor status- en tempocopy
+  - Iconen visueel nalopen op variantkeuze, mapping en spacing per scherm
 
 ## Fase 3
 

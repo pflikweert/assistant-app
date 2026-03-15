@@ -11,6 +11,12 @@ import {
 } from "@/services/budget-lock-utils";
 import { computeBudgetPlan } from "@/services/budget-plan";
 import {
+  buildWeekAttentionRows,
+  getBudgetCategoryDisplayLabel,
+  VARIABLE_BUDGET_BREAKDOWN_KEYS,
+  type VariableBudgetCategoryKey,
+} from "@/services/budget-week-attention";
+import {
   getBudgetRiskLabel,
   getBudgetRiskProgress,
   getBudgetRiskTone,
@@ -107,15 +113,6 @@ const INCOME_SOURCE_OPTIONS: {
   { key: "variable", label: "Variabel" },
 ];
 
-const VARIABLE_BUDGET_BREAKDOWN_KEYS: BudgetCategoryKey[] = [
-  "groceries",
-  "fuel",
-  "smoking",
-  "other",
-];
-type VariableBudgetCategoryKey =
-  (typeof VARIABLE_BUDGET_BREAKDOWN_KEYS)[number];
-
 const SAVINGS_SLIDER_STEP = 25;
 
 type SegmentKey = (typeof SEGMENTS)[number]["key"];
@@ -130,17 +127,11 @@ type InlineWeekTransaction = {
   category_id_auto: string | null;
   category_id_user: string | null;
 };
-type WeekAttentionRow = {
-  categoryKey: BudgetCategoryKey;
-  label: string;
-  weeklyBudget: number;
-  weeklyActual: number;
-  utilization: number;
-};
 type BudgetInlineTransactionRowProps = {
   tx: InlineWeekTransaction;
   categoryById: Map<string, CategoryRecord>;
   isUpdating: boolean;
+  overlapLabel?: string | null;
   onOpen: () => void;
   onToggle: () => void;
 };
@@ -149,6 +140,7 @@ function BudgetInlineTransactionRow({
   tx,
   categoryById,
   isUpdating,
+  overlapLabel,
   onOpen,
   onToggle,
 }: BudgetInlineTransactionRowProps) {
@@ -170,7 +162,14 @@ function BudgetInlineTransactionRow({
           />
           <View style={styles.inlineTransactionContent}>
             <Text style={styles.inlineTransactionTitle}>{tx.title}</Text>
-            <Text style={styles.inlineTransactionCategory}>{categoryLabel}</Text>
+            <View style={styles.inlineTransactionCategoryRow}>
+              <Text style={styles.inlineTransactionCategory}>{categoryLabel}</Text>
+              {overlapLabel ? (
+                <View style={styles.inlineOverlapChip}>
+                  <Text style={styles.inlineOverlapChipText}>{overlapLabel}</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={styles.inlineTransactionsMeta}>
               {metaParts.join(" · ")}
             </Text>
@@ -321,6 +320,49 @@ function formatWeekRangeLabel(week: BudgetWeekPlanRow) {
   return `${startLabel} - ${endLabel}`;
 }
 
+function getMonthOverlapLabel(
+  txDateIso: string,
+  monthStartIso: string | null | undefined,
+) {
+  if (!txDateIso || !monthStartIso) return null;
+
+  const txDate = new Date(`${txDateIso}T00:00:00.000Z`);
+  const monthStart = new Date(`${monthStartIso}T00:00:00.000Z`);
+  if (Number.isNaN(txDate.getTime()) || Number.isNaN(monthStart.getTime())) {
+    return null;
+  }
+
+  const nextMonthStart = new Date(
+    Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1),
+  );
+
+  if (txDate < monthStart) return "Vorige maand";
+  if (txDate >= nextMonthStart) return "Volgende maand";
+  return null;
+}
+
+function getIsoWeekNumberFromStartDate(startDateIso: string) {
+  const date = new Date(`${startDateIso}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const utcDate = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+  const weekday = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - weekday);
+
+  const yearStart = new Date(Date.UTC(utcDate.getUTCFullYear(), 0, 1));
+  const dayOfYear =
+    Math.floor((utcDate.getTime() - yearStart.getTime()) / 86400000) + 1;
+  return Math.ceil(dayOfYear / 7);
+}
+
+function formatBudgetWeekLabel(week: BudgetWeekPlanRow) {
+  const isoWeekNumber = getIsoWeekNumberFromStartDate(week.startDate);
+  if (isoWeekNumber == null) return week.label;
+  return `Week ${isoWeekNumber} (${week.weekNumber})`;
+}
+
 function formatDetailDateLabel(value: string | null) {
   if (!value) return "onbekend";
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -329,17 +371,6 @@ function formatDetailDateLabel(value: string | null) {
     day: "numeric",
     month: "short",
   });
-}
-
-function getBudgetCategoryDisplayLabel(categoryKey: BudgetCategoryKey) {
-  if (categoryKey === "fixed_costs") return "Vaste lasten";
-  if (categoryKey === "subscriptions") return "Abonnementen";
-  if (categoryKey === "variable_costs") return "Variabele uitgaven";
-  if (categoryKey === "groceries") return "Boodschappen";
-  if (categoryKey === "fuel") return "Brandstof";
-  if (categoryKey === "smoking") return "Roken";
-  if (categoryKey === "other") return "Overig";
-  return "Spaardoel";
 }
 
 function isVariableBreakdownKey(categoryKey: BudgetCategoryKey) {
@@ -1548,54 +1579,10 @@ export default function BudgetScreen() {
   );
 
   const weekAttentionRows = React.useMemo(() => {
-    if (!focusWeek) return [] as WeekAttentionRow[];
-
-    const spendByKey = new Map(
-      (focusWeekSpendBreakdown?.categories || []).map((category) => [
-        category.key,
-        category,
-      ]),
-    );
-    const weekBudgetByMainCategory = resolveWeekBudgetByMainCategory(focusWeek);
-
-    const rows = VARIABLE_BUDGET_BREAKDOWN_KEYS.map((categoryKey) => {
-      const weeklyBudget = Math.round(
-        weekBudgetByMainCategory.get(categoryKey) || 0,
-      );
-      const weeklyActual = Math.round(spendByKey.get(categoryKey)?.amount || 0);
-      const utilization =
-        weeklyBudget > 0 ? weeklyActual / weeklyBudget : weeklyActual > 0 ? 1.25 : 0;
-
-      return {
-        categoryKey,
-        label: getBudgetCategoryDisplayLabel(categoryKey),
-        weeklyBudget,
-        weeklyActual,
-        utilization,
-      };
-    });
-
-    const visibleRows = rows.filter(
-      (row) => row.weeklyBudget > 0 || row.weeklyActual > 0,
-    );
-    const fallbackRows = rows.filter((row) => row.weeklyBudget > 0);
-    const relevantRows = visibleRows.length > 0 ? visibleRows : fallbackRows;
-    const toneWeight: Record<BudgetRiskTone, number> = {
-      good: 1,
-      watch: 2,
-      critical: 3,
-    };
-
-    return relevantRows.sort((left, right) => {
-      const toneDiff =
-        toneWeight[getBudgetRiskTone(right.utilization)] -
-        toneWeight[getBudgetRiskTone(left.utilization)];
-      if (toneDiff !== 0) return toneDiff;
-
-      const utilizationDiff = right.utilization - left.utilization;
-      if (utilizationDiff !== 0) return utilizationDiff;
-
-      return right.weeklyActual - left.weeklyActual;
+    return buildWeekAttentionRows({
+      focusWeek,
+      spendBreakdown: focusWeekSpendBreakdown,
+      weekBudgetByMainCategory: resolveWeekBudgetByMainCategory(focusWeek),
     });
   }, [focusWeek, focusWeekSpendBreakdown, resolveWeekBudgetByMainCategory]);
 
@@ -2481,7 +2468,7 @@ export default function BudgetScreen() {
                 />
                 {focusWeek ? (
                   <Text style={styles.heroMeta}>
-                    {focusWeek.label} · {formatWeekRangeLabel(focusWeek)}
+                    {formatBudgetWeekLabel(focusWeek)} · {formatWeekRangeLabel(focusWeek)}
                   </Text>
                 ) : null}
                 {focusWeek ? (
@@ -2516,16 +2503,16 @@ export default function BudgetScreen() {
                       <View
                         style={[
                           styles.statusChip,
-                          getRiskStyle(getBudgetRiskTone(row.utilization)).chip,
+                          getRiskStyle(row.tone).chip,
                         ]}
                       >
                         <Text
                           style={[
                             styles.statusChipText,
-                            getRiskStyle(getBudgetRiskTone(row.utilization)).text,
+                            getRiskStyle(row.tone).text,
                           ]}
                         >
-                          {getBudgetRiskLabel(row.utilization)}
+                          {row.statusLabel}
                         </Text>
                       </View>
                     </View>
@@ -2681,12 +2668,21 @@ export default function BudgetScreen() {
                         row.categoryKey as VariableBudgetCategoryKey,
                       )
                     }
-                  >
-                    <View style={styles.categoryMain}>
-                      <Text style={styles.categoryLabel}>{row.label}</Text>
-                      <Text style={styles.categoryMeta}>
-                        Maandbudget {fmt.format(row.monthlyBudget)}
-                      </Text>
+                    >
+                    <View style={styles.categoryListMain}>
+                      <View style={styles.categoryListIconBubble}>
+                        <AppIcon
+                          name={getVariableCategoryIconName(row.categoryKey)}
+                          size={18}
+                          color={FinColors.textPrimary}
+                        />
+                      </View>
+                      <View style={styles.categoryMain}>
+                        <Text style={styles.categoryLabel}>{row.label}</Text>
+                        <Text style={styles.categoryMeta}>
+                          Maandbudget {fmt.format(row.monthlyBudget)}
+                        </Text>
+                      </View>
                     </View>
                     <View style={styles.categoryRight}>
                       <Text style={styles.categoryValue}>
@@ -2722,7 +2718,9 @@ export default function BudgetScreen() {
                     >
                       <View style={styles.historyHeaderRow}>
                         <View style={styles.historyLabelWrap}>
-                          <Text style={styles.historyLabel}>{week.label}</Text>
+                          <Text style={styles.historyLabel}>
+                            {formatBudgetWeekLabel(week)}
+                          </Text>
                           <Text style={styles.historyMeta}>
                             {formatWeekRangeLabel(week)}
                             {week.isCurrentWeek ? " · huidige week" : ""}
@@ -3315,7 +3313,9 @@ export default function BudgetScreen() {
             <View style={styles.sheetHeaderRow}>
               <View style={styles.sheetHeaderMain}>
                 <Text style={styles.sheetTitle}>
-                  {selectedWeekDetail ? selectedWeekDetail.week.label : "Weekdetail"}
+                  {selectedWeekDetail
+                    ? formatBudgetWeekLabel(selectedWeekDetail.week)
+                    : "Weekdetail"}
                 </Text>
                 {selectedWeekDetail ? (
                   <Text style={styles.sheetSub}>
@@ -3527,6 +3527,10 @@ export default function BudgetScreen() {
                                                   tx={tx}
                                                   categoryById={categoryById}
                                                   isUpdating={isUpdating}
+                                                  overlapLabel={getMonthOverlapLabel(
+                                                    tx.date,
+                                                    budgetPlan?.monthStart,
+                                                  )}
                                                   onOpen={() =>
                                                     openInlineTransactionDetail(
                                                       tx.id,
@@ -4217,8 +4221,27 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 6,
   },
+  categoryListMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minWidth: 0,
+  },
+  categoryListIconBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
   categoryMain: {
     flex: 1,
+    minWidth: 0,
   },
   categoryLabel: {
     fontSize: 15,
@@ -5009,8 +5032,27 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
   },
   inlineTransactionCategory: {
-    marginTop: 2,
     fontSize: 12,
+    color: FinColors.textSecondary,
+  },
+  inlineTransactionCategoryRow: {
+    marginTop: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  inlineOverlapChip: {
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    backgroundColor: FinColors.bgMuted,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  inlineOverlapChipText: {
+    fontSize: 10,
+    fontWeight: "700",
     color: FinColors.textSecondary,
   },
   inlineTransactionRight: {
