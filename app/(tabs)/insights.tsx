@@ -1,47 +1,57 @@
+import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
+import { getMonthBudgetRiskTone } from "@/services/budget-risk";
 import { computeBudgetPlan } from "@/services/budget-plan";
 import {
-    getTransactionCategories,
-    setTransactionManualCategory,
+  getTransactionCategories,
+  setTransactionManualCategory,
 } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
 import {
-    buildCategoryRecordMap,
-    formatConfidenceLabel,
-    getCategorizationCoverage,
-    getCategoryPathLabel,
-    getEffectiveCategoryId,
-    getLeafCategories,
-    needsCategorizationReview,
+  buildCategoryRecordMap,
+  formatConfidenceLabel,
+  getCategorizationCoverage,
+  getCategoryPathLabel,
+  getEffectiveCategoryId,
+  getLeafCategories,
+  needsCategorizationReview,
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
 import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
 import { supabase } from "@/services/supabase";
 import type {
-    BudgetPlanComputation,
-    CategoryRecord,
-    ExpenseAnalysisCategory,
+  BudgetPlanComputation,
+  CategoryRecord,
+  ExpenseAnalysisCategory,
 } from "@/types/categorization";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
 });
+
+const SEGMENTS = [
+  { key: "trends", label: "Trends" },
+  { key: "forecast", label: "Voorspelling" },
+  { key: "review", label: "Controle" },
+] as const;
 
 const SUBJECT_DRIVEN_PROVIDERS = [
   "klarna",
@@ -94,89 +104,18 @@ const SAVINGS_FALLBACK_HINTS = [
   "overboeking eigen rekening",
 ];
 
-function isSubjectDrivenCounterparty(counterparty: string | null | undefined) {
-  const normalized = String(counterparty || "").toLowerCase();
-  if (!normalized) return false;
-  return SUBJECT_DRIVEN_PROVIDERS.some((token) => normalized.includes(token));
-}
+const VARIABLE_FALLBACK_HINTS = [
+  "zakgeld",
+  "kleedgeld",
+  "kledinggeld",
+  "pocket money",
+  "allowance",
+];
 
-function normalizeSearch(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
+const CAT_COLORS = ["#7dd3a1", "#d7b64c", "#94a3b8", "#9b9186", "#6b6b6b"];
 
-function formatShortDate(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
-  if (!match) return value;
-
-  const year = Number(match[1]);
-  const month = Number(match[2]) - 1;
-  const day = Number(match[3]);
-  const date = new Date(year, month, day);
-
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month ||
-    date.getDate() !== day
-  ) {
-    return value;
-  }
-
-  return date.toLocaleDateString("nl-NL", {
-    day: "2-digit",
-    month: "short",
-  });
-}
-
-function formatIncludedIncomeLabel(plan: BudgetPlanComputation | null) {
-  if (!plan) return "Budget-instellingen";
-
-  const labels: string[] = [];
-  if (plan.settings.includeIncome.salary) labels.push("salaris");
-  if (plan.settings.includeIncome.childBudget) {
-    labels.push("kindgebonden budget");
-  }
-  if (plan.settings.includeIncome.structuralOther) {
-    labels.push("overige structurele inkomsten");
-  }
-  if (plan.settings.includeIncome.variable) {
-    labels.push("variabele/eenmalige inkomsten");
-  }
-
-  if (!labels.length) return "geen inkomstenbron";
-  return labels.join(", ");
-}
-
-function toLocalIsoDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getMonthBounds(monthsAgo: number) {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
-  const end = new Date(now.getFullYear(), now.getMonth() - monthsAgo + 1, 1);
-
-  return {
-    start,
-    end,
-    startIso: toLocalIsoDate(start),
-    endIso: toLocalIsoDate(end),
-    label: start.toLocaleDateString("nl-NL", {
-      month: "long",
-      year: "numeric",
-    }),
-  };
-}
-
-// ─── Category bar ─────────────────────────────────────────────────────────────
-type Category = { label: string; amount: number; color: string };
+type SegmentKey = (typeof SEGMENTS)[number]["key"];
+type CategoryBarRow = { label: string; amount: number; color: string };
 type InsightTx = {
   id: string;
   details: string;
@@ -232,63 +171,287 @@ type CategoryGroup = {
   children: CategoryRecord[];
 };
 
-const CAT_COLORS = ["#7dd3a1", "#94a3b8", "#a3a3a3", "#6b6b6b", "#525252"];
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
 
-function CategoryBar({ categories }: { categories: Category[] }) {
-  const total = categories.reduce((s, c) => s + c.amount, 0) || 1;
+function isSubjectDrivenCounterparty(counterparty: string | null | undefined) {
+  const normalized = String(counterparty || "").toLowerCase();
+  if (!normalized) return false;
+  return SUBJECT_DRIVEN_PROVIDERS.some((token) => normalized.includes(token));
+}
+
+function normalizeSearch(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function formatShortDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) return value;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(year, month, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month ||
+    date.getDate() !== day
+  ) {
+    return value;
+  }
+
+  return date.toLocaleDateString("nl-NL", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function formatIncludedIncomeLabel(plan: BudgetPlanComputation | null) {
+  if (!plan) return "Budget-instellingen";
+
+  const labels: string[] = [];
+  if (plan.settings.includeIncome.salary) labels.push("salaris");
+  if (plan.settings.includeIncome.childBudget) {
+    labels.push("kindgebonden budget");
+  }
+  if (plan.settings.includeIncome.structuralOther) {
+    labels.push("overige structurele inkomsten");
+  }
+  if (plan.settings.includeIncome.variable) {
+    labels.push("variabele inkomsten");
+  }
+
+  if (!labels.length) return "geen inkomstenbron";
+  return labels.join(", ");
+}
+
+function toLocalIsoDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getMonthBounds(monthsAgo: number) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
+  const end = new Date(now.getFullYear(), now.getMonth() - monthsAgo + 1, 1);
+
+  return {
+    startIso: toLocalIsoDate(start),
+    endIso: toLocalIsoDate(end),
+    label: start.toLocaleDateString("nl-NL", {
+      month: "long",
+      year: "numeric",
+    }),
+  };
+}
+
+function isMissingColumnError(error: unknown) {
+  const code = String((error as { code?: string })?.code || "");
+  const message = String(
+    (error as { message?: string })?.message || "",
+  ).toLowerCase();
+
+  if (code === "42703" || code === "PGRST204") return true;
+
   return (
-    <View style={{ gap: 16 }}>
-      {/* Segmented bar */}
-      <View
-        style={{
-          flexDirection: "row",
-          height: 6,
-          borderRadius: 3,
-          overflow: "hidden",
-          gap: 2,
-        }}
-      >
-        {categories.map((cat, i) => (
+    (message.includes("column") && message.includes("does not exist")) ||
+    message.includes("could not find")
+  );
+}
+
+function isMissingRelationError(error: unknown) {
+  const code = String((error as { code?: string })?.code || "");
+  const message = String(
+    (error as { message?: string })?.message || "",
+  ).toLowerCase();
+
+  if (code === "42P01" || code === "PGRST205") return true;
+  return message.includes("relation") && message.includes("does not exist");
+}
+
+function toLowerHaystack(tx: InsightTx) {
+  return `${tx.counterparty || ""} ${tx.details || ""}`.toLowerCase();
+}
+
+function fallbackExpenseCategory(tx: InsightTx): ExpenseAnalysisCategory {
+  const haystack = toLowerHaystack(tx);
+  if (SAVINGS_FALLBACK_HINTS.some((hint) => haystack.includes(hint))) {
+    return "savings_transfer";
+  }
+  if (SUBSCRIPTION_FALLBACK_HINTS.some((hint) => haystack.includes(hint))) {
+    return "subscriptions";
+  }
+  if (FIXED_FALLBACK_HINTS.some((hint) => haystack.includes(hint))) {
+    return "fixed_costs";
+  }
+  if (VARIABLE_FALLBACK_HINTS.some((hint) => haystack.includes(hint))) {
+    return "variable_costs";
+  }
+  return "variable_costs";
+}
+
+function resolveExpenseBucket(
+  tx: InsightTx,
+  categoryMap: Map<string, CategoryRecord>,
+): ExpenseAnalysisCategory {
+  const categoryId = getEffectiveCategoryId(tx);
+  const category = categoryId ? categoryMap.get(categoryId) || null : null;
+  const categoryKey = String(category?.key || "").toLowerCase();
+
+  if (categoryKey.startsWith("savings")) return "savings_transfer";
+  if (categoryKey.startsWith("subscriptions")) return "subscriptions";
+  if (
+    (categoryKey.startsWith("care_") || categoryKey.startsWith("health_")) &&
+    !categoryKey.startsWith("care_health_insurance") &&
+    !categoryKey.startsWith("insurance_health") &&
+    !categoryKey.startsWith("health_insurance")
+  ) {
+    return "variable_costs";
+  }
+  if (
+    categoryKey.startsWith("housing") ||
+    categoryKey.startsWith("care_health_insurance") ||
+    categoryKey.startsWith("insurance_health") ||
+    categoryKey.startsWith("health_insurance") ||
+    categoryKey.startsWith("auto_transport_car_insurance") ||
+    categoryKey.startsWith("auto_transport_road_tax")
+  ) {
+    return "fixed_costs";
+  }
+  if (
+    categoryKey.startsWith("groceries") ||
+    categoryKey.startsWith("fuel") ||
+    categoryKey.startsWith("smoking") ||
+    categoryKey.startsWith("shopping")
+  ) {
+    return "variable_costs";
+  }
+
+  if (category?.budget_group === "savings") return "savings_transfer";
+  if (category?.budget_group === "fixed") return "fixed_costs";
+  if (category?.budget_group === "variable") return "variable_costs";
+
+  if (
+    tx.analysis_category === "fixed_costs" ||
+    tx.analysis_category === "subscriptions" ||
+    tx.analysis_category === "variable_costs" ||
+    tx.analysis_category === "savings_transfer"
+  ) {
+    return tx.analysis_category;
+  }
+
+  return fallbackExpenseCategory(tx);
+}
+
+function getTrendHeadline(
+  monthReport: {
+    fixed: number;
+    subscriptions: number;
+    variable: number;
+    savingsTransfers: number;
+    expenses: number;
+    outflow: number;
+    income: number;
+    net: number;
+  },
+  budgetPlan: BudgetPlanComputation | null,
+) {
+  if (monthReport.income === 0 && monthReport.expenses === 0) {
+    return "Nog geen maanddata om een trend te tonen.";
+  }
+
+  if (!budgetPlan) {
+    return monthReport.net >= 0
+      ? "Deze maand ligt je netto resultaat nog in de plus."
+      : "Deze maand gaat er meer uit dan er binnenkomt.";
+  }
+
+  const variableActual = budgetPlan.monthToDateExpenses.variableCosts;
+  const variableBudget = budgetPlan.flowSummary.variableBudget;
+  const delta = variableBudget - variableActual;
+
+  if (delta > 50) {
+    return `Je variabele uitgaven liggen ${fmt.format(delta)} onder je maandruimte.`;
+  }
+  if (delta >= 0) {
+    return "Je variabele uitgaven zitten nog binnen je maandruimte.";
+  }
+  return `Je variabele uitgaven liggen ${fmt.format(Math.abs(delta))} boven je maandruimte.`;
+}
+
+function getForecastHeadline(
+  forecast: CashflowForecast | null,
+  budgetPlan: BudgetPlanComputation | null,
+) {
+  if (!forecast) {
+    return "Nog geen cashflowvoorspelling beschikbaar voor deze maand.";
+  }
+
+  if (
+    forecast.risk_flag === "deficit_warning" ||
+    (forecast.expected_end_of_month_balance != null &&
+      forecast.expected_end_of_month_balance < 0)
+  ) {
+    return "De voorspelling laat zien dat je maandbuffer onder druk staat.";
+  }
+
+  if (
+    forecast.expected_end_of_month_balance != null &&
+    forecast.expected_end_of_month_balance > 0
+  ) {
+    return `Verwacht eindsaldo: ${fmt.format(forecast.expected_end_of_month_balance)}.`;
+  }
+
+  if (budgetPlan?.coachReport.sections.summary) {
+    return budgetPlan.coachReport.sections.summary;
+  }
+
+  return "Je cashflow oogt stabiel op basis van het huidige maandtempo.";
+}
+
+function CategoryBar({ categories }: { categories: CategoryBarRow[] }) {
+  const total = categories.reduce((sum, category) => sum + category.amount, 0) || 1;
+
+  return (
+    <View style={styles.categoryBarWrap}>
+      <View style={styles.categoryBarTrack}>
+        {categories.map((category) => (
           <View
-            key={i}
-            style={{ flex: cat.amount / total, backgroundColor: cat.color }}
+            key={category.label}
+            style={[
+              styles.categoryBarSegment,
+              {
+                flex: category.amount / total,
+                backgroundColor: category.color,
+              },
+            ]}
           />
         ))}
       </View>
-      {/* Legend */}
-      <View style={{ gap: 12 }}>
-        {categories.map((cat, i) => (
-          <View
-            key={i}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-            >
+
+      <View style={styles.categoryLegend}>
+        {categories.map((category) => (
+          <View key={category.label} style={styles.categoryLegendRow}>
+            <View style={styles.categoryLegendMain}>
               <View
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  backgroundColor: cat.color,
-                }}
+                style={[
+                  styles.categoryLegendDot,
+                  { backgroundColor: category.color },
+                ]}
               />
-              <Text style={{ fontSize: 14, color: FinColors.textSecondary }}>
-                {cat.label}
-              </Text>
+              <Text style={styles.categoryLegendLabel}>{category.label}</Text>
             </View>
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: "600",
-                color: FinColors.textPrimary,
-              }}
-            >
-              {fmt.format(cat.amount)}
+            <Text style={styles.categoryLegendValue}>
+              {fmt.format(category.amount)}
             </Text>
           </View>
         ))}
@@ -297,28 +460,18 @@ function CategoryBar({ categories }: { categories: Category[] }) {
   );
 }
 
-// ─── Insight card ─────────────────────────────────────────────────────────────
-function InsightCard({ title, text }: { title: string; text: string }) {
-  return (
-    <View style={styles.insightCard}>
-      <Text style={styles.insightTitle}>{title}</Text>
-      <Text style={styles.insightText}>{text}</Text>
-    </View>
-  );
-}
-
 function ReviewItem({
   tx,
+  categoryMap,
   onPress,
   onConfirm,
   saving,
-  categoryMap,
 }: {
   tx: ReviewableInsightTx;
+  categoryMap: Map<string, CategoryRecord>;
   onPress: (tx: ReviewableInsightTx) => void;
   onConfirm: (tx: ReviewableInsightTx) => void;
   saving: boolean;
-  categoryMap: Map<string, CategoryRecord>;
 }) {
   return (
     <View style={styles.reviewRow}>
@@ -347,7 +500,7 @@ function ReviewItem({
             disabled={saving}
             onPress={() => onPress(tx)}
           >
-            <Text style={styles.reviewButtonText}>Review</Text>
+            <Text style={styles.reviewButtonText}>Controleer</Text>
           </Pressable>
           {getEffectiveCategoryId(tx) ? (
             <Pressable
@@ -364,85 +517,15 @@ function ReviewItem({
   );
 }
 
-function toLowerHaystack(tx: InsightTx) {
-  return `${tx.counterparty || ""} ${tx.details || ""}`.toLowerCase();
-}
-
-function fallbackExpenseCategory(tx: InsightTx): ExpenseAnalysisCategory {
-  const haystack = toLowerHaystack(tx);
-  if (SAVINGS_FALLBACK_HINTS.some((hint) => haystack.includes(hint))) {
-    return "savings_transfer";
-  }
-  if (SUBSCRIPTION_FALLBACK_HINTS.some((hint) => haystack.includes(hint))) {
-    return "subscriptions";
-  }
-  if (FIXED_FALLBACK_HINTS.some((hint) => haystack.includes(hint))) {
-    return "fixed_costs";
-  }
-  return "variable_costs";
-}
-
-function resolveExpenseBucket(
-  tx: InsightTx,
-  categoryMap: Map<string, CategoryRecord>,
-): ExpenseAnalysisCategory {
-  if (
-    tx.analysis_category === "fixed_costs" ||
-    tx.analysis_category === "subscriptions" ||
-    tx.analysis_category === "variable_costs" ||
-    tx.analysis_category === "savings_transfer"
-  ) {
-    return tx.analysis_category;
-  }
-
-  const categoryId = getEffectiveCategoryId(tx);
-  const category = categoryId ? categoryMap.get(categoryId) || null : null;
-  const categoryKey = String(category?.key || "");
-
-  if (categoryKey.startsWith("savings")) return "savings_transfer";
-  if (categoryKey.startsWith("subscriptions")) return "subscriptions";
-  if (
-    categoryKey.startsWith("care_") &&
-    !categoryKey.startsWith("care_health_insurance")
-  ) {
-    return "variable_costs";
-  }
-
-  if (category?.budget_group === "savings") return "savings_transfer";
-  if (category?.budget_group === "fixed") return "fixed_costs";
-  if (category?.budget_group === "variable") return "variable_costs";
-
-  return fallbackExpenseCategory(tx);
-}
-
-function isMissingColumnError(error: unknown) {
-  const code = String((error as { code?: string })?.code || "");
-  const message = String(
-    (error as { message?: string })?.message || "",
-  ).toLowerCase();
-
-  if (code === "42703" || code === "PGRST204") return true;
-
-  return (
-    (message.includes("column") && message.includes("does not exist")) ||
-    message.includes("could not find")
-  );
-}
-
-function isMissingRelationError(error: unknown) {
-  const code = String((error as { code?: string })?.code || "");
-  const message = String(
-    (error as { message?: string })?.message || "",
-  ).toLowerCase();
-
-  if (code === "42P01" || code === "PGRST205") return true;
-
-  return message.includes("relation") && message.includes("does not exist");
-}
-
-// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function InsightsScreen() {
   const router = useRouter();
+  const isFocused = useIsFocused();
+  const backgroundStatus = useCategorizationStatus();
+  const forecastLoadInFlight = React.useRef(false);
+  const budgetLoadInFlight = React.useRef(false);
+
+  const [segment, setSegment] = React.useState<SegmentKey>("trends");
+  const [loading, setLoading] = React.useState(true);
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
   const [transactions, setTransactions] = React.useState<InsightTx[]>([]);
   const [forecast, setForecast] = React.useState<CashflowForecast | null>(null);
@@ -464,10 +547,11 @@ export default function InsightsScreen() {
   const [expandedParents, setExpandedParents] = React.useState<
     Record<string, boolean>
   >({});
-  const forecastLoadInFlight = React.useRef(false);
-  const budgetLoadInFlight = React.useRef(false);
-  const isFocused = useIsFocused();
-  const backgroundStatus = useCategorizationStatus();
+
+  const selectedMonth = React.useMemo(
+    () => getMonthBounds(monthOffset),
+    [monthOffset],
+  );
 
   const categoryMap = React.useMemo(
     () => buildCategoryRecordMap(categories),
@@ -477,6 +561,7 @@ export default function InsightsScreen() {
     const curatedLeaves = getLeafCategories(categories, { curatedOnly: true });
     return curatedLeaves.length ? curatedLeaves : getLeafCategories(categories);
   }, [categories]);
+
   const groupedModalCategories = React.useMemo<CategoryGroup[]>(() => {
     const byId = new Map(categories.map((category) => [category.id, category]));
     const groups = new Map<string, CategoryGroup>();
@@ -515,18 +600,18 @@ export default function InsightsScreen() {
         return a.name.localeCompare(b.name, "nl");
       });
   }, [categories, leafCategories]);
+
   const categoryToGroupId = React.useMemo(() => {
     const map = new Map<string, string>();
-
     for (const group of groupedModalCategories) {
       map.set(group.id, group.id);
       for (const child of group.children) {
         map.set(child.id, group.id);
       }
     }
-
     return map;
   }, [groupedModalCategories]);
+
   const filteredModalGroups = React.useMemo(() => {
     const query = normalizeSearch(categorySearch);
     if (!query) return groupedModalCategories;
@@ -537,7 +622,9 @@ export default function InsightsScreen() {
         if (parentMatches) return group;
 
         const filteredChildren = group.children.filter((child) => {
-          const haystack = `${normalizeSearch(child.name)} ${normalizeSearch(child.key)}`;
+          const haystack = `${normalizeSearch(child.name)} ${normalizeSearch(
+            child.key,
+          )}`;
           return haystack.includes(query);
         });
 
@@ -550,6 +637,7 @@ export default function InsightsScreen() {
       .filter((group): group is CategoryGroup => Boolean(group));
   }, [categorySearch, groupedModalCategories]);
   const searchActive = categorySearch.trim().length > 0;
+
   const displayTransactions = React.useMemo<ReviewableInsightTx[]>(
     () =>
       transactions.map((tx) => ({
@@ -558,13 +646,10 @@ export default function InsightsScreen() {
       })),
     [transactions, categoryMap],
   );
+
   const coverage = React.useMemo(
     () => getCategorizationCoverage(transactions),
     [transactions],
-  );
-  const selectedMonth = React.useMemo(
-    () => getMonthBounds(monthOffset),
-    [monthOffset],
   );
 
   const monthReport = React.useMemo(() => {
@@ -577,7 +662,6 @@ export default function InsightsScreen() {
       if (tx.amount >= 0) continue;
 
       const bucket = resolveExpenseBucket(tx, categoryMap);
-
       const value = Math.abs(tx.amount);
       if (bucket === "fixed_costs") fixed += value;
       else if (bucket === "subscriptions") subscriptions += value;
@@ -600,7 +684,7 @@ export default function InsightsScreen() {
     };
   }, [categoryMap, totalIncome, transactions]);
 
-  const spendingByCategory = React.useMemo<Category[]>(() => {
+  const spendingByCategory = React.useMemo<CategoryBarRow[]>(() => {
     const expenseRows = displayTransactions.filter((tx) => {
       if (tx.amount >= 0) return false;
       return resolveExpenseBucket(tx, categoryMap) !== "savings_transfer";
@@ -613,7 +697,7 @@ export default function InsightsScreen() {
     }
 
     return Array.from(totals.entries())
-      .sort((a, b) => b[1] - a[1])
+      .sort((left, right) => right[1] - left[1])
       .slice(0, 5)
       .map(([label, amount], index) => ({
         label,
@@ -634,9 +718,9 @@ export default function InsightsScreen() {
     () =>
       displayTransactions
         .filter((tx) => tx.amount > 0)
-        .sort((a, b) => {
-          if (a.date !== b.date) return b.date.localeCompare(a.date);
-          return b.amount - a.amount;
+        .sort((left, right) => {
+          if (left.date !== right.date) return right.date.localeCompare(left.date);
+          return right.amount - left.amount;
         }),
     [displayTransactions],
   );
@@ -661,65 +745,63 @@ export default function InsightsScreen() {
         total: value.total,
         count: value.count,
       }))
-      .sort((a, b) => b.total - a.total);
+      .sort((left, right) => right.total - left.total);
   }, [incomeTransactions]);
 
-  const insightCards = React.useMemo(() => {
-    const cards: { title: string; text: string }[] = [];
-    const topCategory = spendingByCategory[0];
+  const trendHeadline = React.useMemo(
+    () => getTrendHeadline(monthReport, budgetPlan),
+    [budgetPlan, monthReport],
+  );
+  const forecastHeadline = React.useMemo(
+    () => getForecastHeadline(forecast, budgetPlan),
+    [budgetPlan, forecast],
+  );
 
-    if (topCategory) {
-      const share =
-        monthReport.expenses > 0
-          ? Math.round((topCategory.amount / monthReport.expenses) * 100)
-          : 0;
-      cards.push({
-        title: `Grootste uitgave: ${topCategory.label}`,
-        text: `${topCategory.label} is deze maand goed voor ${fmt.format(topCategory.amount)} en ${share}% van je uitgaven.`,
-      });
-    }
+  const topCostLabel = React.useCallback((bucket: string | null) => {
+    if (bucket === "variable_costs") return "Variabele kosten";
+    if (bucket === "subscriptions") return "Abonnementen";
+    if (bucket === "fixed_costs") return "Vaste lasten";
+    if (bucket === "savings_transfer") return "Overboeken naar sparen";
+    return null;
+  }, []);
 
-    cards.push({
-      title: "Review-werkvoorraad",
-      text:
-        reviewQueue.length === 0
-          ? "Er staan momenteel geen transacties klaar voor review."
-          : `${reviewQueue.length} recente transacties hebben lage zekerheid of fallback-classificatie en wachten op bevestiging.`,
-    });
-
-    cards.push({
-      title: "Lerend systeem",
-      text:
-        coverage.manual === 0
-          ? "Na je eerste handmatige correcties worden vergelijkbare tegenpartijen automatisch hergebruikt als patroon."
-          : `${coverage.manual} transacties zijn handmatig bevestigd en leveren nu patronen op voor volgende imports.`,
-    });
-
-    return cards;
-  }, [
-    coverage.manual,
-    monthReport.expenses,
-    reviewQueue.length,
-    spendingByCategory,
-  ]);
+  const forecastTopCostLabels = React.useMemo(
+    () =>
+      [
+        forecast?.top_cost_bucket_1,
+        forecast?.top_cost_bucket_2,
+        forecast?.top_cost_bucket_3,
+      ]
+        .map((bucket) => topCostLabel(bucket || null))
+        .filter(
+          (label): label is NonNullable<ReturnType<typeof topCostLabel>> =>
+            Boolean(label),
+        ),
+    [
+      forecast?.top_cost_bucket_1,
+      forecast?.top_cost_bucket_2,
+      forecast?.top_cost_bucket_3,
+      topCostLabel,
+    ],
+  );
 
   const loadCategories = React.useCallback(async () => {
     try {
       const rows = await getTransactionCategories();
       setCategories(rows);
-    } catch (e) {
-      console.error("[v0] insights categories load error", e);
+    } catch (error) {
+      console.error("[insights] categories load error", error);
     }
   }, []);
 
-  const load = React.useCallback(async () => {
+  const loadTransactions = React.useCallback(async () => {
     try {
       const userId = await requireCurrentUserId();
       const baseSelect =
         "id,amount,details,counterparty,date,category_id_auto,category_id_user,category_confidence,category_source";
       const analysisSelect =
         "analysis_main_group,analysis_category,recurring,recurring_type,spending_pattern";
-      const transactionsQuery = supabase.from("transactions") as any;
+      const transactionsQuery = supabase.from("transactions");
 
       let queryResult = await transactionsQuery
         .select(
@@ -752,41 +834,66 @@ export default function InsightsScreen() {
 
       if (queryResult.error) throw queryResult.error;
 
-      const data = queryResult.data || [];
-
-      if (!data?.length) {
+      const data = ((queryResult.data || []) as Record<string, unknown>[]) || [];
+      if (!data.length) {
         setTransactions([]);
         setTxCount(0);
         setTotalIncome(0);
         return;
       }
-      const rows: InsightTx[] = data.map((r: any) => ({
-        id: r.id,
-        details: String(r.details || ""),
-        counterparty: String(r.counterparty || "").trim(),
-        date: String(r.date || ""),
-        amount: Number(r.amount || 0),
-        category_id_auto: r.category_id_auto || null,
-        category_id_user: r.category_id_user || null,
+
+      const rows: InsightTx[] = data.map((row) => ({
+        id: String(row.id),
+        details: String(row.details || ""),
+        counterparty: String(row.counterparty || "").trim(),
+        date: String(row.date || ""),
+        amount: Number(row.amount || 0),
+        category_id_auto: row.category_id_auto
+          ? String(row.category_id_auto)
+          : null,
+        category_id_user: row.category_id_user
+          ? String(row.category_id_user)
+          : null,
         category_confidence:
-          r.category_confidence == null ? null : Number(r.category_confidence),
-        category_source: r.category_source || null,
-        analysis_main_group: r.analysis_main_group || null,
-        analysis_category: r.analysis_category || null,
-        recurring: "recurring" in r ? Boolean(r.recurring) : false,
-        recurring_type: r.recurring_type || null,
-        spending_pattern: r.spending_pattern || null,
+          row.category_confidence == null
+            ? null
+            : Number(row.category_confidence),
+        category_source: row.category_source ? String(row.category_source) : null,
+        analysis_main_group:
+          row.analysis_main_group === "income" ||
+          row.analysis_main_group === "expense"
+            ? row.analysis_main_group
+            : null,
+        analysis_category:
+          row.analysis_category === "fixed_costs" ||
+          row.analysis_category === "subscriptions" ||
+          row.analysis_category === "variable_costs" ||
+          row.analysis_category === "savings_transfer" ||
+          row.analysis_category === "income_structural" ||
+          row.analysis_category === "income_variable"
+            ? row.analysis_category
+            : null,
+        recurring: Boolean(row.recurring),
+        recurring_type:
+          row.recurring_type === "monthly" ||
+          row.recurring_type === "quarterly" ||
+          row.recurring_type === "yearly" ||
+          row.recurring_type === "irregular"
+            ? row.recurring_type
+            : null,
+        spending_pattern:
+          row.spending_pattern === "frequent_small_expense"
+            ? row.spending_pattern
+            : null,
       }));
 
       setTransactions(rows);
       setTxCount(rows.length);
-
-      const income = rows
-        .filter((r) => r.amount > 0)
-        .reduce((s, r) => s + r.amount, 0);
-      setTotalIncome(income);
-    } catch (e) {
-      console.error("[v0] insights load error", e);
+      setTotalIncome(
+        rows.filter((item) => item.amount > 0).reduce((sum, item) => sum + item.amount, 0),
+      );
+    } catch (error) {
+      console.error("[insights] transactions load error", error);
     }
   }, [analysisSchemaMissing, selectedMonth.endIso, selectedMonth.startIso]);
 
@@ -795,9 +902,7 @@ export default function InsightsScreen() {
       setForecast(null);
       return;
     }
-    if (forecastLoadInFlight.current) {
-      return;
-    }
+    if (forecastLoadInFlight.current) return;
 
     forecastLoadInFlight.current = true;
 
@@ -815,9 +920,7 @@ export default function InsightsScreen() {
 
       const referenceDate = new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
       referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
-
-      const currentMonthStartIso = getMonthBounds(0).startIso;
-      const isCurrentMonth = selectedMonth.startIso === currentMonthStartIso;
+      const isCurrentMonth = selectedMonth.startIso === getMonthBounds(0).startIso;
 
       if (isCurrentMonth) {
         await recomputeCurrentMonthCashflowForecast(referenceDate).catch(
@@ -828,14 +931,10 @@ export default function InsightsScreen() {
       }
 
       let { data, error } = await fetchForecastRow();
-
       if (!data) {
         await recomputeCurrentMonthCashflowForecast(referenceDate).catch(
           (recomputeError) => {
-            console.warn(
-              "[insights] forecast backfill trigger failed",
-              recomputeError,
-            );
+            console.warn("[insights] forecast backfill trigger failed", recomputeError);
           },
         );
         const retry = await fetchForecastRow();
@@ -851,6 +950,7 @@ export default function InsightsScreen() {
         }
         throw error;
       }
+
       if (!data) {
         setForecast(null);
         return;
@@ -867,13 +967,20 @@ export default function InsightsScreen() {
           data.expected_end_of_month_balance == null
             ? null
             : Number(data.expected_end_of_month_balance),
-        risk_flag: (data.risk_flag || "none") as "none" | "deficit_warning",
-        top_cost_bucket_1: data.top_cost_bucket_1 || null,
-        top_cost_bucket_2: data.top_cost_bucket_2 || null,
-        top_cost_bucket_3: data.top_cost_bucket_3 || null,
+        risk_flag:
+          data.risk_flag === "deficit_warning" ? "deficit_warning" : "none",
+        top_cost_bucket_1: data.top_cost_bucket_1
+          ? String(data.top_cost_bucket_1)
+          : null,
+        top_cost_bucket_2: data.top_cost_bucket_2
+          ? String(data.top_cost_bucket_2)
+          : null,
+        top_cost_bucket_3: data.top_cost_bucket_3
+          ? String(data.top_cost_bucket_3)
+          : null,
       });
     } catch (error) {
-      console.error("[v0] insights forecast load error", error);
+      console.error("[insights] forecast load error", error);
       setForecast(null);
     } finally {
       forecastLoadInFlight.current = false;
@@ -885,20 +992,13 @@ export default function InsightsScreen() {
       setBudgetPlan(null);
       return;
     }
-    if (budgetLoadInFlight.current) {
-      return;
-    }
+    if (budgetLoadInFlight.current) return;
 
     budgetLoadInFlight.current = true;
-
     try {
       const referenceDate = new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
       referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
-      const computed = await computeBudgetPlan(
-        referenceDate,
-        "default",
-        new Date(),
-      );
+      const computed = await computeBudgetPlan(referenceDate, "default", new Date());
       setBudgetPlan(computed);
     } catch (error) {
       if (isMissingRelationError(error)) {
@@ -907,62 +1007,32 @@ export default function InsightsScreen() {
         return;
       }
 
-      console.error("[v0] insights budget plan load error", error);
+      console.error("[insights] budget plan load error", error);
       setBudgetPlan(null);
     } finally {
       budgetLoadInFlight.current = false;
     }
   }, [budgetSchemaMissing, selectedMonth.endIso]);
 
-  React.useEffect(() => {
-    if (!isFocused) return;
-    void loadCategories();
-  }, [isFocused, loadCategories]);
+  const refreshAll = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      await loadCategories();
+      await Promise.all([loadTransactions(), loadForecast(), loadBudgetPlan()]);
+    } finally {
+      setLoading(false);
+    }
+  }, [loadBudgetPlan, loadCategories, loadForecast, loadTransactions]);
 
   React.useEffect(() => {
     if (!isFocused) return;
-
-    let cancelled = false;
-    const run = async () => {
-      await load();
-      if (cancelled) return;
-      await loadForecast();
-      if (cancelled) return;
-      await loadBudgetPlan();
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [isFocused, load, loadBudgetPlan, loadForecast]);
+    void refreshAll();
+  }, [isFocused, refreshAll]);
 
   React.useEffect(() => {
     if (!isFocused || !backgroundStatus.lastCompletedAt) return;
-
-    let cancelled = false;
-    const run = async () => {
-      await loadCategories();
-      if (cancelled) return;
-      await load();
-      if (cancelled) return;
-      await loadForecast();
-      if (cancelled) return;
-      await loadBudgetPlan();
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    backgroundStatus.lastCompletedAt,
-    isFocused,
-    load,
-    loadBudgetPlan,
-    loadCategories,
-    loadForecast,
-  ]);
+    void refreshAll();
+  }, [backgroundStatus.lastCompletedAt, isFocused, refreshAll]);
 
   const openAnalysisDetail = React.useCallback(
     (group: DrilldownExpenseGroup) => {
@@ -979,57 +1049,6 @@ export default function InsightsScreen() {
     [router, selectedMonth.endIso, selectedMonth.label, selectedMonth.startIso],
   );
 
-  const topCostLabel = React.useCallback((bucket: string | null) => {
-    if (bucket === "variable_costs") return "Variabele kosten";
-    if (bucket === "subscriptions") return "Abonnementen";
-    if (bucket === "fixed_costs") return "Vaste lasten";
-    if (bucket === "savings_transfer") return "Overboeken naar sparen";
-    return null;
-  }, []);
-
-  const forecastTopCostLabels = React.useMemo(
-    () =>
-      [
-        forecast?.top_cost_bucket_1,
-        forecast?.top_cost_bucket_2,
-        forecast?.top_cost_bucket_3,
-      ]
-        .map((bucket) => topCostLabel(bucket || null))
-        .filter(
-          (label): label is NonNullable<ReturnType<typeof topCostLabel>> =>
-            Boolean(label),
-        ),
-    [
-      forecast?.top_cost_bucket_1,
-      forecast?.top_cost_bucket_2,
-      forecast?.top_cost_bucket_3,
-      topCostLabel,
-    ],
-  );
-
-  const handleReviewSave = React.useCallback(
-    async (categoryId: string) => {
-      if (!selectedTx) return;
-      setSavingReview(true);
-      try {
-        await setTransactionManualCategory(selectedTx.id, categoryId, {
-          reason: "insights review",
-          learnFromCounterparty: !isSubjectDrivenCounterparty(
-            selectedTx.counterparty,
-          ),
-        });
-        setSelectedTx(null);
-        setCategorySearch("");
-        await load();
-      } catch (error) {
-        console.error("[v0] insights review save error", error);
-      } finally {
-        setSavingReview(false);
-      }
-    },
-    [load, selectedTx],
-  );
-
   const openReviewModal = React.useCallback(
     (tx: ReviewableInsightTx) => {
       const suggestedCategoryId = getEffectiveCategoryId(tx);
@@ -1042,7 +1061,6 @@ export default function InsightsScreen() {
           }));
         }
       }
-
       setSelectedTx(tx);
       setCategorySearch("");
     },
@@ -1056,6 +1074,30 @@ export default function InsightsScreen() {
     }));
   }, []);
 
+  const handleReviewSave = React.useCallback(
+    async (categoryId: string) => {
+      if (!selectedTx) return;
+
+      setSavingReview(true);
+      try {
+        await setTransactionManualCategory(selectedTx.id, categoryId, {
+          reason: "insights review",
+          learnFromCounterparty: !isSubjectDrivenCounterparty(
+            selectedTx.counterparty,
+          ),
+        });
+        setSelectedTx(null);
+        setCategorySearch("");
+        await Promise.all([loadTransactions(), loadForecast(), loadBudgetPlan()]);
+      } catch (error) {
+        console.error("[insights] review save error", error);
+      } finally {
+        setSavingReview(false);
+      }
+    },
+    [loadBudgetPlan, loadForecast, loadTransactions, selectedTx],
+  );
+
   const handleQuickConfirm = React.useCallback(
     async (tx: ReviewableInsightTx) => {
       const categoryId = getEffectiveCategoryId(tx);
@@ -1067,401 +1109,510 @@ export default function InsightsScreen() {
           reason: "insights quick confirm",
           learnFromCounterparty: !isSubjectDrivenCounterparty(tx.counterparty),
         });
-
         if (selectedTx?.id === tx.id) {
           setSelectedTx(null);
         }
-
-        await load();
+        await Promise.all([loadTransactions(), loadForecast(), loadBudgetPlan()]);
       } catch (error) {
-        console.error("[v0] insights quick confirm error", error);
+        console.error("[insights] quick confirm error", error);
       } finally {
         setSavingReview(false);
       }
     },
-    [load, selectedTx?.id],
+    [loadBudgetPlan, loadForecast, loadTransactions, selectedTx?.id],
   );
+
+  const openSelectedTransactionDetail = React.useCallback(() => {
+    if (!selectedTx) return;
+    const transactionId = selectedTx.id;
+    setSelectedTx(null);
+    setCategorySearch("");
+    router.push(`/transaction-detail?id=${transactionId}`);
+  }, [router, selectedTx]);
 
   const hasMonthData = txCount > 0;
   const netResult = monthReport.net;
+  const variableRatio = budgetPlan
+    ? clamp(
+        budgetPlan.monthToDateExpenses.variableCosts /
+          Math.max(budgetPlan.flowSummary.variableBudget, 1),
+        0,
+        1.25,
+      )
+    : 0;
+  const monthRiskTone = getMonthBudgetRiskTone(budgetPlan);
 
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
-        <Text style={styles.pageTitle}>Insights</Text>
-        <View style={styles.topBarActions}>
-          <View style={styles.monthBadge}>
-            <Pressable
-              style={[
-                styles.monthNavButton,
-                monthOffset >= 24 && styles.monthNavButtonDisabled,
-              ]}
-              onPress={() =>
-                setMonthOffset((current) => Math.min(current + 1, 24))
-              }
-              disabled={monthOffset >= 24}
-            >
-              <Text style={styles.monthNavButtonText}>‹</Text>
-            </Pressable>
-            <Text style={styles.monthBadgeText}>{selectedMonth.label}</Text>
-            <Pressable
-              style={[
-                styles.monthNavButton,
-                monthOffset === 0 && styles.monthNavButtonDisabled,
-              ]}
-              onPress={() =>
-                setMonthOffset((current) => Math.max(current - 1, 0))
-              }
-              disabled={monthOffset === 0}
-            >
-              <Text style={styles.monthNavButtonText}>›</Text>
-            </Pressable>
+        <View style={styles.headerRow}>
+          <View style={styles.headerLeft}>
+            <HeaderDropdownMenu />
+            <View>
+              <Text style={styles.pageTitle}>Insights</Text>
+              <Text style={styles.pageSubtitle}>Begrijpen, voorspellen, verbeteren.</Text>
+            </View>
           </View>
-          <HeaderDropdownMenu />
+          <TouchableOpacity
+            style={styles.headerCta}
+            onPress={() => router.push("/budget")}
+          >
+            <Text style={styles.headerCtaText}>Budget</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.monthRow}>
+          <Pressable
+            style={[
+              styles.monthNavButton,
+              monthOffset >= 24 && styles.monthNavButtonDisabled,
+            ]}
+            onPress={() => setMonthOffset((current) => Math.min(current + 1, 24))}
+            disabled={monthOffset >= 24}
+          >
+            <Text style={styles.monthNavButtonText}>‹</Text>
+          </Pressable>
+          <View style={styles.monthBadge}>
+            <Text style={styles.monthBadgeText}>{selectedMonth.label}</Text>
+          </View>
+          <Pressable
+            style={[
+              styles.monthNavButton,
+              monthOffset === 0 && styles.monthNavButtonDisabled,
+            ]}
+            onPress={() => setMonthOffset((current) => Math.max(current - 1, 0))}
+            disabled={monthOffset === 0}
+          >
+            <Text style={styles.monthNavButtonText}>›</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.segmentRow}>
+          {SEGMENTS.map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              style={[
+                styles.segmentChip,
+                segment === item.key && styles.segmentChipActive,
+              ]}
+              onPress={() => setSegment(item.key)}
+            >
+              <Text
+                style={[
+                  styles.segmentChipText,
+                  segment === item.key && styles.segmentChipTextActive,
+                ]}
+              >
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
-      >
-        {/* Summary cards */}
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Income</Text>
-            <Text
-              style={[
-                styles.summaryValue,
-                hasMonthData
-                  ? { color: FinColors.green }
-                  : styles.emptyAmountText,
-              ]}
-            >
-              {hasMonthData ? `+${fmt.format(totalIncome)}` : "Nog geen data"}
-            </Text>
-          </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Expenses</Text>
-            <Text
-              style={[
-                styles.summaryValue,
-                !hasMonthData && styles.emptyAmountText,
-              ]}
-            >
-              {hasMonthData
-                ? fmt.format(monthReport.expenses)
-                : "Nog geen data"}
-            </Text>
-          </View>
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={FinColors.textSecondary} />
         </View>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+        >
+          {segment === "trends" ? (
+            <>
+              <View style={styles.heroCard}>
+                <Text style={styles.eyebrow}>{selectedMonth.label}</Text>
+                <Text style={styles.heroSummary}>{trendHeadline}</Text>
+                <View style={styles.metricRow}>
+                  <View style={styles.metricCard}>
+                    <Text style={styles.metricLabel}>Inkomsten</Text>
+                    <Text
+                      style={[
+                        styles.metricValue,
+                        hasMonthData ? styles.positiveText : styles.mutedText,
+                      ]}
+                    >
+                      {hasMonthData ? `+${fmt.format(totalIncome)}` : "Nog geen data"}
+                    </Text>
+                  </View>
+                  <View style={styles.metricCard}>
+                    <Text style={styles.metricLabel}>Netto resultaat</Text>
+                    <Text
+                      style={[
+                        styles.metricValue,
+                        hasMonthData
+                          ? netResult >= 0
+                            ? styles.positiveText
+                            : styles.negativeText
+                          : styles.mutedText,
+                      ]}
+                    >
+                      {hasMonthData
+                        ? `${netResult >= 0 ? "+" : ""}${fmt.format(netResult)}`
+                        : "Nog geen data"}
+                    </Text>
+                  </View>
+                </View>
+                {budgetPlan ? (
+                  <RiskProgressBar
+                    progress={clamp(variableRatio, 0, 1)}
+                    tone={monthRiskTone}
+                    style={styles.progressTrack}
+                  />
+                ) : null}
+              </View>
 
-        {/* Net card */}
-        <View style={styles.netCard}>
-          <Text style={styles.netLabel}>Netto resultaat (excl. sparen)</Text>
-          <Text
-            style={[
-              styles.netValue,
-              hasMonthData
-                ? netResult >= 0 && { color: FinColors.green }
-                : styles.emptyAmountText,
-            ]}
-          >
-            {hasMonthData
-              ? `${netResult >= 0 ? "+" : ""}${fmt.format(netResult)}`
-              : "Nog geen data"}
-          </Text>
-          {hasMonthData ? (
-            <Text style={styles.txNote}>
-              Overboekingen naar sparen:{" "}
-              {fmt.format(monthReport.savingsTransfers)}
-            </Text>
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Maandrapport</Text>
+                  <Text style={styles.sectionHelper}>Waar je maand uit bestaat</Text>
+                </View>
+                <Pressable
+                  style={styles.reportRowButton}
+                  onPress={() => setIncomeDetailsOpen(true)}
+                >
+                  <Text style={styles.reportLabel}>Inkomsten</Text>
+                  <View style={styles.reportRight}>
+                    <Text style={[styles.reportValue, styles.positiveText]}>
+                      +{fmt.format(monthReport.income)}
+                    </Text>
+                    <Text style={styles.reportHint}>Details</Text>
+                  </View>
+                </Pressable>
+                <View style={styles.reportRow}>
+                  <Text style={styles.reportLabel}>Uitgaven totaal</Text>
+                  <Text style={styles.reportValue}>
+                    {fmt.format(monthReport.expenses)}
+                  </Text>
+                </View>
+                <Pressable
+                  style={styles.reportRowButton}
+                  onPress={() => openAnalysisDetail("fixed_costs")}
+                >
+                  <Text style={styles.reportLabel}>Vaste lasten</Text>
+                  <Text style={styles.reportValue}>{fmt.format(monthReport.fixed)}</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.reportRowButton}
+                  onPress={() => openAnalysisDetail("subscriptions")}
+                >
+                  <Text style={styles.reportLabel}>Abonnementen</Text>
+                  <Text style={styles.reportValue}>
+                    {fmt.format(monthReport.subscriptions)}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.reportRowButton}
+                  onPress={() => openAnalysisDetail("variable_costs")}
+                >
+                  <Text style={styles.reportLabel}>Variabele kosten</Text>
+                  <Text style={styles.reportValue}>
+                    {fmt.format(monthReport.variable)}
+                  </Text>
+                </Pressable>
+                <View style={styles.reportRow}>
+                  <Text style={styles.reportLabel}>Overboeken naar sparen</Text>
+                  <Text style={styles.reportValue}>
+                    {fmt.format(monthReport.savingsTransfers)}
+                  </Text>
+                </View>
+                <View style={styles.reportDivider} />
+                <View style={styles.reportRow}>
+                  <Text style={styles.reportLabelStrong}>Netto resultaat</Text>
+                  <Text
+                    style={[
+                      styles.reportValueStrong,
+                      monthReport.net >= 0 ? styles.positiveText : styles.negativeText,
+                    ]}
+                  >
+                    {monthReport.net >= 0 ? "+" : ""}
+                    {fmt.format(monthReport.net)}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                <Text style={styles.sectionTitle}>Uitgaven per categorie</Text>
+                  <Text style={styles.sectionHelper}>Top 5 deze maand</Text>
+                </View>
+                {spendingByCategory.length ? (
+                  <CategoryBar categories={spendingByCategory} />
+                ) : (
+                  <Text style={styles.supportText}>
+                    Nog niet genoeg gecategoriseerde uitgaven om een verdeling te tonen.
+                  </Text>
+                )}
+              </View>
+            </>
           ) : null}
-          {txCount > 0 ? (
-            <Text style={styles.txNote}>{txCount} transactions analysed</Text>
-          ) : (
-            <Text style={styles.txNote}>
-              Er zijn nog geen transacties in deze maand.
-            </Text>
-          )}
-        </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Maandrapport</Text>
-          <Pressable
-            style={styles.monthReportRowButton}
-            onPress={() => setIncomeDetailsOpen(true)}
-          >
-            <Text style={styles.monthReportLabel}>Inkomsten</Text>
-            <View style={styles.monthReportButtonRight}>
-              <Text
-                style={[styles.monthReportValue, { color: FinColors.green }]}
-              >
-                +{fmt.format(monthReport.income)}
-              </Text>
-              <Text style={styles.monthReportButtonHint}>Details</Text>
-            </View>
-          </Pressable>
-          <View style={styles.monthReportRow}>
-            <Text style={styles.monthReportLabel}>
-              Uitgaven totaal (excl. sparen)
-            </Text>
-            <Text style={styles.monthReportValue}>
-              {fmt.format(monthReport.expenses)}
-            </Text>
-          </View>
-          <Pressable
-            style={styles.monthReportRowButton}
-            onPress={() => openAnalysisDetail("fixed_costs")}
-          >
-            <Text style={styles.monthReportLabel}>Vaste lasten</Text>
-            <Text style={styles.monthReportValue}>
-              {fmt.format(monthReport.fixed)}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={styles.monthReportRowButton}
-            onPress={() => openAnalysisDetail("subscriptions")}
-          >
-            <Text style={styles.monthReportLabel}>Abonnementen</Text>
-            <Text style={styles.monthReportValue}>
-              {fmt.format(monthReport.subscriptions)}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={styles.monthReportRowButton}
-            onPress={() => openAnalysisDetail("variable_costs")}
-          >
-            <Text style={styles.monthReportLabel}>Variabele kosten</Text>
-            <Text style={styles.monthReportValue}>
-              {fmt.format(monthReport.variable)}
-            </Text>
-          </Pressable>
-          <View style={styles.monthReportRow}>
-            <Text style={styles.monthReportLabel}>Overboeken naar sparen</Text>
-            <Text style={styles.monthReportValue}>
-              {fmt.format(monthReport.savingsTransfers)}
-            </Text>
-          </View>
-          <View style={styles.monthReportRow}>
-            <Text style={styles.monthReportLabel}>Totale uitstroom</Text>
-            <Text style={styles.monthReportValue}>
-              {fmt.format(monthReport.outflow)}
-            </Text>
-          </View>
-          <View style={[styles.monthReportRow, styles.monthReportNetRow]}>
-            <Text style={styles.monthReportNetLabel}>
-              Netto resultaat (excl. sparen)
-            </Text>
-            <Text
-              style={[
-                styles.monthReportNetValue,
-                monthReport.net >= 0 && { color: FinColors.green },
-              ]}
-            >
-              {monthReport.net >= 0 ? "+" : ""}
-              {fmt.format(monthReport.net)}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Cashflow voorspelling</Text>
-          {forecast ? (
+          {segment === "forecast" ? (
             <>
-              <View style={styles.monthReportRow}>
-                <Text style={styles.monthReportLabel}>Verwachte inkomsten</Text>
-                <Text
-                  style={[styles.monthReportValue, { color: FinColors.green }]}
-                >
-                  +{fmt.format(forecast.expected_income_total)}
-                </Text>
+              <View style={styles.heroCard}>
+                <Text style={styles.eyebrow}>Voorspelling</Text>
+                <Text style={styles.heroSummary}>{forecastHeadline}</Text>
               </View>
-              <View style={styles.monthReportRow}>
-                <Text style={styles.monthReportLabel}>Verwachte uitgaven</Text>
-                <Text style={styles.monthReportValue}>
-                  {fmt.format(forecast.expected_expense_total)}
-                </Text>
-              </View>
-              <View style={[styles.monthReportRow, styles.monthReportNetRow]}>
-                <Text style={styles.monthReportNetLabel}>
-                  Verwacht saldo eind maand
-                </Text>
-                <Text
-                  style={[
-                    styles.monthReportNetValue,
-                    forecast.expected_end_of_month_balance != null &&
-                      forecast.expected_end_of_month_balance >= 0 && {
-                        color: FinColors.green,
-                      },
-                  ]}
-                >
-                  {forecast.expected_end_of_month_balance == null
-                    ? "Onbekend"
-                    : `${forecast.expected_end_of_month_balance >= 0 ? "+" : ""}${fmt.format(forecast.expected_end_of_month_balance)}`}
-                </Text>
-              </View>
-              {forecast.risk_flag === "deficit_warning" ||
-              (forecast.expected_end_of_month_balance != null &&
-                forecast.expected_end_of_month_balance < 0) ? (
-                <Text style={styles.warningText}>
-                  Verwacht tekort deze maand
-                </Text>
-              ) : null}
-              <Text style={styles.forecastMetaText}>
-                Inkomstenbasis: {formatIncludedIncomeLabel(budgetPlan)}.
-              </Text>
-              {forecastTopCostLabels.length ? (
-                <Text style={styles.forecastMetaText}>
-                  Grootste kostenposten: {forecastTopCostLabels.join(", ")}
-                </Text>
-              ) : null}
-            </>
-          ) : (
-            <Text style={styles.emptyStateText}>
-              Nog geen voorspelling beschikbaar voor {selectedMonth.label}.
-            </Text>
-          )}
-        </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Budget overzicht</Text>
-          {budgetPlan ? (
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Cashflow voorspelling</Text>
+                  <Text style={styles.sectionHelper}>Einde van de maand</Text>
+                </View>
+                {forecast ? (
+                  <>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Verwachte inkomsten</Text>
+                      <Text style={[styles.reportValue, styles.positiveText]}>
+                        +{fmt.format(forecast.expected_income_total)}
+                      </Text>
+                    </View>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Verwachte uitgaven</Text>
+                      <Text style={styles.reportValue}>
+                        {fmt.format(forecast.expected_expense_total)}
+                      </Text>
+                    </View>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabelStrong}>Verwacht eindsaldo</Text>
+                      <Text
+                        style={[
+                          styles.reportValueStrong,
+                          forecast.expected_end_of_month_balance != null &&
+                          forecast.expected_end_of_month_balance >= 0
+                            ? styles.positiveText
+                            : styles.negativeText,
+                        ]}
+                      >
+                        {forecast.expected_end_of_month_balance == null
+                          ? "Onbekend"
+                          : `${forecast.expected_end_of_month_balance >= 0 ? "+" : ""}${fmt.format(forecast.expected_end_of_month_balance)}`}
+                      </Text>
+                    </View>
+
+                    {forecast.risk_flag === "deficit_warning" ||
+                    (forecast.expected_end_of_month_balance != null &&
+                      forecast.expected_end_of_month_balance < 0) ? (
+                      <Text style={styles.warningText}>
+                        Verwacht tekort deze maand
+                      </Text>
+                    ) : null}
+
+                    <View style={styles.reportDivider} />
+                    <Text style={styles.sectionHelper}>
+                      Verwachte kostenlagen
+                    </Text>
+                    <Pressable
+                      style={styles.reportRowButton}
+                      onPress={() => openAnalysisDetail("fixed_costs")}
+                    >
+                      <Text style={styles.reportLabel}>Vaste lasten</Text>
+                      <View style={styles.reportRight}>
+                        <Text style={styles.reportValue}>
+                          {fmt.format(forecast.expected_fixed_costs)}
+                        </Text>
+                        <Text style={styles.reportHint}>Analyse</Text>
+                      </View>
+                    </Pressable>
+                    <Pressable
+                      style={styles.reportRowButton}
+                      onPress={() => openAnalysisDetail("subscriptions")}
+                    >
+                      <Text style={styles.reportLabel}>Abonnementen</Text>
+                      <View style={styles.reportRight}>
+                        <Text style={styles.reportValue}>
+                          {fmt.format(forecast.expected_subscriptions)}
+                        </Text>
+                        <Text style={styles.reportHint}>Analyse</Text>
+                      </View>
+                    </Pressable>
+                    <Pressable
+                      style={styles.reportRowButton}
+                      onPress={() => openAnalysisDetail("variable_costs")}
+                    >
+                      <Text style={styles.reportLabel}>Variabele kosten</Text>
+                      <View style={styles.reportRight}>
+                        <Text style={styles.reportValue}>
+                          {fmt.format(forecast.expected_variable_costs)}
+                        </Text>
+                        <Text style={styles.reportHint}>Analyse</Text>
+                      </View>
+                    </Pressable>
+
+                    <Text style={styles.helperText}>
+                      Inkomstenbasis: {formatIncludedIncomeLabel(budgetPlan)}.
+                    </Text>
+                    {forecastTopCostLabels.length ? (
+                      <Text style={styles.helperText}>
+                        Grootste kostenposten: {forecastTopCostLabels.join(", ")}.
+                      </Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={styles.supportText}>
+                    Nog geen voorspelling beschikbaar voor {selectedMonth.label}.
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Budgetoverzicht</Text>
+                  <Text style={styles.sectionHelper}>Koppeling met je budget</Text>
+                </View>
+                {budgetPlan ? (
+                  <>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Resterend budget</Text>
+                      <Text
+                        style={[
+                          styles.reportValue,
+                          budgetPlan.monthlyBudgetTotal -
+                            (budgetPlan.monthToDateExpenses.fixedCosts +
+                              budgetPlan.monthToDateExpenses.subscriptions +
+                              budgetPlan.monthToDateExpenses.variableCosts) >=
+                          0
+                            ? styles.positiveText
+                            : styles.negativeText,
+                        ]}
+                      >
+                        {fmt.format(
+                          budgetPlan.monthlyBudgetTotal -
+                            (budgetPlan.monthToDateExpenses.fixedCosts +
+                              budgetPlan.monthToDateExpenses.subscriptions +
+                              budgetPlan.monthToDateExpenses.variableCosts),
+                        )}
+                      </Text>
+                    </View>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Aanbevolen spaardoel</Text>
+                      <Text style={[styles.reportValue, styles.positiveText]}>
+                        +{fmt.format(budgetPlan.recommendedSavings)}
+                      </Text>
+                    </View>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Waarschuwingen</Text>
+                      <Text style={styles.reportValue}>
+                        {budgetPlan.warnings.length}
+                      </Text>
+                    </View>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Weekbudget totaal</Text>
+                      <Text style={styles.reportValue}>
+                        {fmt.format(budgetPlan.weeklyBudgetTotal)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.primaryButton}
+                      onPress={() => router.push("/budget")}
+                    >
+                      <Text style={styles.primaryButtonText}>Open budget</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text style={styles.supportText}>
+                    {budgetSchemaMissing
+                      ? "Budgetdata is nog niet beschikbaar in deze omgeving."
+                      : `Nog geen budgetplan beschikbaar voor ${selectedMonth.label}.`}
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Coach</Text>
+                  <Text style={styles.sectionHelper}>Aanbevelingen en signalen</Text>
+                </View>
+                <Text style={styles.recommendationText}>
+                  {budgetPlan?.coachReport.sections.summary ||
+                    "Zodra er genoeg budget- en transactiedata is, verschijnen hier concrete aanbevelingen."}
+                </Text>
+                {budgetPlan?.coachReport.sections.actions.slice(0, 2).map((item) => (
+                  <View key={item} style={styles.bulletRow}>
+                    <View style={styles.bulletDot} />
+                    <Text style={styles.bulletText}>{item}</Text>
+                  </View>
+                ))}
+                {budgetPlan?.warnings.slice(0, 2).map((warning) => (
+                  <View key={warning.message} style={styles.bulletRow}>
+                    <MaterialIcons
+                      name="priority-high"
+                      size={16}
+                      color={FinColors.warningText}
+                    />
+                    <Text style={styles.bulletText}>{warning.message}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          {segment === "review" ? (
             <>
-              <View style={styles.monthReportRow}>
-                <Text style={styles.monthReportLabel}>Resterend budget</Text>
-                <Text
-                  style={[
-                    styles.monthReportValue,
-                    budgetPlan.monthlyBudgetTotal -
-                      (budgetPlan.monthToDateExpenses.fixedCosts +
-                        budgetPlan.monthToDateExpenses.subscriptions +
-                        budgetPlan.monthToDateExpenses.variableCosts) >=
-                      0 && { color: FinColors.green },
-                  ]}
-                >
-                  {fmt.format(
-                    budgetPlan.monthlyBudgetTotal -
-                      (budgetPlan.monthToDateExpenses.fixedCosts +
-                        budgetPlan.monthToDateExpenses.subscriptions +
-                        budgetPlan.monthToDateExpenses.variableCosts),
-                  )}
-                </Text>
-              </View>
-              <View style={styles.monthReportRow}>
-                <Text style={styles.monthReportLabel}>
-                  Aanbevolen spaardoel
-                </Text>
-                <Text
-                  style={[styles.monthReportValue, { color: FinColors.green }]}
-                >
-                  +{fmt.format(budgetPlan.recommendedSavings)}
-                </Text>
-              </View>
-              <View style={styles.monthReportRow}>
-                <Text style={styles.monthReportLabel}>Waarschuwingen</Text>
-                <Text style={styles.monthReportValue}>
-                  {budgetPlan.warnings.length}
-                </Text>
-              </View>
-              <View style={styles.monthReportRow}>
-                <Text style={styles.monthReportLabel}>Weekbudget totaal</Text>
-                <Text style={styles.monthReportValue}>
-                  {fmt.format(budgetPlan.weeklyBudgetTotal)}
+              <View style={styles.heroCard}>
+                <Text style={styles.eyebrow}>Controle</Text>
+                <Text style={styles.heroSummary}>
+                  {reviewQueue.length === 0
+                    ? "Je categorisatie oogt rustig. Er staan geen open review-items klaar."
+                    : `${reviewQueue.length} transacties wachten op bevestiging of correctie.`}
                 </Text>
               </View>
 
-              <Text style={styles.budgetMetaText}>
-                Overzicht is verplaatst naar de Budget-pagina voor detail en
-                beheer.
-              </Text>
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Categorisatiekwaliteit</Text>
+                  <Text style={styles.sectionHelper}>
+                    {coverage.total ? `${coverage.categorized}/${coverage.total}` : "0/0"}
+                  </Text>
+                </View>
+                <View style={styles.summaryList}>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Automatisch</Text>
+                    <Text style={styles.summaryValue}>{coverage.auto}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Handmatig</Text>
+                    <Text style={styles.summaryValue}>{coverage.manual}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Open</Text>
+                    <Text style={styles.summaryValue}>{coverage.uncategorized}</Text>
+                  </View>
+                </View>
+                <Text style={styles.helperText}>
+                  Handmatige bevestigingen helpen vergelijkbare transacties later sneller te herkennen.
+                </Text>
+              </View>
 
-              <Pressable
-                style={styles.budgetEditButton}
-                onPress={() => router.push("/budget")}
-              >
-                <Text style={styles.budgetEditButtonText}>Open Budget</Text>
-              </Pressable>
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Te controleren</Text>
+                  <Text style={styles.sectionHelper}>Lage zekerheid of fallback</Text>
+                </View>
+                {reviewQueue.length ? (
+                  <View style={styles.reviewList}>
+                    {reviewQueue.map((tx) => (
+                      <ReviewItem
+                        key={tx.id}
+                        tx={tx}
+                        categoryMap={categoryMap}
+                        onPress={openReviewModal}
+                        onConfirm={handleQuickConfirm}
+                        saving={savingReview}
+                      />
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.supportText}>
+                    Alle transacties in deze periode hebben voldoende zekerheid of zijn al bevestigd.
+                  </Text>
+                )}
+              </View>
             </>
-          ) : (
-            <Text style={styles.emptyStateText}>
-              {budgetSchemaMissing
-                ? "Budgetschema nog niet beschikbaar in deze omgeving."
-                : `Nog geen budgetplan beschikbaar voor ${selectedMonth.label}.`}
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.reviewSummaryCard}>
-          <View style={styles.reviewSummaryHeader}>
-            <Text style={styles.reviewSummaryTitle}>
-              Categorisatiekwaliteit
-            </Text>
-            <Text style={styles.reviewSummaryValue}>
-              {coverage.total
-                ? `${coverage.categorized}/${coverage.total}`
-                : "0/0"}
-            </Text>
-          </View>
-          <Text style={styles.reviewSummaryText}>
-            {reviewQueue.length === 0
-              ? "Geen openstaande review-items deze maand."
-              : `${reviewQueue.length} transacties moeten nog handmatig worden nagekeken.`}
-          </Text>
-          <View style={styles.reviewSummaryMeta}>
-            <Text style={styles.reviewSummaryMetaText}>
-              Auto: {coverage.auto}
-            </Text>
-            <Text style={styles.reviewSummaryMetaText}>
-              Handmatig: {coverage.manual}
-            </Text>
-            <Text style={styles.reviewSummaryMetaText}>
-              Open: {coverage.uncategorized}
-            </Text>
-          </View>
-        </View>
-
-        {/* Category breakdown */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Spending by Category</Text>
-          {spendingByCategory.length ? (
-            <CategoryBar categories={spendingByCategory} />
-          ) : (
-            <Text style={styles.emptyStateText}>
-              Nog niet genoeg gecategoriseerde uitgaven om een verdeling te
-              tonen.
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Review Queue</Text>
-          {reviewQueue.length ? (
-            <View style={styles.reviewList}>
-              {reviewQueue.map((tx) => (
-                <ReviewItem
-                  key={tx.id}
-                  tx={tx}
-                  categoryMap={categoryMap}
-                  onPress={openReviewModal}
-                  onConfirm={handleQuickConfirm}
-                  saving={savingReview}
-                />
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.emptyStateText}>
-              Alle transacties in deze periode hebben voldoende zekerheid of
-              zijn al bevestigd.
-            </Text>
-          )}
-        </View>
-
-        {/* AI Insights */}
-        <Text style={styles.sectionLabel}>Insights</Text>
-        {insightCards.map((card) => (
-          <InsightCard key={card.title} title={card.title} text={card.text} />
-        ))}
-      </ScrollView>
+          ) : null}
+        </ScrollView>
+      )}
 
       <Modal
         animationType="slide"
@@ -1486,42 +1637,29 @@ export default function InsightsScreen() {
             </View>
             <Text style={styles.modalSub}>{selectedMonth.label}</Text>
 
-            <View style={styles.incomeSummaryRow}>
-              <Text style={styles.monthReportLabel}>Totaal inkomsten</Text>
-              <Text
-                style={[styles.monthReportValue, { color: FinColors.green }]}
-              >
+            <View style={styles.reportRow}>
+              <Text style={styles.reportLabel}>Totaal inkomsten</Text>
+              <Text style={[styles.reportValue, styles.positiveText]}>
                 +{fmt.format(monthReport.income)}
               </Text>
             </View>
-            <View style={styles.incomeSummaryRow}>
-              <Text style={styles.monthReportLabel}>Aantal transacties</Text>
-              <Text style={styles.monthReportValue}>
-                {incomeTransactions.length}
-              </Text>
+            <View style={styles.reportRow}>
+              <Text style={styles.reportLabel}>Aantal transacties</Text>
+              <Text style={styles.reportValue}>{incomeTransactions.length}</Text>
             </View>
 
             {incomeBreakdown.length ? (
-              <View style={styles.incomeBreakdownWrap}>
-                <Text style={styles.incomeSectionTitle}>
-                  Verdeling inkomsten
-                </Text>
+              <View style={styles.modalSection}>
+                <Text style={styles.modalSectionTitle}>Verdeling inkomsten</Text>
                 {incomeBreakdown.map((item) => (
-                  <View key={item.label} style={styles.incomeBreakdownRow}>
-                    <View style={styles.incomeBreakdownMain}>
-                      <Text style={styles.incomeBreakdownLabel}>
-                        {item.label}
-                      </Text>
-                      <Text style={styles.incomeBreakdownMeta}>
+                  <View key={item.label} style={styles.reportRow}>
+                    <View style={styles.modalBreakdownMain}>
+                      <Text style={styles.reportLabel}>{item.label}</Text>
+                      <Text style={styles.modalBreakdownMeta}>
                         {item.count} transactie{item.count === 1 ? "" : "s"}
                       </Text>
                     </View>
-                    <Text
-                      style={[
-                        styles.incomeBreakdownValue,
-                        { color: FinColors.green },
-                      ]}
-                    >
+                    <Text style={[styles.reportValue, styles.positiveText]}>
                       +{fmt.format(item.total)}
                     </Text>
                   </View>
@@ -1529,8 +1667,8 @@ export default function InsightsScreen() {
               </View>
             ) : null}
 
-            <Text style={styles.incomeSectionTitle}>Transacties</Text>
-            <ScrollView style={styles.incomeTxList}>
+            <Text style={styles.modalSectionTitle}>Transacties</Text>
+            <ScrollView style={styles.modalScroll}>
               {incomeTransactions.length ? (
                 incomeTransactions.map((tx) => (
                   <Pressable
@@ -1542,16 +1680,10 @@ export default function InsightsScreen() {
                     }}
                   >
                     <View style={styles.reviewIconWrap}>
-                      <TransactionCategoryIcon
-                        row={tx}
-                        categoryById={categoryMap}
-                      />
+                      <TransactionCategoryIcon row={tx} categoryById={categoryMap} />
                     </View>
                     <View style={styles.incomeTxMain}>
-                      <Text
-                        style={styles.incomeTxCounterparty}
-                        numberOfLines={1}
-                      >
+                      <Text style={styles.incomeTxCounterparty} numberOfLines={1}>
                         {tx.counterparty || "Onbekende bron"}
                       </Text>
                       <Text style={styles.incomeTxSub} numberOfLines={1}>
@@ -1562,28 +1694,19 @@ export default function InsightsScreen() {
                       </Text>
                     </View>
                     <View style={styles.incomeTxAside}>
-                      <Text style={styles.incomeTxAmount}>
+                      <Text style={[styles.incomeTxAmount, styles.positiveText]}>
                         +{fmt.format(tx.amount)}
                       </Text>
-                      <Text style={styles.incomeTxDate}>
-                        {formatShortDate(tx.date)}
-                      </Text>
+                      <Text style={styles.incomeTxDate}>{formatShortDate(tx.date)}</Text>
                     </View>
                   </Pressable>
                 ))
               ) : (
-                <Text style={styles.modalEmptyText}>
+                <Text style={styles.supportText}>
                   Geen inkomsten gevonden in deze maand.
                 </Text>
               )}
             </ScrollView>
-
-            <Pressable
-              style={styles.modalCloseButton}
-              onPress={() => setIncomeDetailsOpen(false)}
-            >
-              <Text style={styles.modalCloseText}>Sluiten</Text>
-            </Pressable>
           </View>
         </View>
       </Modal>
@@ -1615,16 +1738,27 @@ export default function InsightsScreen() {
                 />
               </Pressable>
             </View>
+
             <Text style={styles.modalName} numberOfLines={1}>
               {selectedTx?.counterparty || "Onbekende tegenpartij"}
             </Text>
             <Text style={styles.modalSub} numberOfLines={2}>
               {selectedTx?.details || selectedTx?.date || ""}
             </Text>
-            <Text style={styles.modalHint}>
-              Kies de juiste categorie. Deze keuze wordt gebruikt om
-              vergelijkbare transacties later automatisch te herkennen.
+            <Text style={styles.helperText}>
+              Kies de juiste categorie. Deze keuze helpt vergelijkbare transacties later sneller herkennen.
             </Text>
+
+            <View style={styles.modalActionRow}>
+              <Pressable
+                style={styles.modalSecondaryButton}
+                onPress={openSelectedTransactionDetail}
+              >
+                <Text style={styles.modalSecondaryButtonText}>
+                  Open transactiedetail
+                </Text>
+              </Pressable>
+            </View>
 
             <TextInput
               value={categorySearch}
@@ -1636,11 +1770,10 @@ export default function InsightsScreen() {
               autoCapitalize="none"
             />
 
-            <ScrollView style={styles.modalList}>
+            <ScrollView style={styles.modalScroll}>
               {filteredModalGroups.length ? (
                 filteredModalGroups.map((group) => {
-                  const expanded =
-                    searchActive || Boolean(expandedParents[group.id]);
+                  const expanded = searchActive || Boolean(expandedParents[group.id]);
 
                   return (
                     <View key={group.id} style={styles.modalGroup}>
@@ -1655,13 +1788,11 @@ export default function InsightsScreen() {
                             {group.children.length}
                           </Text>
                         ) : (
-                          <View style={styles.modalGroupIconWrap}>
-                            <MaterialIcons
-                              name={expanded ? "remove" : "add"}
-                              size={16}
-                              color={FinColors.textSecondary}
-                            />
-                          </View>
+                          <MaterialIcons
+                            name={expanded ? "remove" : "add"}
+                            size={16}
+                            color={FinColors.textSecondary}
+                          />
                         )}
                       </Pressable>
 
@@ -1685,21 +1816,11 @@ export default function InsightsScreen() {
                   );
                 })
               ) : (
-                <Text style={styles.modalEmptyText}>
+                <Text style={styles.supportText}>
                   Geen categorieen gevonden voor deze zoekopdracht.
                 </Text>
               )}
             </ScrollView>
-
-            <Pressable
-              style={styles.modalCloseButton}
-              onPress={() => {
-                setSelectedTx(null);
-                setCategorySearch("");
-              }}
-            >
-              <Text style={styles.modalCloseText}>Sluiten</Text>
-            </Pressable>
           </View>
         </View>
       </Modal>
@@ -1708,533 +1829,422 @@ export default function InsightsScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: FinColors.bgBase },
+  root: {
+    flex: 1,
+    backgroundColor: FinColors.bgBase,
+  },
   topBar: {
+    paddingTop: 56,
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+    backgroundColor: FinColors.bgBase,
+  },
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 20,
   },
-  topBarActions: {
+  headerLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
+    flex: 1,
   },
   pageTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "700",
     color: FinColors.textPrimary,
-    letterSpacing: -0.5,
   },
-  monthBadge: {
+  pageSubtitle: {
+    marginTop: 2,
+    fontSize: 13,
+    color: FinColors.textSecondary,
+  },
+  headerCta: {
+    borderRadius: 999,
+    backgroundColor: FinColors.warningBg,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  headerCtaText: {
+    color: FinColors.warningText,
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  monthRow: {
+    marginTop: 16,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 10,
+  },
+  monthBadge: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 999,
     backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  monthBadgeText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    textTransform: "capitalize",
+  },
+  monthNavButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  monthNavButtonDisabled: {
+    opacity: 0.45,
+  },
+  monthNavButtonText: {
+    fontSize: 22,
+    lineHeight: 22,
+    color: FinColors.textPrimary,
+  },
+  segmentRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 16,
+  },
+  segmentChip: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  segmentChipActive: {
+    backgroundColor: FinColors.textPrimary,
+    borderColor: FinColors.textPrimary,
+  },
+  segmentChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: FinColors.textSecondary,
+  },
+  segmentChipTextActive: {
+    color: FinColors.bgCard,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    gap: 16,
+  },
+  heroCard: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 20,
+    gap: 14,
+  },
+  eyebrow: {
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  heroSummary: {
+    fontSize: 24,
+    lineHeight: 31,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  metricRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  metricCard: {
+    flex: 1,
+    borderRadius: 18,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 14,
+    gap: 6,
+  },
+  metricLabel: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  metricValue: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  mutedText: {
+    color: FinColors.textMuted,
+  },
+  positiveText: {
+    color: FinColors.green,
+  },
+  negativeText: {
+    color: FinColors.red,
+  },
+  progressTrack: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgElevated,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: FinColors.yellow,
+    borderRadius: 999,
+  },
+  card: {
+    backgroundColor: FinColors.bgCard,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
+    padding: 18,
+    gap: 14,
   },
-  monthBadgeText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: FinColors.textSecondary,
-  },
-  monthNavButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  monthNavButtonDisabled: {
-    opacity: 0.35,
-  },
-  monthNavButtonText: {
-    color: FinColors.textSecondary,
-    fontSize: 14,
-    fontWeight: "700",
-    lineHeight: 16,
-  },
-  scroll: { paddingHorizontal: 20, paddingBottom: 40, gap: 16 },
-
-  // Summary row
-  summaryRow: { flexDirection: "row", gap: 12 },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  summaryLabel: {
-    fontSize: 13,
-    color: FinColors.textMuted,
-    fontWeight: "500",
-    marginBottom: 8,
-  },
-  summaryValue: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-  },
-  emptyAmountText: {
-    fontSize: 18,
-    color: FinColors.textMuted,
-    fontWeight: "600",
-  },
-
-  // Net card
-  netCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    alignItems: "center",
-  },
-  netLabel: {
-    fontSize: 13,
-    color: FinColors.textMuted,
-    fontWeight: "500",
-    marginBottom: 8,
-  },
-  netValue: {
-    fontSize: 36,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-    letterSpacing: -1,
-  },
-  txNote: { fontSize: 12, color: FinColors.textMuted, marginTop: 12 },
-
-  reviewSummaryCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  reviewSummaryHeader: {
+  cardHeaderRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-  },
-  reviewSummaryTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: FinColors.textPrimary,
-  },
-  reviewSummaryValue: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: FinColors.green,
-  },
-  reviewSummaryText: {
-    fontSize: 13,
-    color: FinColors.textSecondary,
-    marginTop: 10,
-    lineHeight: 20,
-  },
-  reviewSummaryMeta: {
-    flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 12,
     gap: 12,
   },
-  reviewSummaryMetaText: { fontSize: 12, color: FinColors.textMuted },
-
-  monthReportRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  monthReportRowButton: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-    borderRadius: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  monthReportButtonRight: {
-    alignItems: "flex-end",
-    gap: 2,
-  },
-  monthReportButtonHint: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: FinColors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  monthReportLabel: {
-    fontSize: 13,
-    color: FinColors.textSecondary,
-    fontWeight: "500",
-  },
-  monthReportValue: {
-    fontSize: 14,
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-  },
-  monthReportNetRow: {
-    borderTopWidth: 1,
-    borderTopColor: FinColors.borderSubtle,
-    paddingTop: 10,
-    marginTop: 4,
-  },
-  monthReportNetLabel: {
-    fontSize: 13,
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-  },
-  monthReportNetValue: {
-    fontSize: 15,
-    color: FinColors.textPrimary,
-    fontWeight: "800",
-  },
-  warningText: {
-    fontSize: 13,
-    color: FinColors.red,
-    fontWeight: "700",
-    marginTop: 6,
-  },
-  forecastMetaText: {
+  sectionTitle: {
     fontSize: 12,
-    color: FinColors.textMuted,
-    marginTop: 8,
-    lineHeight: 18,
-  },
-  budgetMetaText: {
-    marginTop: 8,
-    fontSize: 12,
-    color: FinColors.textMuted,
-  },
-  budgetEditButton: {
-    marginTop: 10,
-    alignSelf: "flex-start",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  budgetEditButtonText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-  },
-  budgetRecommendationList: {
-    marginTop: 10,
-    gap: 8,
-  },
-  budgetRecommendationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: FinColors.borderSubtle,
-  },
-  budgetRecommendationMain: {
-    flex: 1,
-  },
-  budgetRecommendationLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-  },
-  budgetRecommendationMeta: {
-    marginTop: 2,
-    fontSize: 12,
-    color: FinColors.textSecondary,
-  },
-  budgetRecommendationAside: {
-    alignItems: "flex-end",
-    gap: 4,
-  },
-  budgetRecommendationWeekly: {
-    fontSize: 12,
-    color: FinColors.textSecondary,
-    fontWeight: "600",
-  },
-  budgetRecommendationUtilization: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  budgetUtilizationOk: {
-    color: FinColors.green,
-  },
-  budgetUtilizationInfo: {
-    color: "#d9b95b",
-  },
-  budgetUtilizationWarning: {
-    color: "#f5a55a",
-  },
-  budgetUtilizationCritical: {
-    color: FinColors.red,
-  },
-  budgetWarningWrap: {
-    marginTop: 12,
-    backgroundColor: FinColors.bgElevated,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    padding: 12,
-    gap: 8,
-  },
-  budgetWarningTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
     textTransform: "uppercase",
     letterSpacing: 0.8,
-  },
-  budgetWarningSummaryRow: {
-    flexDirection: "row",
-    gap: 6,
-    flexWrap: "wrap",
-  },
-  budgetWarningPill: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-  },
-  budgetWarningPillInfo: {
-    backgroundColor: "#fdf6de",
-    borderColor: "#d9b95b",
-  },
-  budgetWarningPillWarning: {
-    backgroundColor: "#fff1e6",
-    borderColor: "#f5a55a",
-  },
-  budgetWarningPillCritical: {
-    backgroundColor: "#ffebeb",
-    borderColor: FinColors.red,
-  },
-  budgetWarningPillText: {
-    fontSize: 11,
-    color: FinColors.textPrimary,
+    color: FinColors.textSecondary,
     fontWeight: "700",
   },
-  budgetWarningRow: {
+  sectionHelper: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+  },
+  reportRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  reportRowButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 2,
+  },
+  reportLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: FinColors.textSecondary,
+  },
+  reportLabelStrong: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  reportRight: {
+    alignItems: "flex-end",
+  },
+  reportValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  reportValueStrong: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  reportHint: {
+    marginTop: 3,
+    fontSize: 11,
+    color: FinColors.textMuted,
+  },
+  reportDivider: {
+    height: 1,
+    backgroundColor: FinColors.borderSubtle,
+  },
+  supportText: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: FinColors.textSecondary,
+  },
+  helperText: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: FinColors.textMuted,
+  },
+  modalActionRow: {
+    marginTop: -2,
+  },
+  modalSecondaryButton: {
+    minHeight: 42,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  modalSecondaryButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  recommendationText: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: FinColors.textPrimary,
+  },
+  primaryButton: {
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: FinColors.textPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  primaryButtonText: {
+    color: FinColors.bgCard,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  bulletRow: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 8,
+    gap: 10,
   },
-  budgetWarningDot: {
+  bulletDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginTop: 5,
+    backgroundColor: FinColors.yellow,
+    marginTop: 6,
   },
-  budgetWarningDotInfo: {
-    backgroundColor: "#d9b95b",
-  },
-  budgetWarningDotWarning: {
-    backgroundColor: "#f5a55a",
-  },
-  budgetWarningDotCritical: {
-    backgroundColor: FinColors.red,
-  },
-  budgetWarningText: {
+  bulletText: {
     flex: 1,
-    fontSize: 12,
-    color: FinColors.textSecondary,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 21,
+    color: FinColors.textPrimary,
   },
-  budgetHealthyText: {
-    marginTop: 12,
-    fontSize: 12,
-    color: FinColors.green,
-    fontWeight: "600",
+  warningText: {
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "700",
+    color: FinColors.red,
   },
-  budgetCoachWrap: {
-    marginTop: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgElevated,
-    padding: 12,
-    gap: 8,
+  summaryList: {
+    gap: 10,
   },
-  budgetCoachHeaderRow: {
+  summaryRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+    gap: 12,
   },
-  budgetCoachTitle: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: FinColors.textPrimary,
-  },
-  budgetCoachMeta: {
-    fontSize: 11,
-    color: FinColors.textMuted,
-    fontWeight: "600",
-  },
-  budgetCoachSummary: {
-    fontSize: 12,
+  summaryLabel: {
+    fontSize: 14,
     color: FinColors.textSecondary,
-    lineHeight: 18,
   },
-  budgetCoachSection: {
-    gap: 4,
-  },
-  budgetCoachSectionTitle: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-  },
-  budgetCoachListItem: {
-    fontSize: 12,
-    color: FinColors.textSecondary,
-    lineHeight: 18,
-  },
-  budgetEditSectionTitle: {
-    marginTop: 14,
-    marginBottom: 8,
-    fontSize: 12,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  budgetModeRow: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  budgetModeButton: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgElevated,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  budgetModeButtonActive: {
-    backgroundColor: FinColors.greenBg,
-    borderColor: FinColors.greenBorder,
-  },
-  budgetModeButtonText: {
-    fontSize: 12,
-    color: FinColors.textSecondary,
-    fontWeight: "600",
-  },
-  budgetModeButtonTextActive: {
-    color: FinColors.green,
-  },
-  budgetEditList: {
-    marginTop: 4,
-    maxHeight: 260,
-  },
-  budgetEditRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: FinColors.borderSubtle,
-  },
-  budgetEditRowMain: {
-    flex: 1,
-  },
-  budgetEditRowLabel: {
-    fontSize: 13,
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-  },
-  budgetEditRowMeta: {
-    marginTop: 2,
-    fontSize: 11,
-    color: FinColors.textMuted,
-  },
-  budgetEditInput: {
-    minWidth: 96,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgElevated,
-    color: FinColors.textPrimary,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
-    textAlign: "right",
-  },
-  budgetEditActions: {
-    marginTop: 12,
-    flexDirection: "row",
-    gap: 10,
-  },
-  budgetCancelButton: {
-    flex: 1,
-    marginTop: 0,
-  },
-  budgetSaveButton: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    backgroundColor: FinColors.greenBg,
-    borderWidth: 1,
-    borderColor: FinColors.greenBorder,
-  },
-  budgetSaveButtonText: {
+  summaryValue: {
     fontSize: 14,
     fontWeight: "700",
-    color: FinColors.green,
-  },
-
-  // Card
-  card: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "600",
     color: FinColors.textPrimary,
-    marginBottom: 20,
   },
-  emptyStateText: { fontSize: 14, color: FinColors.textMuted, lineHeight: 22 },
-  reviewList: { gap: 12 },
+  categoryBarWrap: {
+    gap: 14,
+  },
+  categoryBarTrack: {
+    flexDirection: "row",
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: FinColors.bgElevated,
+  },
+  categoryBarSegment: {
+    height: "100%",
+  },
+  categoryLegend: {
+    gap: 10,
+  },
+  categoryLegendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  categoryLegendMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  categoryLegendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  categoryLegendLabel: {
+    fontSize: 14,
+    color: FinColors.textSecondary,
+  },
+  categoryLegendValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  reviewList: {
+    gap: 12,
+  },
   reviewRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 14,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: FinColors.borderSubtle,
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 18,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 14,
   },
   reviewIconWrap: {
-    marginTop: 2,
+    width: 36,
+    alignItems: "center",
   },
-  reviewMain: { flex: 1 },
-  reviewName: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
-  reviewSub: { fontSize: 12, color: FinColors.textMuted, marginTop: 4 },
+  reviewMain: {
+    flex: 1,
+  },
+  reviewName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: FinColors.textPrimary,
+  },
+  reviewSub: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+    marginTop: 4,
+  },
   reviewMetaRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2244,21 +2254,24 @@ const styles = StyleSheet.create({
   },
   reviewCategory: {
     fontSize: 11,
-    fontWeight: "600",
     color: FinColors.textPrimary,
-    backgroundColor: FinColors.greenBg,
-    borderWidth: 1,
-    borderColor: FinColors.greenBorder,
+    fontWeight: "700",
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
   },
-  reviewConfidence: { fontSize: 11, color: FinColors.textMuted },
-  reviewAside: { alignItems: "flex-end", gap: 10 },
+  reviewConfidence: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+  },
+  reviewAside: {
+    alignItems: "flex-end",
+    gap: 10,
+  },
   reviewAmount: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
     color: FinColors.textPrimary,
   },
   reviewActions: {
@@ -2266,240 +2279,143 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   reviewButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: FinColors.bgElevated,
+    minWidth: 68,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgCard,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
   },
   reviewButtonText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
     color: FinColors.textPrimary,
   },
   confirmButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: FinColors.greenBg,
+    minWidth: 72,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: FinColors.yellow,
     borderWidth: 1,
-    borderColor: FinColors.greenBorder,
+    borderColor: FinColors.yellow,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
   },
   confirmButtonText: {
     fontSize: 12,
     fontWeight: "700",
-    color: FinColors.green,
-  },
-
-  // Section
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: FinColors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginTop: 8,
-  },
-
-  // Insight card
-  insightCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 14,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  insightTitle: {
-    fontSize: 15,
-    fontWeight: "600",
     color: FinColors.textPrimary,
-    marginBottom: 8,
   },
-  insightText: { fontSize: 14, color: FinColors.textSecondary, lineHeight: 21 },
-
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(17,17,17,0.24)",
     justifyContent: "flex-end",
   },
   modalCard: {
-    maxHeight: "80%",
+    maxHeight: "88%",
     backgroundColor: FinColors.bgCard,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    padding: 18,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 24,
+    gap: 14,
   },
   modalHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
   },
   modalIconCloseButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: FinColors.bgElevated,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgElevated,
-  },
-  modalTitle: { fontSize: 18, fontWeight: "700", color: FinColors.textPrimary },
-  modalName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: FinColors.textPrimary,
-    marginTop: 10,
   },
   modalSub: {
     fontSize: 13,
-    color: FinColors.textMuted,
-    marginTop: 4,
-    lineHeight: 20,
-  },
-  modalHint: {
-    fontSize: 12,
     color: FinColors.textSecondary,
-    marginTop: 10,
-    lineHeight: 18,
+  },
+  modalName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  modalSection: {
+    gap: 10,
+  },
+  modalSectionTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  modalBreakdownMain: {
+    flex: 1,
+  },
+  modalBreakdownMeta: {
+    marginTop: 4,
+    fontSize: 12,
+    color: FinColors.textMuted,
   },
   modalSearchInput: {
-    marginTop: 12,
+    minHeight: 46,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    borderRadius: 12,
-    backgroundColor: FinColors.bgElevated,
+    borderColor: FinColors.border,
+    backgroundColor: FinColors.bgInput,
+    paddingHorizontal: 14,
     color: FinColors.textPrimary,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
     fontSize: 14,
   },
-  modalList: { marginTop: 14, marginBottom: 10 },
+  modalScroll: {
+    maxHeight: 360,
+  },
   modalGroup: {
-    marginBottom: 10,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
   },
   modalGroupHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    borderRadius: 12,
-    backgroundColor: FinColors.bgElevated,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 8,
-  },
-  modalGroupTitle: {
-    fontSize: 14,
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-  },
-  modalGroupCount: {
-    fontSize: 12,
-    color: FinColors.textSecondary,
-    fontWeight: "700",
-  },
-  modalGroupIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
-  },
-  modalCategoryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    marginBottom: 8,
-    backgroundColor: FinColors.bgElevated,
-    marginLeft: 12,
-  },
-  modalCategoryText: {
-    fontSize: 14,
-    color: FinColors.textPrimary,
-    fontWeight: "600",
-  },
-  modalEmptyText: {
-    fontSize: 13,
-    color: FinColors.textMuted,
-    lineHeight: 20,
-    paddingVertical: 8,
-  },
-  modalCloseButton: {
-    marginTop: 4,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderRadius: 12,
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  modalCloseText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: FinColors.textPrimary,
-  },
-  incomeSummaryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 8,
-  },
-  incomeBreakdownWrap: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    gap: 8,
-  },
-  incomeSectionTitle: {
-    marginTop: 12,
-    marginBottom: 8,
-    fontSize: 13,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-  },
-  incomeBreakdownRow: {
+    minHeight: 40,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
-  incomeBreakdownMain: {
+  modalGroupTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
     flex: 1,
   },
-  incomeBreakdownLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: FinColors.textPrimary,
-  },
-  incomeBreakdownMeta: {
-    marginTop: 2,
-    fontSize: 11,
+  modalGroupCount: {
+    fontSize: 12,
     color: FinColors.textMuted,
   },
-  incomeBreakdownValue: {
-    fontSize: 13,
-    fontWeight: "700",
+  modalCategoryButton: {
+    minHeight: 38,
+    justifyContent: "center",
+    paddingLeft: 10,
   },
-  incomeTxList: {
-    maxHeight: 320,
+  modalCategoryText: {
+    fontSize: 14,
+    color: FinColors.textPrimary,
   },
   incomeTxRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
+    alignItems: "center",
+    gap: 12,
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: FinColors.borderSubtle,
@@ -2513,26 +2429,25 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
   },
   incomeTxSub: {
-    marginTop: 2,
+    marginTop: 3,
     fontSize: 12,
-    color: FinColors.textSecondary,
+    color: FinColors.textMuted,
   },
   incomeTxCategory: {
-    marginTop: 4,
-    fontSize: 11,
-    color: FinColors.textMuted,
+    marginTop: 5,
+    fontSize: 12,
+    color: FinColors.textSecondary,
   },
   incomeTxAside: {
     alignItems: "flex-end",
   },
   incomeTxAmount: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
-    color: FinColors.green,
   },
   incomeTxDate: {
-    marginTop: 4,
-    fontSize: 11,
+    marginTop: 3,
+    fontSize: 12,
     color: FinColors.textMuted,
   },
 });

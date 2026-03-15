@@ -36,7 +36,6 @@ export function isAutoModeTrendLock(
 }
 
 export function resolveLockedVariableMainCategories(
-  mode: BudgetPlanMode,
   recommendations: {
     categoryKey: BudgetRecommendationRow["categoryKey"];
     overrideSource: BudgetRecommendationRow["overrideSource"];
@@ -49,11 +48,7 @@ export function resolveLockedVariableMainCategories(
       continue;
     }
 
-    const includeTrendLock = recommendation.overrideSource === "trend_lock";
-    const includeMonthlyOverride =
-      mode !== "custom" && recommendation.overrideSource === "monthly_override";
-
-    if (!includeTrendLock && !includeMonthlyOverride) continue;
+    if (recommendation.overrideSource !== "trend_lock") continue;
     locked.add(recommendation.categoryKey);
   }
 

@@ -1,4 +1,5 @@
 import { FinColors } from "@/constants/theme";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { usePathname, useRouter } from "expo-router";
 import React from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
@@ -53,13 +54,13 @@ export default function HeaderDropdownMenu() {
         accessibilityRole="button"
         accessibilityLabel="Open navigation menu"
       >
-        <Text style={styles.triggerText}>Menu</Text>
+        <MaterialIcons name="menu" size={18} color={FinColors.textPrimary} />
       </Pressable>
 
       <Modal
         transparent
         visible={open}
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setOpen(false)}
       >
         <View style={styles.overlay}>
@@ -92,42 +93,34 @@ export default function HeaderDropdownMenu() {
 
 const styles = StyleSheet.create({
   trigger: {
-    minHeight: 40,
+    width: 40,
+    height: 40,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     backgroundColor: FinColors.bgCard,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
     alignItems: "center",
     justifyContent: "center",
-  },
-  triggerText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-    letterSpacing: 0.3,
-    textTransform: "uppercase",
   },
   overlay: {
     flex: 1,
     justifyContent: "flex-start",
-    alignItems: "flex-end",
-    paddingTop: 88,
-    paddingRight: 20,
+    alignItems: "flex-start",
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.35)",
+    backgroundColor: "rgba(17,17,17,0.16)",
   },
   panel: {
-    width: 220,
-    borderRadius: 14,
+    width: 248,
+    marginTop: 64,
+    marginLeft: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     backgroundColor: FinColors.bgCard,
-    padding: 12,
-    gap: 6,
+    padding: 14,
+    gap: 4,
   },
   panelTitle: {
     fontSize: 11,
@@ -146,8 +139,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   itemActive: {
-    backgroundColor: FinColors.greenBg,
-    borderColor: FinColors.greenBorder,
+    backgroundColor: FinColors.warningBg,
+    borderColor: FinColors.warningBorder,
   },
   itemText: {
     fontSize: 14,
@@ -155,6 +148,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   itemTextActive: {
-    color: FinColors.green,
+    color: FinColors.warningText,
   },
 });

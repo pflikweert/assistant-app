@@ -1,6 +1,5 @@
 import { suggestAutomaticSavingsTarget } from "@/services/budget-coach";
 import {
-    isAutoModeTrendLock,
     resolveLockedVariableMainCategories,
 } from "@/services/budget-lock-utils";
 import {
@@ -213,6 +212,14 @@ const FUEL_KEYWORDS = [
 
 const SMOKING_KEYWORDS = ["tabak", "sigaret", "sigaretten", "rook", "vape"];
 
+const VARIABLE_EXPENSE_KEYWORDS = [
+  "zakgeld",
+  "kleedgeld",
+  "kledinggeld",
+  "pocket money",
+  "allowance",
+];
+
 function asNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -311,6 +318,23 @@ function isFixedCategoryKey(categoryKey: string) {
   );
 }
 
+function isCareCategoryKey(categoryKey: string) {
+  return (
+    categoryKey === "care" ||
+    categoryKey === "health" ||
+    categoryKey.startsWith("care_") ||
+    categoryKey.startsWith("health_")
+  );
+}
+
+function isCareInsuranceCategoryKey(categoryKey: string) {
+  return (
+    categoryKey.startsWith("care_health_insurance") ||
+    categoryKey.startsWith("insurance_health") ||
+    categoryKey.startsWith("health_insurance")
+  );
+}
+
 function normalizeCategoryKey(categoryKey: string | null): string {
   return String(categoryKey || "").toLowerCase();
 }
@@ -323,16 +347,6 @@ function resolveExpenseBucket(
   tx: BudgetTx,
   categoryMeta: CategoryMeta | null,
 ): ExpenseBucket {
-  if (
-    tx.analysis_main_group === "expense" &&
-    (tx.analysis_category === "fixed_costs" ||
-      tx.analysis_category === "subscriptions" ||
-      tx.analysis_category === "variable_costs" ||
-      tx.analysis_category === "savings_transfer")
-  ) {
-    return tx.analysis_category;
-  }
-
   const categoryKey = categoryMeta
     ? normalizeCategoryKey(categoryMeta.key)
     : "";
@@ -342,6 +356,9 @@ function resolveExpenseBucket(
   if (categoryKey) {
     if (isSavingsCategoryKey(categoryKey)) return "savings_transfer";
     if (isSubscriptionCategoryKey(categoryKey)) return "subscriptions";
+    if (isCareCategoryKey(categoryKey) && !isCareInsuranceCategoryKey(categoryKey)) {
+      return "variable_costs";
+    }
     if (isFixedCategoryKey(categoryKey)) return "fixed_costs";
 
     if (
@@ -364,6 +381,19 @@ function resolveExpenseBucket(
     return "savings_transfer";
   if (includesAny(haystack, SUBSCRIPTION_KEYWORDS)) return "subscriptions";
   if (includesAny(haystack, FIXED_EXPENSE_KEYWORDS)) return "fixed_costs";
+  if (includesAny(haystack, VARIABLE_EXPENSE_KEYWORDS)) {
+    return "variable_costs";
+  }
+
+  if (
+    tx.analysis_main_group === "expense" &&
+    (tx.analysis_category === "fixed_costs" ||
+      tx.analysis_category === "subscriptions" ||
+      tx.analysis_category === "variable_costs" ||
+      tx.analysis_category === "savings_transfer")
+  ) {
+    return tx.analysis_category;
+  }
 
   return "variable_costs";
 }
@@ -379,20 +409,35 @@ function resolveVariableSubbucket(
 
   if (
     categoryKey.includes("groceries") ||
-    categoryKey.includes("supermarket") ||
-    includesAny(haystack, GROCERIES_KEYWORDS)
+    categoryKey.includes("supermarket")
   ) {
     return "groceries";
   }
 
-  if (categoryKey.includes("fuel") || includesAny(haystack, FUEL_KEYWORDS)) {
+  if (categoryKey.includes("fuel")) {
     return "fuel";
   }
 
-  if (
-    categoryKey.includes("smoking") ||
-    includesAny(haystack, SMOKING_KEYWORDS)
-  ) {
+  if (categoryKey.includes("smoking")) {
+    return "smoking";
+  }
+
+  // If a transaction already has a concrete category key that is not one of the
+  // dedicated variable buckets above, keep it in "other" instead of letting
+  // merchant-name heuristics override it into groceries/fuel/smoking.
+  if (categoryKey) {
+    return "other";
+  }
+
+  if (includesAny(haystack, GROCERIES_KEYWORDS)) {
+    return "groceries";
+  }
+
+  if (includesAny(haystack, FUEL_KEYWORDS)) {
+    return "fuel";
+  }
+
+  if (includesAny(haystack, SMOKING_KEYWORDS)) {
     return "smoking";
   }
 
@@ -516,6 +561,10 @@ function monthStartFromKey(monthKey: string) {
   return new Date(Date.UTC(year, month - 1, 1));
 }
 
+const RECENT_INCOME_FORECAST_MONTHS = 2;
+const RECENT_EXPENSE_FORECAST_MONTHS = 2;
+const RECENT_INSIGHT_MONTHS = 2;
+
 function median(values: number[]) {
   if (!values.length) return 0;
   const sorted = [...values].sort((left, right) => left - right);
@@ -524,11 +573,57 @@ function median(values: number[]) {
   return (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
-function computeIncludedIncomeTotalsByMonth(
+function weightedRecentAverage(values: number[]) {
+  if (!values.length) return 0;
+  if (values.length === 1) return round2(values[0]);
+
+  const weights = [0.72, 0.28];
+  let weightedTotal = 0;
+  let totalWeight = 0;
+
+  values.forEach((value, index) => {
+    const weight = weights[index] ?? Math.max(0.14 / (index + 1), 0);
+    weightedTotal += value * weight;
+    totalWeight += weight;
+  });
+
+  if (totalWeight <= 0) return round2(values[0]);
+  return round2(weightedTotal / totalWeight);
+}
+
+function getRecentCompletedMonthRows<T>(
+  byMonth: Map<string, T>,
+  trendStart: Date,
+  currentMonthStart: Date,
+  limit: number,
+) {
+  return [...byMonth.entries()]
+    .map(([monthKey, value]) => {
+      const monthStart = monthStartFromKey(monthKey);
+      return monthStart ? { monthStart, value } : null;
+    })
+    .filter(
+      (
+        row,
+      ): row is {
+        monthStart: Date;
+        value: T;
+      } => Boolean(row),
+    )
+    .filter(
+      (row) =>
+        row.monthStart < currentMonthStart && row.monthStart >= trendStart,
+    )
+    .sort(
+      (left, right) => right.monthStart.getTime() - left.monthStart.getTime(),
+    )
+    .slice(0, limit);
+}
+
+function computeIncomeTotalsByMonth(
   rows: BudgetTx[],
   categoryMap: Map<string, CategoryMeta>,
-  settings: BudgetPlanSettings,
-): Map<string, number> {
+): Map<string, BudgetIncomeBreakdown> {
   const byMonth = new Map<string, BudgetIncomeBreakdown>();
 
   for (const row of rows) {
@@ -554,12 +649,70 @@ function computeIncludedIncomeTotalsByMonth(
     byMonth.set(monthKey, current);
   }
 
+  const totals = new Map<string, BudgetIncomeBreakdown>();
+  for (const [monthKey, income] of byMonth) {
+    totals.set(monthKey, {
+      salary: round2(income.salary),
+      childBudget: round2(income.childBudget),
+      structuralOther: round2(income.structuralOther),
+      variable: round2(income.variable),
+      total: round2(income.total),
+    });
+  }
+
+  return totals;
+}
+
+function computeIncludedIncomeTotalsByMonth(
+  rows: BudgetTx[],
+  categoryMap: Map<string, CategoryMeta>,
+  settings: BudgetPlanSettings,
+): Map<string, number> {
+  const byMonth = computeIncomeTotalsByMonth(rows, categoryMap);
   const totals = new Map<string, number>();
+
   for (const [monthKey, income] of byMonth) {
     totals.set(monthKey, round2(applyIncomeInclusion(income, settings).total));
   }
 
   return totals;
+}
+
+function resolveIncomeForecastFromCompletedMonths(
+  rows: BudgetTx[],
+  categoryMap: Map<string, CategoryMeta>,
+  settings: BudgetPlanSettings,
+  trendStart: Date,
+  currentMonthStart: Date,
+): BudgetIncomeBreakdown | null {
+  const incomeByMonth = computeIncomeTotalsByMonth(rows, categoryMap);
+  const completedMonths = getRecentCompletedMonthRows(
+    incomeByMonth,
+    trendStart,
+    currentMonthStart,
+    RECENT_INCOME_FORECAST_MONTHS,
+  ).filter((row) => resolveIncludedIncomeTotal(row.value, settings) > 0);
+
+  if (!completedMonths.length) return null;
+
+  return applyIncomeInclusion(
+    {
+      salary: weightedRecentAverage(
+        completedMonths.map((row) => row.value.salary),
+      ),
+      childBudget: weightedRecentAverage(
+        completedMonths.map((row) => row.value.childBudget),
+      ),
+      structuralOther: weightedRecentAverage(
+        completedMonths.map((row) => row.value.structuralOther),
+      ),
+      variable: weightedRecentAverage(
+        completedMonths.map((row) => row.value.variable),
+      ),
+      total: 0,
+    },
+    settings,
+  );
 }
 
 function resolveExpectedIncomeMonthlyFromCompletedMonths(
@@ -569,39 +722,14 @@ function resolveExpectedIncomeMonthlyFromCompletedMonths(
   trendStart: Date,
   currentMonthStart: Date,
 ): number | null {
-  const totalsByMonth = computeIncludedIncomeTotalsByMonth(
+  const forecast = resolveIncomeForecastFromCompletedMonths(
     rows,
     categoryMap,
     settings,
+    trendStart,
+    currentMonthStart,
   );
-
-  const completedMonths = [...totalsByMonth.entries()]
-    .map(([monthKey, total]) => {
-      const monthStart = monthStartFromKey(monthKey);
-      return monthStart ? { monthStart, total } : null;
-    })
-    .filter(
-      (
-        row,
-      ): row is {
-        monthStart: Date;
-        total: number;
-      } => Boolean(row),
-    )
-    .filter(
-      (row) =>
-        row.monthStart < currentMonthStart && row.monthStart >= trendStart,
-    )
-    .sort(
-      (left, right) => right.monthStart.getTime() - left.monthStart.getTime(),
-    );
-
-  const recentTotals = completedMonths
-    .filter((row) => row.total > 0)
-    .slice(0, 3);
-
-  if (!recentTotals.length) return null;
-  return round2(median(recentTotals.map((row) => row.total)));
+  return forecast ? round2(forecast.total) : null;
 }
 
 function computeExpenseTotalsByMonth(
@@ -678,27 +806,12 @@ function resolveExpenseBaselinesFromCompletedMonths(
   currentMonthStart: Date,
 ): Map<BudgetCategoryKey, number> {
   const totalsByMonth = computeExpenseTotalsByMonth(rows, categoryMap);
-  const completedMonths = [...totalsByMonth.entries()]
-    .map(([monthKey, expenses]) => {
-      const monthStart = monthStartFromKey(monthKey);
-      return monthStart ? { monthStart, expenses } : null;
-    })
-    .filter(
-      (
-        row,
-      ): row is {
-        monthStart: Date;
-        expenses: BudgetExpenseBreakdown;
-      } => Boolean(row),
-    )
-    .filter(
-      (row) =>
-        row.monthStart < currentMonthStart && row.monthStart >= trendStart,
-    )
-    .sort(
-      (left, right) => right.monthStart.getTime() - left.monthStart.getTime(),
-    )
-    .slice(0, 3);
+  const completedMonths = getRecentCompletedMonthRows(
+    totalsByMonth,
+    trendStart,
+    currentMonthStart,
+    RECENT_EXPENSE_FORECAST_MONTHS,
+  );
 
   const baselines = new Map<BudgetCategoryKey, number>();
   if (!completedMonths.length) return baselines;
@@ -716,44 +829,13 @@ function resolveExpenseBaselinesFromCompletedMonths(
   for (const key of expenseKeys) {
     baselines.set(
       key,
-      round2(
-        median(
-          completedMonths.map((row) =>
-            getBudgetCategoryActual(key, row.expenses),
-          ),
-        ),
+      weightedRecentAverage(
+        completedMonths.map((row) => getBudgetCategoryActual(key, row.value)),
       ),
     );
   }
 
   return baselines;
-}
-
-function multiplyVariableBy(
-  value: BudgetVariableBreakdown,
-  factor: number,
-): BudgetVariableBreakdown {
-  return {
-    groceries: round2(value.groceries * factor),
-    fuel: round2(value.fuel * factor),
-    smoking: round2(value.smoking * factor),
-    other: round2(value.other * factor),
-    total: round2(value.total * factor),
-  };
-}
-
-function multiplyExpensesBy(
-  value: BudgetExpenseBreakdown,
-  factor: number,
-): BudgetExpenseBreakdown {
-  return {
-    fixedCosts: round2(value.fixedCosts * factor),
-    subscriptions: round2(value.subscriptions * factor),
-    variableCosts: round2(value.variableCosts * factor),
-    savingsTransfer: round2(value.savingsTransfer * factor),
-    total: round2(value.total * factor),
-    variable: multiplyVariableBy(value.variable, factor),
-  };
 }
 
 function getBudgetCategoryActual(
@@ -854,7 +936,7 @@ function buildCompletedMonthBudgetInsight(
     .sort(
       (left, right) => right.monthStart.getTime() - left.monthStart.getTime(),
     )
-    .slice(0, 3);
+    .slice(0, RECENT_INSIGHT_MONTHS);
 
   const recentIncomeTotals: number[] = [];
   const recentVariableTotals: number[] = [];
@@ -1189,6 +1271,8 @@ function buildOutsideBudgetExpenseSummary(
       transactionCount: number;
       lastDate: string | null;
       categoryLabel: string;
+      groupKey: string;
+      transactionIds: string[];
     }
   >();
 
@@ -1219,12 +1303,15 @@ function buildOutsideBudgetExpenseSummary(
         transactionCount: 1,
         lastDate: row.date || null,
         categoryLabel: EXPENSE_BUCKET_LABELS[bucket],
+        groupKey,
+        transactionIds: [row.id],
       });
       continue;
     }
 
     current.amount += absAmount;
     current.transactionCount += 1;
+    current.transactionIds.push(row.id);
     if (!current.lastDate || row.date > current.lastDate) {
       current.lastDate = row.date || current.lastDate;
     }
@@ -1237,6 +1324,8 @@ function buildOutsideBudgetExpenseSummary(
       transactionCount: item.transactionCount,
       lastTransactionDate: item.lastDate,
       categoryLabel: item.categoryLabel,
+      groupKey: item.groupKey,
+      transactionIds: item.transactionIds,
     }))
     .sort((left, right) => right.amount - left.amount)
     .slice(0, 12);
@@ -1700,20 +1789,6 @@ export async function computeBudgetPlan(
   const monthlyScale = MONTHLY_NORMALIZER_DAYS / observedDays;
 
   const trendRaw = computeBreakdowns(includedTrendRows, categoryMap);
-  const trendIncome = applyIncomeInclusion(
-    multiplyIncomeBy(trendRaw.income, monthlyScale),
-    settings,
-  );
-  const trendExpenses = multiplyExpensesBy(trendRaw.expenses, monthlyScale);
-  const trend: BudgetTrendSnapshot = {
-    windowDays: TREND_WINDOW_DAYS,
-    observedDays,
-    monthlyScale: round2(monthlyScale),
-    income: trendIncome,
-    expenses: trendExpenses,
-    net: round2(trendIncome.total - trendExpenses.total),
-  };
-
   const monthToDateRaw = computeBreakdowns(includedMonthRows, categoryMap);
   const monthToDate = {
     income: applyIncomeInclusion(monthToDateRaw.income, settings),
@@ -1724,19 +1799,18 @@ export async function computeBudgetPlan(
     Math.max(
       0,
       daysBetween(monthStart, trendEndExclusive) /
-        daysBetween(monthStart, monthEndExclusive),
+      daysBetween(monthStart, monthEndExclusive),
     ),
   );
 
-  const expectedIncomeMonthly = round2(
-    resolveExpectedIncomeMonthlyFromCompletedMonths(
+  const recentIncomeForecast =
+    resolveIncomeForecastFromCompletedMonths(
       includedTrendRows,
       categoryMap,
       settings,
       trendStart,
       monthStart,
-    ) ?? trend.income.total,
-  );
+    ) || null;
   const completedMonthExpenseBaselines =
     resolveExpenseBaselinesFromCompletedMonths(
       includedTrendRows,
@@ -1744,6 +1818,71 @@ export async function computeBudgetPlan(
       trendStart,
       monthStart,
     );
+  const trendIncome =
+    recentIncomeForecast ||
+    applyIncomeInclusion(multiplyIncomeBy(trendRaw.income, monthlyScale), settings);
+  const trendExpenses: BudgetExpenseBreakdown = {
+    fixedCosts:
+      completedMonthExpenseBaselines.get("fixed_costs") ??
+      round2(trendRaw.expenses.fixedCosts * monthlyScale),
+    subscriptions:
+      completedMonthExpenseBaselines.get("subscriptions") ??
+      round2(trendRaw.expenses.subscriptions * monthlyScale),
+    variableCosts:
+      completedMonthExpenseBaselines.get("variable_costs") ??
+      round2(trendRaw.expenses.variableCosts * monthlyScale),
+    savingsTransfer: round2(trendRaw.expenses.savingsTransfer * monthlyScale),
+    total: 0,
+    variable: {
+      groceries:
+        completedMonthExpenseBaselines.get("groceries") ??
+        round2(trendRaw.expenses.variable.groceries * monthlyScale),
+      fuel:
+        completedMonthExpenseBaselines.get("fuel") ??
+        round2(trendRaw.expenses.variable.fuel * monthlyScale),
+      smoking:
+        completedMonthExpenseBaselines.get("smoking") ??
+        round2(trendRaw.expenses.variable.smoking * monthlyScale),
+      other:
+        completedMonthExpenseBaselines.get("other") ??
+        round2(trendRaw.expenses.variable.other * monthlyScale),
+      total: 0,
+    },
+  };
+  trendExpenses.variable.total = round2(
+    trendExpenses.variable.groceries +
+      trendExpenses.variable.fuel +
+      trendExpenses.variable.smoking +
+      trendExpenses.variable.other,
+  );
+  trendExpenses.variableCosts = trendExpenses.variable.total;
+  trendExpenses.total = round2(
+    trendExpenses.fixedCosts +
+      trendExpenses.subscriptions +
+      trendExpenses.variableCosts +
+      trendExpenses.savingsTransfer,
+  );
+  const trend: BudgetTrendSnapshot = {
+    windowDays: TREND_WINDOW_DAYS,
+    observedDays,
+    monthlyScale: round2(monthlyScale),
+    income: trendIncome,
+    expenses: trendExpenses,
+    net: round2(trendIncome.total - trendExpenses.total),
+  };
+
+  const expectedIncomeMonthly = round2(
+    Math.max(
+      monthToDate.income.total,
+      resolveExpectedIncomeMonthlyFromCompletedMonths(
+        includedTrendRows,
+        categoryMap,
+        settings,
+        trendStart,
+        monthStart,
+      ) ?? trend.income.total,
+    ),
+  );
   const completedMonthBudgetInsight = buildCompletedMonthBudgetInsight(
     includedTrendRows,
     categoryMap,
@@ -2032,6 +2171,7 @@ export async function computeBudgetPlan(
   ];
 
   const unresolvedSubkeys: BudgetCategoryKey[] = [];
+  const variableAllocationWeights = new Map<BudgetCategoryKey, number>();
   let explicitSubcategoryBudget = 0;
 
   for (const key of variableSubkeys) {
@@ -2039,17 +2179,8 @@ export async function computeBudgetPlan(
     const override = overridesByKey.get(key);
     const monthlyValue = monthValuesByKey.get(key);
     const autoManagedVariableCategory = settings.mode !== "custom";
-    const isAutoModeTrendLockMatch = isAutoModeTrendLock(
-      settings.mode,
-      baselineMonthly,
-      monthlyValue?.monthlyBudget,
-      monthlyValue?.lockTrend,
-    );
 
-    if (
-      (monthlyValue && !autoManagedVariableCategory) ||
-      isAutoModeTrendLockMatch
-    ) {
+    if (monthlyValue?.lockTrend === true) {
       const monthlyBudget = roundEuro(
         Math.max(monthlyValue?.monthlyBudget ?? baselineMonthly, 0),
       );
@@ -2062,6 +2193,20 @@ export async function computeBudgetPlan(
             : settings.adjustmentFactor,
         overrideSource:
           monthlyValue?.lockTrend === true ? "trend_lock" : "monthly_override",
+        });
+      continue;
+    }
+
+    if (monthlyValue && !autoManagedVariableCategory) {
+      const monthlyBudget = roundEuro(Math.max(monthlyValue.monthlyBudget, 0));
+      explicitSubcategoryBudget += monthlyBudget;
+      setRecommendation(key, {
+        monthlyBudget,
+        appliedFactor:
+          baselineMonthly > 0
+            ? monthlyBudget / baselineMonthly
+            : settings.adjustmentFactor,
+        overrideSource: "monthly_override",
       });
       continue;
     }
@@ -2098,6 +2243,13 @@ export async function computeBudgetPlan(
       continue;
     }
 
+    if (monthlyValue && autoManagedVariableCategory) {
+      variableAllocationWeights.set(
+        key,
+        roundEuro(Math.max(monthlyValue.monthlyBudget, 0)),
+      );
+    }
+
     unresolvedSubkeys.push(key);
   }
 
@@ -2107,17 +2259,21 @@ export async function computeBudgetPlan(
   );
 
   if (unresolvedSubkeys.length > 0) {
-    const unresolvedBaselineTotal = unresolvedSubkeys.reduce(
-      (sum, key) => sum + (baselineByKey.get(key) || 0),
+    const unresolvedWeightTotal = unresolvedSubkeys.reduce(
+      (sum, key) =>
+        sum +
+        (variableAllocationWeights.get(key) ?? (baselineByKey.get(key) || 0)),
       0,
     );
 
     let allocated = 0;
     unresolvedSubkeys.forEach((key, index) => {
       const baselineMonthly = baselineByKey.get(key) || 0;
+      const allocationWeight =
+        variableAllocationWeights.get(key) ?? baselineMonthly;
       const share =
-        unresolvedBaselineTotal > 0
-          ? baselineMonthly / unresolvedBaselineTotal
+        unresolvedWeightTotal > 0
+          ? allocationWeight / unresolvedWeightTotal
           : 1 / unresolvedSubkeys.length;
       const monthlyBudget =
         index === unresolvedSubkeys.length - 1
@@ -2131,7 +2287,9 @@ export async function computeBudgetPlan(
           baselineMonthly > 0
             ? monthlyBudget / baselineMonthly
             : settings.adjustmentFactor,
-        overrideSource: "settings",
+        overrideSource: variableAllocationWeights.has(key)
+          ? "monthly_override"
+          : "settings",
       });
     });
   }
@@ -2294,10 +2452,7 @@ export async function computeBudgetPlan(
   ]);
 
   const excludedMainCategoriesFromRebalance =
-    resolveLockedVariableMainCategories(
-      settings.mode,
-      recommendations,
-    ) as Set<VariableMainCategory>;
+    resolveLockedVariableMainCategories(recommendations) as Set<VariableMainCategory>;
 
   const weeklyVariablePlan = computeWeeklyVariablePlan(
     includedWeekRows,

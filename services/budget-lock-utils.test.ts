@@ -32,41 +32,38 @@ describe("isAutoModeTrendLock", () => {
 });
 
 describe("resolveLockedVariableMainCategories", () => {
-  it("includes only variable main categories with monthly override in auto mode", () => {
+  it("includes only variable main categories that are explicitly locked", () => {
     const recommendations = [
       {
         categoryKey: "smoking",
-        overrideSource: "monthly_override",
+        overrideSource: "trend_lock",
       },
       {
         categoryKey: "groceries",
-        overrideSource: "settings",
+        overrideSource: "monthly_override",
       },
       {
         categoryKey: "subscriptions",
-        overrideSource: "monthly_override",
+        overrideSource: "trend_lock",
       },
     ] as Pick<BudgetRecommendationRow, "categoryKey" | "overrideSource">[];
 
-    const locked = resolveLockedVariableMainCategories(
-      "active_savings",
-      recommendations,
-    );
+    const locked = resolveLockedVariableMainCategories(recommendations);
 
     expect(locked.has("smoking")).toBe(true);
     expect(locked.has("groceries")).toBe(false);
     expect(locked.has("subscriptions")).toBe(false);
   });
 
-  it("includes trend_lock in custom mode but excludes monthly_override", () => {
+  it("excludes unlocked manual monthly overrides", () => {
     const recommendations = [
-      {
-        categoryKey: "smoking",
-        overrideSource: "trend_lock",
-      },
       {
         categoryKey: "fuel",
         overrideSource: "monthly_override",
+      },
+      {
+        categoryKey: "other",
+        overrideSource: "settings",
       },
       {
         categoryKey: "subscriptions",
@@ -74,17 +71,14 @@ describe("resolveLockedVariableMainCategories", () => {
       },
     ] as Pick<BudgetRecommendationRow, "categoryKey" | "overrideSource">[];
 
-    const locked = resolveLockedVariableMainCategories(
-      "custom",
-      recommendations,
-    );
+    const locked = resolveLockedVariableMainCategories(recommendations);
 
-    expect(locked.has("smoking")).toBe(true);
     expect(locked.has("fuel")).toBe(false);
+    expect(locked.has("other")).toBe(false);
     expect(locked.has("subscriptions")).toBe(false);
   });
 
-  it("includes both trend_lock and monthly_override in auto mode", () => {
+  it("handles multiple locked and unlocked variable categories", () => {
     const recommendations = [
       {
         categoryKey: "groceries",
@@ -95,18 +89,20 @@ describe("resolveLockedVariableMainCategories", () => {
         overrideSource: "trend_lock",
       },
       {
+        categoryKey: "smoking",
+        overrideSource: "trend_lock",
+      },
+      {
         categoryKey: "subscriptions",
         overrideSource: "monthly_override",
       },
     ] as Pick<BudgetRecommendationRow, "categoryKey" | "overrideSource">[];
 
-    const locked = resolveLockedVariableMainCategories(
-      "active_savings",
-      recommendations,
-    );
+    const locked = resolveLockedVariableMainCategories(recommendations);
 
-    expect(locked.has("groceries")).toBe(true);
+    expect(locked.has("groceries")).toBe(false);
     expect(locked.has("fuel")).toBe(true);
+    expect(locked.has("smoking")).toBe(true);
     expect(locked.has("subscriptions")).toBe(false);
   });
 });
@@ -184,10 +180,10 @@ describe("allocateWeekBudgetsByMainCategory", () => {
 
 describe("unlock save reopen flow", () => {
   it("does not re-lock a category after unlock + save in auto mode", () => {
-    const lockedBefore = resolveLockedVariableMainCategories("active_savings", [
+    const lockedBefore = resolveLockedVariableMainCategories([
       {
         categoryKey: "smoking",
-        overrideSource: "monthly_override",
+        overrideSource: "trend_lock",
       },
     ]);
     expect(lockedBefore.has("smoking")).toBe(true);
@@ -199,15 +195,54 @@ describe("unlock save reopen flow", () => {
     });
     expect(shouldPersistSmokingAfterUnlock).toBe(false);
 
-    const lockedAfterReopen = resolveLockedVariableMainCategories(
-      "active_savings",
-      [
-        {
-          categoryKey: "smoking",
-          overrideSource: "settings",
-        },
-      ],
-    );
+    const lockedAfterReopen = resolveLockedVariableMainCategories([
+      {
+        categoryKey: "smoking",
+        overrideSource: "monthly_override",
+      },
+    ]);
     expect(lockedAfterReopen.has("smoking")).toBe(false);
+  });
+});
+
+describe("shouldPersistCategoryOnBudgetSave", () => {
+  it("persists non-variable categories even in auto mode", () => {
+    expect(
+      shouldPersistCategoryOnBudgetSave({
+        categoryKey: "fixed_costs",
+        autoManagedVariableBudget: true,
+        lockedCategoryKeys: new Set(),
+      }),
+    ).toBe(true);
+  });
+
+  it("does not persist unlocked variable categories in auto mode", () => {
+    expect(
+      shouldPersistCategoryOnBudgetSave({
+        categoryKey: "groceries",
+        autoManagedVariableBudget: true,
+        lockedCategoryKeys: new Set(),
+      }),
+    ).toBe(false);
+  });
+
+  it("persists locked variable categories in auto mode", () => {
+    expect(
+      shouldPersistCategoryOnBudgetSave({
+        categoryKey: "groceries",
+        autoManagedVariableBudget: true,
+        lockedCategoryKeys: new Set(["groceries"]),
+      }),
+    ).toBe(true);
+  });
+
+  it("persists manual variable categories in custom mode", () => {
+    expect(
+      shouldPersistCategoryOnBudgetSave({
+        categoryKey: "groceries",
+        autoManagedVariableBudget: false,
+        lockedCategoryKeys: new Set(),
+      }),
+    ).toBe(true);
   });
 });

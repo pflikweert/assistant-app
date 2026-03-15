@@ -806,7 +806,7 @@ async function requestOpenAICategories(
       {
         role: "system",
         content:
-          "You classify Dutch bank transactions. Always pick exactly one category_key from the provided list. Focus on the actual purchase subject in the transaction details, then the true merchant. Ignore technical payment-route text such as Google Pay, Apple Pay, terminal ids, approval codes, card/pass details, and location-only fragments unless they are the only clue. For deferred/aggregator payment providers (for example Klarna, PayPal, Riverty, AfterPay), do NOT classify by provider name alone: use subject/details per transaction, because each payment can belong to a different category. Return strict JSON only and always include a short reason string for every item.",
+          "You classify Dutch bank transactions. Always pick exactly one category_key from the provided list. Focus on the actual purchase subject in the transaction details, then the true merchant. Ignore technical payment-route text such as Google Pay, Apple Pay, terminal ids, approval codes, card/pass details, and location-only fragments unless they are the only clue. For deferred/aggregator payment providers (for example Klarna, PayPal, Riverty, AfterPay), do NOT classify by provider name alone: use subject/details per transaction, because each payment can belong to a different category. Return strict JSON only and always include a short reason string for every item. The reason must always be written in Dutch.",
       },
       {
         role: "user",

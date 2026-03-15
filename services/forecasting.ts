@@ -362,48 +362,89 @@ export async function recomputeCurrentMonthCashflowForecast(
     }
   }
 
-  const variableStats = {
-    groceries: { sum: 0, count: 0 },
-    fuel: { sum: 0, count: 0 },
-    smoking: { sum: 0, count: 0 },
-    other: { sum: 0, count: 0 },
-  };
+  const trendExpenses = stableIncomePlan?.trend.expenses || null;
+  const monthToDateExpenses = stableIncomePlan?.monthToDateExpenses || null;
 
-  for (const tx of historyTransactions) {
-    if (tx.budget_excluded) continue;
-    if (tx.amount >= 0) continue;
-    if (tx.analysis_main_group !== "expense") continue;
-    if (tx.analysis_category !== "variable_costs") continue;
+  expectedFixedCosts = Math.max(
+    expectedFixedCosts,
+    asNumber(trendExpenses?.fixedCosts, 0),
+    asNumber(monthToDateExpenses?.fixedCosts, 0),
+  );
+  expectedSubscriptions = Math.max(
+    expectedSubscriptions,
+    asNumber(trendExpenses?.subscriptions, 0),
+    asNumber(monthToDateExpenses?.subscriptions, 0),
+  );
 
-    const categoryId = tx.category_id_user || tx.category_id_auto;
-    const categoryKey = categoryId
-      ? categoryMap.get(categoryId)?.key || null
-      : null;
-    const bucket = buildVariableBucket(tx, categoryKey);
+  let expectedGroceries = 0;
+  let expectedFuel = 0;
+  let expectedSmoking = 0;
+  let expectedOtherVariable = 0;
 
-    variableStats[bucket].sum += Math.abs(tx.amount);
-    variableStats[bucket].count += 1;
+  if (trendExpenses) {
+    expectedGroceries = Math.max(
+      asNumber(trendExpenses.variable.groceries, 0),
+      asNumber(monthToDateExpenses?.variable.groceries, 0),
+    );
+    expectedFuel = Math.max(
+      asNumber(trendExpenses.variable.fuel, 0),
+      asNumber(monthToDateExpenses?.variable.fuel, 0),
+    );
+    expectedSmoking = Math.max(
+      asNumber(trendExpenses.variable.smoking, 0),
+      asNumber(monthToDateExpenses?.variable.smoking, 0),
+    );
+    expectedOtherVariable = Math.max(
+      asNumber(trendExpenses.variable.other, 0),
+      asNumber(monthToDateExpenses?.variable.other, 0),
+    );
+  } else {
+    const variableStats = {
+      groceries: { sum: 0, count: 0 },
+      fuel: { sum: 0, count: 0 },
+      smoking: { sum: 0, count: 0 },
+      other: { sum: 0, count: 0 },
+    };
+
+    for (const tx of historyTransactions) {
+      if (tx.budget_excluded) continue;
+      if (tx.amount >= 0) continue;
+      if (tx.analysis_main_group !== "expense") continue;
+      if (tx.analysis_category !== "variable_costs") continue;
+
+      const categoryId = tx.category_id_user || tx.category_id_auto;
+      const categoryKey = categoryId
+        ? categoryMap.get(categoryId)?.key || null
+        : null;
+      const bucket = buildVariableBucket(tx, categoryKey);
+
+      variableStats[bucket].sum += Math.abs(tx.amount);
+      variableStats[bucket].count += 1;
+    }
+
+    expectedGroceries =
+      variableStats.groceries.count > 0
+        ? variableStats.groceries.sum / variableStats.groceries.count
+        : 0;
+    expectedFuel =
+      variableStats.fuel.count > 0
+        ? variableStats.fuel.sum / variableStats.fuel.count
+        : 0;
+    expectedSmoking =
+      variableStats.smoking.count > 0
+        ? variableStats.smoking.sum / variableStats.smoking.count
+        : 0;
+    expectedOtherVariable =
+      variableStats.other.count > 0
+        ? variableStats.other.sum / variableStats.other.count
+        : 0;
   }
 
-  const avgGroceries =
-    variableStats.groceries.count > 0
-      ? variableStats.groceries.sum / variableStats.groceries.count
-      : 0;
-  const avgFuel =
-    variableStats.fuel.count > 0
-      ? variableStats.fuel.sum / variableStats.fuel.count
-      : 0;
-  const avgSmoking =
-    variableStats.smoking.count > 0
-      ? variableStats.smoking.sum / variableStats.smoking.count
-      : 0;
-  const avgOtherVariable =
-    variableStats.other.count > 0
-      ? variableStats.other.sum / variableStats.other.count
-      : 0;
-
   const expectedVariableCosts =
-    avgGroceries + avgFuel + avgSmoking + avgOtherVariable;
+    expectedGroceries +
+    expectedFuel +
+    expectedSmoking +
+    expectedOtherVariable;
   const expectedExpenseTotal =
     expectedFixedCosts + expectedSubscriptions + expectedVariableCosts;
 
@@ -435,10 +476,10 @@ export async function recomputeCurrentMonthCashflowForecast(
       expected_fixed_costs: expectedFixedCosts,
       expected_subscriptions: expectedSubscriptions,
       expected_variable_costs: expectedVariableCosts,
-      avg_groceries: avgGroceries,
-      avg_fuel: avgFuel,
-      avg_smoking: avgSmoking,
-      avg_other_variable: avgOtherVariable,
+      avg_groceries: expectedGroceries,
+      avg_fuel: expectedFuel,
+      avg_smoking: expectedSmoking,
+      avg_other_variable: expectedOtherVariable,
       expected_end_of_month_balance: expectedEndOfMonthBalance,
       risk_flag: riskFlag,
       top_cost_bucket_1: costBuckets[0] || null,

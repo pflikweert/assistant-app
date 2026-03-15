@@ -19,20 +19,20 @@ function TabIcon({
   if (type === "dashboard") {
     return (
       <View style={{ width: s, height: s, justifyContent: "space-between" }}>
-        <View style={{ flexDirection: "row", gap: 3, flex: 1 }}>
+        <View style={{ flexDirection: "row", flex: 1, justifyContent: "space-between" }}>
           <View
             style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]}
           />
           <View
-            style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]}
+            style={[styles.iconBlock, { backgroundColor: color, flex: 1, marginLeft: 3 }]}
           />
         </View>
-        <View style={{ flexDirection: "row", gap: 3, flex: 1, marginTop: 3 }}>
+        <View style={{ flexDirection: "row", flex: 1, marginTop: 3, justifyContent: "space-between" }}>
           <View
             style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]}
           />
           <View
-            style={[styles.iconBlock, { backgroundColor: color, flex: 1 }]}
+            style={[styles.iconBlock, { backgroundColor: color, flex: 1, marginLeft: 3 }]}
           />
         </View>
       </View>
@@ -40,7 +40,7 @@ function TabIcon({
   }
   if (type === "transactions") {
     return (
-      <View style={{ width: s, height: s, justifyContent: "center", gap: 4 }}>
+      <View style={{ width: s, height: s, justifyContent: "center" }}>
         {[0, 1, 2].map((i) => (
           <View
             key={i}
@@ -48,6 +48,7 @@ function TabIcon({
               height: 2.5,
               backgroundColor: color,
               borderRadius: 2,
+              marginTop: i === 0 ? 0 : 4,
               width: i === 0 ? "100%" : i === 1 ? "75%" : "55%",
             }}
           />
@@ -64,7 +65,6 @@ function TabIcon({
           justifyContent: "flex-end",
           flexDirection: "row",
           alignItems: "flex-end",
-          gap: 3,
         }}
       >
         {[8, 14, 10, 18].map((h, i) => (
@@ -75,6 +75,7 @@ function TabIcon({
               height: h,
               backgroundColor: color,
               borderRadius: 2,
+              marginLeft: i === 0 ? 0 : 3,
             }}
           />
         ))}
@@ -90,10 +91,10 @@ function TabIcon({
             borderRadius: 3,
             borderWidth: 2,
             borderColor: color,
-            backgroundColor: "transparent",
-          }}
-        />
-        <View style={{ flexDirection: "row", gap: 3 }}>
+          backgroundColor: "transparent",
+        }}
+      />
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
           <View
             style={{
               flex: 1,
@@ -108,6 +109,7 @@ function TabIcon({
               height: 6,
               borderRadius: 2,
               backgroundColor: color,
+              marginLeft: 3,
               marginTop: 4,
             }}
           />

@@ -332,6 +332,8 @@ export type BudgetExpenseDetailItem = {
 
 export type BudgetOutsideExpenseItem = BudgetExpenseDetailItem & {
   categoryLabel: string;
+  groupKey: string;
+  transactionIds: string[];
 };
 
 export type BudgetOutsideExpenseSummary = {

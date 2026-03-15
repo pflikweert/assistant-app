@@ -1,4 +1,6 @@
+import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { FinColors } from "@/constants/theme";
+import { getBudgetRiskTone } from "@/services/budget-risk";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import React from "react";
 import {
@@ -46,7 +48,9 @@ export function BudgetCategoryProgressRow({
   const progress = Number.isFinite(utilization)
     ? Math.min(Math.max(utilization, 0), 1)
     : 1;
-  const isOverBudget = utilization > 1;
+  const tone = getBudgetRiskTone(utilization);
+  const isWatch = tone === "watch";
+  const isOverBudget = tone === "critical";
 
   const content = (
     <>
@@ -70,22 +74,20 @@ export function BudgetCategoryProgressRow({
             />
           ) : null}
         </View>
-        <Text style={[styles.meta, isOverBudget && styles.metaCritical]}>
+        <Text
+          style={[
+            styles.meta,
+            isWatch && styles.metaWatch,
+            isOverBudget && styles.metaCritical,
+          ]}
+        >
           {budget > 0
             ? `${formatUtilization(utilization)} gebruikt`
             : "Geen budget"}
         </Text>
       </View>
 
-      <View style={styles.track}>
-        <View
-          style={[
-            styles.fill,
-            { width: `${Math.round(progress * 100)}%` },
-            isOverBudget && styles.fillWarning,
-          ]}
-        />
-      </View>
+      <RiskProgressBar progress={progress} tone={tone} style={styles.track} />
 
       <Text style={styles.amountMeta}>
         {fmt.format(actual)} van {fmt.format(budget)}
@@ -144,18 +146,11 @@ const styles = StyleSheet.create({
   metaCritical: {
     color: FinColors.red,
   },
+  metaWatch: {
+    color: FinColors.warningText,
+  },
   track: {
     height: 6,
-    borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
-    overflow: "hidden",
-  },
-  fill: {
-    height: "100%",
-    backgroundColor: FinColors.green,
-  },
-  fillWarning: {
-    backgroundColor: FinColors.red,
   },
   amountMeta: {
     fontSize: 11,
