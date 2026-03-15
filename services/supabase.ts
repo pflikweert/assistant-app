@@ -11,15 +11,112 @@ try {
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
+import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 
-// Expo provides runtime variables under Constants.expoConfig.extra when using
-// an app.config.js or app.json with an "extra" field.  Fallback to process.env
-// for environments where Constants may not be available (e.g. server-side).
-const env: Record<string, string | undefined> =
-  (Constants.expoConfig?.extra as any) || process.env;
+// Prefer Expo `extra` when set, but always fall back to process.env for local runs.
+const extraEnv =
+  ((Constants.expoConfig?.extra as Record<string, string | undefined> | undefined) ??
+    {}) as Record<string, string | undefined>;
 
-const url = env.SUPABASE_URL;
-const anonKey = env.SUPABASE_ANON_KEY;
+function getEnv(key: string) {
+  const extraValue = extraEnv[key];
+  if (typeof extraValue === "string" && extraValue.length > 0) {
+    return extraValue;
+  }
+  return process.env[key];
+}
+
+function isTruthy(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+const isDevRuntime = typeof __DEV__ === "boolean" ? __DEV__ : true;
+const devBypassFlag = getEnv("DEV_AUTH_BYPASS") ?? getEnv("DEV_BYPASS_LOGIN_ENABLED");
+const devAuthEnabled = isDevRuntime && isTruthy(devBypassFlag);
+
+type DevAuthConfig = {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  metadata: Record<string, unknown>;
+};
+
+function parseDevMetadata(raw?: string) {
+  if (!raw?.trim()) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.warn(
+      "DEV_AUTH_USER_METADATA is not valid JSON. Falling back to an empty object.",
+    );
+    return {};
+  }
+}
+
+const devAuthConfig: DevAuthConfig | null = devAuthEnabled
+  ? {
+      userId: getEnv("DEV_AUTH_USER_ID") ?? "dev-local-user",
+      email:
+        getEnv("DEV_AUTH_USER_EMAIL") ??
+        getEnv("DEV_BYPASS_LOGIN_EMAIL") ??
+        "dev@localhost",
+      name: getEnv("DEV_AUTH_USER_NAME") ?? "Local Dev",
+      role: getEnv("DEV_AUTH_USER_ROLE") ?? "authenticated",
+      metadata: parseDevMetadata(getEnv("DEV_AUTH_USER_METADATA")),
+    }
+  : null;
+
+function buildDevUser(userId: string, email: string, name: string, role: string): User {
+  const now = new Date().toISOString();
+  return {
+    id: userId,
+    aud: "authenticated",
+    role,
+    email,
+    email_confirmed_at: now,
+    phone: undefined,
+    phone_confirmed_at: undefined,
+    app_metadata: { provider: "email" },
+    user_metadata: { name },
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+export function createDevSession(): Session | null {
+  if (!devAuthConfig) return null;
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    access_token: "dev-access-token",
+    token_type: "bearer",
+    expires_in: 60 * 60,
+    expires_at: now + 60 * 60,
+    refresh_token: "dev-refresh-token",
+    provider_token: null,
+    provider_refresh_token: null,
+    user: {
+      ...buildDevUser(
+        devAuthConfig.userId,
+        devAuthConfig.email,
+        devAuthConfig.name,
+        devAuthConfig.role,
+      ),
+      user_metadata: {
+        ...devAuthConfig.metadata,
+        name: devAuthConfig.name,
+      },
+    },
+  };
+}
+
+export const isDevAuthBypassEnabled = Boolean(devAuthConfig);
+
+const url = getEnv("SUPABASE_URL");
+const anonKey = getEnv("SUPABASE_ANON_KEY");
 
 if (!url || !anonKey) {
   throw new Error(
@@ -28,8 +125,6 @@ if (!url || !anonKey) {
       "and that the file is imported by metro (restart the packager after adding).",
   );
 }
-
-import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 
 const SUPABASE_STORAGE_KEY = "assistant.supabase.auth.token";
 

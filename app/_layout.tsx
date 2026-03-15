@@ -2,13 +2,15 @@ import { FinColors } from "@/constants/theme";
 import { clearCategorizationClientState } from "@/services/categorization";
 import { getAuthRedirectPath } from "@/services/auth-routing";
 import {
-    getSession,
-    loginWithEmail,
-    logout,
-    onAuthStateChange,
-    registerWithEmail,
-    requestPasswordReset,
-    updatePassword as updatePasswordForCurrentUser,
+  createDevSession,
+  getSession,
+  isDevAuthBypassEnabled,
+  loginWithEmail,
+  logout,
+  onAuthStateChange,
+  registerWithEmail,
+  requestPasswordReset,
+  updatePassword as updatePasswordForCurrentUser,
 } from "@/services/supabase";
 import { DarkTheme, ThemeProvider } from "@react-navigation/native";
 import type { Session, User } from "@supabase/supabase-js";
@@ -56,6 +58,12 @@ function SessionProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (isDevAuthBypassEnabled) {
+      setSession(createDevSession());
+      setLoading(false);
+      return;
+    }
+
     getSession()
       .then((sess) => {
         setSession(sess);

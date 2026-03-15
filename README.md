@@ -78,3 +78,20 @@ supabase db push    # run pending migrations against your linked project
 Once the table exists, importing a CSV will map the bank‑specific column names
 into the generic fields and store the remaining columns under `metadata`.
 Existing rows are updated if they match on `date+details+amount`.
+
+## Local development auth bypass
+
+Set `DEV_AUTH_BYPASS=true` (or `1`) in your local environment to skip Supabase
+login during development. When enabled, the app creates a stubbed session so you
+can launch the `(tabs)` experience without signing in.
+
+You can override the fake user by defining these additional vars:
+
+- `DEV_AUTH_USER_ID` (default `dev-local-user`)
+- `DEV_AUTH_USER_EMAIL` (default `dev@localhost`)
+- `DEV_AUTH_USER_NAME` (default `Local Dev`)
+- `DEV_AUTH_USER_ROLE` (default `authenticated`)
+- `DEV_AUTH_USER_METADATA` (a JSON object merged into the user's metadata)
+
+The bypass only runs outside production builds and never removes the required
+Supabase credentials for the rest of the app.
