@@ -1,5 +1,10 @@
-import { SymbolView, SymbolViewProps, SymbolWeight } from 'expo-symbols';
-import { StyleProp, ViewStyle } from 'react-native';
+import { AppIcon } from '@/components/ui/app-icon';
+import {
+  ICON_SYMBOL_MAPPING,
+  type IconSymbolName,
+} from '@/components/ui/icon-symbol-map';
+import { SymbolWeight } from 'expo-symbols';
+import { StyleProp, TextStyle } from 'react-native';
 
 export function IconSymbol({
   name,
@@ -8,25 +13,19 @@ export function IconSymbol({
   style,
   weight = 'regular',
 }: {
-  name: SymbolViewProps['name'];
+  name: IconSymbolName;
   size?: number;
   color: string;
-  style?: StyleProp<ViewStyle>;
+  style?: StyleProp<TextStyle>;
   weight?: SymbolWeight;
 }) {
   return (
-    <SymbolView
-      weight={weight}
-      tintColor={color}
-      resizeMode="scaleAspectFit"
-      name={name}
-      style={[
-        {
-          width: size,
-          height: size,
-        },
-        style,
-      ]}
+    <AppIcon
+      name={ICON_SYMBOL_MAPPING[name]}
+      size={size}
+      color={color}
+      variant="outlined"
+      style={style}
     />
   );
 }

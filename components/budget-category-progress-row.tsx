@@ -1,7 +1,7 @@
+import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { FinColors } from "@/constants/theme";
 import { getBudgetRiskTone } from "@/services/budget-risk";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import React from "react";
 import {
     Pressable,
@@ -11,8 +11,6 @@ import {
     View,
     ViewStyle,
 } from "react-native";
-
-type MaterialIconName = React.ComponentProps<typeof MaterialIcons>["name"];
 
 const fmt = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -36,7 +34,7 @@ export function BudgetCategoryProgressRow({
   style,
 }: {
   label: string;
-  iconName: MaterialIconName;
+  iconName: AppIconName;
   utilization: number;
   actual: number;
   budget: number;
@@ -57,20 +55,22 @@ export function BudgetCategoryProgressRow({
       <View style={styles.topRow}>
         <View style={styles.leftWrap}>
           <View style={styles.iconWrap}>
-            <MaterialIcons
+            <AppIcon
               name={iconName}
               size={14}
               color={FinColors.textPrimary}
+              variant="outlined"
             />
           </View>
           <Text style={styles.label} numberOfLines={1}>
             {label}
           </Text>
           {showChevron ? (
-            <MaterialIcons
+            <AppIcon
               name={chevronExpanded ? "expand-more" : "chevron-right"}
               size={16}
               color={FinColors.textSecondary}
+              variant="outlined"
             />
           ) : null}
         </View>

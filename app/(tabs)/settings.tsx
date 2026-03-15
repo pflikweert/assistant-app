@@ -1,3 +1,4 @@
+import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import { useSession } from "@/app/_layout";
@@ -12,7 +13,6 @@ import {
     formatCategorizationStatus,
     useCategorizationStatus,
 } from "@/services/categorization-status";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import type { Href } from "expo-router";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -28,6 +28,7 @@ import {
 } from "react-native";
 
 type RowProps = {
+  iconName?: AppIconName;
   label: string;
   subtitle?: string;
   value?: string;
@@ -57,10 +58,11 @@ function ConfirmResetModal({
               onPress={onCancel}
               disabled={isClearing}
             >
-              <MaterialIcons
+              <AppIcon
                 name="close"
                 size={18}
                 color={FinColors.textSecondary}
+                variant="outlined"
               />
             </TouchableOpacity>
           </View>
@@ -111,10 +113,11 @@ function SuccessModal({
               style={styles.modalIconCloseButton}
               onPress={onClose}
             >
-              <MaterialIcons
+              <AppIcon
                 name="close"
                 size={18}
                 color={FinColors.textSecondary}
+                variant="outlined"
               />
             </TouchableOpacity>
           </View>
@@ -153,10 +156,11 @@ function ErrorModal({
               style={styles.modalIconCloseButton}
               onPress={onClose}
             >
-              <MaterialIcons
+              <AppIcon
                 name="close"
                 size={18}
                 color={FinColors.textSecondary}
+                variant="outlined"
               />
             </TouchableOpacity>
           </View>
@@ -181,6 +185,7 @@ function SettingsRow({
   value,
   onPress,
   rightElement,
+  iconName,
 }: RowProps) {
   return (
     <TouchableOpacity
@@ -188,6 +193,16 @@ function SettingsRow({
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
     >
+      {iconName ? (
+        <View style={styles.rowIconWrap}>
+          <AppIcon
+            name={iconName}
+            size={18}
+            color={FinColors.textSecondary}
+            variant="outlined"
+          />
+        </View>
+      ) : null}
       <View style={styles.rowContent}>
         <Text style={styles.rowLabel}>{label}</Text>
         {subtitle ? <Text style={styles.rowSub}>{subtitle}</Text> : null}
@@ -195,7 +210,14 @@ function SettingsRow({
       {rightElement ?? (
         <View style={styles.rowRight}>
           {value ? <Text style={styles.rowValue}>{value}</Text> : null}
-          {onPress ? <Text style={styles.rowChevron}>{">"}</Text> : null}
+          {onPress ? (
+            <AppIcon
+              name="chevron-right"
+              size={18}
+              color={FinColors.textMuted}
+              variant="outlined"
+            />
+          ) : null}
         </View>
       )}
     </TouchableOpacity>
@@ -305,18 +327,21 @@ export default function SettingsScreen() {
         <SectionHeader title="Accounts" />
         <View style={styles.card}>
           <SettingsRow
+            iconName="upload-file"
             label="Import transactions"
             subtitle="Upload a Rabobank CSV"
             onPress={() => router.push("/csv-import")}
           />
           <View style={styles.divider} />
           <SettingsRow
+            iconName="manage-accounts"
             label="Manage accounts"
             subtitle="Add or remove bank accounts"
             onPress={() => {}}
           />
            <View style={styles.divider} />
            <SettingsRow
+             iconName="password"
              label="Wachtwoord wijzigen"
              subtitle="Wijzig je accountwachtwoord"
              onPress={() => router.push("/account/change-password")}
@@ -326,9 +351,15 @@ export default function SettingsScreen() {
         {/* Preferences */}
         <SectionHeader title="Preferences" />
         <View style={styles.card}>
-          <SettingsRow label="Currency" value="EUR" onPress={() => {}} />
+          <SettingsRow
+            iconName="euro-symbol"
+            label="Currency"
+            value="EUR"
+            onPress={() => {}}
+          />
           <View style={styles.divider} />
           <SettingsRow
+            iconName="dark-mode"
             label="Appearance"
             subtitle="Dark mode enabled"
             rightElement={
@@ -349,12 +380,14 @@ export default function SettingsScreen() {
         <SectionHeader title="Data" />
         <View style={styles.card}>
           <SettingsRow
+            iconName="download"
             label="Export data"
             subtitle="Download all transactions as CSV"
             onPress={() => {}}
           />
           <View style={styles.divider} />
           <SettingsRow
+            iconName="autorenew"
             label="Alles hercategoriseren"
             subtitle="Zet alle niet-handmatige transacties opnieuw door rules en OpenAI"
             onPress={() => runRecategorizationForAllInBackground()}
@@ -366,6 +399,7 @@ export default function SettingsScreen() {
           />
           <View style={styles.divider} />
           <SettingsRow
+            iconName="delete-outline"
             label="Transacties resetten"
             subtitle="Verwijder alle transactiegegevens en categorisaties"
             onPress={handleResetPress}
@@ -462,9 +496,13 @@ export default function SettingsScreen() {
         {/* About */}
         <SectionHeader title="About" />
         <View style={styles.card}>
-          <SettingsRow label="Version" value="1.0.0" />
+          <SettingsRow iconName="info-outline" label="Version" value="1.0.0" />
           <View style={styles.divider} />
-          <SettingsRow label="Help & support" onPress={() => {}} />
+          <SettingsRow
+            iconName="support-agent"
+            label="Help & support"
+            onPress={() => {}}
+          />
         </View>
 
         {/* Sign out */}
@@ -580,12 +618,22 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 20,
   },
+  rowIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    marginRight: 12,
+  },
   rowContent: { flex: 1 },
   rowLabel: { fontSize: 15, fontWeight: "600", color: FinColors.textPrimary },
   rowSub: { fontSize: 12, color: FinColors.textMuted, marginTop: 4 },
   rowRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   rowValue: { fontSize: 14, color: FinColors.textSecondary, fontWeight: "500" },
-  rowChevron: { fontSize: 16, color: FinColors.textMuted },
   divider: {
     height: 1,
     backgroundColor: FinColors.borderSubtle,

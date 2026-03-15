@@ -1,5 +1,5 @@
+import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import React from "react";
 import {
     Pressable,
@@ -91,10 +91,11 @@ export function BudgetAmountSlider({
           onPress={decrease}
           disabled={disabled}
         >
-          <MaterialIcons
+          <AppIcon
             name="remove"
             size={18}
             color={disabled ? FinColors.textMuted : FinColors.textPrimary}
+            variant="outlined"
           />
         </Pressable>
 
@@ -122,10 +123,11 @@ export function BudgetAmountSlider({
           onPress={increase}
           disabled={disabled}
         >
-          <MaterialIcons
+          <AppIcon
             name="add"
             size={18}
             color={disabled ? FinColors.textMuted : FinColors.textPrimary}
+            variant="outlined"
           />
         </Pressable>
       </View>

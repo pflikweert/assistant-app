@@ -26,7 +26,7 @@ import type {
   CategoryRecord,
   ExpenseAnalysisCategory,
 } from "@/types/categorization";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { AppIcon } from "@/components/ui/app-icon";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -1557,7 +1557,7 @@ export default function InsightsScreen() {
                 ))}
                 {budgetPlan?.warnings.slice(0, 2).map((warning) => (
                   <View key={warning.message} style={styles.bulletRow}>
-                    <MaterialIcons
+                    <AppIcon
                       name="priority-high"
                       size={16}
                       color={FinColors.warningText}
@@ -1649,7 +1649,7 @@ export default function InsightsScreen() {
                 style={styles.modalIconCloseButton}
                 onPress={() => setIncomeDetailsOpen(false)}
               >
-                <MaterialIcons
+                <AppIcon
                   name="close"
                   size={18}
                   color={FinColors.textSecondary}
@@ -1752,7 +1752,7 @@ export default function InsightsScreen() {
                   setCategorySearch("");
                 }}
               >
-                <MaterialIcons
+                <AppIcon
                   name="close"
                   size={18}
                   color={FinColors.textSecondary}
@@ -1809,7 +1809,7 @@ export default function InsightsScreen() {
                             {group.children.length}
                           </Text>
                         ) : (
-                          <MaterialIcons
+                          <AppIcon
                             name={expanded ? "remove" : "add"}
                             size={16}
                             color={FinColors.textSecondary}

@@ -17,7 +17,7 @@ import {
 import { requireCurrentUserId } from "@/services/current-user";
 import { supabase } from "@/services/supabase";
 import type { BudgetPlanComputation, CategoryRecord } from "@/types/categorization";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { AppIcon } from "@/components/ui/app-icon";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -417,7 +417,7 @@ export default function DashboardScreen() {
           </View>
         </View>
         <View style={styles.headerBadge}>
-          <MaterialIcons
+          <AppIcon
             name="notifications-none"
             size={18}
             color={FinColors.textPrimary}
@@ -466,7 +466,7 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.inlineCta}>
               <Text style={styles.inlineCtaText}>Bekijk budget</Text>
-              <MaterialIcons
+              <AppIcon
                 name="chevron-right"
                 size={16}
                 color={FinColors.warningText}
@@ -603,7 +603,7 @@ export default function DashboardScreen() {
         <View style={styles.nudgeCard}>
           <View style={styles.nudgeHeader}>
             <Text style={styles.sectionTitle}>Positieve signalen</Text>
-            <MaterialIcons name="wb-sunny" size={16} color={FinColors.warningText} />
+            <AppIcon name="wb-sunny" size={16} color={FinColors.warningText} />
           </View>
           {positiveNudges.length ? (
             positiveNudges.map((item) => (

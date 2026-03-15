@@ -11,7 +11,7 @@ import {
 import { requireCurrentUserId } from "@/services/current-user";
 import { supabase } from "@/services/supabase";
 import type { CategoryRecord } from "@/types/categorization";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { AppIcon } from "@/components/ui/app-icon";
 import { useIsFocused } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
@@ -564,7 +564,7 @@ export default function TransactionsTab() {
             ]}
             onPress={() => setFilterSheetOpen(true)}
           >
-            <MaterialIcons
+            <AppIcon
               name="tune"
               size={18}
               color={
@@ -583,7 +583,7 @@ export default function TransactionsTab() {
         </View>
 
         <View style={styles.searchWrap}>
-          <MaterialIcons
+          <AppIcon
             name="search"
             size={18}
             color={FinColors.textMuted}

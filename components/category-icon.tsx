@@ -1,7 +1,7 @@
+import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
 import { getRootCategoryKey } from "@/services/category-display";
 import type { CategoryRecord } from "@/types/categorization";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
@@ -9,9 +9,7 @@ type CategorizedRow = {
   category_id_auto?: string | null;
   category_id_user?: string | null;
 };
-type MaterialIconName = React.ComponentProps<typeof MaterialIcons>["name"];
-
-function getIconNameForRootKey(rootKey: string | null): MaterialIconName {
+function getIconNameForRootKey(rootKey: string | null): AppIconName {
   const key = String(rootKey || "").toLowerCase();
 
   if (!key || key.includes("other")) return "help-outline";
@@ -77,10 +75,11 @@ export function TransactionCategoryIcon({
         },
       ]}
     >
-      <MaterialIcons
+      <AppIcon
         name={iconName}
         size={size}
         color={FinColors.textSecondary}
+        variant="outlined"
       />
     </View>
   );

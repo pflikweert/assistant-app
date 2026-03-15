@@ -14,6 +14,8 @@
   - Forecast fallbacklogica verbeterd met recente volledige maanden
   - `Nog vrij te besteden`, status en weektempo semantisch gelijkgetrokken op dashboard, budget en insights
   - Unit tests toegevoegd voor budget risk, forecast fallback en locklogica
+  - Categorie-detail drilldown vanuit budget maandtab
+  - Google Material iconensysteem met lokale fonts geïmplementeerd en app-breed vervangen
 
 ## Aanbevolen Volgende Fase
 
@@ -21,8 +23,8 @@
   - Extra tests voor week attentionlogica
   - Laatste visuele check in simulator of web voor status- en tempocopy
   - Eventueel forecastscenario's uitbreiden voor uitzonderlijke maanden of weinig historie
+  - Iconen visueel nalopen op variantkeuze en spacing per scherm
 - Daarna oppakken:
-  - Categorie-detail drilldown vanuit budget maandtab
   - Herverdeling-preview in beheer voor opslaan
   - `Wat is veranderd` laag in Insights
 
@@ -36,10 +38,10 @@
 - Extra tests voor week attentionlogica
 - Laatste visuele check in simulator of web voor status- en tempocopy
 - Eventueel forecastscenario's uitbreiden voor uitzonderlijke maanden of weinig historie
+- Iconen visueel nalopen op variantkeuze en spacing per scherm
 
 ## Fase 3
 
-- Categorie-detail drilldown vanuit budget maandtab
 - Herverdeling-preview in beheer voor opslaan
 - `Wat is veranderd` laag in Insights
 - Mogelijke categorieadvies- of coachkaarten verfijnen
@@ -54,8 +56,8 @@
 
 - Compacte categorie-detailpagina met:
   - maandbudget
-  - weektempo
-  - recente transacties
+  - maandtempo
+  - transacties deze maand
   - advies
 - Kleine timeline in Insights:
   - budget aangepast

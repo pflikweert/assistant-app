@@ -1,11 +1,12 @@
+import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { usePathname, useRouter } from "expo-router";
 import React from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 type MenuItem = {
   label: string;
+  iconName: AppIconName;
   path:
     | "/"
     | "/transactions"
@@ -16,12 +17,12 @@ type MenuItem = {
 };
 
 const MENU_ITEMS: MenuItem[] = [
-  { label: "Dashboard", path: "/" },
-  { label: "Transactions", path: "/transactions" },
-  { label: "Insights", path: "/insights" },
-  { label: "Budget", path: "/budget" },
-  { label: "Abonnementen", path: "/subscriptions" },
-  { label: "Settings", path: "/settings" },
+  { label: "Dashboard", iconName: "space-dashboard", path: "/" },
+  { label: "Transactions", iconName: "receipt-long", path: "/transactions" },
+  { label: "Insights", iconName: "insights", path: "/insights" },
+  { label: "Budget", iconName: "account-balance-wallet", path: "/budget" },
+  { label: "Abonnementen", iconName: "subscriptions", path: "/subscriptions" },
+  { label: "Settings", iconName: "settings", path: "/settings" },
 ];
 
 function normalizePath(pathname: string): string {
@@ -54,7 +55,12 @@ export default function HeaderDropdownMenu() {
         accessibilityRole="button"
         accessibilityLabel="Open navigation menu"
       >
-        <MaterialIcons name="menu" size={18} color={FinColors.textPrimary} />
+        <AppIcon
+          name="menu"
+          size={18}
+          color={FinColors.textPrimary}
+          variant="outlined"
+        />
       </Pressable>
 
       <Modal
@@ -76,6 +82,16 @@ export default function HeaderDropdownMenu() {
                   onPress={() => handleNavigate(item.path)}
                   accessibilityRole="button"
                 >
+                  <View style={styles.itemIconWrap}>
+                    <AppIcon
+                      name={item.iconName}
+                      size={18}
+                      color={
+                        active ? FinColors.warningText : FinColors.textSecondary
+                      }
+                      variant="outlined"
+                    />
+                  </View>
                   <Text
                     style={[styles.itemText, active && styles.itemTextActive]}
                   >
@@ -132,6 +148,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   item: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "transparent",
@@ -143,11 +162,16 @@ const styles = StyleSheet.create({
     borderColor: FinColors.warningBorder,
   },
   itemText: {
+    flex: 1,
     fontSize: 14,
     color: FinColors.textSecondary,
     fontWeight: "600",
   },
   itemTextActive: {
     color: FinColors.warningText,
+  },
+  itemIconWrap: {
+    width: 24,
+    alignItems: "center",
   },
 });

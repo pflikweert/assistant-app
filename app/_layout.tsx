@@ -1,3 +1,4 @@
+import { MATERIAL_ICON_FONT_MAP } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
 import { clearCategorizationClientState } from "@/services/categorization";
 import { getAuthRedirectPath } from "@/services/auth-routing";
@@ -14,6 +15,7 @@ import {
 } from "@/services/supabase";
 import { DarkTheme, ThemeProvider } from "@react-navigation/native";
 import type { Session, User } from "@supabase/supabase-js";
+import { useFonts } from "expo-font";
 import {
   type Href,
   Stack,
@@ -221,6 +223,16 @@ function RecoveryRedirector({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
+  const [iconFontsLoaded, iconFontsError] = useFonts(MATERIAL_ICON_FONT_MAP);
+
+  if (iconFontsError) {
+    throw iconFontsError;
+  }
+
+  if (!iconFontsLoaded) {
+    return null;
+  }
+
   return (
     <ThemeProvider value={FinTheme}>
       <SessionProvider>

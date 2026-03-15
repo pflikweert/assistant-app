@@ -22,7 +22,7 @@ import type {
     SubscriptionQueueItem,
     SubscriptionValidationCandidate,
 } from "@/types/categorization";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { AppIcon } from "@/components/ui/app-icon";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
@@ -820,7 +820,7 @@ export default function SubscriptionsScreen() {
                               style={styles.ruleDeleteBtn}
                               onPress={() => void handleDeleteRule(rule.id)}
                             >
-                              <MaterialIcons
+                              <AppIcon
                                 name="delete-outline"
                                 size={18}
                                 color={FinColors.red}
@@ -1065,7 +1065,7 @@ export default function SubscriptionsScreen() {
                 {editingProfile ? "Abonnement bewerken" : "Nieuw abonnement"}
               </Text>
               <TouchableOpacity onPress={() => setProfileModalOpen(false)}>
-                <MaterialIcons
+                <AppIcon
                   name="close"
                   size={18}
                   color={FinColors.textSecondary}
@@ -1267,7 +1267,7 @@ export default function SubscriptionsScreen() {
                               }
                             >
                               <View style={styles.validationItemHeaderRow}>
-                                <MaterialIcons
+                                <AppIcon
                                   name={
                                     selected
                                       ? "check-box"
@@ -1352,7 +1352,7 @@ export default function SubscriptionsScreen() {
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalTitle}>Kies abonnement</Text>
               <TouchableOpacity onPress={() => setChooseProfileTx(null)}>
-                <MaterialIcons
+                <AppIcon
                   name="close"
                   size={18}
                   color={FinColors.textSecondary}

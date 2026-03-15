@@ -46,7 +46,7 @@ import type {
   BudgetWeekPlanRow,
   CategoryRecord,
 } from "@/types/categorization";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { AppIcon } from "@/components/ui/app-icon";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -113,6 +113,8 @@ const VARIABLE_BUDGET_BREAKDOWN_KEYS: BudgetCategoryKey[] = [
   "smoking",
   "other",
 ];
+type VariableBudgetCategoryKey =
+  (typeof VARIABLE_BUDGET_BREAKDOWN_KEYS)[number];
 
 const SAVINGS_SLIDER_STEP = 25;
 
@@ -188,7 +190,7 @@ function BudgetInlineTransactionRow({
           disabled={isUpdating}
         >
           <View style={styles.inlineExcludeToggleInner}>
-            <MaterialIcons
+            <AppIcon
               name={
                 tx.budgetExcluded
                   ? "remove-circle-outline"
@@ -431,6 +433,197 @@ function getVariableCategoryIconName(categoryKey: string) {
   return "more-horiz";
 }
 
+function resolveVariableCategoryKeyForCategoryRecord(
+  categoryId: string | null | undefined,
+  categoryById: Map<string, CategoryRecord>,
+): VariableBudgetCategoryKey | null {
+  const categoryChain: CategoryRecord[] = [];
+  let current = categoryId ? categoryById.get(categoryId) || null : null;
+  const visited = new Set<string>();
+  let sawVariableCategory = false;
+
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+    categoryChain.push(current);
+
+    const key = String(current.key || "").toLowerCase().trim();
+    const budgetGroup = String(current.budget_group || "")
+      .toLowerCase()
+      .trim();
+
+    if (
+      key === "subscriptions" ||
+      key.startsWith("subscriptions_") ||
+      key.startsWith("subscription_")
+    ) {
+      return null;
+    }
+    if (
+      key === "savings" ||
+      key === "savings_transfer" ||
+      key.startsWith("savings_")
+    ) {
+      return null;
+    }
+    if (
+      budgetGroup === "fixed" ||
+      key.startsWith("housing") ||
+      key.startsWith("care_health_insurance") ||
+      key.startsWith("insurance_health") ||
+      key.startsWith("health_insurance") ||
+      key.startsWith("auto_transport_car_insurance") ||
+      key.startsWith("auto_transport_road_tax")
+    ) {
+      return null;
+    }
+    if (key.includes("groceries") || key.includes("supermarket")) {
+      return "groceries";
+    }
+    if (key.includes("fuel")) {
+      return "fuel";
+    }
+    if (key.includes("smoking")) {
+      return "smoking";
+    }
+    if (
+      budgetGroup === "variable" ||
+      key === "variable_costs" ||
+      key.startsWith("shopping") ||
+      key.startsWith("care") ||
+      key.startsWith("health")
+    ) {
+      sawVariableCategory = true;
+    }
+
+    current = current.parent_id ? categoryById.get(current.parent_id) || null : null;
+  }
+
+  if (sawVariableCategory || categoryChain.length > 0) {
+    return "other";
+  }
+
+  return null;
+}
+
+function resolveVariableCategoryKeyForTransaction(
+  row: Pick<
+    InlineWeekTransaction,
+    "category_id_auto" | "category_id_user" | "title" | "counterparty"
+  >,
+  categoryById: Map<string, CategoryRecord>,
+): VariableBudgetCategoryKey | null {
+  const fromAssignedCategory = resolveVariableCategoryKeyForCategoryRecord(
+    row.category_id_user || row.category_id_auto,
+    categoryById,
+  );
+  if (fromAssignedCategory) return fromAssignedCategory;
+
+  const haystack = normalizeLookupValue(
+    `${row.counterparty || ""} ${row.title || ""}`,
+  );
+  if (
+    haystack.includes("jumbo") ||
+    haystack.includes("plus") ||
+    haystack.includes("albert heijn") ||
+    haystack.includes(" ah ") ||
+    haystack.includes("lidl") ||
+    haystack.includes("aldi") ||
+    haystack.includes("coop") ||
+    haystack.includes("boodschap")
+  ) {
+    return "groceries";
+  }
+  if (
+    haystack.includes("shell") ||
+    haystack.includes("bp") ||
+    haystack.includes("esso") ||
+    haystack.includes("tango") ||
+    haystack.includes("tinq") ||
+    haystack.includes("total") ||
+    haystack.includes("benzine") ||
+    haystack.includes("diesel") ||
+    haystack.includes("tank")
+  ) {
+    return "fuel";
+  }
+  if (
+    haystack.includes("tabak") ||
+    haystack.includes("sigaret") ||
+    haystack.includes("sigaretten") ||
+    haystack.includes("rook") ||
+    haystack.includes("vape")
+  ) {
+    return "smoking";
+  }
+
+  return null;
+}
+
+function getCategoryDetailRecommendation(
+  row: BudgetRecommendationRow,
+  monthTempoSummary?: {
+    utilization: number;
+    projectedVariance: number;
+  } | null,
+) {
+  if (!Number.isFinite(row.utilization)) {
+    return "Stel eerst een maandbudget in om deze categorie goed te kunnen sturen.";
+  }
+
+  const remaining = row.monthlyBudget - row.monthlyActual;
+  if (row.utilization > 1) {
+    return `${fmt.format(Math.abs(remaining))} boven je maandbudget. Deze categorie vraagt nu het eerst aandacht.`;
+  }
+
+  if ((monthTempoSummary?.utilization || 0) >= 1.1) {
+    return `${fmt.format(Math.abs(monthTempoSummary?.projectedVariance || 0))} boven budget als dit tempo zo doorgaat.`;
+  }
+
+  if (row.utilization <= 0.85 && row.monthlyActual > 0) {
+    return "Ligt rustiger dan verwacht. Als dit tempo zo blijft, houd je hier ruimte over.";
+  }
+
+  if ((monthTempoSummary?.projectedVariance || 0) <= -5) {
+    return "Bij huidig tempo blijf je binnen budget voor deze maand.";
+  }
+
+  return "Ligt op schema binnen je maandruimte.";
+}
+
+function getCategoryMonthTempoSummary(row: BudgetRecommendationRow) {
+  const progress = Math.min(Math.max(row.monthProgress || 0, 0), 1);
+  const projectedMonthActual =
+    progress > 0 ? Math.round(row.monthlyActual / progress) : row.monthlyActual;
+  const utilization =
+    row.monthlyBudget > 0
+      ? projectedMonthActual / row.monthlyBudget
+      : row.monthlyActual > 0
+        ? Number.POSITIVE_INFINITY
+        : 0;
+  const projectedVariance = Math.round(projectedMonthActual - row.monthlyBudget);
+  const progressLabel = `${Math.round(progress * 100)}% van de maand`;
+
+  let message = "Bij huidig tempo blijf je ongeveer op je maandbudget uitkomen.";
+  if (!Number.isFinite(utilization)) {
+    message = "Tempo verschijnt zodra er een maandbudget voor deze categorie is.";
+  } else if (projectedVariance >= 5) {
+    message = `Bij huidig tempo kom je uit op ${fmt.format(projectedMonthActual)}, dat is ${fmt.format(Math.abs(projectedVariance))} boven budget.`;
+  } else if (projectedVariance <= -5) {
+    message = `Bij huidig tempo kom je uit op ${fmt.format(projectedMonthActual)}, dus houd je ongeveer ${fmt.format(Math.abs(projectedVariance))} over.`;
+  }
+
+  return {
+    progress,
+    progressLabel,
+    projectedMonthActual,
+    utilization,
+    projectedVariance,
+    tone: getBudgetRiskTone(utilization),
+    statusLabel: getBudgetRiskLabel(utilization),
+    message,
+  };
+}
+
 function getCurrentWeek(plan: BudgetPlanComputation | null) {
   if (!plan) return null;
   return plan.weeklyVariablePlan.find((week) => week.isCurrentWeek) || null;
@@ -522,6 +715,15 @@ export default function BudgetScreen() {
   const [outsideBudgetItemErrors, setOutsideBudgetItemErrors] = React.useState<
     Record<string, string>
   >({});
+  const [selectedMonthCategoryKey, setSelectedMonthCategoryKey] =
+    React.useState<VariableBudgetCategoryKey | null>(null);
+  const [categoryDetailTransactionsByKey, setCategoryDetailTransactionsByKey] =
+    React.useState<Record<string, InlineWeekTransaction[]>>({});
+  const [categoryDetailLoadingKeys, setCategoryDetailLoadingKeys] =
+    React.useState<string[]>([]);
+  const [categoryDetailErrors, setCategoryDetailErrors] = React.useState<
+    Record<string, string>
+  >({});
   const [detailSection, setDetailSection] = React.useState<
     "fixed_costs" | "subscriptions" | null
   >(null);
@@ -598,10 +800,32 @@ export default function BudgetScreen() {
     () => buildCategoryRecordMap(categoryRecords),
     [categoryRecords],
   );
+  const variableCategoryIdsByBucket = React.useMemo(() => {
+    const next = new Map<VariableBudgetCategoryKey, Set<string>>();
+    for (const key of VARIABLE_BUDGET_BREAKDOWN_KEYS) {
+      next.set(key, new Set<string>());
+    }
+
+    for (const category of categoryRecords) {
+      const bucket = resolveVariableCategoryKeyForCategoryRecord(
+        category.id,
+        categoryById,
+      );
+      if (!bucket) continue;
+      next.get(bucket)?.add(category.id);
+    }
+
+    return next;
+  }, [categoryById, categoryRecords]);
 
   React.useEffect(() => {
     if (!pendingTransactionDetailId) return;
-    if (selectedWeekNumber != null || outsideBudgetOpen) return;
+    if (
+      selectedWeekNumber != null ||
+      outsideBudgetOpen ||
+      selectedMonthCategoryKey != null
+    )
+      return;
 
     const task = InteractionManager.runAfterInteractions(() => {
       router.push({
@@ -618,6 +842,7 @@ export default function BudgetScreen() {
     outsideBudgetOpen,
     pendingTransactionDetailId,
     router,
+    selectedMonthCategoryKey,
     selectedWeekNumber,
   ]);
 
@@ -1427,6 +1652,36 @@ export default function BudgetScreen() {
     ];
   }, [budgetPlan]);
 
+  const selectedMonthCategory = React.useMemo(() => {
+    if (!selectedMonthCategoryKey) return null;
+    return (
+      categoryRows.find((row) => row.categoryKey === selectedMonthCategoryKey) ||
+      null
+    );
+  }, [categoryRows, selectedMonthCategoryKey]);
+
+  const selectedMonthCategoryTempoSummary = React.useMemo(() => {
+    if (!selectedMonthCategory) return null;
+    return getCategoryMonthTempoSummary(selectedMonthCategory);
+  }, [selectedMonthCategory]);
+
+  const selectedMonthCategoryTransactions = React.useMemo(() => {
+    if (!selectedMonthCategoryKey) return [] as InlineWeekTransaction[];
+    return categoryDetailTransactionsByKey[selectedMonthCategoryKey] || [];
+  }, [categoryDetailTransactionsByKey, selectedMonthCategoryKey]);
+
+  const selectedMonthCategoryLoading = React.useMemo(
+    () =>
+      selectedMonthCategoryKey != null &&
+      categoryDetailLoadingKeys.includes(selectedMonthCategoryKey),
+    [categoryDetailLoadingKeys, selectedMonthCategoryKey],
+  );
+
+  const selectedMonthCategoryError = React.useMemo(() => {
+    if (!selectedMonthCategoryKey) return null;
+    return categoryDetailErrors[selectedMonthCategoryKey] || null;
+  }, [categoryDetailErrors, selectedMonthCategoryKey]);
+
   const resolveCategoryIdsForSubcategory = React.useCallback(
     (subcategoryKey: string) => {
       const normalized = String(subcategoryKey || "").toLowerCase().trim();
@@ -1601,6 +1856,17 @@ export default function BudgetScreen() {
     setOutsideBudgetOpen(false);
   }, []);
 
+  const openMonthCategoryDetail = React.useCallback(
+    (categoryKey: VariableBudgetCategoryKey) => {
+      setSelectedMonthCategoryKey(categoryKey);
+    },
+    [],
+  );
+
+  const closeMonthCategoryDetail = React.useCallback(() => {
+    setSelectedMonthCategoryKey(null);
+  }, []);
+
   const toggleWeekMainCategory = React.useCallback((categoryKey: string) => {
     setExpandedWeekMainCategories((current) => {
       if (current.includes(categoryKey)) {
@@ -1616,8 +1882,9 @@ export default function BudgetScreen() {
       setPendingTransactionDetailId(transactionId);
       closeWeekDetail();
       closeOutsideBudget();
+      closeMonthCategoryDetail();
     },
-    [closeOutsideBudget, closeWeekDetail],
+    [closeMonthCategoryDetail, closeOutsideBudget, closeWeekDetail],
   );
 
   const fetchInlineWeekSubcategoryTransactions = React.useCallback(
@@ -1946,6 +2213,159 @@ export default function BudgetScreen() {
     [inlineUpdatingTransactionIds, loadBudget, monthOffset],
   );
 
+  const fetchCategoryDetailTransactions = React.useCallback(
+    async (categoryKey: VariableBudgetCategoryKey) => {
+      if (!categoryById.size) return;
+
+      setCategoryDetailErrors((current) => {
+        const next = { ...current };
+        delete next[categoryKey];
+        return next;
+      });
+      setCategoryDetailLoadingKeys((current) => {
+        if (current.includes(categoryKey)) return current;
+        return [...current, categoryKey];
+      });
+
+      try {
+        const userId = await requireCurrentUserId();
+        const { data, error } = await supabase
+          .from("transactions")
+          .select(
+            "id,date,amount,details,counterparty,budget_excluded,category_id_auto,category_id_user",
+          )
+          .eq("user_id", userId)
+          .gte("date", selectedMonth.startIso)
+          .lt("date", selectedMonth.endIso)
+          .lt("amount", 0)
+          .order("date", { ascending: false })
+          .limit(1000);
+
+        if (error) throw error;
+
+        const categoryIdsForBucket = variableCategoryIdsByBucket.get(categoryKey);
+        const rows = ((data || []) as Record<string, unknown>[])
+          .map((row) => ({
+            id: String(row.id || ""),
+            date: String(row.date || ""),
+            title: extractTransactionTitle(String(row.details || "")),
+            counterparty: row.counterparty ? String(row.counterparty) : null,
+            amount: Number(row.amount || 0),
+            budgetExcluded: Boolean(row.budget_excluded),
+            category_id_auto: row.category_id_auto
+              ? String(row.category_id_auto)
+              : null,
+            category_id_user: row.category_id_user
+              ? String(row.category_id_user)
+              : null,
+          }))
+          .filter((row) => {
+            const effectiveCategoryId = row.category_id_user || row.category_id_auto;
+            if (
+              effectiveCategoryId &&
+              categoryIdsForBucket?.has(effectiveCategoryId)
+            ) {
+              return true;
+            }
+
+            return (
+              resolveVariableCategoryKeyForTransaction(row, categoryById) ===
+              categoryKey
+            );
+          });
+
+        setCategoryDetailTransactionsByKey((current) => ({
+          ...current,
+          [categoryKey]: rows,
+        }));
+      } catch (error) {
+        console.warn("[budget] categorie-detail transacties laden mislukt", error);
+        setCategoryDetailErrors((current) => ({
+          ...current,
+          [categoryKey]: "Kon transacties niet laden.",
+        }));
+      } finally {
+        setCategoryDetailLoadingKeys((current) =>
+          current.filter((key) => key !== categoryKey),
+        );
+      }
+    },
+    [
+      categoryById,
+      selectedMonth.endIso,
+      selectedMonth.startIso,
+      variableCategoryIdsByBucket,
+    ],
+  );
+
+  React.useEffect(() => {
+    if (!selectedMonthCategoryKey) return;
+    if (!categoryById.size) return;
+    if (categoryDetailTransactionsByKey[selectedMonthCategoryKey]) return;
+    if (categoryDetailLoadingKeys.includes(selectedMonthCategoryKey)) return;
+
+    void fetchCategoryDetailTransactions(selectedMonthCategoryKey);
+  }, [
+    categoryById,
+    categoryDetailLoadingKeys,
+    categoryDetailTransactionsByKey,
+    fetchCategoryDetailTransactions,
+    selectedMonthCategoryKey,
+  ]);
+
+  React.useEffect(() => {
+    setSelectedMonthCategoryKey(null);
+    setCategoryDetailTransactionsByKey({});
+    setCategoryDetailLoadingKeys([]);
+    setCategoryDetailErrors({});
+  }, [selectedMonth.startIso]);
+
+  const toggleCategoryDetailTransactionBudgetExcluded = React.useCallback(
+    async (categoryKey: VariableBudgetCategoryKey, transactionId: string, nextExcluded: boolean) => {
+      if (inlineUpdatingTransactionIds.includes(transactionId)) return;
+
+      setInlineUpdatingTransactionIds((current) => [...current, transactionId]);
+      setCategoryDetailTransactionsByKey((current) => ({
+        ...current,
+        [categoryKey]: (current[categoryKey] || []).map((item) =>
+          item.id === transactionId
+            ? { ...item, budgetExcluded: nextExcluded }
+            : item,
+        ),
+      }));
+
+      try {
+        await setTransactionBudgetExcluded(transactionId, nextExcluded);
+        if (monthOffset === 0) {
+          await recomputeCurrentMonthCashflowForecast(new Date()).catch(
+            (error) => {
+              console.warn(
+                "[budget] forecast recompute after category-detail toggle failed",
+                error,
+              );
+            },
+          );
+        }
+        await loadBudget();
+      } catch (error) {
+        console.warn("[budget] categorie-detail toggle error", error);
+        setCategoryDetailTransactionsByKey((current) => ({
+          ...current,
+          [categoryKey]: (current[categoryKey] || []).map((item) =>
+            item.id === transactionId
+              ? { ...item, budgetExcluded: !nextExcluded }
+              : item,
+          ),
+        }));
+      } finally {
+        setInlineUpdatingTransactionIds((current) =>
+          current.filter((id) => id !== transactionId),
+        );
+      }
+    },
+    [inlineUpdatingTransactionIds, loadBudget, monthOffset],
+  );
+
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
@@ -2119,7 +2539,7 @@ export default function BudgetScreen() {
 
               {positiveLine ? (
                 <View style={styles.positiveCard}>
-                  <MaterialIcons
+                  <AppIcon
                     name="wb-sunny"
                     size={18}
                     color={FinColors.warningText}
@@ -2197,7 +2617,7 @@ export default function BudgetScreen() {
 
               {positiveLine ? (
                 <View style={styles.positiveCard}>
-                  <MaterialIcons
+                  <AppIcon
                     name="wb-sunny"
                     size={18}
                     color={FinColors.warningText}
@@ -2256,7 +2676,11 @@ export default function BudgetScreen() {
                   <Pressable
                     key={row.categoryKey}
                     style={styles.categoryListRow}
-                    onPress={() => router.push("/insights")}
+                    onPress={() =>
+                      openMonthCategoryDetail(
+                        row.categoryKey as VariableBudgetCategoryKey,
+                      )
+                    }
                   >
                     <View style={styles.categoryMain}>
                       <Text style={styles.categoryLabel}>{row.label}</Text>
@@ -2491,7 +2915,7 @@ export default function BudgetScreen() {
                         onPress={() => handleIncomeDraftToggle(option.key)}
                       >
                         <View style={styles.choiceChipInner}>
-                          <MaterialIcons
+                          <AppIcon
                             name={selected ? "check-circle" : "radio-button-unchecked"}
                             size={16}
                             color={
@@ -2571,7 +2995,7 @@ export default function BudgetScreen() {
                   onPress={() => void applyLatestTrendBudgets()}
                   disabled={recalculatingBudget || savingManage}
                 >
-                  <MaterialIcons
+                  <AppIcon
                     name="autorenew"
                     size={14}
                     color={FinColors.textPrimary}
@@ -2672,7 +3096,7 @@ export default function BudgetScreen() {
                               onPress={() => toggleVariableCategoryLock(row.categoryKey)}
                               disabled={rowControlsDisabled}
                             >
-                              <MaterialIcons
+                              <AppIcon
                                 name={rowLocked ? "lock" : "lock-open"}
                                 size={12}
                                 color={
@@ -2780,7 +3204,7 @@ export default function BudgetScreen() {
                 style={styles.sheetCloseButton}
                 onPress={() => setDetailSection(null)}
               >
-                <MaterialIcons
+                <AppIcon
                   name="close"
                   size={18}
                   color={FinColors.textSecondary}
@@ -2903,7 +3327,7 @@ export default function BudgetScreen() {
                 style={styles.sheetCloseButton}
                 onPress={closeWeekDetail}
               >
-                <MaterialIcons
+                <AppIcon
                   name="close"
                   size={18}
                   color={FinColors.textSecondary}
@@ -3033,7 +3457,7 @@ export default function BudgetScreen() {
                                         >
                                           {fmt.format(subcategory.amount)}
                                         </Text>
-                                        <MaterialIcons
+                                        <AppIcon
                                           name={
                                             isInlineExpanded
                                               ? "expand-more"
@@ -3144,6 +3568,232 @@ export default function BudgetScreen() {
       <Modal
         animationType="slide"
         transparent
+        visible={selectedMonthCategory != null}
+        onRequestClose={closeMonthCategoryDetail}
+      >
+        <View style={styles.sheetBackdrop}>
+          <View style={styles.sheetCard}>
+            <View style={styles.sheetHeaderRow}>
+              <View style={styles.sheetHeaderMain}>
+                <Text style={styles.sheetTitle}>Categorie-detail</Text>
+                <Text style={styles.sheetSub}>
+                  Stuur op maandruimte, weektempo en recente uitgaven in deze categorie
+                </Text>
+              </View>
+              <Pressable
+                style={styles.sheetCloseButton}
+                onPress={closeMonthCategoryDetail}
+              >
+                <AppIcon
+                  name="close"
+                  size={18}
+                  color={FinColors.textSecondary}
+                />
+              </Pressable>
+            </View>
+
+            {selectedMonthCategory ? (
+              <>
+                <View style={styles.sheetSummaryCard}>
+                  <View style={styles.categoryDetailHeaderRow}>
+                    <View style={styles.categoryDetailHeaderMain}>
+                      <View style={styles.categoryDetailIconBubble}>
+                        <AppIcon
+                          name={getVariableCategoryIconName(
+                            selectedMonthCategory.categoryKey,
+                          )}
+                          size={18}
+                          color={FinColors.textPrimary}
+                        />
+                      </View>
+                      <View style={styles.categoryDetailTitleWrap}>
+                        <Text style={styles.categoryDetailTitle}>
+                          {selectedMonthCategory.label}
+                        </Text>
+                        <Text style={styles.categoryDetailMeta}>
+                          Maandbudget {fmt.format(selectedMonthCategory.monthlyBudget)}
+                        </Text>
+                      </View>
+                    </View>
+                    <View
+                      style={[
+                        styles.statusChip,
+                        getRiskStyle(
+                          getBudgetRiskTone(selectedMonthCategory.utilization),
+                        ).chip,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusChipText,
+                          getRiskStyle(
+                            getBudgetRiskTone(selectedMonthCategory.utilization),
+                          ).text,
+                        ]}
+                      >
+                        {getBudgetRiskLabel(selectedMonthCategory.utilization)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Gebruikt deze maand</Text>
+                    <Text style={styles.summaryValue}>
+                      {fmt.format(selectedMonthCategory.monthlyActual)}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabelStrong}>
+                      {selectedMonthCategory.monthlyActual >
+                      selectedMonthCategory.monthlyBudget
+                        ? "Boven budget"
+                        : "Nog vrij in categorie"}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.summaryValueStrong,
+                        selectedMonthCategory.monthlyActual >
+                        selectedMonthCategory.monthlyBudget
+                          ? styles.summaryValueCritical
+                          : styles.summaryValuePositive,
+                      ]}
+                    >
+                      {fmt.format(
+                        Math.abs(
+                          selectedMonthCategory.monthlyBudget -
+                            selectedMonthCategory.monthlyActual,
+                        ),
+                      )}
+                    </Text>
+                  </View>
+                  <Text style={styles.categoryDetailAdvice}>
+                    {getCategoryDetailRecommendation(
+                      selectedMonthCategory,
+                      selectedMonthCategoryTempoSummary,
+                    )}
+                  </Text>
+                </View>
+
+                <ScrollView
+                  style={styles.sheetScroll}
+                  contentContainerStyle={styles.sheetScrollContent}
+                >
+                  {selectedMonthCategoryTempoSummary ? (
+                    <View style={styles.categoryDetailWeekCard}>
+                      <View style={styles.cardHeaderRow}>
+                        <Text style={styles.sectionTitle}>Maandtempo</Text>
+                        <View
+                          style={[
+                            styles.statusChip,
+                            getRiskStyle(selectedMonthCategoryTempoSummary.tone).chip,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusChipText,
+                              getRiskStyle(selectedMonthCategoryTempoSummary.tone)
+                                .text,
+                            ]}
+                          >
+                            {selectedMonthCategoryTempoSummary.statusLabel}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.supportText}>
+                        {fmt.format(selectedMonthCategory.monthlyActual)} gebruikt ·
+                        prognose{" "}
+                        {fmt.format(
+                          selectedMonthCategoryTempoSummary.projectedMonthActual,
+                        )}
+                      </Text>
+                      <RiskProgressBar
+                        progress={getBudgetRiskProgress(
+                          selectedMonthCategoryTempoSummary.utilization,
+                        )}
+                        tone={selectedMonthCategoryTempoSummary.tone}
+                        style={styles.progressTrack}
+                      />
+                      <Text style={styles.sectionHelper}>
+                        {selectedMonthCategoryTempoSummary.progressLabel}
+                      </Text>
+                      <Text style={styles.supportText}>
+                        {selectedMonthCategoryTempoSummary.message}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.categoryDetailTransactionsCard}>
+                    <View style={styles.cardHeaderRow}>
+                      <Text style={styles.sectionTitle}>Transacties deze maand</Text>
+                      <Text style={styles.sectionHelper}>
+                        {selectedMonthCategoryTransactions.length} transactie
+                        {selectedMonthCategoryTransactions.length === 1 ? "" : "s"}{" "}
+                        deze maand in {selectedMonthCategory.label.toLowerCase()}
+                      </Text>
+                    </View>
+
+                    {selectedMonthCategoryLoading ? (
+                      <View style={styles.inlineTransactionsLoadingRow}>
+                        <ActivityIndicator
+                          size="small"
+                          color={FinColors.textSecondary}
+                        />
+                        <Text style={styles.inlineTransactionsMeta}>
+                          Transacties laden...
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {!selectedMonthCategoryLoading && selectedMonthCategoryError ? (
+                      <Text style={styles.inlineErrorText}>
+                        {selectedMonthCategoryError}
+                      </Text>
+                    ) : null}
+
+                    {!selectedMonthCategoryLoading &&
+                    !selectedMonthCategoryError &&
+                    !selectedMonthCategoryTransactions.length ? (
+                      <Text style={styles.supportText}>
+                        Nog geen transacties gevonden in deze categorie voor deze maand.
+                      </Text>
+                    ) : null}
+
+                    {!selectedMonthCategoryLoading &&
+                    !selectedMonthCategoryError &&
+                    selectedMonthCategoryTransactions.length
+                      ? selectedMonthCategoryTransactions.map((tx) => {
+                          const isUpdating =
+                            inlineUpdatingTransactionIds.includes(tx.id);
+
+                          return (
+                            <BudgetInlineTransactionRow
+                              key={tx.id}
+                              tx={tx}
+                              categoryById={categoryById}
+                              isUpdating={isUpdating}
+                              onOpen={() => openInlineTransactionDetail(tx.id)}
+                              onToggle={() =>
+                                void toggleCategoryDetailTransactionBudgetExcluded(
+                                  selectedMonthCategory.categoryKey as VariableBudgetCategoryKey,
+                                  tx.id,
+                                  !tx.budgetExcluded,
+                                )
+                              }
+                            />
+                          );
+                        })
+                      : null}
+                  </View>
+                </ScrollView>
+              </>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        transparent
         visible={outsideBudgetOpen}
         onRequestClose={closeOutsideBudget}
       >
@@ -3160,7 +3810,7 @@ export default function BudgetScreen() {
                 style={styles.sheetCloseButton}
                 onPress={closeOutsideBudget}
               >
-                <MaterialIcons
+                <AppIcon
                   name="close"
                   size={18}
                   color={FinColors.textSecondary}
@@ -3220,7 +3870,7 @@ export default function BudgetScreen() {
                               <Text style={styles.categoryValue}>
                                 {fmt.format(item.amount)}
                               </Text>
-                              <MaterialIcons
+                              <AppIcon
                                 name={
                                   isExpanded ? "expand-more" : "chevron-right"
                                 }
@@ -4169,6 +4819,62 @@ const styles = StyleSheet.create({
   },
   sheetScrollContent: {
     paddingBottom: 12,
+    gap: 12,
+  },
+  categoryDetailHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  categoryDetailHeaderMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  categoryDetailIconBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryDetailTitleWrap: {
+    flex: 1,
+  },
+  categoryDetailTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  categoryDetailMeta: {
+    marginTop: 4,
+    fontSize: 12,
+    color: FinColors.textSecondary,
+  },
+  categoryDetailAdvice: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: FinColors.textSecondary,
+  },
+  categoryDetailWeekCard: {
+    borderRadius: 18,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 16,
+    gap: 10,
+  },
+  categoryDetailTransactionsCard: {
+    borderRadius: 18,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 16,
     gap: 12,
   },
   detailSheetActionRow: {
