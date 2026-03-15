@@ -142,11 +142,20 @@ type InsightTx = {
 
 type CashflowForecast = {
   month_start: string;
+  current_balance_anchor: number | null;
+  current_balance_anchor_date: string | null;
   expected_income_total: number;
   expected_expense_total: number;
   expected_fixed_costs: number;
   expected_subscriptions: number;
   expected_variable_costs: number;
+  upcoming_committed_income_total: number;
+  upcoming_committed_expense_total: number;
+  lowest_expected_balance: number | null;
+  lowest_expected_balance_date: string | null;
+  next_expected_event_date: string | null;
+  next_expected_event_label: string | null;
+  cash_risk_flag: "none" | "cash_gap_warning";
   expected_end_of_month_balance: number | null;
   risk_flag: "none" | "deficit_warning";
   top_cost_bucket_1: string | null;
@@ -393,6 +402,12 @@ function getForecastHeadline(
 ) {
   if (!forecast) {
     return "Nog geen cashflowvoorspelling beschikbaar voor deze maand.";
+  }
+
+  if (forecast.cash_risk_flag === "cash_gap_warning") {
+    return forecast.lowest_expected_balance_date
+      ? `Je saldo kan rond ${formatShortDate(forecast.lowest_expected_balance_date)} onder druk komen.`
+      : "Je saldo kan deze maand tussentijds onder druk komen.";
   }
 
   if (
@@ -907,19 +922,25 @@ export default function InsightsScreen() {
 
     try {
       const userId = await requireCurrentUserId();
-      const fetchForecastRow = async () =>
+      const enhancedForecastSelect =
+        "month_start,current_balance_anchor,current_balance_anchor_date,expected_income_total,expected_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,upcoming_committed_income_total,upcoming_committed_expense_total,lowest_expected_balance,lowest_expected_balance_date,next_expected_event_date,next_expected_event_label,cash_risk_flag,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3";
+      const legacyForecastSelect =
+        "month_start,expected_income_total,expected_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3";
+      const fetchForecastRow = async (useLegacy = false) =>
         supabase
           .from("monthly_cashflow_forecasts")
-          .select(
-            "month_start,expected_income_total,expected_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3",
-          )
+          .select(useLegacy ? legacyForecastSelect : enhancedForecastSelect)
           .eq("user_id", userId)
           .eq("month_start", selectedMonth.startIso)
           .maybeSingle();
 
-      const referenceDate = new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
-      referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
       const isCurrentMonth = selectedMonth.startIso === getMonthBounds(0).startIso;
+      const referenceDate = isCurrentMonth
+        ? new Date()
+        : new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
+      if (!isCurrentMonth) {
+        referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
+      }
 
       if (isCurrentMonth) {
         await recomputeCurrentMonthCashflowForecast(referenceDate).catch(
@@ -929,14 +950,25 @@ export default function InsightsScreen() {
         );
       }
 
+      let usedLegacyForecastShape = false;
       let { data, error } = await fetchForecastRow();
+      if (error && isMissingColumnError(error)) {
+        usedLegacyForecastShape = true;
+        const legacyResult = await fetchForecastRow(true);
+        data = legacyResult.data;
+        error = legacyResult.error;
+      }
       if (!data) {
         await recomputeCurrentMonthCashflowForecast(referenceDate).catch(
           (recomputeError) => {
             console.warn("[insights] forecast backfill trigger failed", recomputeError);
           },
         );
-        const retry = await fetchForecastRow();
+        let retry = await fetchForecastRow(usedLegacyForecastShape);
+        if (retry.error && isMissingColumnError(retry.error)) {
+          usedLegacyForecastShape = true;
+          retry = await fetchForecastRow(true);
+        }
         data = retry.data;
         error = retry.error;
       }
@@ -957,11 +989,41 @@ export default function InsightsScreen() {
 
       setForecast({
         month_start: String(data.month_start),
+        current_balance_anchor:
+          usedLegacyForecastShape || data.current_balance_anchor == null
+            ? null
+            : Number(data.current_balance_anchor),
+        current_balance_anchor_date: data.current_balance_anchor_date
+          ? String(data.current_balance_anchor_date)
+          : null,
         expected_income_total: Number(data.expected_income_total || 0),
         expected_expense_total: Number(data.expected_expense_total || 0),
         expected_fixed_costs: Number(data.expected_fixed_costs || 0),
         expected_subscriptions: Number(data.expected_subscriptions || 0),
         expected_variable_costs: Number(data.expected_variable_costs || 0),
+        upcoming_committed_income_total: Number(
+          usedLegacyForecastShape ? 0 : data.upcoming_committed_income_total || 0,
+        ),
+        upcoming_committed_expense_total: Number(
+          usedLegacyForecastShape ? 0 : data.upcoming_committed_expense_total || 0,
+        ),
+        lowest_expected_balance:
+          usedLegacyForecastShape || data.lowest_expected_balance == null
+            ? null
+            : Number(data.lowest_expected_balance),
+        lowest_expected_balance_date: data.lowest_expected_balance_date
+          ? String(data.lowest_expected_balance_date)
+          : null,
+        next_expected_event_date: data.next_expected_event_date
+          ? String(data.next_expected_event_date)
+          : null,
+        next_expected_event_label: data.next_expected_event_label
+          ? String(data.next_expected_event_label)
+          : null,
+        cash_risk_flag:
+          !usedLegacyForecastShape && data.cash_risk_flag === "cash_gap_warning"
+            ? "cash_gap_warning"
+            : "none",
         expected_end_of_month_balance:
           data.expected_end_of_month_balance == null
             ? null
@@ -1401,6 +1463,76 @@ export default function InsightsScreen() {
                       forecast.expected_end_of_month_balance < 0) ? (
                       <Text style={styles.warningText}>
                         Verwacht tekort deze maand
+                      </Text>
+                    ) : null}
+                    {forecast.cash_risk_flag === "cash_gap_warning" ? (
+                      <Text style={styles.warningText}>
+                        Let op: je saldo kan tussentijds onder nul zakken.
+                      </Text>
+                    ) : null}
+
+                    <View style={styles.reportDivider} />
+                    <Text style={styles.sectionHelper}>
+                      Bekende betaalmomenten vanaf nu
+                    </Text>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Laatste bekende saldo</Text>
+                      <View style={styles.reportRight}>
+                        <Text style={styles.reportValue}>
+                          {forecast.current_balance_anchor == null
+                            ? "Onbekend"
+                            : fmt.format(forecast.current_balance_anchor)}
+                        </Text>
+                        {forecast.current_balance_anchor_date ? (
+                          <Text style={styles.reportHint}>
+                            {formatShortDate(forecast.current_balance_anchor_date)}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Komende inkomsten</Text>
+                      <Text style={[styles.reportValue, styles.positiveText]}>
+                        +{fmt.format(forecast.upcoming_committed_income_total)}
+                      </Text>
+                    </View>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Komende vaste uitgaven</Text>
+                      <Text style={styles.reportValue}>
+                        {fmt.format(forecast.upcoming_committed_expense_total)}
+                      </Text>
+                    </View>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabelStrong}>
+                        Laagste verwachte saldo
+                      </Text>
+                      <View style={styles.reportRight}>
+                        <Text
+                          style={[
+                            styles.reportValueStrong,
+                            forecast.lowest_expected_balance != null &&
+                            forecast.lowest_expected_balance >= 0
+                              ? styles.positiveText
+                              : styles.negativeText,
+                          ]}
+                        >
+                          {forecast.lowest_expected_balance == null
+                            ? "Onbekend"
+                            : fmt.format(forecast.lowest_expected_balance)}
+                        </Text>
+                        {forecast.lowest_expected_balance_date ? (
+                          <Text style={styles.reportHint}>
+                            {formatShortDate(forecast.lowest_expected_balance_date)}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                    {forecast.next_expected_event_date &&
+                    forecast.next_expected_event_label ? (
+                      <Text style={styles.helperText}>
+                        Eerstvolgende verwachte beweging:{" "}
+                        {forecast.next_expected_event_label} op{" "}
+                        {formatShortDate(forecast.next_expected_event_date)}.
                       </Text>
                     ) : null}
 

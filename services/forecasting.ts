@@ -1,6 +1,13 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { requireCurrentUserId } from "@/services/current-user";
 import { estimateRecentExpenseForecastFromHistory } from "@/services/forecast-expense-utils";
+import {
+  buildForecastTimelineProjection,
+  buildScheduledDateForMonth,
+  frequencyAppliesInMonth,
+  resolveExpectedDayOfMonth,
+  type ForecastTimelineEvent,
+} from "@/services/forecast-timeline";
 import { supabase } from "@/services/supabase";
 import type { RecurringType } from "@/types/categorization";
 import { normalizePattern } from "./categorization-repository";
@@ -35,13 +42,20 @@ type CategoryMeta = {
 
 type IncomeSourceRow = {
   source_key: string;
+  source_label: string;
   expected_income: number;
   income_frequency: RecurringType;
   income_day_of_month: number | null;
   last_detected_at: string;
 };
 
+type BalanceAnchor = {
+  balance: number | null;
+  balanceDate: string | null;
+};
+
 const PAGE_SIZE = 500;
+const HISTORY_LOOKBACK_DAYS = 420;
 
 function asNumber(value: unknown, fallback = 0): number {
   const n = Number(value);
@@ -68,6 +82,10 @@ function subtractDays(date: Date, days: number) {
   return new Date(date.getTime() - days * 24 * 60 * 60 * 1000);
 }
 
+function addDays(date: Date, days: number) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
 function parseSaldoValue(metadata: Record<string, unknown>) {
   const raw = metadata["Saldo na trn"];
   if (raw == null) return null;
@@ -76,25 +94,44 @@ function parseSaldoValue(metadata: Record<string, unknown>) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-function monthsDiff(from: Date, to: Date) {
-  return (
-    (to.getUTCFullYear() - from.getUTCFullYear()) * 12 +
-    (to.getUTCMonth() - from.getUTCMonth())
-  );
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
-function frequencyAppliesInMonth(
-  frequency: RecurringType,
-  anchorDate: Date,
-  monthStart: Date,
-) {
-  const diff = monthsDiff(startOfMonth(anchorDate), monthStart);
-  if (diff < 0) return false;
+function weightedRecentAverage(values: number[]) {
+  if (!values.length) return 0;
+  if (values.length === 1) return round2(values[0]);
 
-  if (frequency === "monthly") return true;
-  if (frequency === "quarterly") return diff % 3 === 0;
-  if (frequency === "yearly") return diff % 12 === 0;
-  return diff === 0;
+  const weights = [0.72, 0.28];
+  let weightedTotal = 0;
+  let totalWeight = 0;
+
+  values.forEach((value, index) => {
+    const weight = weights[index] ?? Math.max(0.14 / (index + 1), 0);
+    weightedTotal += value * weight;
+    totalWeight += weight;
+  });
+
+  if (totalWeight <= 0) return round2(values[0]);
+  return round2(weightedTotal / totalWeight);
+}
+
+function amountIsSimilar(left: number, right: number) {
+  const absLeft = Math.abs(left);
+  const absRight = Math.abs(right);
+  const absoluteDiff = Math.abs(absLeft - absRight);
+  return absoluteDiff <= Math.max(1, absLeft * 0.08, absRight * 0.08);
+}
+
+function classifyRecurringType(dayIntervals: number[]): RecurringType {
+  if (!dayIntervals.length) return "irregular";
+  const avg =
+    dayIntervals.reduce((sum, value) => sum + value, 0) / dayIntervals.length;
+
+  if (avg >= 26 && avg <= 35) return "monthly";
+  if (avg >= 80 && avg <= 100) return "quarterly";
+  if (avg >= 350 && avg <= 380) return "yearly";
+  return "irregular";
 }
 
 async function fetchTransactionsInRange(
@@ -120,18 +157,20 @@ async function fetchTransactionsInRange(
 
     if (error) throw error;
 
-    const page = ((data || []) as any[]).map((row) => ({
-      id: String(row.id),
+    const page = ((data || []) as Record<string, unknown>[]).map((row) => ({
+      id: String(row.id || ""),
       date: String(row.date || ""),
       amount: asNumber(row.amount, 0),
       details: String(row.details || ""),
       counterparty: row.counterparty ? String(row.counterparty) : null,
-      analysis_main_group: row.analysis_main_group || null,
-      analysis_category: row.analysis_category || null,
+      analysis_main_group: (row.analysis_main_group ||
+        null) as ForecastTx["analysis_main_group"],
+      analysis_category: (row.analysis_category ||
+        null) as ForecastTx["analysis_category"],
       recurring: Boolean(row.recurring),
-      recurring_type: row.recurring_type || null,
-      category_id_auto: row.category_id_auto || null,
-      category_id_user: row.category_id_user || null,
+      recurring_type: (row.recurring_type || null) as RecurringType | null,
+      category_id_auto: row.category_id_auto ? String(row.category_id_auto) : null,
+      category_id_user: row.category_id_user ? String(row.category_id_user) : null,
       budget_excluded: Boolean(row.budget_excluded),
       metadata: (row.metadata || {}) as Record<string, unknown>,
     }));
@@ -150,9 +189,9 @@ async function fetchCategoryMap() {
   if (error) throw error;
 
   const map = new Map<string, CategoryMeta>();
-  for (const row of (data || []) as any[]) {
-    map.set(String(row.id), {
-      id: String(row.id),
+  for (const row of (data || []) as Record<string, unknown>[]) {
+    map.set(String(row.id || ""), {
+      id: String(row.id || ""),
       key: String(row.key || ""),
     });
   }
@@ -171,7 +210,7 @@ async function getLatestStartingBalance(monthStartIso: string, userId: string) {
 
   if (error) throw error;
 
-  for (const row of (data || []) as any[]) {
+  for (const row of (data || []) as Record<string, unknown>[]) {
     const balance = parseSaldoValue(
       (row.metadata || {}) as Record<string, unknown>,
     );
@@ -181,18 +220,48 @@ async function getLatestStartingBalance(monthStartIso: string, userId: string) {
   return null;
 }
 
+async function getLatestKnownBalance(referenceIso: string, userId: string) {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("metadata,date")
+    .eq("user_id", userId)
+    .lte("date", referenceIso)
+    .order("date", { ascending: false })
+    .limit(40);
+
+  if (error) throw error;
+
+  for (const row of (data || []) as Record<string, unknown>[]) {
+    const balance = parseSaldoValue(
+      (row.metadata || {}) as Record<string, unknown>,
+    );
+    if (balance != null) {
+      return {
+        balance,
+        balanceDate: row.date ? String(row.date) : null,
+      } satisfies BalanceAnchor;
+    }
+  }
+
+  return {
+    balance: null,
+    balanceDate: null,
+  } satisfies BalanceAnchor;
+}
+
 async function fetchIncomeSources(userId: string): Promise<IncomeSourceRow[]> {
   const { data, error } = await supabase
     .from("forecast_income_sources")
     .select(
-      "source_key,expected_income,income_frequency,income_day_of_month,last_detected_at",
+      "source_key,source_label,expected_income,income_frequency,income_day_of_month,last_detected_at",
     )
     .eq("user_id", userId);
 
   if (error) throw error;
 
-  return ((data || []) as any[]).map((row) => ({
+  return ((data || []) as Record<string, unknown>[]).map((row) => ({
     source_key: String(row.source_key || ""),
+    source_label: String(row.source_label || row.source_key || ""),
     expected_income: asNumber(row.expected_income, 0),
     income_frequency: (row.income_frequency || "irregular") as RecurringType,
     income_day_of_month:
@@ -207,6 +276,192 @@ function descriptor(tx: Pick<ForecastTx, "counterparty" | "details">) {
   );
 }
 
+function labelForTransaction(tx: Pick<ForecastTx, "counterparty" | "details">) {
+  const label = String(
+    tx.counterparty || tx.details.split("|")[0] || tx.details || "",
+  ).trim();
+  return label || "Onbekend";
+}
+
+function buildRecurringHistoryEvents(params: {
+  transactions: ForecastTx[];
+  monthStart: Date;
+  monthEndExclusive: Date;
+  referenceDate: Date;
+  direction: "income" | "expense";
+}) {
+  const { transactions, monthStart, monthEndExclusive, referenceDate, direction } =
+    params;
+  const monthStartIso = dateToIso(monthStart);
+  const monthEndIso = dateToIso(monthEndExclusive);
+  const referenceIso = dateToIso(referenceDate);
+
+  const grouped = new Map<string, ForecastTx[]>();
+
+  for (const tx of transactions) {
+    if (tx.date > referenceIso) continue;
+    if (tx.budget_excluded) continue;
+
+    if (direction === "income") {
+      if (tx.amount <= 0) continue;
+      if (tx.analysis_main_group !== "income") continue;
+      if (
+        tx.analysis_category !== "income_structural" &&
+        tx.analysis_category !== "income_variable"
+      ) {
+        continue;
+      }
+    } else {
+      if (tx.amount >= 0) continue;
+      if (tx.analysis_main_group !== "expense") continue;
+      if (
+        tx.analysis_category !== "fixed_costs" &&
+        tx.analysis_category !== "subscriptions"
+      ) {
+        continue;
+      }
+    }
+
+    const key = descriptor(tx);
+    if (!key) continue;
+    const current = grouped.get(key) || [];
+    current.push(tx);
+    grouped.set(key, current);
+  }
+
+  const events = new Map<string, ForecastTimelineEvent>();
+
+  for (const [key, rows] of grouped.entries()) {
+    const sortedDesc = [...rows].sort((left, right) =>
+      right.date.localeCompare(left.date),
+    );
+    const latest = sortedDesc[0];
+    if (!latest) continue;
+
+    const similarRows = sortedDesc.filter(
+      (row) =>
+        row.analysis_category === latest.analysis_category &&
+        amountIsSimilar(row.amount, latest.amount),
+    );
+
+    const intervals: number[] = [];
+    const sortedAsc = [...similarRows].sort((left, right) =>
+      left.date.localeCompare(right.date),
+    );
+    for (let index = 1; index < sortedAsc.length; index += 1) {
+      const previousDate = toDate(sortedAsc[index - 1].date);
+      const nextDate = toDate(sortedAsc[index].date);
+      const diffDays = Math.round(
+        (nextDate.getTime() - previousDate.getTime()) / 86400000,
+      );
+      if (diffDays > 0) intervals.push(diffDays);
+    }
+
+    const recurringType =
+      latest.recurring_type && latest.recurring_type !== "irregular"
+        ? latest.recurring_type
+        : classifyRecurringType(intervals);
+
+    if (recurringType === "irregular") continue;
+    if (!frequencyAppliesInMonth(recurringType, toDate(latest.date), monthStart)) {
+      continue;
+    }
+
+    const alreadyObservedThisMonth = similarRows.some(
+      (row) => row.date >= monthStartIso && row.date < monthEndIso,
+    );
+    if (alreadyObservedThisMonth) continue;
+
+    const preferredDay =
+      resolveExpectedDayOfMonth(similarRows.map((row) => row.date).slice(0, 6)) ??
+      toDate(latest.date).getUTCDate();
+    const scheduledDate = buildScheduledDateForMonth(monthStart, preferredDay);
+    if (scheduledDate <= referenceIso) continue;
+
+    const amount = weightedRecentAverage(
+      similarRows.slice(0, 3).map((row) => Math.abs(row.amount)),
+    );
+    if (amount <= 0) continue;
+
+    events.set(key, {
+      date: scheduledDate,
+      label: labelForTransaction(latest),
+      amount: direction === "income" ? amount : -amount,
+      kind:
+        direction === "income"
+          ? "income"
+          : latest.analysis_category === "subscriptions"
+            ? "subscription"
+            : "fixed_cost",
+      source: "recurring_history",
+      confidence: similarRows.length >= 3 ? "high" : "medium",
+    });
+  }
+
+  return events;
+}
+
+function mergeIncomeSourceEvents(params: {
+  incomeSources: IncomeSourceRow[];
+  existingEvents: Map<string, ForecastTimelineEvent>;
+  transactions: ForecastTx[];
+  monthStart: Date;
+  monthEndExclusive: Date;
+  referenceDate: Date;
+}) {
+  const { incomeSources, existingEvents, transactions, monthStart, monthEndExclusive, referenceDate } =
+    params;
+  const next = new Map(existingEvents);
+  const monthStartIso = dateToIso(monthStart);
+  const monthEndIso = dateToIso(monthEndExclusive);
+  const referenceIso = dateToIso(referenceDate);
+
+  const observedIncomeKeys = new Set(
+    transactions
+      .filter(
+        (tx) =>
+          tx.date <= referenceIso &&
+          tx.date >= monthStartIso &&
+          tx.date < monthEndIso &&
+          tx.amount > 0,
+      )
+      .map((tx) => descriptor(tx))
+      .filter(Boolean),
+  );
+
+  for (const source of incomeSources) {
+    const key = normalizePattern(source.source_key);
+    if (!key || source.expected_income <= 0) continue;
+    if (observedIncomeKeys.has(key)) continue;
+
+    const anchorDate = new Date(source.last_detected_at);
+    if (
+      Number.isNaN(anchorDate.getTime()) ||
+      !frequencyAppliesInMonth(source.income_frequency, anchorDate, monthStart)
+    ) {
+      continue;
+    }
+
+    const scheduledDate = buildScheduledDateForMonth(
+      monthStart,
+      source.income_day_of_month ?? anchorDate.getUTCDate(),
+    );
+    if (scheduledDate <= referenceIso) continue;
+
+    const existing = next.get(key);
+    next.set(key, {
+      date: scheduledDate,
+      label: source.source_label || existing?.label || source.source_key,
+      amount: source.expected_income,
+      kind: "income",
+      source: "income_source",
+      confidence: source.income_day_of_month != null ? "high" : "medium",
+    });
+  }
+
+  return next;
+}
+
 export async function recomputeCurrentMonthCashflowForecast(
   reference = new Date(),
 ) {
@@ -216,6 +471,7 @@ export async function recomputeCurrentMonthCashflowForecast(
 
   const monthStartIso = dateToIso(monthStart);
   const monthEndIso = dateToIso(monthEndExclusive);
+  const referenceIso = dateToIso(reference);
 
   const stableIncomePlan = await computeBudgetPlan(reference, "default").catch(
     (error) => {
@@ -227,17 +483,27 @@ export async function recomputeCurrentMonthCashflowForecast(
     },
   );
 
-  const [categoryMap, historyTransactions, startingBalance] = await Promise.all(
-    [
-      fetchCategoryMap(),
-      fetchTransactionsInRange(
-        dateToIso(subtractDays(monthStart, 90)),
-        monthEndIso,
-        userId,
-      ),
-      getLatestStartingBalance(monthStartIso, userId),
-    ],
-  );
+  const [
+    categoryMap,
+    historyTransactions,
+    startingBalance,
+    latestKnownBalance,
+    incomeSources,
+  ] = await Promise.all([
+    fetchCategoryMap(),
+    fetchTransactionsInRange(
+      dateToIso(subtractDays(monthStart, HISTORY_LOOKBACK_DAYS)),
+      monthEndIso,
+      userId,
+    ),
+    getLatestStartingBalance(monthStartIso, userId),
+    getLatestKnownBalance(referenceIso, userId),
+    fetchIncomeSources(userId).catch((error) => {
+      console.warn("[forecast] income sources unavailable", error);
+      return [] as IncomeSourceRow[];
+    }),
+  ]);
+
   const fallbackExpenseForecast = estimateRecentExpenseForecastFromHistory({
     transactions: historyTransactions,
     categoryMap,
@@ -251,79 +517,50 @@ export async function recomputeCurrentMonthCashflowForecast(
       asNumber(stableIncomePlan.flowSummary.expectedIncomeMonthly, 0),
     );
   } else {
-    const incomeSources = await fetchIncomeSources(userId);
     for (const source of incomeSources) {
       const anchorDate = new Date(source.last_detected_at);
       if (
-        !frequencyAppliesInMonth(
-          source.income_frequency,
-          anchorDate,
-          monthStart,
-        )
+        !Number.isNaN(anchorDate.getTime()) &&
+        frequencyAppliesInMonth(source.income_frequency, anchorDate, monthStart)
       ) {
-        continue;
+        expectedIncomeTotal += source.expected_income;
       }
-      expectedIncomeTotal += source.expected_income;
     }
   }
 
-  const recurringGroups = new Map<
-    string,
-    {
-      amount: number;
-      recurringType: RecurringType;
-      analysisCategory: "fixed_costs" | "subscriptions" | "variable_costs";
-      anchorDate: Date;
-    }
-  >();
-
-  for (const tx of historyTransactions) {
-    if (tx.budget_excluded) continue;
-    if (!tx.recurring || tx.amount >= 0) continue;
-    if (tx.analysis_main_group !== "expense") continue;
-    if (
-      tx.analysis_category !== "fixed_costs" &&
-      tx.analysis_category !== "subscriptions" &&
-      tx.analysis_category !== "variable_costs"
-    ) {
-      continue;
-    }
-
-    const recurringType = tx.recurring_type || "irregular";
-    const key = descriptor(tx);
-    if (!key) continue;
-
-    const existing = recurringGroups.get(key);
-    if (!existing || tx.date > dateToIso(existing.anchorDate)) {
-      recurringGroups.set(key, {
-        amount: Math.abs(tx.amount),
-        recurringType,
-        analysisCategory: tx.analysis_category,
-        anchorDate: toDate(tx.date),
-      });
-    }
-  }
+  const recurringExpenseEvents = buildRecurringHistoryEvents({
+    transactions: historyTransactions,
+    monthStart,
+    monthEndExclusive,
+    referenceDate: reference,
+    direction: "expense",
+  });
+  const recurringIncomeEvents = buildRecurringHistoryEvents({
+    transactions: historyTransactions,
+    monthStart,
+    monthEndExclusive,
+    referenceDate: reference,
+    direction: "income",
+  });
+  const mergedIncomeEvents = mergeIncomeSourceEvents({
+    incomeSources,
+    existingEvents: recurringIncomeEvents,
+    transactions: historyTransactions,
+    monthStart,
+    monthEndExclusive,
+    referenceDate: reference,
+  });
 
   let expectedFixedCosts = 0;
   let expectedSubscriptions = 0;
 
-  for (const recurringItem of recurringGroups.values()) {
-    if (
-      !frequencyAppliesInMonth(
-        recurringItem.recurringType,
-        recurringItem.anchorDate,
-        monthStart,
-      )
-    ) {
+  for (const event of recurringExpenseEvents.values()) {
+    if (event.kind === "fixed_cost") {
+      expectedFixedCosts += Math.abs(event.amount);
       continue;
     }
-
-    if (recurringItem.analysisCategory === "fixed_costs") {
-      expectedFixedCosts += recurringItem.amount;
-      continue;
-    }
-    if (recurringItem.analysisCategory === "subscriptions") {
-      expectedSubscriptions += recurringItem.amount;
+    if (event.kind === "subscription") {
+      expectedSubscriptions += Math.abs(event.amount);
     }
   }
 
@@ -387,12 +624,30 @@ export async function recomputeCurrentMonthCashflowForecast(
   const expectedEndOfMonthBalance =
     startingBalance == null
       ? null
-      : startingBalance + expectedIncomeTotal - expectedExpenseTotal;
+      : round2(startingBalance + expectedIncomeTotal - expectedExpenseTotal);
 
   const riskFlag =
     expectedEndOfMonthBalance != null && expectedEndOfMonthBalance < 0
       ? "deficit_warning"
       : "none";
+
+  const currentBalanceAnchor =
+    latestKnownBalance.balance != null
+      ? latestKnownBalance.balance
+      : startingBalance;
+  const currentBalanceAnchorDate =
+    latestKnownBalance.balanceDate ||
+    (startingBalance != null ? monthStartIso : null);
+
+  const timelineProjection = buildForecastTimelineProjection({
+    currentBalanceAnchor,
+    referenceDate,
+    monthEndExclusive,
+    events: [
+      ...recurringExpenseEvents.values(),
+      ...mergedIncomeEvents.values(),
+    ] as ForecastTimelineEvent[],
+  });
 
   const costBuckets = [
     { key: "variable_costs", value: expectedVariableCosts },
@@ -407,11 +662,22 @@ export async function recomputeCurrentMonthCashflowForecast(
       user_id: userId,
       month_start: monthStartIso,
       starting_balance: startingBalance,
+      current_balance_anchor: currentBalanceAnchor,
+      current_balance_anchor_date: currentBalanceAnchorDate,
       expected_income_total: expectedIncomeTotal,
       expected_expense_total: expectedExpenseTotal,
       expected_fixed_costs: expectedFixedCosts,
       expected_subscriptions: expectedSubscriptions,
       expected_variable_costs: expectedVariableCosts,
+      upcoming_committed_income_total:
+        timelineProjection.upcomingCommittedIncomeTotal,
+      upcoming_committed_expense_total:
+        timelineProjection.upcomingCommittedExpenseTotal,
+      lowest_expected_balance: timelineProjection.lowestExpectedBalance,
+      lowest_expected_balance_date: timelineProjection.lowestExpectedBalanceDate,
+      next_expected_event_date: timelineProjection.nextExpectedEventDate,
+      next_expected_event_label: timelineProjection.nextExpectedEventLabel,
+      cash_risk_flag: timelineProjection.cashRiskFlag,
       avg_groceries: expectedGroceries,
       avg_fuel: expectedFuel,
       avg_smoking: expectedSmoking,
@@ -421,7 +687,7 @@ export async function recomputeCurrentMonthCashflowForecast(
       top_cost_bucket_1: costBuckets[0] || null,
       top_cost_bucket_2: costBuckets[1] || null,
       top_cost_bucket_3: costBuckets[2] || null,
-      computed_at: new Date().toISOString(),
+      computed_at: addDays(reference, 0).toISOString(),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "user_id,month_start" },
@@ -435,5 +701,8 @@ export async function recomputeCurrentMonthCashflowForecast(
     expectedExpenseTotal,
     expectedEndOfMonthBalance,
     riskFlag,
+    cashRiskFlag: timelineProjection.cashRiskFlag,
+    lowestExpectedBalance: timelineProjection.lowestExpectedBalance,
+    lowestExpectedBalanceDate: timelineProjection.lowestExpectedBalanceDate,
   };
 }

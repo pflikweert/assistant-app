@@ -16,6 +16,9 @@
   - Unit tests toegevoegd voor budget risk, forecast fallback en locklogica
   - Week attentionlogica verplaatst naar gedeelde helper met unit tests
   - Forecasttests uitgebreid voor weinig historie en oude uitschieters
+  - Forecast uitgebreid met timing-aware cashflow voor komende inkomsten en vaste uitgaven
+  - Insights toont nu laagste verwachte saldo, eerstvolgende verwachte beweging en cash-gap waarschuwing
+  - Remote migratie uitgevoerd voor `monthly_cashflow_forecasts` cash-gap velden en `password_reset_events`
   - Categorie-detail drilldown vanuit budget maandtab
   - Budget weeklabels verduidelijkt met kalenderweeknotatie en overlaplabels in weekdetail
   - Categorieoverzicht op de maandtab verrijkt met categorie-iconen
@@ -43,9 +46,19 @@
   - Extra tests voor week attentionlogica
   - Forecastscenario's uitgebreid voor weinig historie en oude uitschieters
   - Gedeelde helper voor week attention zodat budget-UI en tests dezelfde logica gebruiken
+  - Cashflow-timelinelaag voor komende inkomsten, vaste lasten en abonnementen
+  - `lowest_expected_balance`, volgende verwachte beweging en `cash_gap_warning` in forecast
+  - Inkomensankers verbeterd: `last_detected_at` gebruikt nu de transactiedatum in plaats van `nu`
+  - Remote schema bijgewerkt met forecast cash-gap velden
 - Handmatige QA:
   - Laatste visuele check in simulator of web voor status- en tempocopy
   - Iconen visueel nalopen op variantkeuze, mapping en spacing per scherm
+- Forecast onderzoek / volgende backendstap:
+  - Huidige timinglaag gebruikt nu historische recurring patronen en income sources voor komende vaste bewegingen
+  - Logische vervolgstap:
+    - seizoensinkomsten zoals vakantiegeld, bonus en 13e maand expliciet modelleren
+    - subscriptions verrijken met `subscription_profiles.expected_day_of_month` als extra bron
+    - eventueel `lowest_expected_balance` ook meenemen in dashboard of budget-nudges
 
 ## Fase 3
 

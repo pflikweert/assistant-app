@@ -503,6 +503,9 @@ function mergeIncomeSources(
   if (!descriptor) return;
 
   const date = toDate(tx.date);
+  const detectedAtIso = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12),
+  ).toISOString();
   const sourceLabel = (
     tx.counterparty ||
     tx.details.split("|")[0] ||
@@ -519,7 +522,7 @@ function mergeIncomeSources(
       expectedIncome: nextValue,
       incomeFrequency: nextFrequency,
       incomeDayOfMonth: date.getUTCDate(),
-      lastDetectedAt: new Date().toISOString(),
+      lastDetectedAt: detectedAtIso,
     });
     return;
   }
@@ -536,7 +539,10 @@ function mergeIncomeSources(
     expectedIncome,
     incomeFrequency,
     incomeDayOfMonth: date.getUTCDate(),
-    lastDetectedAt: new Date().toISOString(),
+    lastDetectedAt:
+      detectedAtIso > existing.lastDetectedAt
+        ? detectedAtIso
+        : existing.lastDetectedAt,
   });
 }
 

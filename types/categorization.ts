@@ -154,17 +154,26 @@ export type ForecastIncomeSource = {
 export type MonthlyCashflowForecast = {
   monthStart: string;
   startingBalance: number | null;
+  currentBalanceAnchor: number | null;
+  currentBalanceAnchorDate: string | null;
   expectedIncomeTotal: number;
   expectedExpenseTotal: number;
   expectedFixedCosts: number;
   expectedSubscriptions: number;
   expectedVariableCosts: number;
+  upcomingCommittedIncomeTotal: number;
+  upcomingCommittedExpenseTotal: number;
+  lowestExpectedBalance: number | null;
+  lowestExpectedBalanceDate: string | null;
+  nextExpectedEventDate: string | null;
+  nextExpectedEventLabel: string | null;
   avgGroceries: number;
   avgFuel: number;
   avgSmoking: number;
   avgOtherVariable: number;
   expectedEndOfMonthBalance: number | null;
   riskFlag: "none" | "deficit_warning";
+  cashRiskFlag: "none" | "cash_gap_warning";
   topCostBuckets: string[];
 };
 

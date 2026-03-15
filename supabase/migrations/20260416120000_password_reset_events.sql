@@ -18,21 +18,29 @@ create index if not exists password_reset_events_created_at_idx
 
 alter table public.password_reset_events enable row level security;
 
+drop policy if exists password_reset_events_service_insert
+  on public.password_reset_events;
 create policy password_reset_events_service_insert
   on public.password_reset_events
   for insert
   with check (auth.role() = 'service_role');
 
+drop policy if exists password_reset_events_service_select
+  on public.password_reset_events;
 create policy password_reset_events_service_select
   on public.password_reset_events
   for select
   using (auth.role() = 'service_role');
 
+drop policy if exists password_reset_events_service_update
+  on public.password_reset_events;
 create policy password_reset_events_service_update
   on public.password_reset_events
   for update
   using (auth.role() = 'service_role');
 
+drop policy if exists password_reset_events_service_delete
+  on public.password_reset_events;
 create policy password_reset_events_service_delete
   on public.password_reset_events
   for delete
