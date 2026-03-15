@@ -2,7 +2,7 @@ import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
-import { getMonthBudgetRiskTone } from "@/services/budget-risk";
+import { getMonthVariableBudgetSnapshot } from "@/services/budget-risk";
 import { computeBudgetPlan } from "@/services/budget-plan";
 import {
   getTransactionCategories,
@@ -170,10 +170,6 @@ type CategoryGroup = {
   sortOrder: number;
   children: CategoryRecord[];
 };
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
 
 function isSubjectDrivenCounterparty(counterparty: string | null | undefined) {
   const normalized = String(counterparty || "").toLowerCase();
@@ -375,9 +371,12 @@ function getTrendHeadline(
       : "Deze maand gaat er meer uit dan er binnenkomt.";
   }
 
-  const variableActual = budgetPlan.monthToDateExpenses.variableCosts;
-  const variableBudget = budgetPlan.flowSummary.variableBudget;
-  const delta = variableBudget - variableActual;
+  const monthBudgetSnapshot = getMonthVariableBudgetSnapshot(budgetPlan);
+  if (monthBudgetSnapshot.state === "no_budget") {
+    return "Stel een variabel budget in om je maandtempo goed te beoordelen.";
+  }
+
+  const delta = monthBudgetSnapshot.remaining ?? 0;
 
   if (delta > 50) {
     return `Je variabele uitgaven liggen ${fmt.format(delta)} onder je maandruimte.`;
@@ -1132,15 +1131,11 @@ export default function InsightsScreen() {
 
   const hasMonthData = txCount > 0;
   const netResult = monthReport.net;
-  const variableRatio = budgetPlan
-    ? clamp(
-        budgetPlan.monthToDateExpenses.variableCosts /
-          Math.max(budgetPlan.flowSummary.variableBudget, 1),
-        0,
-        1.25,
-      )
-    : 0;
-  const monthRiskTone = getMonthBudgetRiskTone(budgetPlan);
+  const monthBudgetSnapshot = React.useMemo(
+    () => getMonthVariableBudgetSnapshot(budgetPlan),
+    [budgetPlan],
+  );
+  const monthRiskTone = monthBudgetSnapshot.tone;
 
   return (
     <View style={styles.root}>
@@ -1256,10 +1251,20 @@ export default function InsightsScreen() {
                 </View>
                 {budgetPlan ? (
                   <RiskProgressBar
-                    progress={clamp(variableRatio, 0, 1)}
+                    progress={monthBudgetSnapshot.progress}
                     tone={monthRiskTone}
                     style={styles.progressTrack}
                   />
+                ) : null}
+                {budgetPlan ? (
+                  <Text style={styles.helperText}>
+                    Status: {monthBudgetSnapshot.label}.{" "}
+                    {monthBudgetSnapshot.state === "no_budget"
+                      ? "Stel eerst een variabel budget in om maandsturing te zien."
+                      : monthBudgetSnapshot.state === "over_budget"
+                        ? `${fmt.format(Math.abs(monthBudgetSnapshot.remaining || 0))} boven je variabele maandbudget van ${fmt.format(monthBudgetSnapshot.budget || 0)}`
+                        : `${fmt.format(monthBudgetSnapshot.spent || 0)} van ${fmt.format(monthBudgetSnapshot.budget || 0)} variabel gebruikt`}
+                  </Text>
                 ) : null}
               </View>
 
@@ -1464,25 +1469,41 @@ export default function InsightsScreen() {
                 {budgetPlan ? (
                   <>
                     <View style={styles.reportRow}>
-                      <Text style={styles.reportLabel}>Resterend budget</Text>
+                      <Text style={styles.reportLabel}>Nog vrij te besteden</Text>
                       <Text
                         style={[
                           styles.reportValue,
-                          budgetPlan.monthlyBudgetTotal -
-                            (budgetPlan.monthToDateExpenses.fixedCosts +
-                              budgetPlan.monthToDateExpenses.subscriptions +
-                              budgetPlan.monthToDateExpenses.variableCosts) >=
-                          0
+                          (monthBudgetSnapshot.remaining || 0) >= 0
                             ? styles.positiveText
                             : styles.negativeText,
                         ]}
                       >
                         {fmt.format(
-                          budgetPlan.monthlyBudgetTotal -
-                            (budgetPlan.monthToDateExpenses.fixedCosts +
-                              budgetPlan.monthToDateExpenses.subscriptions +
-                              budgetPlan.monthToDateExpenses.variableCosts),
+                          monthBudgetSnapshot.remaining || 0,
                         )}
+                      </Text>
+                    </View>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Variabel gebruikt</Text>
+                      <Text style={styles.reportValue}>
+                        {fmt.format(monthBudgetSnapshot.spent || 0)}
+                      </Text>
+                    </View>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Status</Text>
+                      <Text
+                        style={[
+                          styles.reportValue,
+                          monthRiskTone === "good"
+                            ? styles.positiveText
+                            : monthRiskTone === "watch"
+                              ? styles.warningText
+                            : monthRiskTone === "critical"
+                              ? styles.negativeText
+                              : styles.reportValue,
+                        ]}
+                      >
+                        {monthBudgetSnapshot.label}
                       </Text>
                     </View>
                     <View style={styles.reportRow}>

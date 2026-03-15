@@ -1,5 +1,6 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { requireCurrentUserId } from "@/services/current-user";
+import { estimateRecentExpenseForecastFromHistory } from "@/services/forecast-expense-utils";
 import { supabase } from "@/services/supabase";
 import type { RecurringType } from "@/types/categorization";
 import { normalizePattern } from "./categorization-repository";
@@ -206,47 +207,6 @@ function descriptor(tx: Pick<ForecastTx, "counterparty" | "details">) {
   );
 }
 
-function buildVariableBucket(
-  tx: ForecastTx,
-  categoryKey: string | null,
-): "groceries" | "fuel" | "smoking" | "other" {
-  const haystack = normalizePattern(
-    `${tx.counterparty || ""} ${tx.details || ""}`,
-  );
-
-  if (
-    haystack.includes("jumbo") ||
-    haystack.includes("plus") ||
-    haystack.includes("albert heijn") ||
-    (categoryKey && categoryKey.includes("groceries"))
-  ) {
-    return "groceries";
-  }
-
-  if (
-    haystack.includes("shell") ||
-    haystack.includes("bp") ||
-    haystack.includes("esso") ||
-    haystack.includes("tango") ||
-    haystack.includes("tinq") ||
-    haystack.includes("total") ||
-    (categoryKey && categoryKey.includes("fuel"))
-  ) {
-    return "fuel";
-  }
-
-  if (
-    haystack.includes("tabak") ||
-    haystack.includes("sigaret") ||
-    haystack.includes("rook") ||
-    (categoryKey && categoryKey.includes("smoking"))
-  ) {
-    return "smoking";
-  }
-
-  return "other";
-}
-
 export async function recomputeCurrentMonthCashflowForecast(
   reference = new Date(),
 ) {
@@ -278,6 +238,11 @@ export async function recomputeCurrentMonthCashflowForecast(
       getLatestStartingBalance(monthStartIso, userId),
     ],
   );
+  const fallbackExpenseForecast = estimateRecentExpenseForecastFromHistory({
+    transactions: historyTransactions,
+    categoryMap,
+    currentMonthStart: monthStart,
+  });
 
   let expectedIncomeTotal = 0;
   if (stableIncomePlan) {
@@ -367,11 +332,13 @@ export async function recomputeCurrentMonthCashflowForecast(
 
   expectedFixedCosts = Math.max(
     expectedFixedCosts,
+    fallbackExpenseForecast.fixedCosts,
     asNumber(trendExpenses?.fixedCosts, 0),
     asNumber(monthToDateExpenses?.fixedCosts, 0),
   );
   expectedSubscriptions = Math.max(
     expectedSubscriptions,
+    fallbackExpenseForecast.subscriptions,
     asNumber(trendExpenses?.subscriptions, 0),
     asNumber(monthToDateExpenses?.subscriptions, 0),
   );
@@ -383,61 +350,30 @@ export async function recomputeCurrentMonthCashflowForecast(
 
   if (trendExpenses) {
     expectedGroceries = Math.max(
+      fallbackExpenseForecast.variable.groceries,
       asNumber(trendExpenses.variable.groceries, 0),
       asNumber(monthToDateExpenses?.variable.groceries, 0),
     );
     expectedFuel = Math.max(
+      fallbackExpenseForecast.variable.fuel,
       asNumber(trendExpenses.variable.fuel, 0),
       asNumber(monthToDateExpenses?.variable.fuel, 0),
     );
     expectedSmoking = Math.max(
+      fallbackExpenseForecast.variable.smoking,
       asNumber(trendExpenses.variable.smoking, 0),
       asNumber(monthToDateExpenses?.variable.smoking, 0),
     );
     expectedOtherVariable = Math.max(
+      fallbackExpenseForecast.variable.other,
       asNumber(trendExpenses.variable.other, 0),
       asNumber(monthToDateExpenses?.variable.other, 0),
     );
   } else {
-    const variableStats = {
-      groceries: { sum: 0, count: 0 },
-      fuel: { sum: 0, count: 0 },
-      smoking: { sum: 0, count: 0 },
-      other: { sum: 0, count: 0 },
-    };
-
-    for (const tx of historyTransactions) {
-      if (tx.budget_excluded) continue;
-      if (tx.amount >= 0) continue;
-      if (tx.analysis_main_group !== "expense") continue;
-      if (tx.analysis_category !== "variable_costs") continue;
-
-      const categoryId = tx.category_id_user || tx.category_id_auto;
-      const categoryKey = categoryId
-        ? categoryMap.get(categoryId)?.key || null
-        : null;
-      const bucket = buildVariableBucket(tx, categoryKey);
-
-      variableStats[bucket].sum += Math.abs(tx.amount);
-      variableStats[bucket].count += 1;
-    }
-
-    expectedGroceries =
-      variableStats.groceries.count > 0
-        ? variableStats.groceries.sum / variableStats.groceries.count
-        : 0;
-    expectedFuel =
-      variableStats.fuel.count > 0
-        ? variableStats.fuel.sum / variableStats.fuel.count
-        : 0;
-    expectedSmoking =
-      variableStats.smoking.count > 0
-        ? variableStats.smoking.sum / variableStats.smoking.count
-        : 0;
-    expectedOtherVariable =
-      variableStats.other.count > 0
-        ? variableStats.other.sum / variableStats.other.count
-        : 0;
+    expectedGroceries = fallbackExpenseForecast.variable.groceries;
+    expectedFuel = fallbackExpenseForecast.variable.fuel;
+    expectedSmoking = fallbackExpenseForecast.variable.smoking;
+    expectedOtherVariable = fallbackExpenseForecast.variable.other;
   }
 
   const expectedVariableCosts =

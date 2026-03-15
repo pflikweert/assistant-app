@@ -14,8 +14,9 @@ import {
   getBudgetRiskLabel,
   getBudgetRiskProgress,
   getBudgetRiskTone,
-  getMonthBudgetRiskProgress,
-  getMonthBudgetRiskTone,
+  getMonthVariableBudgetSnapshot,
+  getWeekBudgetSnapshot,
+  getWeekTempoMessage,
   type BudgetRiskTone,
 } from "@/services/budget-risk";
 import {
@@ -442,11 +443,6 @@ function getHistoricalWeeks(plan: BudgetPlanComputation | null) {
   );
 }
 
-function getRemainingBudget(plan: BudgetPlanComputation | null) {
-  if (!plan) return null;
-  return plan.flowSummary.variableBudget - plan.monthToDateExpenses.variableCosts;
-}
-
 function getCategoryRows(plan: BudgetPlanComputation | null) {
   if (!plan) return [] as BudgetRecommendationRow[];
   return plan.recommendations
@@ -635,10 +631,11 @@ export default function BudgetScreen() {
     if (!historicalWeeks.length) return null;
     return historicalWeeks[historicalWeeks.length - 1];
   }, [currentWeek, historicalWeeks]);
-  const monthlyRemaining = React.useMemo(
-    () => getRemainingBudget(budgetPlan),
+  const monthBudgetSnapshot = React.useMemo(
+    () => getMonthVariableBudgetSnapshot(budgetPlan),
     [budgetPlan],
   );
+  const monthlyRemaining = monthBudgetSnapshot.remaining;
   const categoryRows = React.useMemo(() => getCategoryRows(budgetPlan), [budgetPlan]);
   const weeklyVariableRows = React.useMemo(
     () => budgetPlan?.weeklyVariablePlan || [],
@@ -653,12 +650,12 @@ export default function BudgetScreen() {
   const criticalCount =
     budgetPlan?.warnings.filter((warning) => warning.severity === "critical")
       .length || 0;
-  const weekProgress = focusWeek
-    ? getBudgetRiskProgress(focusWeek.utilization)
-    : 0;
-  const monthSpent = budgetPlan
-    ? budgetPlan.monthToDateExpenses.variableCosts
-    : null;
+  const focusWeekSnapshot = React.useMemo(
+    () => getWeekBudgetSnapshot(focusWeek),
+    [focusWeek],
+  );
+  const weekProgress = focusWeekSnapshot.progress;
+  const monthSpent = monthBudgetSnapshot.spent;
   const outsideBudgetTransactionCount = React.useMemo(
     () =>
       budgetPlan?.outsideBudgetExpenses.items.reduce(
@@ -667,11 +664,9 @@ export default function BudgetScreen() {
       ) || 0,
     [budgetPlan],
   );
-  const monthProgress = budgetPlan
-    ? getMonthBudgetRiskProgress(budgetPlan)
-    : 0;
-  const focusWeekRiskTone = getBudgetRiskTone(focusWeek?.utilization ?? null);
-  const monthRiskTone = getMonthBudgetRiskTone(budgetPlan);
+  const monthProgress = monthBudgetSnapshot.progress;
+  const focusWeekRiskTone = focusWeekSnapshot.tone;
+  const monthRiskTone = monthBudgetSnapshot.tone;
 
   const editableBudgetRows = React.useMemo(() => {
     if (!budgetPlan) return [];
@@ -2051,7 +2046,7 @@ export default function BudgetScreen() {
                       getRiskStyle(focusWeekRiskTone).text,
                     ]}
                   >
-                    {getBudgetRiskLabel(focusWeek?.utilization ?? null, "Nog geen weekdata")}
+                    {focusWeekSnapshot.label}
                   </Text>
                 </View>
                 <Text style={styles.heroSupport}>
@@ -2067,6 +2062,11 @@ export default function BudgetScreen() {
                 {focusWeek ? (
                   <Text style={styles.heroMeta}>
                     {focusWeek.label} · {formatWeekRangeLabel(focusWeek)}
+                  </Text>
+                ) : null}
+                {focusWeek ? (
+                  <Text style={styles.heroHint}>
+                    {getWeekTempoMessage(focusWeek)}
                   </Text>
                 ) : null}
                 {focusWeek ? (
@@ -2139,14 +2139,26 @@ export default function BudgetScreen() {
                     ? "Nog geen data"
                     : fmt.format(Math.max(monthlyRemaining, 0))}
                 </Text>
+                <View
+                  style={[styles.statusChip, getRiskStyle(monthRiskTone).chip]}
+                >
+                  <Text
+                    style={[
+                      styles.statusChipText,
+                      getRiskStyle(monthRiskTone).text,
+                    ]}
+                  >
+                    {monthBudgetSnapshot.label}
+                  </Text>
+                </View>
                 <Text style={styles.heroSupport}>
                   {monthSpent == null || !budgetPlan
                     ? "Maandsturing verschijnt zodra budgetdata beschikbaar is."
-                    : budgetPlan.flowSummary.variableBudget <= 0
+                    : monthBudgetSnapshot.state === "no_budget"
                       ? "Stel eerst een variabel budget in om vrije ruimte te zien."
-                      : monthlyRemaining != null && monthlyRemaining < 0
-                        ? `${fmt.format(Math.abs(monthlyRemaining))} boven je variabele maandbudget van ${fmt.format(budgetPlan.flowSummary.variableBudget)}`
-                        : `${fmt.format(monthSpent)} van ${fmt.format(budgetPlan.flowSummary.variableBudget)} variabel gebruikt`}
+                      : monthBudgetSnapshot.state === "over_budget"
+                        ? `${fmt.format(Math.abs(monthBudgetSnapshot.remaining || 0))} boven je variabele maandbudget van ${fmt.format(monthBudgetSnapshot.budget || 0)}`
+                        : `${fmt.format(monthBudgetSnapshot.spent || 0)} van ${fmt.format(monthBudgetSnapshot.budget || 0)} variabel gebruikt`}
                 </Text>
                 <RiskProgressBar
                   progress={monthProgress}
@@ -3438,6 +3450,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 12,
     color: FinColors.textMuted,
+  },
+  heroHint: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
   },
   inlineLinkButton: {
     alignSelf: "flex-start",

@@ -3,11 +3,9 @@ import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import {
-  getBudgetRiskLabel,
-  getBudgetRiskProgress,
-  getBudgetRiskTone,
-  getMonthBudgetRiskLabel,
-  getMonthBudgetRiskTone,
+  getMonthVariableBudgetSnapshot,
+  getWeekBudgetSnapshot,
+  getWeekTempoMessage,
 } from "@/services/budget-risk";
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { getTransactionCategories } from "@/services/categorization-repository";
@@ -18,11 +16,7 @@ import {
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
 import { supabase } from "@/services/supabase";
-import type {
-  BudgetPlanComputation,
-  BudgetWeekPlanRow,
-  CategoryRecord,
-} from "@/types/categorization";
+import type { BudgetPlanComputation, CategoryRecord } from "@/types/categorization";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -118,50 +112,6 @@ function isMissingRelationError(error: unknown) {
   return message.includes("relation") && message.includes("does not exist");
 }
 
-function getWeekElapsedRatio(week: BudgetWeekPlanRow | null) {
-  if (!week) return null;
-
-  const start = new Date(`${week.startDate}T00:00:00.000Z`);
-  const end = new Date(`${week.endDateExclusive}T00:00:00.000Z`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-
-  const totalDays = Math.max(
-    1,
-    Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)),
-  );
-  const remainingLabel = formatRemainingDaysInWeekLabel(week.endDateExclusive);
-  const remainingDays = remainingLabel
-    ? Number.parseInt(remainingLabel, 10)
-    : Number.NaN;
-  if (Number.isNaN(remainingDays)) return null;
-
-  return clamp((totalDays - remainingDays) / totalDays, 0, 1);
-}
-
-function getTrendMessage(week: BudgetWeekPlanRow | null) {
-  if (!week || week.budget <= 0) {
-    return "Weektrend verschijnt zodra je budget actief is.";
-  }
-
-  const elapsedRatio = getWeekElapsedRatio(week);
-  if (elapsedRatio == null) {
-    return "Weektrend verschijnt zodra je budget actief is.";
-  }
-
-  const expectedSpend = week.budget * elapsedRatio;
-  const delta = expectedSpend - week.actual;
-  if (delta >= 15) {
-    return `${fmt.format(delta)} onder je weektempo. Mooie buffer.`;
-  }
-  if (delta > 0) {
-    return `${fmt.format(delta)} onder je weektempo. Je ligt goed op koers.`;
-  }
-  if (delta > -15) {
-    return `${fmt.format(Math.abs(delta))} boven je weektempo. Nog prima bij te sturen.`;
-  }
-  return `${fmt.format(Math.abs(delta))} boven je weektempo. Kijk even waar je kunt remmen.`;
-}
-
 function buildPositiveNudges({
   remainingBudget,
   week,
@@ -255,14 +205,13 @@ export default function DashboardScreen() {
   );
 
   const remainingBudget = React.useMemo(() => {
-    if (!budgetPlan) return null;
-    return budgetPlan.flowSummary.variableBudget - budgetPlan.monthToDateExpenses.variableCosts;
+    return getMonthVariableBudgetSnapshot(budgetPlan).remaining;
   }, [budgetPlan]);
-
-  const monthSpentInBudget = React.useMemo(() => {
-    if (!budgetPlan) return null;
-    return budgetPlan.monthToDateExpenses.variableCosts;
-  }, [budgetPlan]);
+  const monthBudgetSnapshot = React.useMemo(
+    () => getMonthVariableBudgetSnapshot(budgetPlan),
+    [budgetPlan],
+  );
+  const monthSpentInBudget = monthBudgetSnapshot.spent;
 
   const currentWeekPlan = React.useMemo(() => {
     if (!budgetPlan) return null;
@@ -277,13 +226,14 @@ export default function DashboardScreen() {
   }, [currentWeekPlan]);
 
   const currentWeekProgress = React.useMemo(() => {
-    return getBudgetRiskProgress(currentWeekPlan?.utilization ?? null);
+    return getWeekBudgetSnapshot(currentWeekPlan).progress;
   }, [currentWeekPlan]);
-
-  const currentWeekRiskTone = getBudgetRiskTone(
-    currentWeekPlan?.utilization ?? null,
+  const currentWeekSnapshot = React.useMemo(
+    () => getWeekBudgetSnapshot(currentWeekPlan),
+    [currentWeekPlan],
   );
-  const monthRiskTone = getMonthBudgetRiskTone(budgetPlan);
+  const currentWeekRiskTone = currentWeekSnapshot.tone;
+  const monthRiskTone = monthBudgetSnapshot.tone;
 
   const underBudgetStreak = React.useMemo(() => {
     if (!budgetPlan) return 0;
@@ -525,11 +475,11 @@ export default function DashboardScreen() {
           </View>
           <Text style={styles.primarySupport}>
             {budgetPlan
-              ? budgetPlan.flowSummary.variableBudget <= 0
+              ? monthBudgetSnapshot.state === "no_budget"
                 ? "Stel eerst een variabel budget in om vrije ruimte te zien."
-                : remainingBudget != null && remainingBudget < 0
-                  ? `${fmt.format(Math.abs(remainingBudget))} boven je variabele maandbudget`
-                  : `Variabele maandruimte: ${fmt.format(Math.max(remainingBudget ?? 0, 0))} van ${fmt.format(budgetPlan.flowSummary.variableBudget)}`
+                : monthBudgetSnapshot.state === "over_budget"
+                  ? `${fmt.format(Math.abs(monthBudgetSnapshot.remaining || 0))} boven je variabele maandbudget van ${fmt.format(monthBudgetSnapshot.budget || 0)}`
+                  : `${fmt.format(monthBudgetSnapshot.spent || 0)} van ${fmt.format(monthBudgetSnapshot.budget || 0)} variabel gebruikt`
               : budgetSchemaMissing
                 ? "Budgetschema is nog niet beschikbaar in deze omgeving."
                 : "Budgetgegevens laden..."}
@@ -545,7 +495,7 @@ export default function DashboardScreen() {
                 </Text>
               </View>
               <View style={styles.subStatCard}>
-                <Text style={styles.subStatLabel}>Risico</Text>
+                <Text style={styles.subStatLabel}>Status</Text>
                 <Text
                     style={[
                       styles.subStatValue,
@@ -557,7 +507,7 @@ export default function DashboardScreen() {
                       styles.negativeText,
                     ]}
                   >
-                  {getMonthBudgetRiskLabel(budgetPlan, "Nog geen maanddata")}
+                  {monthBudgetSnapshot.label}
                 </Text>
               </View>
             </View>
@@ -599,7 +549,7 @@ export default function DashboardScreen() {
                     styles.statusChipTextCritical,
                 ]}
               >
-                {getBudgetRiskLabel(currentWeekPlan?.utilization ?? null, "Nog geen weekdata")}
+                {currentWeekSnapshot.label}
               </Text>
             </View>
           </View>
@@ -645,7 +595,9 @@ export default function DashboardScreen() {
               ))}
             </View>
           ) : null}
-          <Text style={styles.weekTrendText}>{getTrendMessage(currentWeekPlan)}</Text>
+          <Text style={styles.weekTrendText}>
+            {getWeekTempoMessage(currentWeekPlan)}
+          </Text>
         </Pressable>
 
         <View style={styles.nudgeCard}>
