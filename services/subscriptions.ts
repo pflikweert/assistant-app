@@ -3,6 +3,7 @@ import {
   setTransactionManualCategory,
 } from "@/services/categorization-repository";
 import { requireCurrentUserId } from "@/services/current-user";
+import { requestForecastRefresh } from "@/services/forecast-refresh";
 import { supabase } from "@/services/supabase";
 import type {
   CategoryRecord,
@@ -627,7 +628,14 @@ export async function createSubscriptionProfile(
     .single();
 
   if (error) throw error;
-  return mapProfileRow(data as RowRecord);
+  const profile = mapProfileRow(data as RowRecord);
+  await requestForecastRefresh({
+    reason: "subscription_profile",
+    delayMs: 15000,
+  }).catch((refreshError) => {
+    console.warn("[subscriptions] forecast refresh scheduling failed", refreshError);
+  });
+  return profile;
 }
 
 export async function updateSubscriptionProfile(
@@ -679,7 +687,14 @@ export async function updateSubscriptionProfile(
     .single();
 
   if (error) throw error;
-  return mapProfileRow(data as RowRecord);
+  const profile = mapProfileRow(data as RowRecord);
+  await requestForecastRefresh({
+    reason: "subscription_profile",
+    delayMs: 15000,
+  }).catch((refreshError) => {
+    console.warn("[subscriptions] forecast refresh scheduling failed", refreshError);
+  });
+  return profile;
 }
 
 export async function setSubscriptionProfileActive(
@@ -698,6 +713,12 @@ export async function deleteSubscriptionProfile(id: string): Promise<void> {
     .eq("id", id);
 
   if (error) throw error;
+  await requestForecastRefresh({
+    reason: "subscription_profile",
+    delayMs: 15000,
+  }).catch((refreshError) => {
+    console.warn("[subscriptions] forecast refresh scheduling failed", refreshError);
+  });
 }
 
 export async function listSubscriptionProfileRules(

@@ -7,11 +7,6 @@ import {
     resolveLockedVariableMainCategories,
     shouldPersistCategoryOnBudgetSave,
 } from "./budget-lock-utils";
-import { buildCalendarWeekRangesForMonth } from "./budget-week-utils";
-
-function utcDate(value: string) {
-  return new Date(`${value}T00:00:00.000Z`);
-}
 
 describe("isAutoModeTrendLock", () => {
   it("returns true in auto mode when monthly value matches baseline", () => {
@@ -108,73 +103,43 @@ describe("resolveLockedVariableMainCategories", () => {
 });
 
 describe("allocateWeekBudgetsByMainCategory", () => {
-  it("keeps locked smoking budget constant when week totals differ", () => {
-    const monthlyBudgets = new Map<string, number>([
-      ["groceries", 300],
-      ["fuel", 120],
-      ["smoking", 204],
-      ["other", 60],
-    ]);
+  it("keeps locked smoking budget fixed and redistributes the rest", () => {
     const locked = new Set<string>(["smoking"]);
-    const weekBudgets = [300, 220, 180];
+    const result = allocateWeekBudgetsByMainCategory({
+      baseWeekBudgetByMainCategory: new Map<string, number>([
+        ["groceries", 80],
+        ["fuel", 20],
+        ["smoking", 30],
+        ["other", 10],
+      ]),
+      weekBudget: 180,
+      lockedCategoryKeys: locked,
+    });
 
-    const perWeek = weekBudgets.map((weekBudget, weekIndex) =>
-      allocateWeekBudgetsByMainCategory({
-        monthlyBudgetByMainCategory: monthlyBudgets,
-        weekBudget,
-        weekIndex,
-        weekCount: 3,
-        lockedCategoryKeys: locked,
-      }),
-    );
-
-    expect(perWeek.map((row) => row.get("smoking") || 0)).toEqual([68, 68, 68]);
+    expect(result.get("smoking")).toBe(30);
+    expect(
+      (result.get("groceries") || 0) +
+        (result.get("fuel") || 0) +
+        (result.get("smoking") || 0) +
+        (result.get("other") || 0),
+    ).toBe(180);
+    expect(result.get("groceries")).toBeGreaterThan(result.get("fuel") || 0);
   });
 
-  it("keeps locked category flat across March 2026 weeks and redistributes remaining budget", () => {
-    const monthStart = utcDate("2026-03-01");
-    const monthEndExclusive = utcDate("2026-04-01");
-    const weekRanges = buildCalendarWeekRangesForMonth(
-      monthStart,
-      monthEndExclusive,
-    );
-    expect(weekRanges.length).toBe(6);
+  it("caps locked budgets when the week target drops below the locked total", () => {
+    const result = allocateWeekBudgetsByMainCategory({
+      baseWeekBudgetByMainCategory: new Map<string, number>([
+        ["groceries", 60],
+        ["fuel", 20],
+        ["smoking", 40],
+      ]),
+      weekBudget: 25,
+      lockedCategoryKeys: new Set<string>(["smoking"]),
+    });
 
-    const monthlyBudgets = new Map<string, number>([
-      ["groceries", 600],
-      ["fuel", 300],
-      ["smoking", 210],
-      ["other", 90],
-    ]);
-    const locked = new Set<string>(["smoking"]);
-    const weekBudgets = [300, 260, 240, 220, 200, 180];
-
-    const perWeek = weekBudgets.map((weekBudget, weekIndex) =>
-      allocateWeekBudgetsByMainCategory({
-        monthlyBudgetByMainCategory: monthlyBudgets,
-        weekBudget,
-        weekIndex,
-        weekCount: weekRanges.length,
-        lockedCategoryKeys: locked,
-      }),
-    );
-
-    const smokingBudgets = perWeek.map((row) => row.get("smoking") || 0);
-    expect(smokingBudgets).toEqual([35, 35, 35, 35, 35, 35]);
-
-    for (let index = 0; index < perWeek.length; index += 1) {
-      const row = perWeek[index];
-      const sum =
-        (row.get("groceries") || 0) +
-        (row.get("fuel") || 0) +
-        (row.get("smoking") || 0) +
-        (row.get("other") || 0);
-      expect(sum).toBe(weekBudgets[index]);
-    }
-
-    expect(
-      (perWeek[0].get("groceries") || 0) > (perWeek[5].get("groceries") || 0),
-    ).toBe(true);
+    expect(result.get("smoking")).toBe(25);
+    expect(result.get("groceries")).toBe(0);
+    expect(result.get("fuel")).toBe(0);
   });
 });
 

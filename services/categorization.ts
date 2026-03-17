@@ -15,7 +15,7 @@ import {
     updateCategorizationStatus,
 } from "./categorization-status";
 import { getLeafCategories } from "./category-display";
-import { recomputeCurrentMonthCashflowForecast } from "./forecasting";
+import { requestForecastRefresh } from "./forecast-refresh";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const appEnv = ((Constants.expoConfig?.extra as Record<
@@ -1246,9 +1246,12 @@ export async function categorizeTransactions(
   }
 
   try {
-    await recomputeCurrentMonthCashflowForecast();
+    await requestForecastRefresh({
+      reason: "categorization_batch",
+      delayMs: 5000,
+    });
   } catch (error) {
-    console.warn("cashflow forecast recompute failed", formatError(error));
+    console.warn("cashflow forecast refresh scheduling failed", formatError(error));
   }
 
   const cleared = staleOtherAutoIds.length;

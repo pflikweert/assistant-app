@@ -345,6 +345,12 @@ function getBudgetIncludedIncomeAmount(
   return Math.max(total, 0);
 }
 
+function getForecastExpenseSourceLabel(plan: BudgetPlanComputation | null) {
+  return plan?.settings.forecastExpenseSource === "budget_settings"
+    ? "Budgetplan"
+    : "Trend";
+}
+
 function parseUtcDate(dateIso: string) {
   const parsed = new Date(`${String(dateIso || "").slice(0, 10)}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime())) return null;
@@ -2576,6 +2582,9 @@ export default function InsightsScreen() {
                             {fmt.format(forecast.expected_savings_outflow_total)}
                           </Text>
                         </View>
+                        <Text style={styles.helperText}>
+                          Toekomstige uitgaven volgen nu: {getForecastExpenseSourceLabel(budgetPlan)}.
+                        </Text>
                       </View>
                     </View>
 

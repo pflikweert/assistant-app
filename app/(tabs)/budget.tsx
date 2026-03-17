@@ -6,7 +6,6 @@ import { MonthPickerSheet } from "@/components/month-picker-sheet";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { FinColors } from "@/constants/theme";
 import {
-  allocateWeekBudgetsByMainCategory,
   resolveLockedVariableMainCategories,
   shouldPersistCategoryOnBudgetSave,
 } from "@/services/budget-lock-utils";
@@ -37,7 +36,7 @@ import {
   getCategoryPathLabel,
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
-import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
+import { markForecastDirty } from "@/services/forecast-refresh";
 import { supabase } from "@/services/supabase";
 import {
   getCurrentMonthKey,
@@ -52,6 +51,7 @@ import {
 } from "@/services/budget-plan-repository";
 import type {
   BudgetCategoryKey,
+  BudgetForecastExpenseSource,
   BudgetIncomeInclusionSettings,
   BudgetOutsideExpenseItem,
   BudgetPlanComputation,
@@ -119,6 +119,23 @@ const INCOME_SOURCE_OPTIONS: {
   { key: "childBudget", label: "Kindgebonden budget" },
   { key: "structuralOther", label: "Overig structureel" },
   { key: "variable", label: "Variabel" },
+];
+
+const FORECAST_EXPENSE_SOURCE_OPTIONS: {
+  value: BudgetForecastExpenseSource;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "trend",
+    label: "Trend",
+    description: "Volgt je recente maandritme voor toekomstige uitgaven.",
+  },
+  {
+    value: "budget_settings",
+    label: "Budgetplan",
+    description: "Volgt je ingestelde budgetten voor vaste lasten, variabel en sparen.",
+  },
 ];
 
 const SAVINGS_SLIDER_STEP = 25;
@@ -325,6 +342,18 @@ function getMonthOverlapLabel(
   if (txDate < monthStart) return "Vorige maand";
   if (txDate >= nextMonthStart) return "Volgende maand";
   return null;
+}
+
+function formatForecastExpenseSourceLabel(source: BudgetForecastExpenseSource) {
+  return source === "budget_settings" ? "Budgetplan" : "Trend";
+}
+
+function getForecastExpenseSourceDescription(
+  source: BudgetForecastExpenseSource,
+) {
+  return source === "budget_settings"
+    ? "Toekomstige uitgaven volgen je budgetinstellingen uit Beheer."
+    : "Toekomstige uitgaven volgen je recente uitgaventrend.";
 }
 
 function getIsoWeekNumberFromStartDate(startDateIso: string) {
@@ -694,6 +723,8 @@ export default function BudgetScreen() {
     React.useState<BudgetPlanMode>("active_savings");
   const [budgetIncomeDraft, setBudgetIncomeDraft] =
     React.useState<BudgetIncomeInclusionSettings>(DEFAULT_INCLUDE_INCOME);
+  const [forecastExpenseSourceDraft, setForecastExpenseSourceDraft] =
+    React.useState<BudgetForecastExpenseSource>("trend");
   const [savingsTargetMonthlyDraft, setSavingsTargetMonthlyDraft] =
     React.useState(0);
   const [budgetDraftValues, setBudgetDraftValues] =
@@ -920,10 +951,6 @@ export default function BudgetScreen() {
   );
   const monthlyRemaining = monthBudgetSnapshot.remaining;
   const categoryRows = React.useMemo(() => getCategoryRows(budgetPlan), [budgetPlan]);
-  const weeklyVariableRows = React.useMemo(
-    () => budgetPlan?.weeklyVariablePlan || [],
-    [budgetPlan],
-  );
   const actionRecommendation = React.useMemo(
     () => getActionRecommendation(budgetPlan),
     [budgetPlan],
@@ -1165,6 +1192,7 @@ export default function BudgetScreen() {
       referenceDate: budgetPlan.referenceDate,
       mode: budgetPlan.settings.mode,
       includeIncome: budgetPlan.settings.includeIncome,
+      forecastExpenseSource: budgetPlan.settings.forecastExpenseSource,
       savingsTargetMonthly: budgetPlan.settings.savingsTargetMonthly,
       recommendedSavings: budgetPlan.recommendedSavings,
       rows: editableBudgetRows.map((row) => [
@@ -1183,6 +1211,8 @@ export default function BudgetScreen() {
       structuralOther: budgetPlan.settings.includeIncome.structuralOther,
       variable: budgetPlan.settings.includeIncome.variable,
     };
+    const nextForecastExpenseSource =
+      budgetPlan.settings.forecastExpenseSource;
     const nextSavingsTarget = normalizeBudgetAmount(
       budgetPlan.settings.savingsTargetMonthly > 0
         ? budgetPlan.settings.savingsTargetMonthly
@@ -1207,6 +1237,7 @@ export default function BudgetScreen() {
     lastHydratedDraftKeyRef.current = hydrationKey;
     setBudgetModeDraft(nextMode);
     setBudgetIncomeDraft(nextIncomeDraft);
+    setForecastExpenseSourceDraft(nextForecastExpenseSource);
     setSavingsTargetMonthlyDraft(nextSavingsTarget);
     setLockedVariableCategories(inferredLocks);
     setBudgetDraftValues({
@@ -1556,48 +1587,29 @@ export default function BudgetScreen() {
     );
   }, [selectedWeekDetail]);
 
-  const variableMonthlyBudgetByMainCategory = React.useMemo(() => {
-    if (!budgetPlan) return new Map<string, number>();
-    const recommendationByKey = new Map(
-      budgetPlan.recommendations.map((row) => [row.categoryKey, row]),
-    );
-
-    return new Map<string, number>([
-      ["groceries", recommendationByKey.get("groceries")?.monthlyBudget || 0],
-      ["fuel", recommendationByKey.get("fuel")?.monthlyBudget || 0],
-      ["smoking", recommendationByKey.get("smoking")?.monthlyBudget || 0],
-      ["other", recommendationByKey.get("other")?.monthlyBudget || 0],
-    ]);
-  }, [budgetPlan]);
-
-  const planLockedVariableCategories = React.useMemo(() => {
-    if (!budgetPlan) return new Set<BudgetCategoryKey>();
-    return resolveLockedVariableMainCategories(budgetPlan.recommendations);
-  }, [budgetPlan]);
-
   const resolveWeekBudgetByMainCategory = React.useCallback(
     (week: BudgetWeekPlanRow | null) => {
-      if (!week) return new Map<string, number>();
-      const weekIndex = weeklyVariableRows.findIndex(
-        (row) =>
-          row.weekNumber === week.weekNumber &&
-          row.startDate === week.startDate &&
-          row.endDateExclusive === week.endDateExclusive,
-      );
+      if (!budgetPlan || !week) return new Map<string, number>();
 
-      return allocateWeekBudgetsByMainCategory({
-        monthlyBudgetByMainCategory: variableMonthlyBudgetByMainCategory,
-        weekBudget: week.budget,
-        weekIndex: weekIndex >= 0 ? weekIndex : 0,
-        weekCount: Math.max(weeklyVariableRows.length, 1),
-        lockedCategoryKeys: planLockedVariableCategories,
-      });
+      const budgetRow =
+        budgetPlan.weeklyBudgetBreakdown.find(
+          (item) =>
+            item.weekNumber === week.weekNumber &&
+            item.startDate === week.startDate &&
+            item.endDateExclusive === week.endDateExclusive,
+        ) ||
+        budgetPlan.weeklyBudgetBreakdown.find(
+          (item) => item.weekNumber === week.weekNumber,
+        );
+
+      return new Map(
+        (budgetRow?.categories || []).map((category) => [
+          category.key,
+          category.amount,
+        ]),
+      );
     },
-    [
-      planLockedVariableCategories,
-      variableMonthlyBudgetByMainCategory,
-      weeklyVariableRows,
-    ],
+    [budgetPlan],
   );
 
   const focusWeekSpendBreakdown = React.useMemo(
@@ -1726,6 +1738,7 @@ export default function BudgetScreen() {
         planKey: "default",
         mode: budgetModeDraft,
         includeIncome: budgetIncomeDraft,
+        forecastExpenseSource: forecastExpenseSourceDraft,
         applySavingsTargetToVariableBudget:
           budgetModeDraft === "custom" && nextCustomSavingsTarget > 0,
         savingsTargetMonthly: nextCustomSavingsTarget,
@@ -1782,8 +1795,8 @@ export default function BudgetScreen() {
         );
       }
 
-      await recomputeCurrentMonthCashflowForecast(new Date()).catch((error) => {
-        console.warn("[budget] forecast recompute after save failed", error);
+      await markForecastDirty("budget_save").catch((error) => {
+        console.warn("[budget] forecast dirty mark after save failed", error);
       });
 
       await loadBudget();
@@ -1795,6 +1808,7 @@ export default function BudgetScreen() {
   }, [
     autoManagedVariableBudget,
     budgetDraftValues,
+    forecastExpenseSourceDraft,
     budgetIncomeDraft,
     budgetModeDraft,
     budgetPlan,
@@ -1829,16 +1843,9 @@ export default function BudgetScreen() {
         await Promise.all(lockUpdates);
       }
 
-      if (selectedMonth?.isCurrentMonth) {
-        await recomputeCurrentMonthCashflowForecast(new Date()).catch(
-          (error) => {
-            console.warn(
-              "[budget] forecast recompute after recalculate failed",
-              error,
-            );
-          },
-        );
-      }
+      await markForecastDirty("budget_save").catch((error) => {
+        console.warn("[budget] forecast dirty mark after recalculate failed", error);
+      });
 
       await loadBudget();
     } catch (error) {
@@ -1850,7 +1857,6 @@ export default function BudgetScreen() {
     getTrendBudgetForCategory,
     loadBudget,
     selectedMonth.startIso,
-    selectedMonth?.isCurrentMonth,
     lockedVariableCategories,
   ]);
 
@@ -2056,16 +2062,6 @@ export default function BudgetScreen() {
 
       try {
         await setTransactionBudgetExcluded(transactionId, nextExcluded);
-        if (selectedMonth?.isCurrentMonth) {
-          await recomputeCurrentMonthCashflowForecast(new Date()).catch(
-            (error) => {
-              console.warn(
-                "[budget] forecast recompute after budget exclusion failed",
-                error,
-              );
-            },
-          );
-        }
         await loadBudget();
       } catch (error) {
         console.warn("[budget] budget exclusion toggle error", error);
@@ -2083,7 +2079,7 @@ export default function BudgetScreen() {
         );
       }
     },
-    [inlineUpdatingTransactionIds, loadBudget, selectedMonth?.isCurrentMonth],
+    [inlineUpdatingTransactionIds, loadBudget],
   );
 
   const fetchOutsideBudgetItemTransactions = React.useCallback(
@@ -2197,16 +2193,6 @@ export default function BudgetScreen() {
 
       try {
         await setTransactionBudgetExcluded(transactionId, nextExcluded);
-        if (selectedMonth?.isCurrentMonth) {
-          await recomputeCurrentMonthCashflowForecast(new Date()).catch(
-            (error) => {
-              console.warn(
-                "[budget] forecast recompute after outside-budget toggle failed",
-                error,
-              );
-            },
-          );
-        }
         await loadBudget();
       } catch (error) {
         console.warn("[budget] buiten-budget toggle error", error);
@@ -2224,7 +2210,7 @@ export default function BudgetScreen() {
         );
       }
     },
-    [inlineUpdatingTransactionIds, loadBudget, selectedMonth?.isCurrentMonth],
+    [inlineUpdatingTransactionIds, loadBudget],
   );
 
   const fetchCategoryDetailTransactions = React.useCallback(
@@ -2350,16 +2336,6 @@ export default function BudgetScreen() {
 
       try {
         await setTransactionBudgetExcluded(transactionId, nextExcluded);
-        if (selectedMonth?.isCurrentMonth) {
-          await recomputeCurrentMonthCashflowForecast(new Date()).catch(
-            (error) => {
-              console.warn(
-                "[budget] forecast recompute after category-detail toggle failed",
-                error,
-              );
-            },
-          );
-        }
         await loadBudget();
       } catch (error) {
         console.warn("[budget] categorie-detail toggle error", error);
@@ -2377,7 +2353,7 @@ export default function BudgetScreen() {
         );
       }
     },
-    [inlineUpdatingTransactionIds, loadBudget, selectedMonth?.isCurrentMonth],
+    [inlineUpdatingTransactionIds, loadBudget],
   );
 
   return (
@@ -3001,6 +2977,56 @@ export default function BudgetScreen() {
                     );
                   })}
                 </View>
+              </View>
+
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Toekomstige uitgaven</Text>
+                <Text style={styles.supportText}>
+                  Kies of je forecast toekomstige uitgaven baseert op je recente trend of op je budgetinstellingen.
+                </Text>
+                <Text style={styles.supportText}>
+                  Nu actief: {formatForecastExpenseSourceLabel(forecastExpenseSourceDraft)}.{" "}
+                  {getForecastExpenseSourceDescription(forecastExpenseSourceDraft)}
+                </Text>
+                <View style={styles.choiceWrap}>
+                  {FORECAST_EXPENSE_SOURCE_OPTIONS.map((option) => {
+                    const selected =
+                      forecastExpenseSourceDraft === option.value;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        style={[
+                          styles.choiceChip,
+                          selected && styles.choiceChipActive,
+                        ]}
+                        onPress={() => setForecastExpenseSourceDraft(option.value)}
+                      >
+                        <View style={styles.choiceChipInner}>
+                          <AppIcon
+                            name={selected ? "check-circle" : "radio-button-unchecked"}
+                            size={16}
+                            color={
+                              selected
+                                ? FinColors.textPrimary
+                                : FinColors.textMuted
+                            }
+                          />
+                          <Text
+                            style={[
+                              styles.choiceChipText,
+                              selected && styles.choiceChipTextActive,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Text style={styles.compactBreakdownText}>
+                  Trend: recente maanduitgaven. Budgetplan: vaste lasten, abonnementen, variabele ruimte en sparen uit Beheer.
+                </Text>
               </View>
 
               <View style={styles.card}>

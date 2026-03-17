@@ -111,58 +111,68 @@ export function allocateIntegerBudget(total: number, weights: number[]) {
 }
 
 export function allocateWeekBudgetsByMainCategory(params: {
-  monthlyBudgetByMainCategory: Map<string, number>;
+  baseWeekBudgetByMainCategory: Map<string, number>;
   weekBudget: number;
-  weekIndex: number;
-  weekCount: number;
   lockedCategoryKeys: ReadonlySet<string>;
 }) {
   const {
-    monthlyBudgetByMainCategory,
+    baseWeekBudgetByMainCategory,
     weekBudget,
-    weekIndex,
-    weekCount,
     lockedCategoryKeys,
   } = params;
+  const targetWeekBudget = Math.max(Math.round(weekBudget), 0);
+  const rows = [...baseWeekBudgetByMainCategory.entries()];
+  const lockedRows = rows.filter(([key]) => lockedCategoryKeys.has(key));
+  const unlockedRows = rows.filter(([key]) => !lockedCategoryKeys.has(key));
 
-  const safeWeekIndex = Math.max(0, weekIndex);
-  const safeWeekCount = Math.max(1, weekCount);
-  const rows = [...monthlyBudgetByMainCategory.entries()];
+  const lockedRawBudgetTotal = lockedRows.reduce(
+    (sum, [, budget]) => sum + Math.max(Number(budget) || 0, 0),
+    0,
+  );
+
+  const result = new Map<string, number>();
+
+  if (lockedRawBudgetTotal >= targetWeekBudget) {
+    const lockedAllocations = allocateIntegerBudget(
+      targetWeekBudget,
+      lockedRows.map(([, budget]) => Math.max(Number(budget) || 0, 0)),
+    );
+
+    lockedRows.forEach(([key], index) => {
+      result.set(key, lockedAllocations[index] || 0);
+    });
+    unlockedRows.forEach(([key]) => {
+      result.set(key, 0);
+    });
+
+    return result;
+  }
 
   const lockedWeekBudgets = new Map<string, number>();
-  for (const [key, monthlyBudget] of rows) {
-    if (!lockedCategoryKeys.has(key)) continue;
-    const allocations = allocateIntegerBudget(
-      monthlyBudget,
-      Array.from({ length: safeWeekCount }, () => 1),
-    );
-    lockedWeekBudgets.set(key, allocations[safeWeekIndex] || 0);
-  }
+  lockedRows.forEach(([key, budget]) => {
+    lockedWeekBudgets.set(key, Math.max(Math.round(Number(budget) || 0), 0));
+  });
 
   const lockedWeekTotal = [...lockedWeekBudgets.values()].reduce(
     (sum, value) => sum + value,
     0,
   );
-  const remainingWeekBudget = Math.max(
-    Math.round(weekBudget) - lockedWeekTotal,
-    0,
-  );
-  const unlockedRows = rows.filter(([key]) => !lockedCategoryKeys.has(key));
+  const remainingWeekBudget = Math.max(targetWeekBudget - lockedWeekTotal, 0);
   const unlockedAllocations = allocateIntegerBudget(
     remainingWeekBudget,
-    unlockedRows.map(([, monthlyBudget]) => monthlyBudget),
+    unlockedRows.map(([, budget]) => Math.max(Number(budget) || 0, 0)),
   );
 
-  const result = new Map<string, number>();
-  let unlockedCursor = 0;
-  for (const [key] of rows) {
+  let unlockedIndex = 0;
+  rows.forEach(([key]) => {
     if (lockedWeekBudgets.has(key)) {
       result.set(key, lockedWeekBudgets.get(key) || 0);
-    } else {
-      result.set(key, unlockedAllocations[unlockedCursor] || 0);
-      unlockedCursor += 1;
+      return;
     }
-  }
+
+    result.set(key, unlockedAllocations[unlockedIndex] || 0);
+    unlockedIndex += 1;
+  });
 
   return result;
 }

@@ -2,6 +2,7 @@ import { supabase } from "@/services/supabase";
 import { requireCurrentUserId } from "@/services/current-user";
 import type {
     BudgetCategoryKey,
+    BudgetForecastExpenseSource,
     BudgetCategoryOverride,
     BudgetIncomeInclusionSettings,
     BudgetPlanMode,
@@ -18,6 +19,7 @@ const DEFAULT_INCLUDE_INCOME: BudgetIncomeInclusionSettings = {
   structuralOther: false,
   variable: false,
 };
+const DEFAULT_FORECAST_EXPENSE_SOURCE: BudgetForecastExpenseSource = "trend";
 const DEFAULT_APPLY_SAVINGS_TARGET_TO_VARIABLE_BUDGET = false;
 const DEFAULT_SAVINGS_TARGET_MONTHLY = 0;
 
@@ -28,6 +30,7 @@ export type UpsertBudgetPlanSettingsInput = {
   mode?: BudgetPlanMode;
   adjustmentFactor?: number;
   includeIncome?: Partial<BudgetIncomeInclusionSettings>;
+  forecastExpenseSource?: BudgetForecastExpenseSource;
   applySavingsTargetToVariableBudget?: boolean;
   savingsTargetMonthly?: number;
 };
@@ -143,6 +146,7 @@ function mapSettingsRow(
       includeIncome: {
         ...DEFAULT_INCLUDE_INCOME,
       },
+      forecastExpenseSource: DEFAULT_FORECAST_EXPENSE_SOURCE,
       applySavingsTargetToVariableBudget:
         DEFAULT_APPLY_SAVINGS_TARGET_TO_VARIABLE_BUDGET,
       savingsTargetMonthly: DEFAULT_SAVINGS_TARGET_MONTHLY,
@@ -158,6 +162,13 @@ function mapSettingsRow(
     modeRaw === "active_savings"
       ? modeRaw
       : DEFAULT_MODE;
+  const forecastExpenseSourceRaw = String(
+    row.forecast_expense_source || DEFAULT_FORECAST_EXPENSE_SOURCE,
+  );
+  const forecastExpenseSource: BudgetForecastExpenseSource =
+    forecastExpenseSourceRaw === "budget_settings"
+      ? "budget_settings"
+      : DEFAULT_FORECAST_EXPENSE_SOURCE;
 
   return {
     planKey: String(row.plan_key || planKeyFallback),
@@ -184,6 +195,7 @@ function mapSettingsRow(
         DEFAULT_INCLUDE_INCOME.variable,
       ),
     },
+    forecastExpenseSource,
     applySavingsTargetToVariableBudget: asBoolean(
       row.apply_savings_target_to_variable_budget,
       DEFAULT_APPLY_SAVINGS_TARGET_TO_VARIABLE_BUDGET,
@@ -291,6 +303,8 @@ export async function upsertBudgetPlanSettings(
         ? existing.includeIncome.variable
         : Boolean(input.includeIncome.variable),
   };
+  const nextForecastExpenseSource =
+    input.forecastExpenseSource || existing.forecastExpenseSource;
   const nextApplySavingsTargetToVariableBudget =
     input.applySavingsTargetToVariableBudget == null
       ? existing.applySavingsTargetToVariableBudget
@@ -308,23 +322,31 @@ export async function upsertBudgetPlanSettings(
     plan_key: normalizedPlanKey,
     mode: nextMode,
     adjustment_factor: nextAdjustmentFactor,
-    apply_savings_target_to_variable_budget:
-      nextApplySavingsTargetToVariableBudget,
-    savings_target_monthly: nextSavingsTargetMonthly,
     updated_at: new Date().toISOString(),
   };
 
-  const incomePayload = {
+  const settingsPayload = {
     ...basePayload,
     include_income_salary: nextIncludeIncome.salary,
     include_income_child_budget: nextIncludeIncome.childBudget,
     include_income_structural_other: nextIncludeIncome.structuralOther,
     include_income_variable: nextIncludeIncome.variable,
+    forecast_expense_source: nextForecastExpenseSource,
+    apply_savings_target_to_variable_budget:
+      nextApplySavingsTargetToVariableBudget,
+    savings_target_monthly: nextSavingsTargetMonthly,
+  };
+
+  const legacyPayload = {
+    ...basePayload,
+    apply_savings_target_to_variable_budget:
+      nextApplySavingsTargetToVariableBudget,
+    savings_target_monthly: nextSavingsTargetMonthly,
   };
 
   let { data, error } = await supabase
     .from("budget_plan_settings")
-    .upsert(incomePayload, { onConflict: "user_id,plan_key" })
+    .upsert(settingsPayload, { onConflict: "user_id,plan_key" })
     .select("*")
     .eq("user_id", userId)
     .single();
@@ -332,7 +354,7 @@ export async function upsertBudgetPlanSettings(
   if (error && isMissingColumnError(error)) {
     const retry = await supabase
       .from("budget_plan_settings")
-      .upsert(basePayload, { onConflict: "user_id,plan_key" })
+      .upsert(legacyPayload, { onConflict: "user_id,plan_key" })
       .select("*")
       .eq("user_id", userId)
       .single();

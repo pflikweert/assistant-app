@@ -280,11 +280,14 @@ export type BudgetIncomeInclusionSettings = {
   variable: boolean;
 };
 
+export type BudgetForecastExpenseSource = "trend" | "budget_settings";
+
 export type BudgetPlanSettings = {
   planKey: string;
   mode: BudgetPlanMode;
   adjustmentFactor: number;
   includeIncome: BudgetIncomeInclusionSettings;
+  forecastExpenseSource: BudgetForecastExpenseSource;
   applySavingsTargetToVariableBudget: boolean;
   savingsTargetMonthly: number;
   createdAt: string | null;
@@ -458,6 +461,19 @@ export type BudgetWeekSpendBreakdown = {
   categories: BudgetWeekCategorySpend[];
 };
 
+export type BudgetWeekCategoryBudget = {
+  key: string;
+  label: string;
+  amount: number;
+};
+
+export type BudgetWeekBudgetBreakdown = {
+  weekNumber: number;
+  startDate: string;
+  endDateExclusive: string;
+  categories: BudgetWeekCategoryBudget[];
+};
+
 export type BudgetSavingsProgress = {
   recommendedSavings: number;
   earnedActual: number;
@@ -489,6 +505,7 @@ export type BudgetPlanComputation = {
   weeklyBudgetTotal: number;
   flowSummary: BudgetFlowSummary;
   weeklyVariablePlan: BudgetWeekPlanRow[];
+  weeklyBudgetBreakdown: BudgetWeekBudgetBreakdown[];
   weeklySpendBreakdown: BudgetWeekSpendBreakdown[];
   outsideBudgetExpenses: BudgetOutsideExpenseSummary;
   expenseDetails: {

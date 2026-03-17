@@ -3,6 +3,7 @@ import {
     buildCalendarWeekRangesForMonth,
     rebalanceWeeklyBudgets,
     resolveBaseWeeklyBudgetsByDailyMonthRates,
+    resolveBaseWeeklyMainCategoryBudgetsByDailyMonthRates,
 } from "./budget-week-utils";
 
 function utcDate(iso: string) {
@@ -102,6 +103,55 @@ describe("resolveBaseWeeklyBudgetsByDailyMonthRates", () => {
 
     const total = baseBudgets.reduce((sum, value) => sum + value, 0);
     expect(total).toBe(1643);
+  });
+});
+
+describe("resolveBaseWeeklyMainCategoryBudgetsByDailyMonthRates", () => {
+  it("splits first and last overlap weeks by the actual days per month", () => {
+    const monthStart = utcDate("2026-03-01");
+    const monthEndExclusive = utcDate("2026-04-01");
+    const ranges = buildCalendarWeekRangesForMonth(
+      monthStart,
+      monthEndExclusive,
+    );
+
+    const monthlyBudgetMap = new Map<string, Map<string, number>>([
+      [
+        "2026-02-01",
+        new Map<string, number>([
+          ["groceries", 280],
+          ["fuel", 56],
+        ]),
+      ],
+      [
+        "2026-03-01",
+        new Map<string, number>([
+          ["groceries", 620],
+          ["fuel", 310],
+        ]),
+      ],
+      [
+        "2026-04-01",
+        new Map<string, number>([
+          ["groceries", 300],
+          ["fuel", 60],
+        ]),
+      ],
+    ]);
+
+    const baseBudgets = resolveBaseWeeklyMainCategoryBudgetsByDailyMonthRates(
+      ranges,
+      monthlyBudgetMap,
+      monthStart,
+    );
+
+    expect(baseBudgets).toHaveLength(6);
+    expect(Math.round(baseBudgets[0].get("groceries") || 0)).toBe(80);
+    expect(Math.round(baseBudgets[0].get("fuel") || 0)).toBe(22);
+
+    const last = baseBudgets[baseBudgets.length - 1];
+    expect(Math.round(last.get("groceries") || 0)).toBe(90);
+    expect(Math.round(last.get("fuel") || 0)).toBe(30);
   });
 });
 

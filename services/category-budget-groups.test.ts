@@ -17,6 +17,10 @@ vi.mock("@/services/supabase", () => ({
   supabase: {},
 }));
 
+vi.mock("@/services/forecast-refresh", () => ({
+  markForecastDirty: vi.fn(),
+}));
+
 const categories: CategoryRecord[] = [
   {
     id: "root-housing",

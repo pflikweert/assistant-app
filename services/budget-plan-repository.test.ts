@@ -103,6 +103,7 @@ describe("budget-plan-repository save flows", () => {
           include_income_child_budget: false,
           include_income_structural_other: false,
           include_income_variable: false,
+          forecast_expense_source: "trend",
           apply_savings_target_to_variable_budget: true,
           savings_target_monthly: 125,
         },
@@ -117,6 +118,7 @@ describe("budget-plan-repository save flows", () => {
           include_income_child_budget: true,
           include_income_structural_other: false,
           include_income_variable: false,
+          forecast_expense_source: "budget_settings",
           apply_savings_target_to_variable_budget: true,
           savings_target_monthly: 200,
         },
@@ -127,6 +129,7 @@ describe("budget-plan-repository save flows", () => {
     const result = await upsertBudgetPlanSettings({
       mode: "custom",
       includeIncome: { childBudget: true },
+      forecastExpenseSource: "budget_settings",
       savingsTargetMonthly: 200,
     });
 
@@ -138,6 +141,7 @@ describe("budget-plan-repository save flows", () => {
       structuralOther: false,
       variable: false,
     });
+    expect(result.forecastExpenseSource).toBe("budget_settings");
     expect(result.savingsTargetMonthly).toBe(200);
 
     expect(queryLog[1]?.table).toBe("budget_plan_settings");
@@ -150,6 +154,7 @@ describe("budget-plan-repository save flows", () => {
       include_income_child_budget: true,
       include_income_structural_other: false,
       include_income_variable: false,
+      forecast_expense_source: "budget_settings",
       savings_target_monthly: 200,
     });
   });

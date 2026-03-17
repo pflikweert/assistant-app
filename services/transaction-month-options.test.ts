@@ -87,4 +87,25 @@ describe("listTransactionMonthOptions", () => {
     });
     expect(options[0]?.key).toBe("2026-01");
   });
+
+  it("can append the current month plus future months for forecast flows", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-17T10:00:00.000Z"));
+    rpcMock.mockResolvedValueOnce({
+      data: [{ month_start: "2026-01-01" }],
+      error: null,
+    });
+
+    const options = await listTransactionMonthOptions({
+      includeFutureMonths: 2,
+    });
+
+    expect(options.map((option) => option.key)).toEqual([
+      "2026-05",
+      "2026-04",
+      "2026-03",
+      "2026-01",
+    ]);
+    vi.useRealTimers();
+  });
 });

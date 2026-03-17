@@ -235,7 +235,7 @@ export async function ensureForecastFresh(
 
   if (!options.force) {
     const currentStatus = await loadForecastRefreshStatusForUser(userId);
-    if (!shouldRefreshForecast(currentStatus, new Date(), maxAgeMs)) {
+    if (!shouldRefreshForecast(currentStatus, referenceDate, maxAgeMs)) {
       return currentStatus || emptyForecastRefreshStatus();
     }
   }

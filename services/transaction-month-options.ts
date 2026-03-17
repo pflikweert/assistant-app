@@ -11,6 +11,10 @@ export type TransactionMonthOption = {
   isCurrentMonth: boolean;
 };
 
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
 function toLocalIsoDate(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -81,6 +85,7 @@ export function groupMonthOptionsByYear(options: TransactionMonthOption[]) {
 
 export async function listTransactionMonthOptions(params?: {
   counterparty?: string | null;
+  includeFutureMonths?: number;
 }) {
   const { data, error } = await supabase.rpc("list_transaction_months", {
     p_counterparty: params?.counterparty || null,
@@ -88,9 +93,24 @@ export async function listTransactionMonthOptions(params?: {
 
   if (error) throw error;
 
-  const options = ((data || []) as { month_start?: string | null }[])
-    .map((row) => String(row.month_start || "").slice(0, 7))
-    .filter((key) => /^\d{4}-\d{2}$/.test(key))
+  const optionKeys = new Set(
+    ((data || []) as { month_start?: string | null }[])
+      .map((row) => String(row.month_start || "").slice(0, 7))
+      .filter((key) => /^\d{4}-\d{2}$/.test(key)),
+  );
+
+  const futureMonths = Math.max(0, Math.round(params?.includeFutureMonths || 0));
+  if (futureMonths > 0) {
+    const currentMonth = new Date();
+    for (let offset = 0; offset <= futureMonths; offset += 1) {
+      const futureDate = addMonths(currentMonth, offset);
+      optionKeys.add(
+        `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, "0")}`,
+      );
+    }
+  }
+
+  const options = [...optionKeys]
     .sort((left, right) => right.localeCompare(left))
     .map((key) => getMonthOptionByKey(key))
     .filter((option): option is TransactionMonthOption => Boolean(option));

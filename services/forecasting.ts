@@ -4,6 +4,7 @@ import {
   deriveIncomeSourcesFromTransactions,
   mergeForecastIncomeSources,
 } from "@/services/forecast-derived-income-sources";
+import { resolveForecastExpenseBaselines } from "@/services/forecast-expense-baseline";
 import { estimateRecentExpenseForecastFromHistory } from "@/services/forecast-expense-utils";
 import { resolveExpectedCashflowIncomeBaseline } from "@/services/forecast-income-baseline";
 import { isForecastEligibleIncomeTransaction } from "@/services/forecast-income-utils";
@@ -1039,7 +1040,6 @@ export async function recomputeCurrentMonthCashflowForecast(
       "savings_transfer",
     );
 
-    const trendExpenses = budgetPlanForMonth?.trend.expenses || null;
     const monthToDateExpenses = monthDiff === 0
       ? budgetPlanForMonth?.monthToDateExpenses || null
       : null;
@@ -1048,26 +1048,11 @@ export async function recomputeCurrentMonthCashflowForecast(
       budgetPlan: budgetPlanForMonth,
       incomeSources: resolvedIncomeSources,
     });
-    const expectedFixedCostsBaseline = Math.max(
-      expenseHistoryForecast.fixedCosts,
-      asNumber(trendExpenses?.fixedCosts, 0),
-      asNumber(monthToDateExpenses?.fixedCosts, 0),
-    );
-    const expectedSubscriptionsBaseline = Math.max(
-      expenseHistoryForecast.subscriptions,
-      asNumber(trendExpenses?.subscriptions, 0),
-      asNumber(monthToDateExpenses?.subscriptions, 0),
-    );
-    const expectedVariableCostsBaseline = Math.max(
-      expenseHistoryForecast.variableCosts,
-      asNumber(trendExpenses?.variableCosts, 0),
-      asNumber(monthToDateExpenses?.variableCosts, 0),
-    );
-    const expectedSavingsOutflowBaseline = Math.max(
-      expenseHistoryForecast.savingsTransfers,
-      asNumber(trendExpenses?.savingsTransfer, 0),
-      asNumber(monthToDateExpenses?.savingsTransfer, 0),
-    );
+    const expenseBaselines = resolveForecastExpenseBaselines({
+      historyForecast: expenseHistoryForecast,
+      budgetPlan: budgetPlanForMonth,
+      monthToDateExpenses,
+    });
 
     const startingBalance =
       monthDiff > 0
@@ -1092,10 +1077,10 @@ export async function recomputeCurrentMonthCashflowForecast(
       bookedVariableCosts: booked.variableCosts,
       expectedIncomeBaseline,
       remainingCommittedIncomeTotal,
-      expectedFixedCostsBaseline,
-      expectedSubscriptionsBaseline,
-      expectedVariableCostsBaseline,
-      expectedSavingsOutflowBaseline,
+      expectedFixedCostsBaseline: expenseBaselines.fixedCosts,
+      expectedSubscriptionsBaseline: expenseBaselines.subscriptions,
+      expectedVariableCostsBaseline: expenseBaselines.variableCosts,
+      expectedSavingsOutflowBaseline: expenseBaselines.savingsTransfers,
       remainingCommittedFixedCosts,
       remainingCommittedSubscriptions,
       remainingCommittedSavingsOutflowTotal,

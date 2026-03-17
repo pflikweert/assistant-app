@@ -4,6 +4,8 @@ import {
   listCategoryBudgetGroupOverrides,
 } from "@/services/category-budget-groups";
 import {
+    allocateIntegerBudget,
+    allocateWeekBudgetsByMainCategory,
     resolveLockedVariableMainCategories,
 } from "@/services/budget-lock-utils";
 import { requireCurrentUserId } from "@/services/current-user";
@@ -17,6 +19,7 @@ import {
     buildCalendarWeekRangesForMonth,
     rebalanceWeeklyBudgets,
     resolveBaseWeeklyBudgetsByDailyMonthRates,
+    resolveBaseWeeklyMainCategoryBudgetsByDailyMonthRates,
 } from "@/services/budget-week-utils";
 import { normalizePattern } from "@/services/categorization-repository";
 import { resolveIncomeSemantics } from "@/services/income-semantics";
@@ -42,17 +45,18 @@ import type {
     BudgetVariableBreakdown,
     BudgetWarning,
     BudgetWarningSeverity,
+    BudgetWeekBudgetBreakdown,
     BudgetWeekCategorySpend,
     BudgetWeekPlanRow,
     BudgetWeekSpendBreakdown,
     BudgetWeekSubcategorySpend,
     CategoryRecord,
+    MonthlyBudgetValue,
 } from "@/types/categorization";
 
 const PAGE_SIZE = 500;
 const TREND_WINDOW_DAYS = 90;
 const MONTHLY_NORMALIZER_DAYS = 30.4375;
-const WEEKS_PER_MONTH = 4.33;
 const SAVINGS_TARGET_STEP = 25;
 
 type BudgetTx = {
@@ -1254,6 +1258,127 @@ function buildMonthWeekRanges(
   return buildCalendarWeekRangesForMonth(monthStart, monthEndExclusive);
 }
 
+function buildAverageWeeklyBudget(monthlyBudget: number, daysInMonth: number) {
+  if (daysInMonth <= 0) return 0;
+  return roundEuro((Math.max(monthlyBudget, 0) / daysInMonth) * 7);
+}
+
+function buildVariableMainCategoryBudgetMapFromRecommendations(
+  recommendations: BudgetRecommendationRow[],
+) {
+  const recommendationByKey = new Map(
+    recommendations.map((row) => [row.categoryKey, row]),
+  );
+  const budgets = new Map<VariableMainCategory, number>();
+
+  for (const key of VARIABLE_MAIN_ORDER) {
+    budgets.set(
+      key,
+      roundEuro(Math.max(recommendationByKey.get(key)?.monthlyBudget || 0, 0)),
+    );
+  }
+
+  return budgets;
+}
+
+function buildVariableMainCategoryBudgetMapForMonth(params: {
+  monthValues: MonthlyBudgetValue[];
+  fallbackBudgets: Map<VariableMainCategory, number>;
+  fallbackVariableBudget: number;
+}) {
+  const { monthValues, fallbackBudgets, fallbackVariableBudget } = params;
+  const explicitBudgets = new Map<VariableMainCategory, number>();
+
+  for (const key of VARIABLE_MAIN_ORDER) {
+    const monthlyValue = monthValues.find((item) => item.categoryKey === key);
+    if (!monthlyValue) continue;
+    explicitBudgets.set(key, roundEuro(Math.max(monthlyValue.monthlyBudget, 0)));
+  }
+
+  const explicitTotal = [...explicitBudgets.values()].reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  const targetVariableBudget = Math.max(
+    roundEuro(
+      Math.max(
+        monthValues.find((item) => item.categoryKey === "variable_costs")
+          ?.monthlyBudget ?? fallbackVariableBudget,
+        0,
+      ),
+    ),
+    explicitTotal,
+  );
+
+  const missingKeys = VARIABLE_MAIN_ORDER.filter((key) => !explicitBudgets.has(key));
+  const remainingBudget = Math.max(targetVariableBudget - explicitTotal, 0);
+  const allocations = allocateIntegerBudget(
+    remainingBudget,
+    missingKeys.map((key) => fallbackBudgets.get(key) || 0),
+  );
+
+  const result = new Map<VariableMainCategory, number>();
+  let allocationIndex = 0;
+
+  for (const key of VARIABLE_MAIN_ORDER) {
+    if (explicitBudgets.has(key)) {
+      result.set(key, explicitBudgets.get(key) || 0);
+      continue;
+    }
+
+    result.set(key, allocations[allocationIndex] || 0);
+    allocationIndex += 1;
+  }
+
+  return result;
+}
+
+function buildWeeklyBudgetBreakdown(params: {
+  weeklyVariablePlan: BudgetWeekPlanRow[];
+  weekRanges: WeekRange[];
+  variableMainCategoryBudgetByMonthStartIso: Map<
+    string,
+    Map<VariableMainCategory, number>
+  >;
+  currentMonthStart: Date;
+  lockedCategoryKeys: ReadonlySet<VariableMainCategory>;
+}): BudgetWeekBudgetBreakdown[] {
+  const {
+    weeklyVariablePlan,
+    weekRanges,
+    variableMainCategoryBudgetByMonthStartIso,
+    currentMonthStart,
+    lockedCategoryKeys,
+  } = params;
+
+  const baseWeeklyBudgetsByCategory =
+    resolveBaseWeeklyMainCategoryBudgetsByDailyMonthRates(
+      weekRanges,
+      variableMainCategoryBudgetByMonthStartIso as Map<string, Map<string, number>>,
+      currentMonthStart,
+    );
+
+  return weeklyVariablePlan.map((week, index) => {
+    const allocatedBudgets = allocateWeekBudgetsByMainCategory({
+      baseWeekBudgetByMainCategory:
+        baseWeeklyBudgetsByCategory[index] || new Map<string, number>(),
+      weekBudget: week.budget,
+      lockedCategoryKeys,
+    });
+
+    return {
+      weekNumber: week.weekNumber,
+      startDate: week.startDate,
+      endDateExclusive: week.endDateExclusive,
+      categories: VARIABLE_MAIN_ORDER.map((key) => ({
+        key,
+        label: VARIABLE_MAIN_LABELS[key],
+        amount: allocatedBudgets.get(key) || 0,
+      })),
+    };
+  });
+}
+
 function buildExpenseDetailItems(
   monthRows: BudgetTx[],
   categoryMap: Map<string, CategoryMeta>,
@@ -1870,6 +1995,7 @@ export async function computeBudgetPlan(
   const excludedMonthRows = monthRows.filter((row) => row.budget_excluded);
 
   const observedDays = daysBetween(trendStart, trendEndExclusive);
+  const daysInCurrentMonth = daysBetween(monthStart, monthEndExclusive);
   const monthlyScale = MONTHLY_NORMALIZER_DAYS / observedDays;
 
   const trendRaw = computeBreakdowns(includedTrendRows, categoryMap);
@@ -2099,7 +2225,7 @@ export async function computeBudgetPlan(
       baselineMonthly,
       appliedFactor: round2(input.appliedFactor),
       monthlyBudget,
-      weeklyBudget: roundEuro(monthlyBudget / WEEKS_PER_MONTH),
+      weeklyBudget: buildAverageWeeklyBudget(monthlyBudget, daysInCurrentMonth),
       monthlyActual,
       monthProgress: round2(monthProgress),
       utilization,
@@ -2477,7 +2603,10 @@ export async function computeBudgetPlan(
 
   const monthlyBudgetTotal = roundEuro(Math.max(baseExpenseBudget, 0));
 
-  const weeklyBudgetTotal = roundEuro(monthlyBudgetTotal / WEEKS_PER_MONTH);
+  const weeklyBudgetTotal = buildAverageWeeklyBudget(
+    monthlyBudgetTotal,
+    daysInCurrentMonth,
+  );
 
   const flowSummary: BudgetFlowSummary = {
     expectedIncomeMonthly: roundEuro(Math.max(expectedIncomeMonthly, 0)),
@@ -2516,24 +2645,44 @@ export async function computeBudgetPlan(
   const fallbackVariableMonthlyBudget = roundEuro(
     Math.max(flowSummary.variableBudget, 0),
   );
-  const resolveVariableMonthlyBudget = (
-    values: { categoryKey: string; monthlyBudget: number }[],
-  ) => {
-    const override = values.find(
-      (item) => item.categoryKey === "variable_costs",
-    );
-    if (!override) return fallbackVariableMonthlyBudget;
-    return roundEuro(Math.max(override.monthlyBudget, 0));
-  };
+  const currentMonthVariableMainCategoryBudgets =
+    buildVariableMainCategoryBudgetMapFromRecommendations(recommendations);
+  const fallbackVariableMainCategoryBudgets =
+    currentMonthVariableMainCategoryBudgets;
 
-  const variableMonthlyBudgetByMonthStartIso = new Map<string, number>([
-    [
-      previousMonthStartIso,
-      resolveVariableMonthlyBudget(previousMonthBudgetValues),
-    ],
-    [monthStartIso, resolveVariableMonthlyBudget(currentMonthBudgetValues)],
-    [nextMonthStartIso, resolveVariableMonthlyBudget(nextMonthBudgetValues)],
+  const previousMonthVariableMainCategoryBudgets =
+    buildVariableMainCategoryBudgetMapForMonth({
+      monthValues: previousMonthBudgetValues,
+      fallbackBudgets: fallbackVariableMainCategoryBudgets,
+      fallbackVariableBudget: fallbackVariableMonthlyBudget,
+    });
+  const nextMonthVariableMainCategoryBudgets =
+    buildVariableMainCategoryBudgetMapForMonth({
+      monthValues: nextMonthBudgetValues,
+      fallbackBudgets: fallbackVariableMainCategoryBudgets,
+      fallbackVariableBudget: fallbackVariableMonthlyBudget,
+    });
+
+  const variableMainCategoryBudgetByMonthStartIso = new Map<
+    string,
+    Map<VariableMainCategory, number>
+  >([
+    [previousMonthStartIso, previousMonthVariableMainCategoryBudgets],
+    [monthStartIso, currentMonthVariableMainCategoryBudgets],
+    [nextMonthStartIso, nextMonthVariableMainCategoryBudgets],
   ]);
+
+  const variableMonthlyBudgetByMonthStartIso = new Map<string, number>(
+    [...variableMainCategoryBudgetByMonthStartIso.entries()].map(
+      ([monthStartIso, budgetByCategory]) => [
+        monthStartIso,
+        VARIABLE_MAIN_ORDER.reduce(
+          (sum, key) => sum + (budgetByCategory.get(key) || 0),
+          0,
+        ),
+      ],
+    ),
+  );
 
   const excludedMainCategoriesFromRebalance =
     resolveLockedVariableMainCategories(recommendations) as Set<VariableMainCategory>;
@@ -2553,6 +2702,13 @@ export async function computeBudgetPlan(
     categoryMap,
     weekRanges,
   );
+  const weeklyBudgetBreakdown = buildWeeklyBudgetBreakdown({
+    weeklyVariablePlan,
+    weekRanges,
+    variableMainCategoryBudgetByMonthStartIso,
+    currentMonthStart: monthStart,
+    lockedCategoryKeys: excludedMainCategoriesFromRebalance,
+  });
 
   for (const row of weeklyVariablePlan) {
     if (!row.isPastWeek || row.overrunAmount <= 0) continue;
@@ -2652,6 +2808,7 @@ export async function computeBudgetPlan(
     weeklyBudgetTotal,
     flowSummary,
     weeklyVariablePlan,
+    weeklyBudgetBreakdown,
     weeklySpendBreakdown,
     outsideBudgetExpenses,
     expenseDetails,

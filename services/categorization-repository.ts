@@ -2,6 +2,7 @@ import {
   applyEffectiveBudgetGroupsToCategories,
   listCategoryBudgetGroupOverrides,
 } from "@/services/category-budget-groups";
+import { markForecastDirty } from "@/services/forecast-refresh";
 import { supabase } from "@/services/supabase";
 import { requireCurrentUserId } from "@/services/current-user";
 import type {
@@ -397,6 +398,10 @@ export async function setTransactionManualCategory(
       );
     }
   }
+
+  await markForecastDirty("manual_category").catch((error) => {
+    console.warn("[categories] forecast dirty mark after manual category failed", error);
+  });
 }
 
 export function normalizePattern(value: string): string {
@@ -586,4 +591,11 @@ export async function setTransactionBudgetExcluded(
     .eq("user_id", userId)
     .eq("id", id);
   if (error) throw error;
+
+  await markForecastDirty("budget_toggle").catch((refreshError) => {
+    console.warn(
+      "[categories] forecast dirty mark after budget exclusion failed",
+      refreshError,
+    );
+  });
 }

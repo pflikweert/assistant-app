@@ -149,6 +149,60 @@ export function resolveBaseWeeklyBudgetsByDailyMonthRates(
   });
 }
 
+export function resolveBaseWeeklyMainCategoryBudgetsByDailyMonthRates(
+  weekRanges: CalendarWeekRange[],
+  monthlyBudgetByMainCategoryByMonthStartIso: Map<string, Map<string, number>>,
+  currentMonthStart: Date,
+): Map<string, number>[] {
+  const fallbackMonthStartIso = dateToIso(currentMonthStart);
+  const fallbackMonthBudgetByCategory =
+    monthlyBudgetByMainCategoryByMonthStartIso.get(fallbackMonthStartIso) ||
+    new Map<string, number>();
+
+  const categoryKeys = new Set<string>();
+  for (const [categoryKey] of fallbackMonthBudgetByCategory.entries()) {
+    categoryKeys.add(categoryKey);
+  }
+  for (const monthBudgetByCategory of monthlyBudgetByMainCategoryByMonthStartIso.values()) {
+    for (const [categoryKey] of monthBudgetByCategory.entries()) {
+      categoryKeys.add(categoryKey);
+    }
+  }
+
+  const resolveDailyCategoryBudget = (day: Date, categoryKey: string) => {
+    const dayMonthStart = startOfMonth(day);
+    const monthStartIso = dateToIso(dayMonthStart);
+    const monthBudgetByCategory =
+      monthlyBudgetByMainCategoryByMonthStartIso.get(monthStartIso) ||
+      fallbackMonthBudgetByCategory;
+    const monthBudget = Math.max(
+      monthBudgetByCategory.get(categoryKey) ??
+        fallbackMonthBudgetByCategory.get(categoryKey) ??
+        0,
+      0,
+    );
+    const daysInMonth = daysBetween(
+      dayMonthStart,
+      endOfMonthExclusive(dayMonthStart),
+    );
+    return daysInMonth > 0 ? monthBudget / daysInMonth : 0;
+  };
+
+  return weekRanges.map((range) => {
+    const budgetsByCategory = new Map<string, number>();
+
+    for (const categoryKey of categoryKeys) {
+      let budget = 0;
+      for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
+        budget += resolveDailyCategoryBudget(addDays(range.start, dayOffset), categoryKey);
+      }
+      budgetsByCategory.set(categoryKey, budget);
+    }
+
+    return budgetsByCategory;
+  });
+}
+
 export function rebalanceWeeklyBudgets(
   baseWeeklyBudgets: number[],
   weekActuals: number[],

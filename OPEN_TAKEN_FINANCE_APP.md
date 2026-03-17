@@ -15,6 +15,10 @@ De laatste productlaag is ook al verder ingevuld:
   - huidige maand plus 6 maanden vooruit
   - timing uit recurring historie, subscription profiles en zeldzame abonnementen
   - dirty/stale recompute-aansturing met handmatige refreshknop
+- forecast kan nu schakelen tussen `Trend` en `Budgetplan` als bron voor
+  toekomstige uitgaven
+- budgetweken worden nu daggewogen verdeeld, inclusief overlap met vorige en
+  volgende maand in de eerste en laatste kalenderweek
 - budgetgroepbeheer per categorie is live in `Settings`
 - de app gebruikt nu effectieve budgetgroepen in `Budget`, `Insights`,
   transactielijst en transactiedetail
@@ -62,8 +66,16 @@ De volgende stap is niet meer "groot herbouwen", maar gericht afronden:
 - Forecast-refreshlaag toegevoegd met:
   - user-specifieke `forecast_refresh_state`
   - lazy recompute alleen bij `dirty` of `stale`
-  - geplande achtergrond-refresh na categorisatie- of abonnementprofielwijzigingen
+  - geplande achtergrond-refresh na categorisatie-, budget-, budgetgroep- of
+    abonnementprofielwijzigingen
   - handmatige actie `Voorspelling vernieuwen` in `Insights`
+- Forecast-uitgavenbron is nu instelbaar in `Budget > Beheer`:
+  - `Trend`
+  - `Budgetplan`
+- Budget weekverdeling rekent nu per kalenderdag:
+  - vorige maand telt mee in de eerste overlapweek
+  - volgende maand telt mee in de laatste overlapweek
+  - categorie-weekbudgetten volgen dezelfde daggewogen verdeling
 - `Insights > Voorspelling` toont nu:
   - herokaarten voor eindsaldo, laagste saldo en status
   - maandstrip voor huidige maand plus 6 maanden vooruit
@@ -106,6 +118,14 @@ De volgende stap is niet meer "groot herbouwen", maar gericht afronden:
   - status- en tempocopy nalopen
   - forecaststrip, maandnavigatie en empty states nalopen
   - iconen nalopen op variantkeuze, mapping en spacing per scherm
+- QA op nieuwe forecaststuring:
+  - `Budget > Beheer` bronwissel `Trend` versus `Budgetplan`
+  - `Insights > Voorspelling` toont de actieve bron duidelijk
+  - refreshstatus blijft logisch na budget-save, categoriseren en abonnementwijzigingen
+- QA op overlapweken in budget:
+  - maanden die midden in de week starten
+  - maanden die midden in de week eindigen
+  - eerste en laatste week tonen logische deelbudgetten per categorie
 - QA op budgetgroepbeheer:
   - lange categorienamen
   - zoeken en filteren
