@@ -34,6 +34,7 @@ import {
   TransactionImportRecord,
 } from "@/services/import/transaction-import-parser";
 import { supabase } from "@/services/supabase";
+import { normalizeTransactionDetails } from "@/services/transaction-details";
 
 type PreviewRow = { date: string; description: string; amount: string };
 
@@ -294,24 +295,34 @@ export default function CSVImportScreen() {
     const importedIds: string[] = [];
 
     for (const tx of rows) {
+      const normalizedDetails = normalizeTransactionDetails(tx.details);
       setMessage(
         `Verwerken ${imported + 1} / ${rows.length}... (${insertedRows} nieuw, ${updated} bijgewerkt)`,
       );
       const { data: existing, error: selErr } = await supabase
         .from("transactions")
-        .select("id")
+        .select("id,details,counterparty")
         .eq("user_id", userId)
         .eq("bank_account_id", bankAccountId)
         .eq("date", tx.date)
-        .eq("details", tx.details)
         .eq("amount", tx.amount)
-        .limit(1);
+        .limit(25);
       if (selErr) throw selErr;
+      const existingMatch =
+        existing?.find(
+          (row) =>
+            normalizeTransactionDetails(row.details) === normalizedDetails &&
+            String(row.counterparty || "").trim() ===
+              String(tx.counterparty || "").trim(),
+        ) ||
+        existing?.find(
+          (row) => normalizeTransactionDetails(row.details) === normalizedDetails,
+        );
       const payload: any = {
         user_id: userId,
         bank_account_id: bankAccountId,
         date: tx.date,
-        details: tx.details,
+        details: normalizedDetails,
         counterparty: tx.counterparty,
         amount: tx.amount,
         currency: tx.currency,
@@ -321,15 +332,15 @@ export default function CSVImportScreen() {
           source: importSource,
         },
       };
-      if (existing?.length) {
+      if (existingMatch?.id) {
         const { error: updErr } = await supabase
           .from("transactions")
           .update(payload)
           .eq("user_id", userId)
           .eq("bank_account_id", bankAccountId)
-          .eq("id", existing[0].id);
+          .eq("id", existingMatch.id);
         if (updErr) throw updErr;
-        importedIds.push(existing[0].id);
+        importedIds.push(existingMatch.id);
         updated += 1;
         setUpdatedCount(updated);
       } else {

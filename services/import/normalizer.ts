@@ -1,4 +1,5 @@
 import type { NormalizedImportTransaction } from "./types";
+import { normalizeTransactionDetails } from "../transaction-details";
 
 type RawImportRow = Record<string, unknown>;
 
@@ -98,10 +99,11 @@ function isEmptyRecord(row: RawImportRow): boolean {
 }
 
 function buildDetails(row: RawImportRow): string {
-  const details = DESCRIPTION_HEADERS.map((header) => toTrimmedString(row[header]))
-    .filter(Boolean)
-    .join(" | ");
-  return details;
+  return normalizeTransactionDetails(
+    DESCRIPTION_HEADERS.map((header) => toTrimmedString(row[header]))
+      .filter(Boolean)
+      .join(" | "),
+  );
 }
 
 function resolveMetadata(row: RawImportRow): Record<string, string> {

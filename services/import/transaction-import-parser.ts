@@ -1,6 +1,7 @@
 import Papa from "papaparse";
 
 import { normalizeImportAmount, normalizeImportDate } from "./normalizer";
+import { normalizeTransactionDetails } from "../transaction-details";
 
 export type ImportSource = "csv" | "pdf";
 
@@ -49,11 +50,12 @@ function mapCsvRow(row: CsvRow): TransactionImportRecord | null {
   if (row["Naam tegenpartij"]) descParts.push(row["Naam tegenpartij"]);
   if (row["Naam / Omschrijving"]) descParts.push(row["Naam / Omschrijving"]);
 
-  const details =
+  const details = normalizeTransactionDetails(
     descParts
       .map((part) => toTrimmedString(part))
       .filter(Boolean)
-      .join(" | ") || toTrimmedString(row["Naam / Omschrijving"]);
+      .join(" | ") || toTrimmedString(row["Naam / Omschrijving"]),
+  );
 
   if (!date || amount == null || !details) {
     return null;
@@ -198,7 +200,7 @@ function parsePdfLine(
 
   return {
     date,
-    details: details || trimmed,
+    details: normalizeTransactionDetails(details || trimmed),
     counterparty: detailParts[0] || "",
     amount,
     currency: amountMatch[2]?.toUpperCase() || "EUR",
