@@ -76,7 +76,7 @@ describe("isForecastEligibleIncomeTransaction", () => {
     ).toBe(false);
   });
 
-  it("rejects non-income or non-positive transactions early", () => {
+  it("rejects non-positive transactions early", () => {
     expect(
       isForecastEligibleIncomeTransaction(
         {
@@ -91,7 +91,9 @@ describe("isForecastEligibleIncomeTransaction", () => {
         categoryMap,
       ),
     ).toBe(false);
+  });
 
+  it("still recognizes structural income when analysis fields are stale", () => {
     expect(
       isForecastEligibleIncomeTransaction(
         {
@@ -105,6 +107,6 @@ describe("isForecastEligibleIncomeTransaction", () => {
         },
         categoryMap,
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

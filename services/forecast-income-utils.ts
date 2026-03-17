@@ -29,13 +29,6 @@ export function isForecastEligibleIncomeTransaction<
   categoryById: Map<string, TCategoryMeta>,
 ) {
   if (tx.amount <= 0) return false;
-  if (tx.analysis_main_group !== "income") return false;
-  if (
-    tx.analysis_category !== "income_structural" &&
-    tx.analysis_category !== "income_variable"
-  ) {
-    return false;
-  }
-
-  return resolveIncomeSemanticsForTransaction(tx, categoryById).forecastEligible;
+  const semantics = resolveIncomeSemanticsForTransaction(tx, categoryById);
+  return semantics.countsAsIncome && semantics.forecastEligible;
 }

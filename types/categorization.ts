@@ -165,18 +165,49 @@ export type ForecastIncomeSource = {
   lastDetectedAt: string;
 };
 
+export type ForecastRefreshReason =
+  | "insights_open"
+  | "historical_month_open"
+  | "future_month_open"
+  | "manual_refresh"
+  | "budget_save"
+  | "budget_toggle"
+  | "manual_category"
+  | "categorization_batch"
+  | "subscription_profile"
+  | "forecast_backfill";
+
+export type ForecastRefreshStatus = {
+  isDirty: boolean;
+  dirtyAt: string | null;
+  lastComputedAt: string | null;
+  lastReason: ForecastRefreshReason | null;
+  lastError: string | null;
+  updatedAt: string | null;
+};
+
 export type MonthlyCashflowForecast = {
   monthStart: string;
   startingBalance: number | null;
+  forecastReferenceDate: string | null;
   currentBalanceAnchor: number | null;
   currentBalanceAnchorDate: string | null;
+  bookedIncomeTotal: number;
+  bookedExpenseTotal: number;
+  bookedSavingsOutflowTotal: number;
+  remainingExpectedIncomeTotal: number;
+  remainingExpectedExpenseTotal: number;
+  remainingExpectedSavingsOutflowTotal: number;
   expectedIncomeTotal: number;
   expectedExpenseTotal: number;
+  expectedSavingsOutflowTotal: number;
+  expectedCashOutTotal: number;
   expectedFixedCosts: number;
   expectedSubscriptions: number;
   expectedVariableCosts: number;
   upcomingCommittedIncomeTotal: number;
   upcomingCommittedExpenseTotal: number;
+  upcomingCommittedSavingsOutflowTotal: number;
   lowestExpectedBalance: number | null;
   lowestExpectedBalanceDate: string | null;
   nextExpectedEventDate: string | null;

@@ -4,8 +4,12 @@ export type ForecastTimelineEvent = {
   date: string;
   label: string;
   amount: number;
-  kind: "income" | "fixed_cost" | "subscription";
-  source: "income_source" | "recurring_history";
+  kind: "income" | "fixed_cost" | "subscription" | "savings_transfer";
+  source:
+    | "income_source"
+    | "recurring_history"
+    | "subscription_profile"
+    | "rare_subscription";
   confidence: "medium" | "high";
 };
 
@@ -13,6 +17,7 @@ export type ForecastTimelineProjection = {
   events: ForecastTimelineEvent[];
   upcomingCommittedIncomeTotal: number;
   upcomingCommittedExpenseTotal: number;
+  upcomingCommittedSavingsOutflowTotal: number;
   nextExpectedEventDate: string | null;
   nextExpectedEventLabel: string | null;
   lowestExpectedBalance: number | null;
@@ -131,7 +136,18 @@ export function buildForecastTimelineProjection(params: {
   );
   const upcomingCommittedExpenseTotal = round2(
     futureEvents
-      .filter((event) => event.amount < 0)
+      .filter(
+        (event) =>
+          event.amount < 0 && event.kind !== "savings_transfer",
+      )
+      .reduce((sum, event) => sum + Math.abs(event.amount), 0),
+  );
+  const upcomingCommittedSavingsOutflowTotal = round2(
+    futureEvents
+      .filter(
+        (event) =>
+          event.amount < 0 && event.kind === "savings_transfer",
+      )
       .reduce((sum, event) => sum + Math.abs(event.amount), 0),
   );
 
@@ -156,6 +172,7 @@ export function buildForecastTimelineProjection(params: {
     events: futureEvents,
     upcomingCommittedIncomeTotal,
     upcomingCommittedExpenseTotal,
+    upcomingCommittedSavingsOutflowTotal,
     nextExpectedEventDate: futureEvents[0]?.date || null,
     nextExpectedEventLabel: futureEvents[0]?.label || null,
     lowestExpectedBalance,

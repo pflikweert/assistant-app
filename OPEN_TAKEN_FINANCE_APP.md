@@ -9,6 +9,12 @@ cash-gap-signalen.
 
 De laatste productlaag is ook al verder ingevuld:
 - Insights heeft nu een extra laag voor zeldzame of verborgen abonnementen
+- `Insights > Voorspelling` is herzien naar een echte maandcashflow met:
+  - expliciete split tussen `geboekt` en `nog verwacht`
+  - aparte cash-out naar sparen
+  - huidige maand plus 6 maanden vooruit
+  - timing uit recurring historie, subscription profiles en zeldzame abonnementen
+  - dirty/stale recompute-aansturing met handmatige refreshknop
 - budgetgroepbeheer per categorie is live in `Settings`
 - de app gebruikt nu effectieve budgetgroepen in `Budget`, `Insights`,
   transactielijst en transactiedetail
@@ -48,6 +54,21 @@ De volgende stap is niet meer "groot herbouwen", maar gericht afronden:
 - Forecastscenario's uitgebreid voor weinig historie en oude uitschieters
 - Timing-aware forecast toegevoegd voor komende inkomsten en vaste uitgaven
 - Insights toont nu laagste verwachte saldo, eerstvolgende verwachte beweging en cash-gap waarschuwing
+- Forecastmodel uitgebreid met:
+  - `booked` versus `remaining`
+  - `expected_cash_out_total`
+  - aparte `savings_outflow`
+  - `forecast_reference_date`
+- Forecast-refreshlaag toegevoegd met:
+  - user-specifieke `forecast_refresh_state`
+  - lazy recompute alleen bij `dirty` of `stale`
+  - geplande achtergrond-refresh na categorisatie- of abonnementprofielwijzigingen
+  - handmatige actie `Voorspelling vernieuwen` in `Insights`
+- `Insights > Voorspelling` toont nu:
+  - herokaarten voor eindsaldo, laagste saldo en status
+  - maandstrip voor huidige maand plus 6 maanden vooruit
+  - maandoverzicht met `geboekt` versus `nog verwacht`
+  - aparte regels voor `uitgaven` en `naar sparen`
 - Remote migratie uitgevoerd voor:
   - `monthly_cashflow_forecasts` cash-gap velden
   - `password_reset_events`
@@ -83,6 +104,7 @@ De volgende stap is niet meer "groot herbouwen", maar gericht afronden:
 
 - Handmatige visuele QA in simulator of web:
   - status- en tempocopy nalopen
+  - forecaststrip, maandnavigatie en empty states nalopen
   - iconen nalopen op variantkeuze, mapping en spacing per scherm
 - QA op budgetgroepbeheer:
   - lange categorienamen
@@ -94,6 +116,12 @@ De volgende stap is niet meer "groot herbouwen", maar gericht afronden:
   - `KGB` en toeslagen zichtbaar als structureel inkomen
   - `ZVW` en wegenbelasting-correcties zichtbaar als kostencompensatie
   - forecast blijft vrij van eenmalige teruggaves
+- QA op forecastherziening:
+  - huidige maand toont logische `geboekt` en `nog verwacht` waardes
+  - sparen telt mee in cash-out maar niet in gewone uitgaven
+  - toekomstmaanden ketenen eindsaldo naar volgende maand
+  - historische maanden tonen geen resterende momenten meer
+  - dirty/stale refreshstatus en handmatige forecast-refresh correct nalopen
 
 ### Fase 4 - Inkomenssemantiek voor teruggaves en overheidsontvangsten
 
@@ -157,9 +185,9 @@ forecast-iteratie:
   - dertiende maand
 - Belastingteruggaves en fiscale correcties verder verfijnen in forecasting voor
   uitzonderlijke patronen en seizoensgevallen
-- `subscription_profiles.expected_day_of_month` benutten als extra timingbron
 - `lowest_expected_balance` of cash-gap-risico ook gebruiken in dashboard- of budgetnudges
-- Forecastverschil expliciet tonen als `verwacht` versus `geboekt`
+- forecastkaart eventueel nog uitbreiden naar dagniveau of mini-timeline binnen de maand
+- modellering van variabele uitgaven verder verfijnen met seizoenspatronen of maandprofielen
 
 ## Ideeën
 

@@ -187,6 +187,42 @@ describe("estimateRecentExpenseForecastFromHistory", () => {
     expect(forecast.variableCosts).toBe(75);
   });
 
+  it("tracks recurring savings transfers separately from expense totals", () => {
+    const forecast = estimateRecentExpenseForecastFromHistory({
+      currentMonthStart: new Date("2026-03-01T00:00:00.000Z"),
+      categoryMap: new Map(),
+      transactions: [
+        {
+          date: "2026-01-25",
+          amount: -150,
+          details: "Naar sparen",
+          counterparty: "Eigen rekening",
+          analysis_main_group: "expense",
+          analysis_category: "savings_transfer",
+          category_id_auto: null,
+          category_id_user: null,
+          budget_excluded: false,
+        },
+        {
+          date: "2026-02-25",
+          amount: -175,
+          details: "Naar sparen",
+          counterparty: "Eigen rekening",
+          analysis_main_group: "expense",
+          analysis_category: "savings_transfer",
+          category_id_auto: null,
+          category_id_user: null,
+          budget_excluded: false,
+        },
+      ],
+    });
+
+    expect(forecast.savingsTransfers).toBe(168);
+    expect(forecast.fixedCosts).toBe(0);
+    expect(forecast.subscriptions).toBe(0);
+    expect(forecast.variableCosts).toBe(0);
+  });
+
   it("ignores older outlier months outside the recent history window", () => {
     const categoryMap = new Map([
       ["cat-groceries", { id: "cat-groceries", key: "groceries" }],

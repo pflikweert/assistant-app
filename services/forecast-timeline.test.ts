@@ -88,6 +88,14 @@ describe("buildForecastTimelineProjection", () => {
           source: "recurring_history",
           confidence: "high",
         },
+        {
+          date: "2026-03-28",
+          label: "Naar sparen",
+          amount: -150,
+          kind: "savings_transfer",
+          source: "recurring_history",
+          confidence: "medium",
+        },
       ],
     });
 
@@ -95,8 +103,31 @@ describe("buildForecastTimelineProjection", () => {
     expect(projection.nextExpectedEventLabel).toBe("Zorgverzekering");
     expect(projection.upcomingCommittedIncomeTotal).toBe(2400);
     expect(projection.upcomingCommittedExpenseTotal).toBe(172);
+    expect(projection.upcomingCommittedSavingsOutflowTotal).toBe(150);
     expect(projection.lowestExpectedBalance).toBe(28);
     expect(projection.lowestExpectedBalanceDate).toBe("2026-03-20");
+    expect(projection.cashRiskFlag).toBe("none");
+  });
+
+  it("keeps savings outflow separate from committed expense totals", () => {
+    const projection = buildForecastTimelineProjection({
+      currentBalanceAnchor: 500,
+      referenceDate: new Date("2026-03-15T00:00:00.000Z"),
+      monthEndExclusive: new Date("2026-04-01T00:00:00.000Z"),
+      events: [
+        {
+          date: "2026-03-18",
+          label: "Naar sparen",
+          amount: -125,
+          kind: "savings_transfer",
+          source: "recurring_history",
+          confidence: "high",
+        },
+      ],
+    });
+
+    expect(projection.upcomingCommittedExpenseTotal).toBe(0);
+    expect(projection.upcomingCommittedSavingsOutflowTotal).toBe(125);
     expect(projection.cashRiskFlag).toBe("none");
   });
 

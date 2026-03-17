@@ -1,7 +1,13 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { requireCurrentUserId } from "@/services/current-user";
+import {
+  deriveIncomeSourcesFromTransactions,
+  mergeForecastIncomeSources,
+} from "@/services/forecast-derived-income-sources";
 import { estimateRecentExpenseForecastFromHistory } from "@/services/forecast-expense-utils";
+import { resolveExpectedCashflowIncomeBaseline } from "@/services/forecast-income-baseline";
 import { isForecastEligibleIncomeTransaction } from "@/services/forecast-income-utils";
+import { buildForecastMonthMath } from "@/services/forecast-month-math";
 import {
   buildForecastTimelineProjection,
   buildScheduledDateForMonth,
@@ -9,8 +15,14 @@ import {
   resolveExpectedDayOfMonth,
   type ForecastTimelineEvent,
 } from "@/services/forecast-timeline";
+import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
+import { detectRareSubscriptionItems } from "@/services/rare-subscriptions";
 import { supabase } from "@/services/supabase";
-import type { RecurringType } from "@/types/categorization";
+import type {
+  CategoryRecord,
+  RecurringType,
+  SubscriptionProfile,
+} from "@/types/categorization";
 import { normalizePattern } from "./categorization-repository";
 
 type ForecastTx = {
@@ -36,12 +48,6 @@ type ForecastTx = {
   metadata: Record<string, unknown>;
 };
 
-type CategoryMeta = {
-  id: string;
-  key: string;
-  budget_group: string | null;
-};
-
 type IncomeSourceRow = {
   source_key: string;
   source_label: string;
@@ -56,15 +62,62 @@ type BalanceAnchor = {
   balanceDate: string | null;
 };
 
+type BookedMonthTotals = {
+  incomeTotal: number;
+  forecastEligibleIncomeTotal: number;
+  expenseTotal: number;
+  savingsOutflowTotal: number;
+  fixedCosts: number;
+  subscriptions: number;
+  variableCosts: number;
+};
+
+type StoredForecastSummary = {
+  monthStart: string;
+  forecastReferenceDate: string;
+  startingBalance: number | null;
+  currentBalanceAnchor: number | null;
+  currentBalanceAnchorDate: string | null;
+  bookedIncomeTotal: number;
+  bookedExpenseTotal: number;
+  bookedSavingsOutflowTotal: number;
+  remainingExpectedIncomeTotal: number;
+  remainingExpectedExpenseTotal: number;
+  remainingExpectedSavingsOutflowTotal: number;
+  expectedIncomeTotal: number;
+  expectedExpenseTotal: number;
+  expectedSavingsOutflowTotal: number;
+  expectedCashOutTotal: number;
+  expectedFixedCosts: number;
+  expectedSubscriptions: number;
+  expectedVariableCosts: number;
+  upcomingCommittedIncomeTotal: number;
+  upcomingCommittedExpenseTotal: number;
+  upcomingCommittedSavingsOutflowTotal: number;
+  lowestExpectedBalance: number | null;
+  lowestExpectedBalanceDate: string | null;
+  nextExpectedEventDate: string | null;
+  nextExpectedEventLabel: string | null;
+  avgGroceries: number;
+  avgFuel: number;
+  avgSmoking: number;
+  avgOtherVariable: number;
+  expectedEndOfMonthBalance: number | null;
+  riskFlag: "none" | "deficit_warning";
+  cashRiskFlag: "none" | "cash_gap_warning";
+  topCostBuckets: string[];
+};
+
 const PAGE_SIZE = 500;
-const HISTORY_LOOKBACK_DAYS = 420;
+const HISTORY_LOOKBACK_DAYS = 760;
+const FUTURE_FORECAST_MONTHS = 6;
 
 function asNumber(value: unknown, fallback = 0): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function toDate(isoDate: string): Date {
+function toUtcDate(isoDate: string) {
   return new Date(`${isoDate}T00:00:00.000Z`);
 }
 
@@ -80,12 +133,22 @@ function endOfMonthExclusive(date: Date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
 }
 
-function subtractDays(date: Date, days: number) {
-  return new Date(date.getTime() - days * 24 * 60 * 60 * 1000);
+function addDays(date: Date, days: number) {
+  return new Date(date.getTime() + days * 86400000);
 }
 
-function addDays(date: Date, days: number) {
-  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+function subtractDays(date: Date, days: number) {
+  return addDays(date, -days);
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1),
+  );
+}
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 function parseSaldoValue(metadata: Record<string, unknown>) {
@@ -94,10 +157,6 @@ function parseSaldoValue(metadata: Record<string, unknown>) {
   const normalized = String(raw).replace(/\./g, "").replace(",", ".").trim();
   const parsed = Number.parseFloat(normalized);
   return Number.isNaN(parsed) ? null : parsed;
-}
-
-function round2(value: number) {
-  return Math.round(value * 100) / 100;
 }
 
 function weightedRecentAverage(values: number[]) {
@@ -127,13 +186,45 @@ function amountIsSimilar(left: number, right: number) {
 
 function classifyRecurringType(dayIntervals: number[]): RecurringType {
   if (!dayIntervals.length) return "irregular";
-  const avg =
+  const average =
     dayIntervals.reduce((sum, value) => sum + value, 0) / dayIntervals.length;
 
-  if (avg >= 26 && avg <= 35) return "monthly";
-  if (avg >= 80 && avg <= 100) return "quarterly";
-  if (avg >= 350 && avg <= 380) return "yearly";
+  if (average >= 26 && average <= 35) return "monthly";
+  if (average >= 80 && average <= 100) return "quarterly";
+  if (average >= 350 && average <= 380) return "yearly";
   return "irregular";
+}
+
+function monthsDiff(from: Date, to: Date) {
+  return (
+    (to.getUTCFullYear() - from.getUTCFullYear()) * 12 +
+    (to.getUTCMonth() - from.getUTCMonth())
+  );
+}
+
+function descriptor(tx: Pick<ForecastTx, "counterparty" | "details">) {
+  return normalizePattern(
+    tx.counterparty || tx.details.split("|")[0] || tx.details,
+  );
+}
+
+function labelForTransaction(tx: Pick<ForecastTx, "counterparty" | "details">) {
+  const label = String(
+    tx.counterparty || tx.details.split("|")[0] || tx.details || "",
+  ).trim();
+  return label || "Onbekend";
+}
+
+function emptyBookedMonthTotals(): BookedMonthTotals {
+  return {
+    incomeTotal: 0,
+    forecastEligibleIncomeTotal: 0,
+    expenseTotal: 0,
+    savingsOutflowTotal: 0,
+    fixedCosts: 0,
+    subscriptions: 0,
+    variableCosts: 0,
+  };
 }
 
 async function fetchTransactionsInRange(
@@ -189,69 +280,26 @@ async function fetchTransactionsInRange(
 async function fetchCategoryMap() {
   const { data, error } = await supabase
     .from("categories")
-    .select("id,key,budget_group");
+    .select("id,key,name,parent_id,budget_group,sort_order");
+
   if (error) throw error;
 
-  const map = new Map<string, CategoryMeta>();
-  for (const row of (data || []) as Record<string, unknown>[]) {
-    map.set(String(row.id || ""), {
+  const categories = ((data || []) as Record<string, unknown>[]).map(
+    (row): CategoryRecord => ({
       id: String(row.id || ""),
       key: String(row.key || ""),
+      name: String(row.name || row.key || ""),
+      parent_id: row.parent_id ? String(row.parent_id) : null,
       budget_group: row.budget_group ? String(row.budget_group) : null,
-    });
-  }
-
-  return map;
-}
-
-async function getLatestStartingBalance(monthStartIso: string, userId: string) {
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("metadata,date")
-    .eq("user_id", userId)
-    .lt("date", monthStartIso)
-    .order("date", { ascending: false })
-    .limit(30);
-
-  if (error) throw error;
-
-  for (const row of (data || []) as Record<string, unknown>[]) {
-    const balance = parseSaldoValue(
-      (row.metadata || {}) as Record<string, unknown>,
-    );
-    if (balance != null) return balance;
-  }
-
-  return null;
-}
-
-async function getLatestKnownBalance(referenceIso: string, userId: string) {
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("metadata,date")
-    .eq("user_id", userId)
-    .lte("date", referenceIso)
-    .order("date", { ascending: false })
-    .limit(40);
-
-  if (error) throw error;
-
-  for (const row of (data || []) as Record<string, unknown>[]) {
-    const balance = parseSaldoValue(
-      (row.metadata || {}) as Record<string, unknown>,
-    );
-    if (balance != null) {
-      return {
-        balance,
-        balanceDate: row.date ? String(row.date) : null,
-      } satisfies BalanceAnchor;
-    }
-  }
+      sort_order:
+        row.sort_order == null ? null : Math.round(Number(row.sort_order)),
+    }),
+  );
 
   return {
-    balance: null,
-    balanceDate: null,
-  } satisfies BalanceAnchor;
+    categories,
+    categoryMap: new Map(categories.map((category) => [category.id, category])),
+  };
 }
 
 async function fetchIncomeSources(userId: string): Promise<IncomeSourceRow[]> {
@@ -275,26 +323,102 @@ async function fetchIncomeSources(userId: string): Promise<IncomeSourceRow[]> {
   }));
 }
 
-function descriptor(tx: Pick<ForecastTx, "counterparty" | "details">) {
-  return normalizePattern(
-    tx.counterparty || tx.details.split("|")[0] || tx.details,
-  );
+async function fetchActiveSubscriptionProfiles(
+  userId: string,
+): Promise<SubscriptionProfile[]> {
+  const { data, error } = await supabase
+    .from("subscription_profiles")
+    .select(
+      "id,plan_key,name,normalized_name,billing_cycle,expected_amount,amount_tolerance,expected_day_of_month,provider_hint,is_active,created_at,updated_at",
+    )
+    .eq("user_id", userId)
+    .eq("is_active", true);
+
+  if (error) throw error;
+
+  return ((data || []) as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id || ""),
+    planKey: String(row.plan_key || "default"),
+    name: String(row.name || ""),
+    normalizedName: String(row.normalized_name || row.name || ""),
+    billingCycle:
+      row.billing_cycle === "quarterly" || row.billing_cycle === "yearly"
+        ? row.billing_cycle
+        : "monthly",
+    expectedAmount:
+      row.expected_amount == null ? null : Math.abs(Number(row.expected_amount)),
+    amountTolerance: asNumber(row.amount_tolerance, 0),
+    expectedDayOfMonth:
+      row.expected_day_of_month == null
+        ? null
+        : Math.round(Number(row.expected_day_of_month)),
+    providerHint:
+      row.provider_hint === "paypal" ||
+      row.provider_hint === "google_play" ||
+      row.provider_hint === "apple" ||
+      row.provider_hint === "klarna" ||
+      row.provider_hint === "other"
+        ? row.provider_hint
+        : null,
+    isActive: Boolean(row.is_active),
+    createdAt: row.created_at ? String(row.created_at) : null,
+    updatedAt: row.updated_at ? String(row.updated_at) : null,
+  }));
 }
 
-function labelForTransaction(tx: Pick<ForecastTx, "counterparty" | "details">) {
-  const label = String(
-    tx.counterparty || tx.details.split("|")[0] || tx.details || "",
-  ).trim();
-  return label || "Onbekend";
+function getLatestStartingBalanceFromTransactions(
+  transactions: ForecastTx[],
+  monthStartIso: string,
+) {
+  for (const tx of transactions) {
+    if (tx.date >= monthStartIso) continue;
+    const balance = parseSaldoValue(tx.metadata);
+    if (balance != null) return balance;
+  }
+
+  return null;
+}
+
+function getLatestKnownBalanceFromTransactions(
+  transactions: ForecastTx[],
+  referenceIso: string,
+): BalanceAnchor {
+  for (const tx of transactions) {
+    if (tx.date > referenceIso) continue;
+    const balance = parseSaldoValue(tx.metadata);
+    if (balance != null) {
+      return {
+        balance,
+        balanceDate: tx.date,
+      } satisfies BalanceAnchor;
+    }
+  }
+
+  return {
+    balance: null,
+    balanceDate: null,
+  } satisfies BalanceAnchor;
+}
+
+function sumEventAmounts(
+  events: Iterable<ForecastTimelineEvent>,
+  kind: ForecastTimelineEvent["kind"],
+) {
+  let total = 0;
+  for (const event of events) {
+    if (event.kind !== kind) continue;
+    total += Math.abs(event.amount);
+  }
+  return round2(total);
 }
 
 function buildRecurringHistoryEvents(params: {
   transactions: ForecastTx[];
-  categoryMap: Map<string, CategoryMeta>;
+  categoryMap: Map<string, CategoryRecord>;
   monthStart: Date;
   monthEndExclusive: Date;
   referenceDate: Date;
-  direction: "income" | "expense";
+  direction: "income" | "expense" | "savings";
 }) {
   const {
     transactions,
@@ -303,12 +427,11 @@ function buildRecurringHistoryEvents(params: {
     monthEndExclusive,
     referenceDate,
     direction,
-  } =
-    params;
+  } = params;
+
   const monthStartIso = dateToIso(monthStart);
   const monthEndIso = dateToIso(monthEndExclusive);
   const referenceIso = dateToIso(referenceDate);
-
   const grouped = new Map<string, ForecastTx[]>();
 
   for (const tx of transactions) {
@@ -316,9 +439,11 @@ function buildRecurringHistoryEvents(params: {
     if (tx.budget_excluded) continue;
 
     if (direction === "income") {
-      if (!isForecastEligibleIncomeTransaction(tx, categoryMap)) {
-        continue;
-      }
+      if (!isForecastEligibleIncomeTransaction(tx, categoryMap)) continue;
+    } else if (direction === "savings") {
+      if (tx.amount >= 0) continue;
+      if (tx.analysis_main_group !== "expense") continue;
+      if (tx.analysis_category !== "savings_transfer") continue;
     } else {
       if (tx.amount >= 0) continue;
       if (tx.analysis_main_group !== "expense") continue;
@@ -352,13 +477,13 @@ function buildRecurringHistoryEvents(params: {
         amountIsSimilar(row.amount, latest.amount),
     );
 
-    const intervals: number[] = [];
     const sortedAsc = [...similarRows].sort((left, right) =>
       left.date.localeCompare(right.date),
     );
+    const intervals: number[] = [];
     for (let index = 1; index < sortedAsc.length; index += 1) {
-      const previousDate = toDate(sortedAsc[index - 1].date);
-      const nextDate = toDate(sortedAsc[index].date);
+      const previousDate = toUtcDate(sortedAsc[index - 1].date);
+      const nextDate = toUtcDate(sortedAsc[index].date);
       const diffDays = Math.round(
         (nextDate.getTime() - previousDate.getTime()) / 86400000,
       );
@@ -371,7 +496,7 @@ function buildRecurringHistoryEvents(params: {
         : classifyRecurringType(intervals);
 
     if (recurringType === "irregular") continue;
-    if (!frequencyAppliesInMonth(recurringType, toDate(latest.date), monthStart)) {
+    if (!frequencyAppliesInMonth(recurringType, toUtcDate(latest.date), monthStart)) {
       continue;
     }
 
@@ -382,7 +507,7 @@ function buildRecurringHistoryEvents(params: {
 
     const preferredDay =
       resolveExpectedDayOfMonth(similarRows.map((row) => row.date).slice(0, 6)) ??
-      toDate(latest.date).getUTCDate();
+      toUtcDate(latest.date).getUTCDate();
     const scheduledDate = buildScheduledDateForMonth(monthStart, preferredDay);
     if (scheduledDate <= referenceIso) continue;
 
@@ -394,13 +519,20 @@ function buildRecurringHistoryEvents(params: {
     events.set(key, {
       date: scheduledDate,
       label: labelForTransaction(latest),
-      amount: direction === "income" ? amount : -amount,
+      amount:
+        direction === "income"
+          ? amount
+          : direction === "savings"
+            ? -amount
+            : -amount,
       kind:
         direction === "income"
           ? "income"
-          : latest.analysis_category === "subscriptions"
-            ? "subscription"
-            : "fixed_cost",
+          : direction === "savings"
+            ? "savings_transfer"
+            : latest.analysis_category === "subscriptions"
+              ? "subscription"
+              : "fixed_cost",
       source: "recurring_history",
       confidence: similarRows.length >= 3 ? "high" : "medium",
     });
@@ -413,7 +545,7 @@ function mergeIncomeSourceEvents(params: {
   incomeSources: IncomeSourceRow[];
   existingEvents: Map<string, ForecastTimelineEvent>;
   transactions: ForecastTx[];
-  categoryMap: Map<string, CategoryMeta>;
+  categoryMap: Map<string, CategoryRecord>;
   monthStart: Date;
   monthEndExclusive: Date;
   referenceDate: Date;
@@ -426,8 +558,8 @@ function mergeIncomeSourceEvents(params: {
     monthStart,
     monthEndExclusive,
     referenceDate,
-  } =
-    params;
+  } = params;
+
   const next = new Map(existingEvents);
   const monthStartIso = dateToIso(monthStart);
   const monthEndIso = dateToIso(monthEndExclusive);
@@ -465,10 +597,9 @@ function mergeIncomeSourceEvents(params: {
     );
     if (scheduledDate <= referenceIso) continue;
 
-    const existing = next.get(key);
     next.set(key, {
       date: scheduledDate,
-      label: source.source_label || existing?.label || source.source_key,
+      label: source.source_label || source.source_key,
       amount: source.expected_income,
       kind: "income",
       source: "income_source",
@@ -479,250 +610,577 @@ function mergeIncomeSourceEvents(params: {
   return next;
 }
 
+function mergeSubscriptionProfileEvents(params: {
+  profiles: SubscriptionProfile[];
+  existingEvents: Map<string, ForecastTimelineEvent>;
+  transactions: ForecastTx[];
+  monthStart: Date;
+  monthEndExclusive: Date;
+  referenceDate: Date;
+}) {
+  const {
+    profiles,
+    existingEvents,
+    transactions,
+    monthStart,
+    monthEndExclusive,
+    referenceDate,
+  } = params;
+
+  const next = new Map(existingEvents);
+  const monthStartIso = dateToIso(monthStart);
+  const monthEndIso = dateToIso(monthEndExclusive);
+  const referenceIso = dateToIso(referenceDate);
+  const observedDescriptors = new Set(
+    transactions
+      .filter(
+        (tx) =>
+          tx.date <= referenceIso &&
+          tx.date >= monthStartIso &&
+          tx.date < monthEndIso &&
+          tx.amount < 0 &&
+          tx.analysis_category === "subscriptions",
+      )
+      .map((tx) => descriptor(tx))
+      .filter(Boolean),
+  );
+
+  for (const profile of profiles) {
+    if (!profile.isActive) continue;
+    if (profile.expectedAmount == null || profile.expectedAmount <= 0) continue;
+    if (profile.billingCycle !== "monthly") continue;
+
+    const key = normalizePattern(profile.normalizedName || profile.name);
+    if (!key || observedDescriptors.has(key) || next.has(key)) continue;
+
+    const scheduledDate = buildScheduledDateForMonth(
+      monthStart,
+      profile.expectedDayOfMonth ?? 1,
+    );
+    if (scheduledDate <= referenceIso) continue;
+
+    next.set(key, {
+      date: scheduledDate,
+      label: profile.name,
+      amount: -Math.abs(profile.expectedAmount),
+      kind: "subscription",
+      source: "subscription_profile",
+      confidence: profile.expectedDayOfMonth != null ? "high" : "medium",
+    });
+  }
+
+  return next;
+}
+
+function mergeRareSubscriptionEvents(params: {
+  rareItems: ReturnType<typeof detectRareSubscriptionItems>;
+  existingEvents: Map<string, ForecastTimelineEvent>;
+  monthStart: Date;
+  monthEndExclusive: Date;
+  referenceDate: Date;
+}) {
+  const { rareItems, existingEvents, monthStart, monthEndExclusive, referenceDate } =
+    params;
+  const next = new Map(existingEvents);
+  const monthStartIso = dateToIso(monthStart);
+  const monthEndIso = dateToIso(monthEndExclusive);
+  const referenceIso = dateToIso(referenceDate);
+
+  for (const item of rareItems) {
+    if (item.evidence !== "confirmed") continue;
+    if (item.cadence === "single") continue;
+    if (!item.nextExpectedDate) continue;
+    if (item.nextExpectedDate <= referenceIso) continue;
+    if (item.nextExpectedDate < monthStartIso || item.nextExpectedDate >= monthEndIso) {
+      continue;
+    }
+    if (next.has(item.id)) continue;
+
+    next.set(item.id, {
+      date: item.nextExpectedDate,
+      label: item.label,
+      amount: -Math.abs(item.expectedAmount),
+      kind: "subscription",
+      source: "rare_subscription",
+      confidence: "medium",
+    });
+  }
+
+  return next;
+}
+
+function summarizeBookedMonthTransactions(params: {
+  transactions: ForecastTx[];
+  categoryMap: Map<string, CategoryRecord>;
+  monthStartIso: string;
+  monthEndIso: string;
+  referenceIso: string;
+}) {
+  const { transactions, categoryMap, monthStartIso, monthEndIso, referenceIso } =
+    params;
+  const totals = emptyBookedMonthTotals();
+
+  for (const tx of transactions) {
+    if (tx.date < monthStartIso || tx.date >= monthEndIso) continue;
+    if (tx.date > referenceIso) continue;
+    if (tx.budget_excluded) continue;
+
+    if (tx.amount > 0) {
+      const semantics = resolveIncomeSemanticsForTransaction(tx, categoryMap);
+      if (!semantics.countsAsIncome) continue;
+      totals.incomeTotal += tx.amount;
+      if (semantics.forecastEligible) {
+        totals.forecastEligibleIncomeTotal += tx.amount;
+      }
+      continue;
+    }
+
+    if (tx.amount >= 0 || tx.analysis_main_group !== "expense") continue;
+    const amount = Math.abs(tx.amount);
+
+    if (tx.analysis_category === "savings_transfer") {
+      totals.savingsOutflowTotal += amount;
+      continue;
+    }
+
+    if (tx.analysis_category === "fixed_costs") {
+      totals.fixedCosts += amount;
+      totals.expenseTotal += amount;
+      continue;
+    }
+
+    if (tx.analysis_category === "subscriptions") {
+      totals.subscriptions += amount;
+      totals.expenseTotal += amount;
+      continue;
+    }
+
+    if (tx.analysis_category === "variable_costs") {
+      totals.variableCosts += amount;
+      totals.expenseTotal += amount;
+    }
+  }
+
+  return {
+    incomeTotal: round2(totals.incomeTotal),
+    forecastEligibleIncomeTotal: round2(totals.forecastEligibleIncomeTotal),
+    expenseTotal: round2(totals.expenseTotal),
+    savingsOutflowTotal: round2(totals.savingsOutflowTotal),
+    fixedCosts: round2(totals.fixedCosts),
+    subscriptions: round2(totals.subscriptions),
+    variableCosts: round2(totals.variableCosts),
+  } satisfies BookedMonthTotals;
+}
+
+function resolveForecastMonths(reference: Date, now: Date) {
+  const currentMonthStart = startOfMonth(now);
+  const targetMonthStart = startOfMonth(reference);
+  const diff = monthsDiff(currentMonthStart, targetMonthStart);
+
+  if (diff < 0) {
+    return [targetMonthStart];
+  }
+
+  const monthsAhead = Math.max(FUTURE_FORECAST_MONTHS, diff);
+  return Array.from({ length: monthsAhead + 1 }, (_, index) =>
+    addMonths(currentMonthStart, index),
+  );
+}
+
+function resolveForecastReferenceDate(monthStart: Date, now: Date) {
+  const currentMonthStart = startOfMonth(now);
+  const monthDiff = monthsDiff(currentMonthStart, monthStart);
+
+  if (monthDiff < 0) {
+    return addDays(endOfMonthExclusive(monthStart), -1);
+  }
+  if (monthDiff === 0) {
+    return new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+  }
+  return addDays(monthStart, -1);
+}
+
+function buildTopCostBuckets(params: {
+  expectedFixedCosts: number;
+  expectedSubscriptions: number;
+  expectedVariableCosts: number;
+  expectedSavingsOutflowTotal: number;
+}) {
+  const { expectedFixedCosts, expectedSubscriptions, expectedVariableCosts, expectedSavingsOutflowTotal } =
+    params;
+
+  return [
+    { key: "fixed_costs", value: expectedFixedCosts },
+    { key: "subscriptions", value: expectedSubscriptions },
+    { key: "variable_costs", value: expectedVariableCosts },
+    { key: "savings_transfer", value: expectedSavingsOutflowTotal },
+  ]
+    .filter((entry) => entry.value > 0)
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 3)
+    .map((entry) => entry.key);
+}
+
+function toStoredForecastRow(row: StoredForecastSummary, userId: string) {
+  return {
+    user_id: userId,
+    month_start: row.monthStart,
+    starting_balance: row.startingBalance,
+    forecast_reference_date: row.forecastReferenceDate,
+    current_balance_anchor: row.currentBalanceAnchor,
+    current_balance_anchor_date: row.currentBalanceAnchorDate,
+    booked_income_total: row.bookedIncomeTotal,
+    booked_expense_total: row.bookedExpenseTotal,
+    booked_savings_outflow_total: row.bookedSavingsOutflowTotal,
+    remaining_expected_income_total: row.remainingExpectedIncomeTotal,
+    remaining_expected_expense_total: row.remainingExpectedExpenseTotal,
+    remaining_expected_savings_outflow_total:
+      row.remainingExpectedSavingsOutflowTotal,
+    expected_income_total: row.expectedIncomeTotal,
+    expected_expense_total: row.expectedExpenseTotal,
+    expected_savings_outflow_total: row.expectedSavingsOutflowTotal,
+    expected_cash_out_total: row.expectedCashOutTotal,
+    expected_fixed_costs: row.expectedFixedCosts,
+    expected_subscriptions: row.expectedSubscriptions,
+    expected_variable_costs: row.expectedVariableCosts,
+    upcoming_committed_income_total: row.upcomingCommittedIncomeTotal,
+    upcoming_committed_expense_total: row.upcomingCommittedExpenseTotal,
+    upcoming_committed_savings_outflow_total:
+      row.upcomingCommittedSavingsOutflowTotal,
+    lowest_expected_balance: row.lowestExpectedBalance,
+    lowest_expected_balance_date: row.lowestExpectedBalanceDate,
+    next_expected_event_date: row.nextExpectedEventDate,
+    next_expected_event_label: row.nextExpectedEventLabel,
+    cash_risk_flag: row.cashRiskFlag,
+    avg_groceries: row.avgGroceries,
+    avg_fuel: row.avgFuel,
+    avg_smoking: row.avgSmoking,
+    avg_other_variable: row.avgOtherVariable,
+    expected_end_of_month_balance: row.expectedEndOfMonthBalance,
+    risk_flag: row.riskFlag,
+    top_cost_bucket_1: row.topCostBuckets[0] || null,
+    top_cost_bucket_2: row.topCostBuckets[1] || null,
+    top_cost_bucket_3: row.topCostBuckets[2] || null,
+    computed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
 export async function recomputeCurrentMonthCashflowForecast(
   reference = new Date(),
 ) {
   const userId = await requireCurrentUserId();
-  const monthStart = startOfMonth(reference);
-  const monthEndExclusive = endOfMonthExclusive(reference);
+  const now = new Date();
+  const requestedMonths = resolveForecastMonths(reference, now);
+  const earliestMonthStart = requestedMonths[0] || startOfMonth(reference);
+  const latestMonthStart =
+    requestedMonths[requestedMonths.length - 1] || startOfMonth(reference);
+  const latestMonthEndExclusive = endOfMonthExclusive(latestMonthStart);
+  const targetMonthStartIso = dateToIso(startOfMonth(reference));
 
-  const monthStartIso = dateToIso(monthStart);
-  const monthEndIso = dateToIso(monthEndExclusive);
-  const referenceIso = dateToIso(reference);
+  const currentMonthStart = startOfMonth(now);
+  const includesCurrentOrFuture =
+    monthsDiff(currentMonthStart, startOfMonth(reference)) >= 0;
 
-  const stableIncomePlan = await computeBudgetPlan(reference, "default").catch(
-    (error) => {
-      console.warn(
-        "[forecast] stable income unavailable, using legacy sources",
-        error,
-      );
-      return null;
-    },
+  const currentBudgetPlanPromise = includesCurrentOrFuture
+    ? computeBudgetPlan(now, "default", now).catch((error) => {
+        console.warn(
+          "[forecast] stable income unavailable, using legacy sources",
+          error,
+        );
+        return null;
+      })
+    : Promise.resolve(null);
+  const historicalBudgetPlanPromise = !includesCurrentOrFuture
+    ? computeBudgetPlan(resolveForecastReferenceDate(startOfMonth(reference), now), "default", now).catch(
+        (error) => {
+          console.warn("[forecast] historical budget baseline unavailable", error);
+          return null;
+        },
+      )
+    : Promise.resolve(null);
+
+  const [{ categories, categoryMap }, transactions, incomeSources, profiles, currentBudgetPlan, historicalBudgetPlan] =
+    await Promise.all([
+      fetchCategoryMap(),
+      fetchTransactionsInRange(
+        dateToIso(subtractDays(earliestMonthStart, HISTORY_LOOKBACK_DAYS)),
+        dateToIso(latestMonthEndExclusive),
+        userId,
+      ),
+      fetchIncomeSources(userId).catch((error) => {
+        console.warn("[forecast] income sources unavailable", error);
+        return [] as IncomeSourceRow[];
+      }),
+      fetchActiveSubscriptionProfiles(userId).catch((error) => {
+        console.warn("[forecast] subscription profiles unavailable", error);
+        return [] as SubscriptionProfile[];
+      }),
+      currentBudgetPlanPromise,
+      historicalBudgetPlanPromise,
+    ]);
+
+  const resolvedIncomeSources = mergeForecastIncomeSources(
+    incomeSources,
+    deriveIncomeSourcesFromTransactions(transactions, categoryMap),
   );
 
-  const [
-    categoryMap,
-    historyTransactions,
-    startingBalance,
-    latestKnownBalance,
-    incomeSources,
-  ] = await Promise.all([
-    fetchCategoryMap(),
-    fetchTransactionsInRange(
-      dateToIso(subtractDays(monthStart, HISTORY_LOOKBACK_DAYS)),
+  const rareSubscriptionItems = detectRareSubscriptionItems({
+    transactions: transactions.map((tx) => ({
+      id: tx.id,
+      date: tx.date,
+      details: tx.details,
+      counterparty: tx.counterparty,
+      amount: tx.amount,
+      category_id_auto: tx.category_id_auto,
+      category_id_user: tx.category_id_user,
+      analysis_category: tx.analysis_category,
+    })),
+    categories,
+    referenceDate: dateToIso(now),
+  });
+
+  const forecastRows: StoredForecastSummary[] = [];
+  let chainedStartingBalance: number | null = null;
+
+  for (const monthStart of requestedMonths) {
+    const monthStartIso = dateToIso(monthStart);
+    const monthEndExclusive = endOfMonthExclusive(monthStart);
+    const monthEndIso = dateToIso(monthEndExclusive);
+    const referenceDate = resolveForecastReferenceDate(monthStart, now);
+    const referenceIso = dateToIso(referenceDate);
+    const monthDiff = monthsDiff(currentMonthStart, monthStart);
+    const budgetPlanForMonth =
+      monthDiff < 0
+        ? historicalBudgetPlan
+        : currentBudgetPlan;
+    const expenseHistoryForecast = estimateRecentExpenseForecastFromHistory({
+      transactions,
+      categoryMap,
+      currentMonthStart: monthDiff < 0 ? monthStart : currentMonthStart,
+    });
+
+    const booked = summarizeBookedMonthTransactions({
+      transactions,
+      categoryMap,
+      monthStartIso,
       monthEndIso,
-      userId,
-    ),
-    getLatestStartingBalance(monthStartIso, userId),
-    getLatestKnownBalance(referenceIso, userId),
-    fetchIncomeSources(userId).catch((error) => {
-      console.warn("[forecast] income sources unavailable", error);
-      return [] as IncomeSourceRow[];
-    }),
-  ]);
+      referenceIso,
+    });
 
-  const fallbackExpenseForecast = estimateRecentExpenseForecastFromHistory({
-    transactions: historyTransactions,
-    categoryMap,
-    currentMonthStart: monthStart,
-  });
+    const recurringIncomeEvents = buildRecurringHistoryEvents({
+      transactions,
+      categoryMap,
+      monthStart,
+      monthEndExclusive,
+      referenceDate,
+      direction: "income",
+    });
+    const recurringExpenseEvents = buildRecurringHistoryEvents({
+      transactions,
+      categoryMap,
+      monthStart,
+      monthEndExclusive,
+      referenceDate,
+      direction: "expense",
+    });
+    const recurringSavingsEvents = buildRecurringHistoryEvents({
+      transactions,
+      categoryMap,
+      monthStart,
+      monthEndExclusive,
+      referenceDate,
+      direction: "savings",
+    });
 
-  let expectedIncomeTotal = 0;
-  if (stableIncomePlan) {
-    expectedIncomeTotal = Math.max(
-      0,
-      asNumber(stableIncomePlan.flowSummary.expectedIncomeMonthly, 0),
+    const incomeEvents = mergeIncomeSourceEvents({
+      incomeSources: resolvedIncomeSources,
+      existingEvents: recurringIncomeEvents,
+      transactions,
+      categoryMap,
+      monthStart,
+      monthEndExclusive,
+      referenceDate,
+    });
+
+    let expenseEvents = mergeSubscriptionProfileEvents({
+      profiles,
+      existingEvents: recurringExpenseEvents,
+      transactions,
+      monthStart,
+      monthEndExclusive,
+      referenceDate,
+    });
+    expenseEvents = mergeRareSubscriptionEvents({
+      rareItems: rareSubscriptionItems,
+      existingEvents: expenseEvents,
+      monthStart,
+      monthEndExclusive,
+      referenceDate,
+    });
+
+    const remainingCommittedIncomeTotal = round2(
+      [...incomeEvents.values()]
+        .filter((event) => event.amount > 0)
+        .reduce((sum, event) => sum + event.amount, 0),
     );
-  } else {
-    for (const source of incomeSources) {
-      const anchorDate = new Date(source.last_detected_at);
-      if (
-        !Number.isNaN(anchorDate.getTime()) &&
-        frequencyAppliesInMonth(source.income_frequency, anchorDate, monthStart)
-      ) {
-        expectedIncomeTotal += source.expected_income;
-      }
-    }
+    const remainingCommittedFixedCosts = sumEventAmounts(
+      expenseEvents.values(),
+      "fixed_cost",
+    );
+    const remainingCommittedSubscriptions = sumEventAmounts(
+      expenseEvents.values(),
+      "subscription",
+    );
+    const remainingCommittedSavingsOutflowTotal = sumEventAmounts(
+      recurringSavingsEvents.values(),
+      "savings_transfer",
+    );
+
+    const trendExpenses = budgetPlanForMonth?.trend.expenses || null;
+    const monthToDateExpenses = monthDiff === 0
+      ? budgetPlanForMonth?.monthToDateExpenses || null
+      : null;
+    const expectedIncomeBaseline = resolveExpectedCashflowIncomeBaseline({
+      monthStart,
+      budgetPlan: budgetPlanForMonth,
+      incomeSources: resolvedIncomeSources,
+    });
+    const expectedFixedCostsBaseline = Math.max(
+      expenseHistoryForecast.fixedCosts,
+      asNumber(trendExpenses?.fixedCosts, 0),
+      asNumber(monthToDateExpenses?.fixedCosts, 0),
+    );
+    const expectedSubscriptionsBaseline = Math.max(
+      expenseHistoryForecast.subscriptions,
+      asNumber(trendExpenses?.subscriptions, 0),
+      asNumber(monthToDateExpenses?.subscriptions, 0),
+    );
+    const expectedVariableCostsBaseline = Math.max(
+      expenseHistoryForecast.variableCosts,
+      asNumber(trendExpenses?.variableCosts, 0),
+      asNumber(monthToDateExpenses?.variableCosts, 0),
+    );
+    const expectedSavingsOutflowBaseline = Math.max(
+      expenseHistoryForecast.savingsTransfers,
+      asNumber(trendExpenses?.savingsTransfer, 0),
+      asNumber(monthToDateExpenses?.savingsTransfer, 0),
+    );
+
+    const startingBalance =
+      monthDiff > 0
+        ? chainedStartingBalance
+        : getLatestStartingBalanceFromTransactions(transactions, monthStartIso);
+    const knownBalance = monthDiff > 0
+      ? ({
+          balance: startingBalance,
+          balanceDate: dateToIso(addDays(monthStart, -1)),
+        } satisfies BalanceAnchor)
+      : getLatestKnownBalanceFromTransactions(transactions, referenceIso);
+
+    const math = buildForecastMonthMath({
+      startingBalance,
+      currentBalanceAnchor: knownBalance.balance,
+      bookedIncomeTotal: booked.incomeTotal,
+      bookedForecastEligibleIncomeTotal: booked.forecastEligibleIncomeTotal,
+      bookedExpenseTotal: booked.expenseTotal,
+      bookedSavingsOutflowTotal: booked.savingsOutflowTotal,
+      bookedFixedCosts: booked.fixedCosts,
+      bookedSubscriptions: booked.subscriptions,
+      bookedVariableCosts: booked.variableCosts,
+      expectedIncomeBaseline,
+      remainingCommittedIncomeTotal,
+      expectedFixedCostsBaseline,
+      expectedSubscriptionsBaseline,
+      expectedVariableCostsBaseline,
+      expectedSavingsOutflowBaseline,
+      remainingCommittedFixedCosts,
+      remainingCommittedSubscriptions,
+      remainingCommittedSavingsOutflowTotal,
+    });
+
+    const timelineProjection = buildForecastTimelineProjection({
+      currentBalanceAnchor: knownBalance.balance,
+      referenceDate,
+      monthEndExclusive,
+      events: [
+        ...expenseEvents.values(),
+        ...recurringSavingsEvents.values(),
+        ...incomeEvents.values(),
+      ] as ForecastTimelineEvent[],
+    });
+
+    const topCostBuckets = buildTopCostBuckets({
+      expectedFixedCosts: math.expectedFixedCosts,
+      expectedSubscriptions: math.expectedSubscriptions,
+      expectedVariableCosts: math.expectedVariableCosts,
+      expectedSavingsOutflowTotal: math.expectedSavingsOutflowTotal,
+    });
+
+    const row: StoredForecastSummary = {
+      monthStart: monthStartIso,
+      forecastReferenceDate: referenceIso,
+      startingBalance,
+      currentBalanceAnchor: knownBalance.balance,
+      currentBalanceAnchorDate: knownBalance.balanceDate,
+      bookedIncomeTotal: booked.incomeTotal,
+      bookedExpenseTotal: booked.expenseTotal,
+      bookedSavingsOutflowTotal: booked.savingsOutflowTotal,
+      remainingExpectedIncomeTotal: math.remainingExpectedIncomeTotal,
+      remainingExpectedExpenseTotal: math.remainingExpectedExpenseTotal,
+      remainingExpectedSavingsOutflowTotal:
+        math.remainingExpectedSavingsOutflowTotal,
+      expectedIncomeTotal: math.expectedIncomeTotal,
+      expectedExpenseTotal: math.expectedExpenseTotal,
+      expectedSavingsOutflowTotal: math.expectedSavingsOutflowTotal,
+      expectedCashOutTotal: math.expectedCashOutTotal,
+      expectedFixedCosts: math.expectedFixedCosts,
+      expectedSubscriptions: math.expectedSubscriptions,
+      expectedVariableCosts: math.expectedVariableCosts,
+      upcomingCommittedIncomeTotal:
+        timelineProjection.upcomingCommittedIncomeTotal,
+      upcomingCommittedExpenseTotal:
+        timelineProjection.upcomingCommittedExpenseTotal,
+      upcomingCommittedSavingsOutflowTotal:
+        timelineProjection.upcomingCommittedSavingsOutflowTotal,
+      lowestExpectedBalance: timelineProjection.lowestExpectedBalance,
+      lowestExpectedBalanceDate: timelineProjection.lowestExpectedBalanceDate,
+      nextExpectedEventDate: timelineProjection.nextExpectedEventDate,
+      nextExpectedEventLabel: timelineProjection.nextExpectedEventLabel,
+      avgGroceries: expenseHistoryForecast.variable.groceries,
+      avgFuel: expenseHistoryForecast.variable.fuel,
+      avgSmoking: expenseHistoryForecast.variable.smoking,
+      avgOtherVariable: expenseHistoryForecast.variable.other,
+      expectedEndOfMonthBalance: math.expectedEndOfMonthBalance,
+      riskFlag: math.riskFlag,
+      cashRiskFlag: timelineProjection.cashRiskFlag,
+      topCostBuckets,
+    };
+
+    forecastRows.push(row);
+    chainedStartingBalance = row.expectedEndOfMonthBalance;
   }
-
-  const recurringExpenseEvents = buildRecurringHistoryEvents({
-    transactions: historyTransactions,
-    categoryMap,
-    monthStart,
-    monthEndExclusive,
-    referenceDate: reference,
-    direction: "expense",
-  });
-  const recurringIncomeEvents = buildRecurringHistoryEvents({
-    transactions: historyTransactions,
-    categoryMap,
-    monthStart,
-    monthEndExclusive,
-    referenceDate: reference,
-    direction: "income",
-  });
-  const mergedIncomeEvents = mergeIncomeSourceEvents({
-    incomeSources,
-    existingEvents: recurringIncomeEvents,
-    transactions: historyTransactions,
-    categoryMap,
-    monthStart,
-    monthEndExclusive,
-    referenceDate: reference,
-  });
-
-  let expectedFixedCosts = 0;
-  let expectedSubscriptions = 0;
-
-  for (const event of recurringExpenseEvents.values()) {
-    if (event.kind === "fixed_cost") {
-      expectedFixedCosts += Math.abs(event.amount);
-      continue;
-    }
-    if (event.kind === "subscription") {
-      expectedSubscriptions += Math.abs(event.amount);
-    }
-  }
-
-  const trendExpenses = stableIncomePlan?.trend.expenses || null;
-  const monthToDateExpenses = stableIncomePlan?.monthToDateExpenses || null;
-
-  expectedFixedCosts = Math.max(
-    expectedFixedCosts,
-    fallbackExpenseForecast.fixedCosts,
-    asNumber(trendExpenses?.fixedCosts, 0),
-    asNumber(monthToDateExpenses?.fixedCosts, 0),
-  );
-  expectedSubscriptions = Math.max(
-    expectedSubscriptions,
-    fallbackExpenseForecast.subscriptions,
-    asNumber(trendExpenses?.subscriptions, 0),
-    asNumber(monthToDateExpenses?.subscriptions, 0),
-  );
-
-  let expectedGroceries = 0;
-  let expectedFuel = 0;
-  let expectedSmoking = 0;
-  let expectedOtherVariable = 0;
-
-  if (trendExpenses) {
-    expectedGroceries = Math.max(
-      fallbackExpenseForecast.variable.groceries,
-      asNumber(trendExpenses.variable.groceries, 0),
-      asNumber(monthToDateExpenses?.variable.groceries, 0),
-    );
-    expectedFuel = Math.max(
-      fallbackExpenseForecast.variable.fuel,
-      asNumber(trendExpenses.variable.fuel, 0),
-      asNumber(monthToDateExpenses?.variable.fuel, 0),
-    );
-    expectedSmoking = Math.max(
-      fallbackExpenseForecast.variable.smoking,
-      asNumber(trendExpenses.variable.smoking, 0),
-      asNumber(monthToDateExpenses?.variable.smoking, 0),
-    );
-    expectedOtherVariable = Math.max(
-      fallbackExpenseForecast.variable.other,
-      asNumber(trendExpenses.variable.other, 0),
-      asNumber(monthToDateExpenses?.variable.other, 0),
-    );
-  } else {
-    expectedGroceries = fallbackExpenseForecast.variable.groceries;
-    expectedFuel = fallbackExpenseForecast.variable.fuel;
-    expectedSmoking = fallbackExpenseForecast.variable.smoking;
-    expectedOtherVariable = fallbackExpenseForecast.variable.other;
-  }
-
-  const expectedVariableCosts =
-    expectedGroceries +
-    expectedFuel +
-    expectedSmoking +
-    expectedOtherVariable;
-  const expectedExpenseTotal =
-    expectedFixedCosts + expectedSubscriptions + expectedVariableCosts;
-
-  const expectedEndOfMonthBalance =
-    startingBalance == null
-      ? null
-      : round2(startingBalance + expectedIncomeTotal - expectedExpenseTotal);
-
-  const riskFlag =
-    expectedEndOfMonthBalance != null && expectedEndOfMonthBalance < 0
-      ? "deficit_warning"
-      : "none";
-
-  const currentBalanceAnchor =
-    latestKnownBalance.balance != null
-      ? latestKnownBalance.balance
-      : startingBalance;
-  const currentBalanceAnchorDate =
-    latestKnownBalance.balanceDate ||
-    (startingBalance != null ? monthStartIso : null);
-
-  const timelineProjection = buildForecastTimelineProjection({
-    currentBalanceAnchor,
-    referenceDate: reference,
-    monthEndExclusive,
-    events: [
-      ...recurringExpenseEvents.values(),
-      ...mergedIncomeEvents.values(),
-    ] as ForecastTimelineEvent[],
-  });
-
-  const costBuckets = [
-    { key: "variable_costs", value: expectedVariableCosts },
-    { key: "subscriptions", value: expectedSubscriptions },
-    { key: "fixed_costs", value: expectedFixedCosts },
-  ]
-    .sort((left, right) => right.value - left.value)
-    .map((entry) => entry.key);
 
   const { error } = await supabase.from("monthly_cashflow_forecasts").upsert(
-    {
-      user_id: userId,
-      month_start: monthStartIso,
-      starting_balance: startingBalance,
-      current_balance_anchor: currentBalanceAnchor,
-      current_balance_anchor_date: currentBalanceAnchorDate,
-      expected_income_total: expectedIncomeTotal,
-      expected_expense_total: expectedExpenseTotal,
-      expected_fixed_costs: expectedFixedCosts,
-      expected_subscriptions: expectedSubscriptions,
-      expected_variable_costs: expectedVariableCosts,
-      upcoming_committed_income_total:
-        timelineProjection.upcomingCommittedIncomeTotal,
-      upcoming_committed_expense_total:
-        timelineProjection.upcomingCommittedExpenseTotal,
-      lowest_expected_balance: timelineProjection.lowestExpectedBalance,
-      lowest_expected_balance_date: timelineProjection.lowestExpectedBalanceDate,
-      next_expected_event_date: timelineProjection.nextExpectedEventDate,
-      next_expected_event_label: timelineProjection.nextExpectedEventLabel,
-      cash_risk_flag: timelineProjection.cashRiskFlag,
-      avg_groceries: expectedGroceries,
-      avg_fuel: expectedFuel,
-      avg_smoking: expectedSmoking,
-      avg_other_variable: expectedOtherVariable,
-      expected_end_of_month_balance: expectedEndOfMonthBalance,
-      risk_flag: riskFlag,
-      top_cost_bucket_1: costBuckets[0] || null,
-      top_cost_bucket_2: costBuckets[1] || null,
-      top_cost_bucket_3: costBuckets[2] || null,
-      computed_at: addDays(reference, 0).toISOString(),
-      updated_at: new Date().toISOString(),
-    },
+    forecastRows.map((row) => toStoredForecastRow(row, userId)),
     { onConflict: "user_id,month_start" },
   );
 
   if (error) throw error;
 
-  return {
-    monthStart: monthStartIso,
-    expectedIncomeTotal,
-    expectedExpenseTotal,
-    expectedEndOfMonthBalance,
-    riskFlag,
-    cashRiskFlag: timelineProjection.cashRiskFlag,
-    lowestExpectedBalance: timelineProjection.lowestExpectedBalance,
-    lowestExpectedBalanceDate: timelineProjection.lowestExpectedBalanceDate,
-  };
+  return (
+    forecastRows.find((row) => row.monthStart === targetMonthStartIso) ||
+    forecastRows[0] || {
+      monthStart: targetMonthStartIso,
+      expectedIncomeTotal: 0,
+      expectedExpenseTotal: 0,
+      expectedEndOfMonthBalance: null,
+      riskFlag: "none" as const,
+      cashRiskFlag: "none" as const,
+      lowestExpectedBalance: null,
+      lowestExpectedBalanceDate: null,
+    }
+  );
 }

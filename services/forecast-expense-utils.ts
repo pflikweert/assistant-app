@@ -76,6 +76,7 @@ type ExpenseMonthTotals = {
   fixedCosts: number;
   subscriptions: number;
   variableCosts: number;
+  savingsTransfers: number;
   variable: {
     groceries: number;
     fuel: number;
@@ -89,6 +90,7 @@ function emptyExpenseMonthTotals(): ExpenseMonthTotals {
     fixedCosts: 0,
     subscriptions: 0,
     variableCosts: 0,
+    savingsTransfers: 0,
     variable: {
       groceries: 0,
       fuel: 0,
@@ -187,6 +189,8 @@ export function estimateRecentExpenseForecastFromHistory(params: {
       current.fixedCosts += amount;
     } else if (tx.analysis_category === "subscriptions") {
       current.subscriptions += amount;
+    } else if (tx.analysis_category === "savings_transfer") {
+      current.savingsTransfers += amount;
     } else if (tx.analysis_category === "variable_costs") {
       const categoryId = tx.category_id_user || tx.category_id_auto;
       const categoryKey = categoryId
@@ -244,10 +248,15 @@ export function estimateRecentExpenseForecastFromHistory(params: {
     (totals) => totals.variable.other,
     currentMonthTotals.variable.other,
   );
+  const savingsTransfers = resolveBaseline(
+    (totals) => totals.savingsTransfers,
+    currentMonthTotals.savingsTransfers,
+  );
 
   return {
     fixedCosts,
     subscriptions,
+    savingsTransfers,
     variable: {
       groceries,
       fuel,

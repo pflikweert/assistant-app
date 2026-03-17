@@ -23,7 +23,10 @@ import {
   needsCategorizationReview,
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
-import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
+import {
+  ensureForecastFresh,
+  type EnsureForecastFreshOptions,
+} from "@/services/forecast-refresh";
 import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import {
   detectRareSubscriptionItems,
@@ -41,6 +44,8 @@ import type {
   BudgetPlanComputation,
   CategoryRecord,
   ExpenseAnalysisCategory,
+  ForecastRefreshReason,
+  ForecastRefreshStatus,
 } from "@/types/categorization";
 import { AppIcon } from "@/components/ui/app-icon";
 import { useIsFocused } from "@react-navigation/native";
@@ -161,15 +166,25 @@ type InsightTx = {
 
 type CashflowForecast = {
   month_start: string;
+  forecast_reference_date: string | null;
   current_balance_anchor: number | null;
   current_balance_anchor_date: string | null;
+  booked_income_total: number;
+  booked_expense_total: number;
+  booked_savings_outflow_total: number;
+  remaining_expected_income_total: number;
+  remaining_expected_expense_total: number;
+  remaining_expected_savings_outflow_total: number;
   expected_income_total: number;
   expected_expense_total: number;
+  expected_savings_outflow_total: number;
+  expected_cash_out_total: number;
   expected_fixed_costs: number;
   expected_subscriptions: number;
   expected_variable_costs: number;
   upcoming_committed_income_total: number;
   upcoming_committed_expense_total: number;
+  upcoming_committed_savings_outflow_total: number;
   lowest_expected_balance: number | null;
   lowest_expected_balance_date: string | null;
   next_expected_event_date: string | null;
@@ -184,11 +199,6 @@ type CashflowForecast = {
 
 type GenericRowsResult = {
   data: Record<string, unknown>[] | null;
-  error: unknown;
-};
-
-type GenericRecordResult = {
-  data: Record<string, unknown> | null;
   error: unknown;
 };
 
@@ -264,6 +274,33 @@ function formatShortDate(value: string) {
   });
 }
 
+function formatDateTimeLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("nl-NL", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getForecastRefreshHelper(status: ForecastRefreshStatus | null) {
+  if (!status) return null;
+  if (status.lastError) {
+    return `Laatste verversing mislukte. Probeer de voorspelling opnieuw te vernieuwen.`;
+  }
+  if (status.isDirty) {
+    return status.dirtyAt
+      ? `Voorspelling moet nog worden bijgewerkt sinds ${formatDateTimeLabel(status.dirtyAt)}.`
+      : "Voorspelling moet nog worden bijgewerkt.";
+  }
+  if (status.lastComputedAt) {
+    return `Laatst ververst op ${formatDateTimeLabel(status.lastComputedAt)}.`;
+  }
+  return null;
+}
+
 function formatIncludedIncomeLabel(plan: BudgetPlanComputation | null) {
   if (!plan) return "Budget-instellingen";
 
@@ -283,6 +320,31 @@ function formatIncludedIncomeLabel(plan: BudgetPlanComputation | null) {
   return labels.join(", ");
 }
 
+function getBudgetIncludedIncomeAmount(
+  plan: BudgetPlanComputation | null,
+  scope: "expected" | "booked",
+) {
+  if (!plan) return null;
+
+  if (scope === "expected") {
+    return Math.max(plan.flowSummary.expectedIncomeMonthly || 0, 0);
+  }
+
+  let total = 0;
+  if (plan.settings.includeIncome.salary) total += plan.monthToDateIncome.salary;
+  if (plan.settings.includeIncome.childBudget) {
+    total += plan.monthToDateIncome.childBudget;
+  }
+  if (plan.settings.includeIncome.structuralOther) {
+    total += plan.monthToDateIncome.structuralOther;
+  }
+  if (plan.settings.includeIncome.variable) {
+    total += plan.monthToDateIncome.variable;
+  }
+
+  return Math.max(total, 0);
+}
+
 function parseUtcDate(dateIso: string) {
   const parsed = new Date(`${String(dateIso || "").slice(0, 10)}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime())) return null;
@@ -296,11 +358,22 @@ function addDaysToIsoDate(dateIso: string, days: number) {
   return parsed.toISOString().slice(0, 10);
 }
 
+function addMonthsToMonthKey(monthKey: string, months: number) {
+  const option = getMonthOptionByKey(monthKey);
+  if (!option) return monthKey;
+  const date = new Date(option.year, option.month - 1 + months, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function getInsightsReferenceDateIso(selectedMonth: TransactionMonthOption) {
   if (selectedMonth.isCurrentMonth) {
     return toLocalIsoDate(new Date());
   }
   return addDaysToIsoDate(selectedMonth.endIso, -1);
+}
+
+function isFutureMonthOption(option: TransactionMonthOption) {
+  return option.key > getCurrentMonthKey();
 }
 
 function getRareSubscriptionStatus(item: RareSubscriptionItem) {
@@ -490,9 +563,19 @@ function getTrendHeadline(
 function getForecastHeadline(
   forecast: CashflowForecast | null,
   budgetPlan: BudgetPlanComputation | null,
+  options?: {
+    isHistoricalMonth?: boolean;
+    isFutureMonth?: boolean;
+  },
 ) {
   if (!forecast) {
     return "Nog geen cashflowvoorspelling beschikbaar voor deze maand.";
+  }
+
+  if (options?.isHistoricalMonth) {
+    return forecast.expected_end_of_month_balance != null
+      ? `Afgesloten maand. Eindsaldo kwam uit op ${fmt.format(forecast.expected_end_of_month_balance)}.`
+      : "Afgesloten maand zonder volledig eindsaldo.";
   }
 
   if (forecast.cash_risk_flag === "cash_gap_warning") {
@@ -509,6 +592,12 @@ function getForecastHeadline(
     return "De voorspelling laat zien dat je maandbuffer onder druk staat.";
   }
 
+  if (options?.isFutureMonth) {
+    return forecast.expected_end_of_month_balance != null
+      ? `Verwacht saldo aan het einde van ${formatMonthLabel(forecast.month_start)}: ${fmt.format(forecast.expected_end_of_month_balance)}.`
+      : "Toekomstmaand op basis van terugkerende lasten en recente patronen.";
+  }
+
   if (
     forecast.expected_end_of_month_balance != null &&
     forecast.expected_end_of_month_balance > 0
@@ -521,6 +610,60 @@ function getForecastHeadline(
   }
 
   return "Je cashflow oogt stabiel op basis van het huidige maandtempo.";
+}
+
+function getForecastDataHelper(
+  forecast: CashflowForecast | null,
+  options: {
+    isHistoricalMonth: boolean;
+    isFutureMonth: boolean;
+  },
+) {
+  if (!forecast) return null;
+  if (options.isFutureMonth) {
+    return "Gebaseerd op terugkerende lasten, abonnementen en recente maandpatronen.";
+  }
+  if (options.isHistoricalMonth) {
+    return "Afgesloten maand. Alle resterende verwachtingen staan op nul.";
+  }
+  if (forecast.forecast_reference_date) {
+    return `Data geboekt t/m ${formatShortDate(forecast.forecast_reference_date)}.`;
+  }
+  return null;
+}
+
+function getForecastStatusLabel(forecast: CashflowForecast | null) {
+  if (!forecast) return "Nog leeg";
+  if (forecast.cash_risk_flag === "cash_gap_warning") return "Let op";
+  if (forecast.risk_flag === "deficit_warning") return "Tekort";
+  if (
+    forecast.expected_end_of_month_balance != null &&
+    forecast.expected_end_of_month_balance < 0
+  ) {
+    return "Tekort";
+  }
+  return "Stabiel";
+}
+
+function getForecastStatusTone(forecast: CashflowForecast | null) {
+  if (!forecast) return "muted" as const;
+  if (forecast.cash_risk_flag === "cash_gap_warning") return "warning" as const;
+  if (forecast.risk_flag === "deficit_warning") return "negative" as const;
+  if (
+    forecast.expected_end_of_month_balance != null &&
+    forecast.expected_end_of_month_balance < 0
+  ) {
+    return "negative" as const;
+  }
+  return "positive" as const;
+}
+
+function formatMonthLabel(monthStartIso: string) {
+  const parsed = parseUtcDate(monthStartIso);
+  if (!parsed) return monthStartIso;
+  return parsed.toLocaleDateString("nl-NL", {
+    month: "long",
+  });
 }
 
 function CategoryBar({ categories }: { categories: CategoryBarRow[] }) {
@@ -696,6 +839,9 @@ export default function InsightsScreen() {
   const [rareSubscriptionItems, setRareSubscriptionItems] = React.useState<
     RareSubscriptionItem[]
   >([]);
+  const [forecastByMonth, setForecastByMonth] = React.useState<
+    Record<string, CashflowForecast>
+  >({});
   const [forecast, setForecast] = React.useState<CashflowForecast | null>(null);
   const [budgetPlan, setBudgetPlan] =
     React.useState<BudgetPlanComputation | null>(null);
@@ -720,6 +866,9 @@ export default function InsightsScreen() {
   const [expandedParents, setExpandedParents] = React.useState<
     Record<string, boolean>
   >({});
+  const [forecastRefreshStatus, setForecastRefreshStatus] =
+    React.useState<ForecastRefreshStatus | null>(null);
+  const [refreshingForecast, setRefreshingForecast] = React.useState(false);
 
   const selectedMonth = React.useMemo(
     () =>
@@ -739,6 +888,23 @@ export default function InsightsScreen() {
   const insightsReferenceDateIso = React.useMemo(
     () => getInsightsReferenceDateIso(selectedMonth),
     [selectedMonth],
+  );
+  const isHistoricalMonth = selectedMonth.key < getCurrentMonthKey();
+  const isFutureMonth = isFutureMonthOption(selectedMonth);
+  const forecastStripOptions = React.useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, offset) =>
+        getMonthOptionByKey(addMonthsToMonthKey(getCurrentMonthKey(), offset)),
+      ).filter((option): option is TransactionMonthOption => Boolean(option)),
+    [],
+  );
+  const forecastStripItems = React.useMemo(
+    () =>
+      forecastStripOptions.map((option) => ({
+        option,
+        forecast: forecastByMonth[option.startIso] || null,
+      })),
+    [forecastByMonth, forecastStripOptions],
   );
 
   const categoryMap = React.useMemo(
@@ -1061,8 +1227,28 @@ export default function InsightsScreen() {
     [budgetPlan, monthReport],
   );
   const forecastHeadline = React.useMemo(
-    () => getForecastHeadline(forecast, budgetPlan),
-    [budgetPlan, forecast],
+    () =>
+      getForecastHeadline(forecast, budgetPlan, {
+        isHistoricalMonth,
+        isFutureMonth,
+      }),
+    [budgetPlan, forecast, isFutureMonth, isHistoricalMonth],
+  );
+  const forecastDataHelper = React.useMemo(
+    () =>
+      getForecastDataHelper(forecast, {
+        isHistoricalMonth,
+        isFutureMonth,
+      }),
+    [forecast, isFutureMonth, isHistoricalMonth],
+  );
+  const forecastStatusLabel = React.useMemo(
+    () => getForecastStatusLabel(forecast),
+    [forecast],
+  );
+  const forecastStatusTone = React.useMemo(
+    () => getForecastStatusTone(forecast),
+    [forecast],
   );
 
   const topCostLabel = React.useCallback((bucket: string | null) => {
@@ -1091,6 +1277,100 @@ export default function InsightsScreen() {
       forecast?.top_cost_bucket_3,
       topCostLabel,
     ],
+  );
+  const forecastBuildupRows = React.useMemo(() => {
+    if (!forecast) return [];
+    const bookedFixed = isFutureMonth ? 0 : monthReport.fixed;
+    const bookedSubscriptions = isFutureMonth ? 0 : monthReport.subscriptions;
+    const bookedVariable = isFutureMonth ? 0 : monthReport.variable;
+    const bookedSavings = isFutureMonth ? 0 : monthReport.savingsTransfers;
+
+    return [
+      {
+        key: "fixed_costs",
+        label: "Vaste lasten",
+        total: forecast.expected_fixed_costs,
+        booked: Math.min(bookedFixed, forecast.expected_fixed_costs),
+        remaining: Math.max(forecast.expected_fixed_costs - bookedFixed, 0),
+        pressable: true,
+      },
+      {
+        key: "subscriptions",
+        label: "Abonnementen",
+        total: forecast.expected_subscriptions,
+        booked: Math.min(bookedSubscriptions, forecast.expected_subscriptions),
+        remaining: Math.max(
+          forecast.expected_subscriptions - bookedSubscriptions,
+          0,
+        ),
+        pressable: true,
+      },
+      {
+        key: "variable_costs",
+        label: "Variabele kosten",
+        total: forecast.expected_variable_costs,
+        booked: Math.min(bookedVariable, forecast.expected_variable_costs),
+        remaining: Math.max(forecast.expected_variable_costs - bookedVariable, 0),
+        pressable: true,
+      },
+      {
+        key: "savings_transfer",
+        label: "Naar sparen",
+        total: forecast.expected_savings_outflow_total,
+        booked: Math.min(
+          bookedSavings,
+          forecast.expected_savings_outflow_total,
+        ),
+        remaining: Math.max(
+          forecast.expected_savings_outflow_total - bookedSavings,
+          0,
+        ),
+        pressable: false,
+      },
+    ];
+  }, [forecast, isFutureMonth, monthReport.fixed, monthReport.savingsTransfers, monthReport.subscriptions, monthReport.variable]);
+  const budgetExpectedIncomeTotal = React.useMemo(
+    () => getBudgetIncludedIncomeAmount(budgetPlan, "expected"),
+    [budgetPlan],
+  );
+  const budgetBookedIncomeTotal = React.useMemo(
+    () => getBudgetIncludedIncomeAmount(budgetPlan, "booked"),
+    [budgetPlan],
+  );
+  const forecastCashInTotal = forecast?.expected_income_total ?? 0;
+  const forecastBookedCashIn = forecast?.booked_income_total ?? 0;
+  const forecastRemainingCashIn = forecast?.remaining_expected_income_total ?? 0;
+  const forecastCashOutTotal = forecast?.expected_cash_out_total ?? 0;
+  const forecastBookedCashOut =
+    (forecast?.booked_expense_total ?? 0) +
+    (forecast?.booked_savings_outflow_total ?? 0);
+  const forecastRemainingCashOut =
+    (forecast?.remaining_expected_expense_total ?? 0) +
+    (forecast?.remaining_expected_savings_outflow_total ?? 0);
+  const forecastExpectedMonthDelta = forecast
+    ? Math.round((forecastCashInTotal - forecastCashOutTotal) * 100) / 100
+    : null;
+  const forecastBudgetBasisExpectedIncome = budgetExpectedIncomeTotal ?? 0;
+  const forecastBudgetBasisBookedIncome = budgetBookedIncomeTotal ?? 0;
+  const forecastBudgetBasisRemainingIncome = Math.max(
+    forecastBudgetBasisExpectedIncome - forecastBudgetBasisBookedIncome,
+    0,
+  );
+  const forecastOutsideBudgetBasisBookedIncome = Math.max(
+    forecastBookedCashIn - forecastBudgetBasisBookedIncome,
+    0,
+  );
+  const forecastOutsideBudgetBasisExpectedIncome = Math.max(
+    forecastCashInTotal - forecastBudgetBasisExpectedIncome,
+    0,
+  );
+  const forecastEndBalanceNeedsContext =
+    forecastExpectedMonthDelta != null &&
+    forecastExpectedMonthDelta >= 0 &&
+    (forecast?.expected_end_of_month_balance ?? 0) < 0;
+  const forecastRefreshHelper = React.useMemo(
+    () => getForecastRefreshHelper(forecastRefreshStatus),
+    [forecastRefreshStatus],
   );
 
   const rareSubscriptionSummary = React.useMemo(() => {
@@ -1138,7 +1418,9 @@ export default function InsightsScreen() {
 
   const loadMonthOptions = React.useCallback(async () => {
     try {
-      const options = await listTransactionMonthOptions();
+      const options = await listTransactionMonthOptions({
+        includeFutureMonths: 6,
+      });
       setMonthOptions(options);
     } catch (error) {
       console.error("[insights] month options load error", error);
@@ -1355,8 +1637,12 @@ export default function InsightsScreen() {
     }
   }, [analysisSchemaMissing, selectedMonth.endIso, selectedMonth.startIso]);
 
-  const loadForecast = React.useCallback(async () => {
+  const loadForecast = React.useCallback(async (options?: {
+    forceRecompute?: boolean;
+    reason?: ForecastRefreshReason;
+  }) => {
     if (forecastSchemaMissing) {
+      setForecastByMonth({});
       setForecast(null);
       return;
     }
@@ -1367,53 +1653,76 @@ export default function InsightsScreen() {
     try {
       const userId = await requireCurrentUserId();
       const enhancedForecastSelect =
-        "month_start,current_balance_anchor,current_balance_anchor_date,expected_income_total,expected_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,upcoming_committed_income_total,upcoming_committed_expense_total,lowest_expected_balance,lowest_expected_balance_date,next_expected_event_date,next_expected_event_label,cash_risk_flag,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3";
+        "month_start,forecast_reference_date,current_balance_anchor,current_balance_anchor_date,booked_income_total,booked_expense_total,booked_savings_outflow_total,remaining_expected_income_total,remaining_expected_expense_total,remaining_expected_savings_outflow_total,expected_income_total,expected_expense_total,expected_savings_outflow_total,expected_cash_out_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,upcoming_committed_income_total,upcoming_committed_expense_total,upcoming_committed_savings_outflow_total,lowest_expected_balance,lowest_expected_balance_date,next_expected_event_date,next_expected_event_label,cash_risk_flag,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3";
       const legacyForecastSelect =
         "month_start,expected_income_total,expected_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3";
       const forecastQuery = supabase.from("monthly_cashflow_forecasts") as any;
-      const fetchForecastRow = async (
+      const requestedMonthStarts = Array.from(
+        new Set([
+          ...forecastStripOptions.map((option) => option.startIso),
+          selectedMonth.startIso,
+        ]),
+      );
+      const fetchForecastRows = async (
         useLegacy = false,
-      ): Promise<GenericRecordResult> =>
+      ): Promise<GenericRowsResult> =>
         (await forecastQuery
           .select(useLegacy ? legacyForecastSelect : enhancedForecastSelect)
           .eq("user_id", userId)
-          .eq("month_start", selectedMonth.startIso)
-          .maybeSingle()) as GenericRecordResult;
+          .in("month_start", requestedMonthStarts)) as GenericRowsResult;
 
-      const isCurrentMonth = selectedMonth.isCurrentMonth;
-      const referenceDate = isCurrentMonth
+      const referenceDate = selectedMonth.isCurrentMonth
         ? new Date()
         : new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
-      if (!isCurrentMonth) {
+      if (!selectedMonth.isCurrentMonth) {
         referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
       }
+      const refreshOptions: EnsureForecastFreshOptions = {
+        referenceDate,
+        force: options?.forceRecompute,
+        reason:
+          options?.reason ||
+          (selectedMonth.isCurrentMonth
+            ? "insights_open"
+            : isHistoricalMonth
+              ? "historical_month_open"
+              : "future_month_open"),
+      };
 
-      if (isCurrentMonth) {
-        await recomputeCurrentMonthCashflowForecast(referenceDate).catch(
-          (error) => {
-            console.warn("[insights] forecast recompute trigger failed", error);
-          },
-        );
+      const refreshStatus = await ensureForecastFresh(refreshOptions).catch(
+        (error) => {
+          console.warn("[insights] forecast refresh check failed", error);
+          return null;
+        },
+      );
+      if (refreshStatus) {
+        setForecastRefreshStatus(refreshStatus);
       }
 
       let usedLegacyForecastShape = false;
-      let { data, error } = await fetchForecastRow();
+      let { data, error } = await fetchForecastRows();
       if (error && isMissingColumnError(error)) {
         usedLegacyForecastShape = true;
-        const legacyResult = await fetchForecastRow(true);
+        const legacyResult = await fetchForecastRows(true);
         data = legacyResult.data;
         error = legacyResult.error;
       }
-      if (!data) {
-        await recomputeCurrentMonthCashflowForecast(referenceDate).catch(
-          (recomputeError) => {
-            console.warn("[insights] forecast backfill trigger failed", recomputeError);
-          },
-        );
-        let retry = await fetchForecastRow(usedLegacyForecastShape);
+      if (!data || !data.length) {
+        const backfillStatus = await ensureForecastFresh({
+          referenceDate,
+          reason: "forecast_backfill",
+          force: true,
+        }).catch((recomputeError) => {
+          console.warn("[insights] forecast backfill trigger failed", recomputeError);
+          return null;
+        });
+        if (backfillStatus) {
+          setForecastRefreshStatus(backfillStatus);
+        }
+        let retry = await fetchForecastRows(usedLegacyForecastShape);
         if (retry.error && isMissingColumnError(retry.error)) {
           usedLegacyForecastShape = true;
-          retry = await fetchForecastRow(true);
+          retry = await fetchForecastRows(true);
         }
         data = retry.data;
         error = retry.error;
@@ -1428,72 +1737,128 @@ export default function InsightsScreen() {
         throw error;
       }
 
-      if (!data) {
+      if (!data || !data.length) {
+        setForecastByMonth({});
         setForecast(null);
         return;
       }
 
-      setForecast({
-        month_start: String(data.month_start),
-        current_balance_anchor:
-          usedLegacyForecastShape || data.current_balance_anchor == null
-            ? null
-            : Number(data.current_balance_anchor),
-        current_balance_anchor_date: data.current_balance_anchor_date
-          ? String(data.current_balance_anchor_date)
-          : null,
-        expected_income_total: Number(data.expected_income_total || 0),
-        expected_expense_total: Number(data.expected_expense_total || 0),
-        expected_fixed_costs: Number(data.expected_fixed_costs || 0),
-        expected_subscriptions: Number(data.expected_subscriptions || 0),
-        expected_variable_costs: Number(data.expected_variable_costs || 0),
-        upcoming_committed_income_total: Number(
-          usedLegacyForecastShape ? 0 : data.upcoming_committed_income_total || 0,
-        ),
-        upcoming_committed_expense_total: Number(
-          usedLegacyForecastShape ? 0 : data.upcoming_committed_expense_total || 0,
-        ),
-        lowest_expected_balance:
-          usedLegacyForecastShape || data.lowest_expected_balance == null
-            ? null
-            : Number(data.lowest_expected_balance),
-        lowest_expected_balance_date: data.lowest_expected_balance_date
-          ? String(data.lowest_expected_balance_date)
-          : null,
-        next_expected_event_date: data.next_expected_event_date
-          ? String(data.next_expected_event_date)
-          : null,
-        next_expected_event_label: data.next_expected_event_label
-          ? String(data.next_expected_event_label)
-          : null,
-        cash_risk_flag:
-          !usedLegacyForecastShape && data.cash_risk_flag === "cash_gap_warning"
-            ? "cash_gap_warning"
-            : "none",
-        expected_end_of_month_balance:
-          data.expected_end_of_month_balance == null
-            ? null
-            : Number(data.expected_end_of_month_balance),
-        risk_flag:
-          data.risk_flag === "deficit_warning" ? "deficit_warning" : "none",
-        top_cost_bucket_1: data.top_cost_bucket_1
-          ? String(data.top_cost_bucket_1)
-          : null,
-        top_cost_bucket_2: data.top_cost_bucket_2
-          ? String(data.top_cost_bucket_2)
-          : null,
-        top_cost_bucket_3: data.top_cost_bucket_3
-          ? String(data.top_cost_bucket_3)
-          : null,
-      });
+      const rowsByMonth = ((data || []) as Record<string, unknown>[]).reduce<
+        Record<string, CashflowForecast>
+      >((acc, row) => {
+        const mapped: CashflowForecast = {
+          month_start: String(row.month_start || ""),
+          forecast_reference_date:
+            usedLegacyForecastShape || row.forecast_reference_date == null
+              ? null
+              : String(row.forecast_reference_date),
+          current_balance_anchor:
+            usedLegacyForecastShape || row.current_balance_anchor == null
+              ? null
+              : Number(row.current_balance_anchor),
+          current_balance_anchor_date: row.current_balance_anchor_date
+            ? String(row.current_balance_anchor_date)
+            : null,
+          booked_income_total: Number(
+            usedLegacyForecastShape ? 0 : row.booked_income_total || 0,
+          ),
+          booked_expense_total: Number(
+            usedLegacyForecastShape ? 0 : row.booked_expense_total || 0,
+          ),
+          booked_savings_outflow_total: Number(
+            usedLegacyForecastShape ? 0 : row.booked_savings_outflow_total || 0,
+          ),
+          remaining_expected_income_total: Number(
+            usedLegacyForecastShape
+              ? row.expected_income_total || 0
+              : row.remaining_expected_income_total || 0,
+          ),
+          remaining_expected_expense_total: Number(
+            usedLegacyForecastShape
+              ? row.expected_expense_total || 0
+              : row.remaining_expected_expense_total || 0,
+          ),
+          remaining_expected_savings_outflow_total: Number(
+            usedLegacyForecastShape
+              ? 0
+              : row.remaining_expected_savings_outflow_total || 0,
+          ),
+          expected_income_total: Number(row.expected_income_total || 0),
+          expected_expense_total: Number(row.expected_expense_total || 0),
+          expected_savings_outflow_total: Number(
+            usedLegacyForecastShape ? 0 : row.expected_savings_outflow_total || 0,
+          ),
+          expected_cash_out_total: Number(
+            usedLegacyForecastShape
+              ? Number(row.expected_expense_total || 0)
+              : row.expected_cash_out_total || 0,
+          ),
+          expected_fixed_costs: Number(row.expected_fixed_costs || 0),
+          expected_subscriptions: Number(row.expected_subscriptions || 0),
+          expected_variable_costs: Number(row.expected_variable_costs || 0),
+          upcoming_committed_income_total: Number(
+            usedLegacyForecastShape ? 0 : row.upcoming_committed_income_total || 0,
+          ),
+          upcoming_committed_expense_total: Number(
+            usedLegacyForecastShape
+              ? 0
+              : row.upcoming_committed_expense_total || 0,
+          ),
+          upcoming_committed_savings_outflow_total: Number(
+            usedLegacyForecastShape
+              ? 0
+              : row.upcoming_committed_savings_outflow_total || 0,
+          ),
+          lowest_expected_balance:
+            usedLegacyForecastShape || row.lowest_expected_balance == null
+              ? null
+              : Number(row.lowest_expected_balance),
+          lowest_expected_balance_date: row.lowest_expected_balance_date
+            ? String(row.lowest_expected_balance_date)
+            : null,
+          next_expected_event_date: row.next_expected_event_date
+            ? String(row.next_expected_event_date)
+            : null,
+          next_expected_event_label: row.next_expected_event_label
+            ? String(row.next_expected_event_label)
+            : null,
+          cash_risk_flag:
+            !usedLegacyForecastShape && row.cash_risk_flag === "cash_gap_warning"
+              ? "cash_gap_warning"
+              : "none",
+          expected_end_of_month_balance:
+            row.expected_end_of_month_balance == null
+              ? null
+              : Number(row.expected_end_of_month_balance),
+          risk_flag:
+            row.risk_flag === "deficit_warning" ? "deficit_warning" : "none",
+          top_cost_bucket_1: row.top_cost_bucket_1
+            ? String(row.top_cost_bucket_1)
+            : null,
+          top_cost_bucket_2: row.top_cost_bucket_2
+            ? String(row.top_cost_bucket_2)
+            : null,
+          top_cost_bucket_3: row.top_cost_bucket_3
+            ? String(row.top_cost_bucket_3)
+            : null,
+        };
+        acc[mapped.month_start] = mapped;
+        return acc;
+      }, {});
+
+      setForecastByMonth(rowsByMonth);
+      setForecast(rowsByMonth[selectedMonth.startIso] || null);
     } catch (error) {
       console.error("[insights] forecast load error", error);
+      setForecastByMonth({});
       setForecast(null);
     } finally {
       forecastLoadInFlight.current = false;
     }
   }, [
+    forecastStripOptions,
     forecastSchemaMissing,
+    isHistoricalMonth,
     selectedMonth.endIso,
     selectedMonth.isCurrentMonth,
     selectedMonth.startIso,
@@ -1664,6 +2029,18 @@ export default function InsightsScreen() {
     },
     [loadBudgetPlan, loadForecast, loadTransactions, selectedTx?.id],
   );
+
+  const handleManualForecastRefresh = React.useCallback(async () => {
+    setRefreshingForecast(true);
+    try {
+      await loadForecast({
+        forceRecompute: true,
+        reason: "manual_refresh",
+      });
+    } finally {
+      setRefreshingForecast(false);
+    }
+  }, [loadForecast]);
 
   const openSelectedTransactionDetail = React.useCallback(() => {
     if (!selectedTx) return;
@@ -1960,34 +2337,48 @@ export default function InsightsScreen() {
           {segment === "forecast" ? (
             <>
               <View style={styles.heroCard}>
-                <Text style={styles.eyebrow}>Voorspelling</Text>
+                <Text style={styles.eyebrow}>{selectedMonth.label}</Text>
                 <Text style={styles.heroSummary}>{forecastHeadline}</Text>
-              </View>
-
-              <View style={styles.card}>
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.sectionTitle}>Cashflow voorspelling</Text>
-                  <Text style={styles.sectionHelper}>Einde van de maand</Text>
+                {forecastDataHelper ? (
+                  <Text style={styles.helperText}>{forecastDataHelper}</Text>
+                ) : null}
+                <View style={styles.forecastRefreshRow}>
+                  <Text
+                    style={[
+                      styles.forecastRefreshMeta,
+                      forecastRefreshStatus?.isDirty &&
+                        styles.forecastRefreshMetaWarning,
+                    ]}
+                  >
+                    {forecastRefreshHelper || "Refreshstatus wordt geladen."}
+                  </Text>
+                  <Pressable
+                    style={[
+                      styles.inlineRefreshButton,
+                      refreshingForecast && styles.inlineRefreshButtonDisabled,
+                    ]}
+                    onPress={handleManualForecastRefresh}
+                    disabled={refreshingForecast}
+                  >
+                    {refreshingForecast ? (
+                      <ActivityIndicator
+                        color={FinColors.textPrimary}
+                        size="small"
+                      />
+                    ) : (
+                      <Text style={styles.inlineRefreshButtonText}>
+                        Voorspelling vernieuwen
+                      </Text>
+                    )}
+                  </Pressable>
                 </View>
                 {forecast ? (
-                  <>
-                    <View style={styles.reportRow}>
-                      <Text style={styles.reportLabel}>Verwachte inkomsten</Text>
-                      <Text style={[styles.reportValue, styles.positiveText]}>
-                        +{fmt.format(forecast.expected_income_total)}
-                      </Text>
-                    </View>
-                    <View style={styles.reportRow}>
-                      <Text style={styles.reportLabel}>Verwachte uitgaven</Text>
-                      <Text style={styles.reportValue}>
-                        {fmt.format(forecast.expected_expense_total)}
-                      </Text>
-                    </View>
-                    <View style={styles.reportRow}>
-                      <Text style={styles.reportLabelStrong}>Verwacht eindsaldo</Text>
+                  <View style={styles.metricRow}>
+                    <View style={styles.metricCard}>
+                      <Text style={styles.metricLabel}>Verwacht eindsaldo</Text>
                       <Text
                         style={[
-                          styles.reportValueStrong,
+                          styles.metricValue,
                           forecast.expected_end_of_month_balance != null &&
                           forecast.expected_end_of_month_balance >= 0
                             ? styles.positiveText
@@ -1999,39 +2390,277 @@ export default function InsightsScreen() {
                           : `${forecast.expected_end_of_month_balance >= 0 ? "+" : ""}${fmt.format(forecast.expected_end_of_month_balance)}`}
                       </Text>
                     </View>
-
-                    {forecast.risk_flag === "deficit_warning" ||
-                    (forecast.expected_end_of_month_balance != null &&
-                      forecast.expected_end_of_month_balance < 0) ? (
-                      <Text style={styles.warningText}>
-                        Verwacht tekort deze maand
+                    <View style={styles.metricCard}>
+                      <Text style={styles.metricLabel}>Laagste saldo</Text>
+                      <Text
+                        style={[
+                          styles.metricValue,
+                          forecast.lowest_expected_balance != null &&
+                          forecast.lowest_expected_balance >= 0
+                            ? styles.positiveText
+                            : styles.negativeText,
+                        ]}
+                      >
+                        {forecast.lowest_expected_balance == null
+                          ? "Onbekend"
+                          : fmt.format(forecast.lowest_expected_balance)}
                       </Text>
+                    </View>
+                    <View style={styles.metricCard}>
+                      <Text style={styles.metricLabel}>Status</Text>
+                      <Text
+                        style={[
+                          styles.metricValue,
+                          forecastStatusTone === "positive" && styles.positiveText,
+                          forecastStatusTone === "warning" && styles.warningText,
+                          forecastStatusTone === "negative" && styles.negativeText,
+                        ]}
+                      >
+                        {forecastStatusLabel}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Vooruitblik</Text>
+                  <Text style={styles.sectionHelper}>Huidige maand + 6 maanden</Text>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.forecastStrip}
+                >
+                  {forecastStripItems.map(({ option, forecast: stripForecast }) => (
+                    <Pressable
+                      key={option.key}
+                      style={[
+                        styles.forecastStripCard,
+                        selectedMonth.key === option.key &&
+                          styles.forecastStripCardActive,
+                      ]}
+                      onPress={() => setSelectedMonthKey(option.key)}
+                    >
+                      <Text
+                        style={[
+                          styles.forecastStripLabel,
+                          selectedMonth.key === option.key &&
+                            styles.forecastStripLabelActive,
+                        ]}
+                      >
+                        {option.monthLabel}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.forecastStripValue,
+                          stripForecast?.expected_end_of_month_balance != null &&
+                          stripForecast.expected_end_of_month_balance >= 0
+                            ? styles.positiveText
+                            : styles.negativeText,
+                        ]}
+                      >
+                        {stripForecast?.expected_end_of_month_balance == null
+                          ? "..."
+                          : `${stripForecast.expected_end_of_month_balance >= 0 ? "+" : ""}${fmt.format(stripForecast.expected_end_of_month_balance)}`}
+                      </Text>
+                      <Text style={styles.forecastStripMeta}>
+                        {getForecastStatusLabel(stripForecast)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Cashflow deze maand</Text>
+                  <Text style={styles.sectionHelper}>
+                    Saldo nu, maandmutatie en eindsaldo
+                  </Text>
+                </View>
+                {forecast ? (
+                  <>
+                    <View style={styles.metricRow}>
+                      <View style={styles.metricCard}>
+                        <Text style={styles.metricLabel}>Laatste bekende saldo</Text>
+                        <Text style={styles.metricValue}>
+                          {forecast.current_balance_anchor == null
+                            ? "Onbekend"
+                            : fmt.format(forecast.current_balance_anchor)}
+                        </Text>
+                      </View>
+                      <View style={styles.metricCard}>
+                        <Text style={styles.metricLabel}>Maandmutatie verwacht</Text>
+                        <Text
+                          style={[
+                            styles.metricValue,
+                            forecastExpectedMonthDelta != null &&
+                            forecastExpectedMonthDelta >= 0
+                              ? styles.positiveText
+                              : styles.negativeText,
+                          ]}
+                        >
+                          {forecastExpectedMonthDelta == null
+                            ? "Onbekend"
+                            : `${forecastExpectedMonthDelta >= 0 ? "+" : ""}${fmt.format(forecastExpectedMonthDelta)}`}
+                        </Text>
+                      </View>
+                      <View style={styles.metricCard}>
+                        <Text style={styles.metricLabel}>Verwacht eindsaldo</Text>
+                        <Text
+                          style={[
+                            styles.metricValue,
+                            forecast.expected_end_of_month_balance != null &&
+                            forecast.expected_end_of_month_balance >= 0
+                              ? styles.positiveText
+                              : styles.negativeText,
+                          ]}
+                        >
+                          {forecast.expected_end_of_month_balance == null
+                            ? "Onbekend"
+                            : `${forecast.expected_end_of_month_balance >= 0 ? "+" : ""}${fmt.format(forecast.expected_end_of_month_balance)}`}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.reportDivider} />
+
+                    <View style={styles.forecastBreakdownGrid}>
+                      <View style={styles.forecastBreakdownCard}>
+                        <Text style={styles.forecastBreakdownTitle}>Cash-in</Text>
+                        <View style={styles.reportRow}>
+                          <Text style={styles.reportLabelStrong}>Totaal cash-in</Text>
+                          <Text style={[styles.reportValueStrong, styles.positiveText]}>
+                            +{fmt.format(forecastCashInTotal)}
+                          </Text>
+                        </View>
+                        <View style={styles.reportRow}>
+                          <Text style={styles.reportLabel}>Al binnen</Text>
+                          <Text style={[styles.reportValue, styles.positiveText]}>
+                            +{fmt.format(forecastBookedCashIn)}
+                          </Text>
+                        </View>
+                        <View style={styles.reportRow}>
+                          <Text style={styles.reportLabel}>Nog verwacht</Text>
+                          <Text style={[styles.reportValue, styles.positiveText]}>
+                            +{fmt.format(forecastRemainingCashIn)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.forecastBreakdownCard}>
+                        <Text style={styles.forecastBreakdownTitle}>Cash-out</Text>
+                        <View style={styles.reportRow}>
+                          <Text style={styles.reportLabelStrong}>Totaal cash-out</Text>
+                          <Text style={styles.reportValueStrong}>
+                            {fmt.format(forecastCashOutTotal)}
+                          </Text>
+                        </View>
+                        <View style={styles.reportRow}>
+                          <Text style={styles.reportLabel}>Al uitgegeven</Text>
+                          <Text style={styles.reportValue}>
+                            {fmt.format(forecastBookedCashOut)}
+                          </Text>
+                        </View>
+                        <View style={styles.reportRow}>
+                          <Text style={styles.reportLabel}>Nog verwacht</Text>
+                          <Text style={styles.reportValue}>
+                            {fmt.format(forecastRemainingCashOut)}
+                          </Text>
+                        </View>
+                        <View style={styles.reportRow}>
+                          <Text style={styles.reportLabel}>Waarvan sparen totaal</Text>
+                          <Text style={styles.reportValue}>
+                            {fmt.format(forecast.expected_savings_outflow_total)}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    {budgetExpectedIncomeTotal != null ? (
+                      <View style={styles.forecastPlannerCard}>
+                        <Text style={styles.forecastPlannerTitle}>Budgetbasis</Text>
+                        <Text style={styles.helperText}>
+                          Van je totale cash-in van {fmt.format(forecastCashInTotal)}
+                          {" "}telt {fmt.format(forecastBudgetBasisExpectedIncome)} mee
+                          in je budgetplanner.
+                        </Text>
+                        <View style={styles.reportRow}>
+                          <Text style={styles.reportLabel}>Meegeteld totaal</Text>
+                          <Text style={[styles.reportValue, styles.positiveText]}>
+                            +{fmt.format(forecastBudgetBasisExpectedIncome)}
+                          </Text>
+                        </View>
+                        <View style={styles.reportRow}>
+                          <Text style={styles.reportLabel}>Al meegeteld</Text>
+                          <Text style={[styles.reportValue, styles.positiveText]}>
+                            +{fmt.format(forecastBudgetBasisBookedIncome)}
+                          </Text>
+                        </View>
+                        <View style={styles.reportRow}>
+                          <Text style={styles.reportLabel}>Nog volgens planner</Text>
+                          <Text style={[styles.reportValue, styles.positiveText]}>
+                            +{fmt.format(forecastBudgetBasisRemainingIncome)}
+                          </Text>
+                        </View>
+                        {forecastOutsideBudgetBasisBookedIncome > 0 ? (
+                          <View style={styles.reportRow}>
+                            <Text style={styles.reportLabel}>
+                              Buiten budgetbasis al ontvangen
+                            </Text>
+                            <Text style={[styles.reportValue, styles.positiveText]}>
+                              +{fmt.format(forecastOutsideBudgetBasisBookedIncome)}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {forecastOutsideBudgetBasisExpectedIncome > 0 ? (
+                          <Text style={styles.helperText}>
+                            Buiten de budgetbasis valt {fmt.format(
+                              forecastOutsideBudgetBasisExpectedIncome,
+                            )} aan cash-in, zoals meevallers of incidenteel inkomen.
+                          </Text>
+                        ) : null}
+                        <Text style={styles.helperText}>
+                          Inkomstenbasis budget: {formatIncludedIncomeLabel(budgetPlan)}.
+                        </Text>
+                      </View>
                     ) : null}
+
                     {forecast.cash_risk_flag === "cash_gap_warning" ? (
                       <Text style={styles.warningText}>
                         Let op: je saldo kan tussentijds onder nul zakken.
                       </Text>
                     ) : null}
+                    {forecast.risk_flag === "deficit_warning" ? (
+                      <Text style={styles.warningText}>
+                        Verwacht tekort aan het eind van de maand.
+                      </Text>
+                    ) : null}
+                    {forecastEndBalanceNeedsContext &&
+                    forecast.current_balance_anchor != null ? (
+                      <Text style={styles.helperText}>
+                        Je maandmutatie is positief, maar je laatste bekende saldo
+                        van {fmt.format(forecast.current_balance_anchor)} is nog te
+                        laag om deze maand boven nul te eindigen.
+                      </Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={styles.supportText}>
+                    Nog geen voorspelling beschikbaar voor {selectedMonth.label}.
+                  </Text>
+                )}
+              </View>
 
-                    <View style={styles.reportDivider} />
-                    <Text style={styles.sectionHelper}>
-                      Bekende betaalmomenten vanaf nu
-                    </Text>
-                    <View style={styles.reportRow}>
-                      <Text style={styles.reportLabel}>Laatste bekende saldo</Text>
-                      <View style={styles.reportRight}>
-                        <Text style={styles.reportValue}>
-                          {forecast.current_balance_anchor == null
-                            ? "Onbekend"
-                            : fmt.format(forecast.current_balance_anchor)}
-                        </Text>
-                        {forecast.current_balance_anchor_date ? (
-                          <Text style={styles.reportHint}>
-                            {formatShortDate(forecast.current_balance_anchor_date)}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Komende bekende momenten</Text>
+                  <Text style={styles.sectionHelper}>Nog in deze maand</Text>
+                </View>
+                {forecast ? (
+                  <>
                     <View style={styles.reportRow}>
                       <Text style={styles.reportLabel}>Komende inkomsten</Text>
                       <Text style={[styles.reportValue, styles.positiveText]}>
@@ -2039,9 +2668,17 @@ export default function InsightsScreen() {
                       </Text>
                     </View>
                     <View style={styles.reportRow}>
-                      <Text style={styles.reportLabel}>Komende vaste uitgaven</Text>
+                      <Text style={styles.reportLabel}>Komende uitgaven</Text>
                       <Text style={styles.reportValue}>
                         {fmt.format(forecast.upcoming_committed_expense_total)}
+                      </Text>
+                    </View>
+                    <View style={styles.reportRow}>
+                      <Text style={styles.reportLabel}>Komend naar sparen</Text>
+                      <Text style={styles.reportValue}>
+                        {fmt.format(
+                          forecast.upcoming_committed_savings_outflow_total,
+                        )}
                       </Text>
                     </View>
                     <View style={styles.reportRow}>
@@ -2069,62 +2706,82 @@ export default function InsightsScreen() {
                         ) : null}
                       </View>
                     </View>
-                    {forecast.next_expected_event_date &&
-                    forecast.next_expected_event_label ? (
+                    {isHistoricalMonth ? (
+                      <Text style={styles.helperText}>
+                        Deze maand is afgesloten; er staan geen resterende momenten
+                        meer open.
+                      </Text>
+                    ) : forecast.next_expected_event_date &&
+                      forecast.next_expected_event_label ? (
                       <Text style={styles.helperText}>
                         Eerstvolgende verwachte beweging:{" "}
                         {forecast.next_expected_event_label} op{" "}
                         {formatShortDate(forecast.next_expected_event_date)}.
                       </Text>
-                    ) : null}
+                    ) : (
+                      <Text style={styles.helperText}>
+                        Er staan geen concrete toekomstige momenten meer klaar in
+                        deze maand.
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  <Text style={styles.supportText}>
+                    Nog geen voorspelling beschikbaar voor {selectedMonth.label}.
+                  </Text>
+                )}
+              </View>
 
-                    <View style={styles.reportDivider} />
-                    <Text style={styles.sectionHelper}>
-                      Verwachte kostenlagen
-                    </Text>
-                    <Pressable
-                      style={styles.reportRowButton}
-                      onPress={() => openAnalysisDetail("fixed_costs")}
-                    >
-                      <Text style={styles.reportLabel}>Vaste lasten</Text>
-                      <View style={styles.reportRight}>
-                        <Text style={styles.reportValue}>
-                          {fmt.format(forecast.expected_fixed_costs)}
-                        </Text>
-                        <Text style={styles.reportHint}>Analyse</Text>
-                      </View>
-                    </Pressable>
-                    <Pressable
-                      style={styles.reportRowButton}
-                      onPress={() => openAnalysisDetail("subscriptions")}
-                    >
-                      <Text style={styles.reportLabel}>Abonnementen</Text>
-                      <View style={styles.reportRight}>
-                        <Text style={styles.reportValue}>
-                          {fmt.format(forecast.expected_subscriptions)}
-                        </Text>
-                        <Text style={styles.reportHint}>Analyse</Text>
-                      </View>
-                    </Pressable>
-                    <Pressable
-                      style={styles.reportRowButton}
-                      onPress={() => openAnalysisDetail("variable_costs")}
-                    >
-                      <Text style={styles.reportLabel}>Variabele kosten</Text>
-                      <View style={styles.reportRight}>
-                        <Text style={styles.reportValue}>
-                          {fmt.format(forecast.expected_variable_costs)}
-                        </Text>
-                        <Text style={styles.reportHint}>Analyse</Text>
-                      </View>
-                    </Pressable>
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Verwachte opbouw</Text>
+                  <Text style={styles.sectionHelper}>Per kostenlaag</Text>
+                </View>
+                {forecast ? (
+                  <>
+                    {forecastBuildupRows.map((row) =>
+                      row.pressable ? (
+                        <Pressable
+                          key={row.key}
+                          style={styles.reportRowButton}
+                          onPress={() =>
+                            openAnalysisDetail(row.key as DrilldownExpenseGroup)
+                          }
+                        >
+                          <View>
+                            <Text style={styles.reportLabel}>{row.label}</Text>
+                            <Text style={styles.reportHint}>
+                              Geboekt {fmt.format(row.booked)} • nog verwacht{" "}
+                              {fmt.format(row.remaining)}
+                            </Text>
+                          </View>
+                          <View style={styles.reportRight}>
+                            <Text style={styles.reportValue}>
+                              {fmt.format(row.total)}
+                            </Text>
+                            <Text style={styles.reportHint}>Analyse</Text>
+                          </View>
+                        </Pressable>
+                      ) : (
+                        <View key={row.key} style={styles.reportRow}>
+                          <View>
+                            <Text style={styles.reportLabel}>{row.label}</Text>
+                            <Text style={styles.reportHint}>
+                              Geboekt {fmt.format(row.booked)} • nog verwacht{" "}
+                              {fmt.format(row.remaining)}
+                            </Text>
+                          </View>
+                          <Text style={styles.reportValue}>{fmt.format(row.total)}</Text>
+                        </View>
+                      ),
+                    )}
 
                     <Text style={styles.helperText}>
-                      Inkomstenbasis: {formatIncludedIncomeLabel(budgetPlan)}.
+                      Inkomstenbasis budget: {formatIncludedIncomeLabel(budgetPlan)}.
                     </Text>
                     {forecastTopCostLabels.length ? (
                       <Text style={styles.helperText}>
-                        Grootste kostenposten: {forecastTopCostLabels.join(", ")}.
+                        Grootste cash-out: {forecastTopCostLabels.join(", ")}.
                       </Text>
                     ) : null}
                   </>
@@ -2405,7 +3062,7 @@ export default function InsightsScreen() {
       <MonthPickerSheet
         visible={monthPickerOpen}
         title="Kies maand"
-        helper="Alleen maanden met transacties"
+        helper="Historie plus 6 maanden vooruit"
         options={monthOptions}
         selectedKey={selectedMonth.key}
         onClose={() => setMonthPickerOpen(false)}
@@ -2887,6 +3544,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: FinColors.textMuted,
   },
+  forecastStrip: {
+    gap: 10,
+    paddingRight: 4,
+  },
+  forecastStripCard: {
+    width: 140,
+    borderRadius: 16,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  forecastStripCardActive: {
+    borderColor: FinColors.textPrimary,
+    backgroundColor: FinColors.bgBase,
+  },
+  forecastStripLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+    textTransform: "capitalize",
+  },
+  forecastStripLabelActive: {
+    color: FinColors.textPrimary,
+  },
+  forecastStripValue: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  forecastStripMeta: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+  },
   reportRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2933,10 +3626,72 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: FinColors.borderSubtle,
   },
+  forecastBreakdownGrid: {
+    gap: 12,
+  },
+  forecastBreakdownCard: {
+    borderRadius: 18,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 14,
+    gap: 10,
+  },
+  forecastBreakdownTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  forecastPlannerCard: {
+    borderRadius: 18,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 14,
+    gap: 10,
+  },
+  forecastPlannerTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
   supportText: {
     fontSize: 14,
     lineHeight: 21,
     color: FinColors.textSecondary,
+  },
+  forecastRefreshRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  forecastRefreshMeta: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    color: FinColors.textMuted,
+  },
+  forecastRefreshMetaWarning: {
+    color: FinColors.warningText,
+  },
+  inlineRefreshButton: {
+    minHeight: 34,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inlineRefreshButtonDisabled: {
+    opacity: 0.7,
+  },
+  inlineRefreshButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
   },
   helperText: {
     fontSize: 13,

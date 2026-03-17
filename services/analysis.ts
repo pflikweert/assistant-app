@@ -692,9 +692,9 @@ export async function enrichTransactionAnalysis(
 
   for (const tx of currentRows) {
     const update = buildAnalysisUpdate(tx, categoryMap, allWindowTransactions);
+    mergeIncomeSources(tx, update, categoryMap, incomeCollector);
     if (!updateChanged(tx, update)) continue;
     updates.push(update);
-    mergeIncomeSources(tx, update, categoryMap, incomeCollector);
   }
 
   if (updates.length) {
