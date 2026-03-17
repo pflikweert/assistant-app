@@ -1,6 +1,7 @@
 import createIconSet from "@expo/vector-icons/createIconSet";
 import type MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import React from "react";
+import { StyleSheet } from "react-native";
 
 const MATERIAL_GLYPH_MAP = require("@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/MaterialIcons.json");
 
@@ -60,10 +61,9 @@ export const AppIcon = React.forwardRef<
   React.ElementRef<typeof RoundMaterialIcon>,
   AppIconProps
 >(function AppIcon(
-  { variant = "round", ...props },
+  { variant = "round", style, ...props },
   ref,
 ) {
   const Component = ICON_VARIANTS[variant] || RoundMaterialIcon;
-  return <Component ref={ref} {...props} />;
+  return <Component ref={ref} style={StyleSheet.flatten(style)} {...props} />;
 });
-

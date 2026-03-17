@@ -22,6 +22,7 @@ export function resolveExpectedCashflowIncomeBaseline(params: {
   incomeSources: IncomeSourceRow[];
 }) {
   const { monthStart, budgetPlan, incomeSources } = params;
+  const preferredSource = budgetPlan?.settings?.forecastExpenseSource || "trend";
 
   let total = 0;
   for (const source of incomeSources) {
@@ -34,6 +35,10 @@ export function resolveExpectedCashflowIncomeBaseline(params: {
     }
 
     total += source.expected_income;
+  }
+
+  if (preferredSource === "budget_settings" && budgetPlan) {
+    return Math.max(0, asNumber(budgetPlan.flowSummary.expectedIncomeMonthly, 0));
   }
 
   if (total > 0) {

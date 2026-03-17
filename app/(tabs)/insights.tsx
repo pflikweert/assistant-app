@@ -2117,6 +2117,12 @@ export default function InsightsScreen() {
   const forecastBudgetActionLabel = isFutureMonth
     ? `Budget voor ${selectedMonth.label} instellen`
     : `Budget voor ${selectedMonth.label} openen`;
+  const forecastSourceHelperText =
+    activeForecastExpenseSource === "budget_settings"
+      ? selectedMonth.isCurrentMonth
+        ? "Deze maand combineert echte boekingen en extra inkomsten met je budgetplan. Volgende maanden volgen je budgetinstellingen."
+        : "Deze maand volgt je budgetinstellingen voor inkomsten, vaste lasten, variabele ruimte en sparen."
+      : "Deze voorspelling volgt je recente maandritme en actuele boekingen.";
 
   return (
     <View style={styles.root}>
@@ -2586,8 +2592,7 @@ export default function InsightsScreen() {
                   {getForecastExpenseSourceDescription(activeForecastExpenseSource)}
                 </Text>
                 <Text style={styles.helperText}>
-                  Trend volgt je recente maandritme. Budgetplan volgt vaste
-                  lasten, abonnementen, variabele ruimte en sparen uit Budget.
+                  {forecastSourceHelperText}
                 </Text>
                 <Pressable
                   style={styles.forecastBudgetLinkButton}
@@ -2722,7 +2727,7 @@ export default function InsightsScreen() {
                           {formatForecastExpenseSourceLabel(
                             activeForecastExpenseSource,
                           )}
-                          .
+                          . {forecastSourceHelperText}
                         </Text>
                       </View>
                     </View>

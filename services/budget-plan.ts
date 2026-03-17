@@ -618,10 +618,43 @@ function weightedRecentAverage(values: number[]) {
   return round2(weightedTotal / totalWeight);
 }
 
+export function resolveBudgetPlanningTimeline(
+  referenceDay: Date,
+  timelineReferenceDay: Date,
+) {
+  const selectedMonthStart = startOfMonth(referenceDay);
+  const actualCurrentMonthStart = startOfMonth(timelineReferenceDay);
+  const isFuturePlanningMonth =
+    selectedMonthStart.getTime() > actualCurrentMonthStart.getTime();
+  const observationEndExclusive = isFuturePlanningMonth
+    ? actualCurrentMonthStart
+    : addDays(referenceDay, 1);
+  const observedDataEndExclusive = isFuturePlanningMonth
+    ? addDays(timelineReferenceDay, 1)
+    : observationEndExclusive;
+  const completedMonthCutoffStart = isFuturePlanningMonth
+    ? actualCurrentMonthStart
+    : selectedMonthStart;
+  const completedMonthBaselineThrough =
+    completedMonthCutoffStart.getTime() > 0
+      ? dateToIso(addDays(completedMonthCutoffStart, -1)).slice(0, 7) + "-01"
+      : null;
+
+  return {
+    selectedMonthStart,
+    actualCurrentMonthStart,
+    isFuturePlanningMonth,
+    observationEndExclusive,
+    observedDataEndExclusive,
+    completedMonthCutoffStart,
+    completedMonthBaselineThrough,
+  };
+}
+
 function getRecentCompletedMonthRows<T>(
   byMonth: Map<string, T>,
   trendStart: Date,
-  currentMonthStart: Date,
+  completedMonthCutoffStart: Date,
   limit: number,
 ) {
   return [...byMonth.entries()]
@@ -639,7 +672,8 @@ function getRecentCompletedMonthRows<T>(
     )
     .filter(
       (row) =>
-        row.monthStart < currentMonthStart && row.monthStart >= trendStart,
+        row.monthStart < completedMonthCutoffStart &&
+        row.monthStart >= trendStart,
     )
     .sort(
       (left, right) => right.monthStart.getTime() - left.monthStart.getTime(),
@@ -716,18 +750,18 @@ function computeIncludedIncomeTotalsByMonth(
   return totals;
 }
 
-function resolveIncomeForecastFromCompletedMonths(
+export function resolveIncomeForecastFromCompletedMonths(
   rows: BudgetTx[],
   categoryMap: Map<string, CategoryMeta>,
   settings: BudgetPlanSettings,
   trendStart: Date,
-  currentMonthStart: Date,
+  completedMonthCutoffStart: Date,
 ): BudgetIncomeBreakdown | null {
   const incomeByMonth = computeIncomeTotalsByMonth(rows, categoryMap);
   const completedMonths = getRecentCompletedMonthRows(
     incomeByMonth,
     trendStart,
-    currentMonthStart,
+    completedMonthCutoffStart,
     RECENT_INCOME_FORECAST_MONTHS,
   ).filter((row) => resolveIncludedIncomeTotal(row.value, settings) > 0);
 
@@ -759,19 +793,19 @@ function resolveIncomeForecastFromCompletedMonths(
   );
 }
 
-function resolveExpectedIncomeMonthlyFromCompletedMonths(
+export function resolveExpectedIncomeMonthlyFromCompletedMonths(
   rows: BudgetTx[],
   categoryMap: Map<string, CategoryMeta>,
   settings: BudgetPlanSettings,
   trendStart: Date,
-  currentMonthStart: Date,
+  completedMonthCutoffStart: Date,
 ): number | null {
   const forecast = resolveIncomeForecastFromCompletedMonths(
     rows,
     categoryMap,
     settings,
     trendStart,
-    currentMonthStart,
+    completedMonthCutoffStart,
   );
   return forecast ? round2(forecast.total) : null;
 }
@@ -859,17 +893,17 @@ function computeExpenseTotalsByMonth(
   return totals;
 }
 
-function resolveExpenseBaselinesFromCompletedMonths(
+export function resolveExpenseBaselinesFromCompletedMonths(
   rows: BudgetTx[],
   categoryMap: Map<string, CategoryMeta>,
   trendStart: Date,
-  currentMonthStart: Date,
+  completedMonthCutoffStart: Date,
 ): Map<BudgetCategoryKey, number> {
   const totalsByMonth = computeExpenseTotalsByMonth(rows, categoryMap);
   const completedMonths = getRecentCompletedMonthRows(
     totalsByMonth,
     trendStart,
-    currentMonthStart,
+    completedMonthCutoffStart,
     RECENT_EXPENSE_FORECAST_MONTHS,
   );
 
@@ -969,7 +1003,7 @@ function buildCompletedMonthBudgetInsight(
   categoryMap: Map<string, CategoryMeta>,
   settings: BudgetPlanSettings,
   trendStart: Date,
-  currentMonthStart: Date,
+  completedMonthCutoffStart: Date,
 ): CompletedMonthBudgetInsight {
   const incomeTotalsByMonth = computeIncludedIncomeTotalsByMonth(
     rows,
@@ -993,7 +1027,8 @@ function buildCompletedMonthBudgetInsight(
     )
     .filter(
       (row) =>
-        row.monthStart < currentMonthStart && row.monthStart >= trendStart,
+        row.monthStart < completedMonthCutoffStart &&
+        row.monthStart >= trendStart,
     )
     .sort(
       (left, right) => right.monthStart.getTime() - left.monthStart.getTime(),
@@ -1333,6 +1368,49 @@ function buildVariableMainCategoryBudgetMapForMonth(params: {
   return result;
 }
 
+function sumVariableMainCategoryBudgetMap(
+  budgetByCategory: Map<VariableMainCategory, number>,
+) {
+  return roundEuro(
+    VARIABLE_MAIN_ORDER.reduce(
+      (sum, key) => sum + (budgetByCategory.get(key) || 0),
+      0,
+    ),
+  );
+}
+
+function buildVariableMonthlyBudgetByMonthStartIso(params: {
+  variableMainCategoryBudgetByMonthStartIso: Map<
+    string,
+    Map<VariableMainCategory, number>
+  >;
+}) {
+  const { variableMainCategoryBudgetByMonthStartIso } = params;
+
+  return new Map<string, number>(
+    [...variableMainCategoryBudgetByMonthStartIso.entries()].map(
+      ([monthStartIso, budgetByCategory]) => [
+        monthStartIso,
+        sumVariableMainCategoryBudgetMap(budgetByCategory),
+      ],
+    ),
+  );
+}
+
+function resolveLockedVariableMainCategoriesFromMonthValues(
+  monthValues: MonthlyBudgetValue[],
+): Set<VariableMainCategory> {
+  const locked = new Set<VariableMainCategory>();
+
+  for (const key of VARIABLE_MAIN_ORDER) {
+    if (monthValues.find((item) => item.categoryKey === key)?.lockTrend) {
+      locked.add(key);
+    }
+  }
+
+  return locked;
+}
+
 function buildWeeklyBudgetBreakdown(params: {
   weeklyVariablePlan: BudgetWeekPlanRow[];
   weekRanges: WeekRange[];
@@ -1377,6 +1455,119 @@ function buildWeeklyBudgetBreakdown(params: {
       })),
     };
   });
+}
+
+export function resolveFutureMonthOverlapCarryover(params: {
+  planningTimeline: ReturnType<typeof resolveBudgetPlanningTimeline>;
+  timelineReferenceDay: Date;
+  transactions: BudgetTx[];
+  categoryMap: Map<string, CategoryMeta>;
+  selectedWeekRanges: WeekRange[];
+  previousMonthStart: Date;
+  selectedMonthStart: Date;
+  prePreviousMonthVariableMainCategoryBudgets: Map<VariableMainCategory, number>;
+  previousMonthVariableMainCategoryBudgets: Map<VariableMainCategory, number>;
+  selectedMonthVariableMainCategoryBudgets: Map<VariableMainCategory, number>;
+  previousMonthLockedCategoryKeys: ReadonlySet<VariableMainCategory>;
+}): {
+  weekPlan: BudgetWeekPlanRow;
+  weekBudgetBreakdown: BudgetWeekBudgetBreakdown;
+} | null {
+  const {
+    planningTimeline,
+    timelineReferenceDay,
+    transactions,
+    categoryMap,
+    selectedWeekRanges,
+    previousMonthStart,
+    selectedMonthStart,
+    prePreviousMonthVariableMainCategoryBudgets,
+    previousMonthVariableMainCategoryBudgets,
+    selectedMonthVariableMainCategoryBudgets,
+    previousMonthLockedCategoryKeys,
+  } = params;
+
+  const firstSelectedWeek = selectedWeekRanges[0];
+  if (!planningTimeline.isFuturePlanningMonth) return null;
+  if (!firstSelectedWeek?.daysInPreviousMonth) return null;
+  if (
+    previousMonthStart.getTime() !==
+    planningTimeline.actualCurrentMonthStart.getTime()
+  ) {
+    return null;
+  }
+
+  const previousMonthWeekRanges = buildMonthWeekRanges(
+    previousMonthStart,
+    selectedMonthStart,
+  );
+  if (!previousMonthWeekRanges.length) return null;
+
+  const previousWeekWindowStartIso = dateToIso(previousMonthWeekRanges[0].start);
+  const observedDataEndIso = dateToIso(planningTimeline.observedDataEndExclusive);
+  const previousMonthWeekRows = transactions.filter(
+    (row) =>
+      row.date >= previousWeekWindowStartIso && row.date < observedDataEndIso,
+  );
+
+  const prePreviousMonthStartIso = dateToIso(
+    startOfMonth(subtractDays(previousMonthStart, 1)),
+  );
+  const previousMonthStartIso = dateToIso(previousMonthStart);
+  const selectedMonthStartIso = dateToIso(selectedMonthStart);
+
+  const previousMonthVariableMainCategoryBudgetByMonthStartIso = new Map<
+    string,
+    Map<VariableMainCategory, number>
+  >([
+    [
+      prePreviousMonthStartIso,
+      prePreviousMonthVariableMainCategoryBudgets,
+    ],
+    [previousMonthStartIso, previousMonthVariableMainCategoryBudgets],
+    [selectedMonthStartIso, selectedMonthVariableMainCategoryBudgets],
+  ]);
+  const previousMonthVariableMonthlyBudgetByMonthStartIso =
+    buildVariableMonthlyBudgetByMonthStartIso({
+      variableMainCategoryBudgetByMonthStartIso:
+        previousMonthVariableMainCategoryBudgetByMonthStartIso,
+    });
+
+  const previousMonthWeeklyVariablePlan = computeWeeklyVariablePlan(
+    previousMonthWeekRows,
+    categoryMap,
+    previousMonthWeekRanges,
+    timelineReferenceDay,
+    previousMonthVariableMonthlyBudgetByMonthStartIso,
+    previousMonthStart,
+    previousMonthLockedCategoryKeys,
+  );
+  const previousMonthWeeklyBudgetBreakdown = buildWeeklyBudgetBreakdown({
+    weeklyVariablePlan: previousMonthWeeklyVariablePlan,
+    weekRanges: previousMonthWeekRanges,
+    variableMainCategoryBudgetByMonthStartIso:
+      previousMonthVariableMainCategoryBudgetByMonthStartIso,
+    currentMonthStart: previousMonthStart,
+    lockedCategoryKeys: previousMonthLockedCategoryKeys,
+  });
+
+  const matchingWeekPlan = previousMonthWeeklyVariablePlan.find(
+    (row) =>
+      row.startDate === dateToIso(firstSelectedWeek.start) &&
+      row.endDateExclusive === dateToIso(firstSelectedWeek.endExclusive),
+  );
+  const matchingBudgetBreakdown = previousMonthWeeklyBudgetBreakdown.find(
+    (row) =>
+      row.startDate === dateToIso(firstSelectedWeek.start) &&
+      row.endDateExclusive === dateToIso(firstSelectedWeek.endExclusive),
+  );
+
+  if (!matchingWeekPlan || !matchingBudgetBreakdown) return null;
+
+  return {
+    weekPlan: matchingWeekPlan,
+    weekBudgetBreakdown: matchingBudgetBreakdown,
+  };
 }
 
 function buildExpenseDetailItems(
@@ -1934,9 +2125,18 @@ export async function computeBudgetPlan(
 ): Promise<BudgetPlanComputation> {
   const referenceDay = startOfUtcDay(reference);
   const timelineReferenceDay = startOfUtcDay(timelineReference);
-  const trendEndExclusive = addDays(referenceDay, 1);
-  const trendStart = subtractDays(trendEndExclusive, TREND_WINDOW_DAYS);
-  const monthStart = startOfMonth(referenceDay);
+  const planningTimeline = resolveBudgetPlanningTimeline(
+    referenceDay,
+    timelineReferenceDay,
+  );
+  const baselineObservationEndExclusive =
+    planningTimeline.observationEndExclusive;
+  const observedDataEndExclusive = planningTimeline.observedDataEndExclusive;
+  const trendStart = subtractDays(
+    baselineObservationEndExclusive,
+    TREND_WINDOW_DAYS,
+  );
+  const monthStart = planningTimeline.selectedMonthStart;
   const monthEndExclusive = endOfMonthExclusive(referenceDay);
 
   const weekRanges = buildMonthWeekRanges(monthStart, monthEndExclusive);
@@ -1946,19 +2146,23 @@ export async function computeBudgetPlan(
     : monthEndExclusive;
 
   const previousMonthStart = startOfMonth(subtractDays(monthStart, 1));
+  const prePreviousMonthStart = startOfMonth(subtractDays(previousMonthStart, 1));
   const nextMonthStart = startOfMonth(monthEndExclusive);
 
   const dataStart = trendStart < weekWindowStart ? trendStart : weekWindowStart;
-  const dataEndExclusive =
-    trendEndExclusive > weekWindowEndExclusive
-      ? trendEndExclusive
+  const dataEndExclusive = planningTimeline.isFuturePlanningMonth
+    ? observedDataEndExclusive
+    : baselineObservationEndExclusive > weekWindowEndExclusive
+      ? baselineObservationEndExclusive
       : weekWindowEndExclusive;
 
   const trendStartIso = dateToIso(trendStart);
-  const trendEndIso = dateToIso(trendEndExclusive);
+  const trendEndIso = dateToIso(baselineObservationEndExclusive);
+  const observedDataEndIso = dateToIso(observedDataEndExclusive);
   const monthStartIso = dateToIso(monthStart);
   const weekWindowStartIso = dateToIso(weekWindowStart);
   const weekWindowEndIso = dateToIso(weekWindowEndExclusive);
+  const prePreviousMonthStartIso = dateToIso(prePreviousMonthStart);
   const previousMonthStartIso = dateToIso(previousMonthStart);
   const nextMonthStartIso = dateToIso(nextMonthStart);
 
@@ -1968,6 +2172,7 @@ export async function computeBudgetPlan(
     settings,
     categoryOverrides,
     currentMonthBudgetValues,
+    prePreviousMonthBudgetValues,
     previousMonthBudgetValues,
     nextMonthBudgetValues,
   ] = await Promise.all([
@@ -1976,6 +2181,7 @@ export async function computeBudgetPlan(
     getBudgetPlanSettings(planKey),
     getBudgetCategoryOverrides(planKey),
     getMonthlyBudgetValues(monthStartIso, planKey),
+    getMonthlyBudgetValues(prePreviousMonthStartIso, planKey),
     getMonthlyBudgetValues(previousMonthStartIso, planKey),
     getMonthlyBudgetValues(nextMonthStartIso, planKey),
   ]);
@@ -1984,7 +2190,7 @@ export async function computeBudgetPlan(
     (row) => row.date >= trendStartIso && row.date < trendEndIso,
   );
   const monthRows = transactions.filter(
-    (row) => row.date >= monthStartIso && row.date < trendEndIso,
+    (row) => row.date >= monthStartIso && row.date < observedDataEndIso,
   );
   const weekRows = transactions.filter(
     (row) => row.date >= weekWindowStartIso && row.date < weekWindowEndIso,
@@ -1994,7 +2200,7 @@ export async function computeBudgetPlan(
   const includedWeekRows = weekRows.filter((row) => !row.budget_excluded);
   const excludedMonthRows = monthRows.filter((row) => row.budget_excluded);
 
-  const observedDays = daysBetween(trendStart, trendEndExclusive);
+  const observedDays = daysBetween(trendStart, baselineObservationEndExclusive);
   const daysInCurrentMonth = daysBetween(monthStart, monthEndExclusive);
   const monthlyScale = MONTHLY_NORMALIZER_DAYS / observedDays;
 
@@ -2008,8 +2214,8 @@ export async function computeBudgetPlan(
     1,
     Math.max(
       0,
-      daysBetween(monthStart, trendEndExclusive) /
-      daysBetween(monthStart, monthEndExclusive),
+      daysBetween(monthStart, baselineObservationEndExclusive) /
+        daysBetween(monthStart, monthEndExclusive),
     ),
   );
 
@@ -2019,14 +2225,14 @@ export async function computeBudgetPlan(
       categoryMap,
       settings,
       trendStart,
-      monthStart,
+      planningTimeline.completedMonthCutoffStart,
     ) || null;
   const completedMonthExpenseBaselines =
     resolveExpenseBaselinesFromCompletedMonths(
       includedTrendRows,
       categoryMap,
       trendStart,
-      monthStart,
+      planningTimeline.completedMonthCutoffStart,
     );
   const trendIncome =
     recentIncomeForecast ||
@@ -2089,7 +2295,7 @@ export async function computeBudgetPlan(
         categoryMap,
         settings,
         trendStart,
-        monthStart,
+        planningTimeline.completedMonthCutoffStart,
       ) ?? trend.income.total,
     ),
   );
@@ -2098,7 +2304,7 @@ export async function computeBudgetPlan(
     categoryMap,
     settings,
     trendStart,
-    monthStart,
+    planningTimeline.completedMonthCutoffStart,
   );
 
   const overridesByKey = new Map(
@@ -2656,6 +2862,14 @@ export async function computeBudgetPlan(
       fallbackBudgets: fallbackVariableMainCategoryBudgets,
       fallbackVariableBudget: fallbackVariableMonthlyBudget,
     });
+  const prePreviousMonthVariableMainCategoryBudgets =
+    buildVariableMainCategoryBudgetMapForMonth({
+      monthValues: prePreviousMonthBudgetValues,
+      fallbackBudgets: previousMonthVariableMainCategoryBudgets,
+      fallbackVariableBudget: sumVariableMainCategoryBudgetMap(
+        previousMonthVariableMainCategoryBudgets,
+      ),
+    });
   const nextMonthVariableMainCategoryBudgets =
     buildVariableMainCategoryBudgetMapForMonth({
       monthValues: nextMonthBudgetValues,
@@ -2672,22 +2886,15 @@ export async function computeBudgetPlan(
     [nextMonthStartIso, nextMonthVariableMainCategoryBudgets],
   ]);
 
-  const variableMonthlyBudgetByMonthStartIso = new Map<string, number>(
-    [...variableMainCategoryBudgetByMonthStartIso.entries()].map(
-      ([monthStartIso, budgetByCategory]) => [
-        monthStartIso,
-        VARIABLE_MAIN_ORDER.reduce(
-          (sum, key) => sum + (budgetByCategory.get(key) || 0),
-          0,
-        ),
-      ],
-    ),
-  );
+  const variableMonthlyBudgetByMonthStartIso =
+    buildVariableMonthlyBudgetByMonthStartIso({
+      variableMainCategoryBudgetByMonthStartIso,
+    });
 
   const excludedMainCategoriesFromRebalance =
     resolveLockedVariableMainCategories(recommendations) as Set<VariableMainCategory>;
 
-  const weeklyVariablePlan = computeWeeklyVariablePlan(
+  let weeklyVariablePlan = computeWeeklyVariablePlan(
     includedWeekRows,
     categoryMap,
     weekRanges,
@@ -2702,13 +2909,40 @@ export async function computeBudgetPlan(
     categoryMap,
     weekRanges,
   );
-  const weeklyBudgetBreakdown = buildWeeklyBudgetBreakdown({
+  let weeklyBudgetBreakdown = buildWeeklyBudgetBreakdown({
     weeklyVariablePlan,
     weekRanges,
     variableMainCategoryBudgetByMonthStartIso,
     currentMonthStart: monthStart,
     lockedCategoryKeys: excludedMainCategoriesFromRebalance,
   });
+
+  const overlapCarryover = resolveFutureMonthOverlapCarryover({
+    planningTimeline,
+    timelineReferenceDay,
+    transactions,
+    categoryMap,
+    selectedWeekRanges: weekRanges,
+    previousMonthStart,
+    selectedMonthStart: monthStart,
+    prePreviousMonthVariableMainCategoryBudgets,
+    previousMonthVariableMainCategoryBudgets,
+    selectedMonthVariableMainCategoryBudgets:
+      currentMonthVariableMainCategoryBudgets,
+    previousMonthLockedCategoryKeys:
+      resolveLockedVariableMainCategoriesFromMonthValues(
+        previousMonthBudgetValues,
+      ),
+  });
+
+  if (overlapCarryover && weeklyVariablePlan.length && weeklyBudgetBreakdown.length) {
+    weeklyVariablePlan = weeklyVariablePlan.map((row, index) =>
+      index === 0 ? overlapCarryover.weekPlan : row,
+    );
+    weeklyBudgetBreakdown = weeklyBudgetBreakdown.map((row, index) =>
+      index === 0 ? overlapCarryover.weekBudgetBreakdown : row,
+    );
+  }
 
   for (const row of weeklyVariablePlan) {
     if (!row.isPastWeek || row.overrunAmount <= 0) continue;
@@ -2793,6 +3027,10 @@ export async function computeBudgetPlan(
     referenceDate: dateToIso(referenceDay),
     monthStart: monthStartIso,
     monthProgress: round2(monthProgress),
+    completedMonthBaselineThrough:
+      planningTimeline.isFuturePlanningMonth
+        ? planningTimeline.completedMonthBaselineThrough
+        : null,
     settings,
     trend,
     monthToDateIncome: monthToDate.income,

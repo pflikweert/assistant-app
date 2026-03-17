@@ -1,229 +1,268 @@
 # Openstaande Taken Finance App
 
-## Huidige status
+## Korte status
 
-De grote herontwerpronde is inhoudelijk afgerond. De app heeft nu een nieuwe
-informatie-architectuur, herbouwde hoofdschermen, uniforme budget- en
-risicologica, verbeterde drilldowns en een timing-aware forecast met
-cash-gap-signalen.
+De grote herontwerpronde is functioneel klaar. De app heeft nu:
 
-De laatste productlaag is ook al verder ingevuld:
-- Insights heeft nu een extra laag voor zeldzame of verborgen abonnementen
-- `Insights > Voorspelling` is herzien naar een echte maandcashflow met:
-  - expliciete split tussen `geboekt` en `nog verwacht`
-  - aparte cash-out naar sparen
-  - huidige maand plus 6 maanden vooruit
-  - timing uit recurring historie, subscription profiles en zeldzame abonnementen
-  - dirty/stale recompute-aansturing met handmatige refreshknop
-- forecast kan nu schakelen tussen `Trend` en `Budgetplan` als bron voor
-  toekomstige uitgaven
-- budgetweken worden nu daggewogen verdeeld, inclusief overlap met vorige en
-  volgende maand in de eerste en laatste kalenderweek
-- budgetgroepbeheer per categorie is live in `Settings`
-- de app gebruikt nu effectieve budgetgroepen in `Budget`, `Insights`,
-  transactielijst en transactiedetail
-- de huidige budgetgroep-indeling van account `pflikweert` is gepromoveerd naar
-  systeemdefault voor alle gebruikers
-- inkomenssemantiek maakt nu onderscheid tussen structureel inkomen,
-  incidentele belastingmeevallers en kostencompensaties
-- Fase 6 is gestart met harmonisatie van `Settings`, `Subscriptions` en
-  `Transaction Detail`, plus extra testdekking voor budget-save en forecast
+- een herbouwde navigatie en informatie-architectuur
+- opnieuw opgebouwde hoofdschermen voor `Dashboard`, `Budget`, `Insights` en
+  transactiedetail
+- uniforme budget- en risicologica
+- een timing-aware forecast met cash-gap-signalen
+- budgetgroepbeheer en inkomenssemantiek als extra productlaag
 
-De volgende stap is niet meer "groot herbouwen", maar gericht afronden:
-- visuele QA en polish van de nieuwe interface
-- laatste productlagen toevoegen waar nog duidelijk waarde zit
-- spaarnudges en allocatie-advies verder verdiepen voor meevallers en reserves
+De focus is nu niet meer "opnieuw bouwen", maar:
 
-## Afgerond per fase
+- afronden en valideren
+- visuele polish
+- laatste productlagen toevoegen waar ze echt waarde geven
+
+## Wat nu echt openstaat
+
+### Hoogste prioriteit
+
+- Handmatige QA op forecastbron:
+  - `Trend` versus `Budgetplan` in `Budget > Beheer`
+  - zichtbaarheid van de actieve bron in `Insights > Voorspelling`
+  - toekomstmaanden gebruiken hun eigen ingestelde maandbudgetten waar aanwezig
+  - logisch refreshgedrag na budget-save, categoriseren en abonnementwijzigingen
+- Handmatige QA op budgetweken:
+  - maanden die midden in een week starten
+  - maanden die midden in een week eindigen
+  - eerste en laatste overlapweek tonen logische deelbudgetten
+  - opvolgende maand neemt bij open vorige maand het herverdeelde overlapbudget goed mee
+  - categorie-weekbudgetten volgen dezelfde daggewogen verdeling
+- Handmatige QA op budgetgroepbeheer:
+  - lange categorienamen
+  - zoeken en filteren
+  - refreshgedrag na wijzigen
+  - consistentie tussen `Transactions`, detail, `Budget` en `Insights`
+- Handmatige QA op inkomenssemantiek:
+  - belastingteruggave als incidentele meevaller
+  - `KGB` en toeslagen als structureel inkomen
+  - `ZVW` en wegenbelasting-correcties als kostencompensatie
+  - forecast blijft vrij van eenmalige teruggaves
+- Visuele polish in simulator of web:
+  - status- en tempocopy nalopen
+  - forecaststrip, maandnavigatie en empty states nalopen
+  - iconen, spacing en mobile feel nalopen
+
+### Daarna oppakken
+
+- Herverdeling-preview in `Budget > Beheer` voordat de gebruiker opslaat
+- `Wat is veranderd`-laag in `Insights`
+- extra coach- of advieskaarten in `Budget` en `Insights`
+- extra schermtests voor de geharmoniseerde flows
+
+### Nog niet af
+
+Deze onderdelen zijn inhoudelijk nog niet "klaar klaar":
+
+- volledige visuele QA op mobile en web
+- volledige QA op forecastbron en overlapweken
+- allocatiesuggestie voor meevallers
+- aparte insightkaart voor ontvangen belastingmeevallers
+- herverdeling-preview in budgetbeheer
+- `Wat is veranderd`-laag in `Insights`
+- eventuele backfill of recategorisatie-run voor oudere transacties als QA dat
+  nodig maakt
+
+## Wanneer deze ronde klaar is
+
+Deze huidige afrondronde telt als klaar als:
+
+- forecastbron `Trend` versus `Budgetplan` stabiel werkt
+- overlapweken in budget logisch voelen in echte maandscenario's
+- budgetgroepbeheer en inkomenssemantiek handmatig zijn nagekeken
+- `Settings`, `Subscriptions` en `Transaction Detail` visueel voldoende gepolijst zijn
+- er geen grote regressies meer zitten in forecast-refresh, budgetsave of
+  categorisatieflows
+
+## Fase-overzicht
 
 ### Fase 1 - Herontwerp en herstel kernflows
 
-- Dashboard herontworpen en geïmplementeerd
-- Transactielijst herontworpen en geïmplementeerd
-- Transaction detail herontworpen en geïmplementeerd
-- Budget en Insights opnieuw gestructureerd als samenhangend duo
-- Budget teruggebracht naar `Week`, `Maand` en `Beheer`
-- Insights teruggebracht naar `Trends`, `Voorspelling` en `Controle`
-- Budget weekdetail, buiten-budget en maanddrilldowns hersteld
-- Categorie-detail drilldown toegevoegd vanuit `Budget > Maand`
-- Transactie-iconen app-breed gekoppeld aan echte transactiecategorieen
+Status: afgerond
+
+Afgerond:
+
+- Dashboard herontworpen en opnieuw opgebouwd
+- Transactielijst herontworpen en opnieuw opgebouwd
+- `Transaction Detail` herontworpen en opnieuw opgebouwd
+- `Budget` en `Insights` opnieuw gestructureerd als samenhangend duo
+- `Budget` teruggebracht naar `Week`, `Maand` en `Beheer`
+- `Insights` teruggebracht naar `Trends`, `Voorspelling` en `Controle`
+- budget-weekdetail, buiten-budget en maanddrilldowns hersteld
+- categorie-detail drilldown toegevoegd vanuit `Budget > Maand`
+- transactie-iconen app-breed gekoppeld aan echte transactiecategorieen
 - Google Material iconensysteem met lokale fonts ingevoerd
 
 ### Fase 2 - Logica, semantiek en forecast
 
-- Risicobalken en risk-logic uniform gemaakt
-- `Nog vrij te besteden`, status en weektempo semantisch gelijkgetrokken op dashboard, budget en insights
-- Week attentionlogica verplaatst naar gedeelde helper met unit tests
-- Forecast fallbacklogica verbeterd met recente volledige maanden
-- Forecastscenario's uitgebreid voor weinig historie en oude uitschieters
-- Timing-aware forecast toegevoegd voor komende inkomsten en vaste uitgaven
-- Insights toont nu laagste verwachte saldo, eerstvolgende verwachte beweging en cash-gap waarschuwing
-- Forecastmodel uitgebreid met:
-  - `booked` versus `remaining`
-  - `expected_cash_out_total`
-  - aparte `savings_outflow`
-  - `forecast_reference_date`
-- Forecast-refreshlaag toegevoegd met:
-  - user-specifieke `forecast_refresh_state`
-  - lazy recompute alleen bij `dirty` of `stale`
-  - geplande achtergrond-refresh na categorisatie-, budget-, budgetgroep- of
-    abonnementprofielwijzigingen
-  - handmatige actie `Voorspelling vernieuwen` in `Insights`
-- Forecast-uitgavenbron is nu instelbaar in `Budget > Beheer`:
+Status: grotendeels afgerond, nog QA en afronding
+
+Afgerond:
+
+- risicobalken en risk-logic uniform gemaakt
+- `Nog vrij te besteden`, status en weektempo semantisch gelijkgetrokken op
+  dashboard, budget en insights
+- week-attentionlogica verplaatst naar gedeelde helper met unit tests
+- forecast fallbacklogica verbeterd met recente volledige maanden
+- forecastscenario's uitgebreid voor weinig historie en oude uitschieters
+- timing-aware forecast toegevoegd voor inkomsten en vaste uitgaven
+- toekomstmaanden in `Insights > Voorspelling` gebruiken nu hun eigen
+  maand-specifieke budgetplan in plaats van het huidige maandplan
+- forecastmodel uitgebreid met `booked`, `remaining`, `expected_cash_out_total`,
+  `savings_outflow` en `forecast_reference_date`
+- forecast-refreshlaag toegevoegd met user-specifieke dirty/stale-aansturing
+- dirty-marking doorgetrokken naar categorisatie-, budget-, budgetgroep- en
+  abonnementprofielwijzigingen
+- forecast-uitgavenbron instelbaar gemaakt:
   - `Trend`
   - `Budgetplan`
-- Budget weekverdeling rekent nu per kalenderdag:
+- budget weekverdeling daggewogen gemaakt:
   - vorige maand telt mee in de eerste overlapweek
   - volgende maand telt mee in de laatste overlapweek
-  - categorie-weekbudgetten volgen dezelfde daggewogen verdeling
+  - categorie-weekbudgetten volgen dezelfde verdeling
+- als de vorige maand nog open staat, erft de eerste overlapweek van de
+  volgende maand nu het herverdeelde laatste weekbudget van die open maand
 - `Insights > Voorspelling` toont nu:
-  - herokaarten voor eindsaldo, laagste saldo en status
+  - eindsaldo, laagste saldo en status
   - maandstrip voor huidige maand plus 6 maanden vooruit
   - maandoverzicht met `geboekt` versus `nog verwacht`
   - aparte regels voor `uitgaven` en `naar sparen`
-- Remote migratie uitgevoerd voor:
-  - `monthly_cashflow_forecasts` cash-gap velden
-  - `password_reset_events`
-- Status- en tempocopy verder gelijkgetrokken op dashboard, budget en insights
-- Budget Beheer-copy gepolijst en categorie-iconen consistenter gemaakt in budget-overzichten
-- Unit tests toegevoegd of uitgebreid voor:
-  - budget risk
-  - week attention
-  - forecast fallback
-  - forecast timeline
-  - category icon mapping
+- status- en tempocopy verder gelijkgetrokken
+- relevante unit tests toegevoegd of uitgebreid
+
+Nog open binnen deze fase:
+
+- handmatige QA op forecastbron
+- handmatige QA op overlapweken
+- handmatige QA op forecast-refreshstatus en refreshflows
 
 ### Fase 3 - Productverdieping en beheerlagen
 
-- `Verborgen` laag toegevoegd in `Insights` voor zeldzame abonnementen:
-  - `1x per jaar`
-  - `2x per jaar`
-  - `1x gezien`
-- Budgetgroepbeheer per categorie toegevoegd in `Settings`
-- Nieuwe user-specifieke override-laag toegevoegd voor budgetgroepen
-- Effectieve budgetgroepen doorgetrokken naar:
+Status: grotendeels afgerond, nog QA
+
+Afgerond:
+
+- `Verborgen`-laag toegevoegd in `Insights` voor zeldzame abonnementen
+- budgetgroepbeheer per categorie toegevoegd in `Settings`
+- user-specifieke override-laag toegevoegd voor budgetgroepen
+- effectieve budgetgroepen doorgetrokken naar:
   - `Transactions`
   - `Transaction Detail`
   - `Budget`
   - `Insights`
   - `analysis-detail`
-- Systeemdefaults voor budgetgroepen gelijkgetrokken met de actuele indeling van
-  account `pflikweert`
+- budgetgroep-indeling van account `pflikweert` gepromoveerd naar systeemdefault
 
-## Wat nu nog openstaat
+Nog open binnen deze fase:
 
-### Directe volgende acties
-
-- Handmatige visuele QA in simulator of web:
-  - status- en tempocopy nalopen
-  - forecaststrip, maandnavigatie en empty states nalopen
-  - iconen nalopen op variantkeuze, mapping en spacing per scherm
-- QA op nieuwe forecaststuring:
-  - `Budget > Beheer` bronwissel `Trend` versus `Budgetplan`
-  - `Insights > Voorspelling` toont de actieve bron duidelijk
-  - refreshstatus blijft logisch na budget-save, categoriseren en abonnementwijzigingen
-- QA op overlapweken in budget:
-  - maanden die midden in de week starten
-  - maanden die midden in de week eindigen
-  - eerste en laatste week tonen logische deelbudgetten per categorie
-- QA op budgetgroepbeheer:
-  - lange categorienamen
-  - zoeken en filteren
-  - refreshgedrag na wijzigen
-  - consistentie tussen `Transactions`, detail en `Insights`
-- QA op inkomenssemantiek:
-  - belastingteruggave zichtbaar als incidentele meevaller
-  - `KGB` en toeslagen zichtbaar als structureel inkomen
-  - `ZVW` en wegenbelasting-correcties zichtbaar als kostencompensatie
-  - forecast blijft vrij van eenmalige teruggaves
-- QA op forecastherziening:
-  - huidige maand toont logische `geboekt` en `nog verwacht` waardes
-  - sparen telt mee in cash-out maar niet in gewone uitgaven
-  - toekomstmaanden ketenen eindsaldo naar volgende maand
-  - historische maanden tonen geen resterende momenten meer
-  - dirty/stale refreshstatus en handmatige forecast-refresh correct nalopen
+- QA op budgetgroepbeheer
+- eventueel extra schermtests voor beheerflows
 
 ### Fase 4 - Inkomenssemantiek voor teruggaves en overheidsontvangsten
 
-- Gedeelde helper `resolveIncomeSemantics(...)` toegevoegd
-- Onderscheid live tussen:
+Status: functioneel grotendeels klaar, productlaag nog niet af
+
+Afgerond:
+
+- gedeelde helper `resolveIncomeSemantics(...)` toegevoegd
+- onderscheid live tussen:
   - structureel inkomen
   - incidentele belastingmeevallers
   - kostencompensaties
 - `Budget` en `Forecast` gebruiken eenmalige teruggaves niet meer als vaste
   inkomensbasis
-- `Insights` toont inkomsten nu uitgesplitst naar structureel, variabel,
+- `Insights` toont inkomsten uitgesplitst naar structureel, variabel,
   meevallers en kostencompensaties
 - `Transactions` en `Transaction Detail` tonen de actieve inkomensduiding
-- Positieve `Belastingdienst`-correcties voor wegenbelasting worden nu ook
-  heuristisch herkend
-- Unit tests toegevoegd voor income/refund-semantiek
+- positieve `Belastingdienst`-correcties voor wegenbelasting ook heuristisch
+  herkend
+- unit tests toegevoegd voor income/refund-semantiek
 
-Wat binnen dit thema nog openstaat:
+Nog open binnen deze fase:
+
 - aparte nudge of insightkaart voor `belastingmeevaller ontvangen`
 - eenvoudige allocatiesuggestie:
   - eerst buffer
   - daarna jaarlijkse reserveringen
   - daarna spaardoel of schuld
-- backfill of recategorisatie-run voor bestaande transacties als QA laat zien
-  dat oudere data nog scheef staat
+- eventuele backfill of recategorisatie-run voor bestaande transacties
 
 ### Fase 5 - Verdere productverdieping
 
-- Herverdeling-preview in `Budget > Beheer` voordat de gebruiker opslaat
-- `Wat is veranderd` laag in Insights
-- Eventueel categorieadvies- of coachkaarten verfijnen
+Status: gepland
+
+Gepland:
+
+- herverdeling-preview in `Budget > Beheer`
+- `Wat is veranderd`-laag in `Insights`
+- verdere verfijning van coach- en advieskaarten
 
 ### Fase 6 - Verdere polish en harmonisatie
 
+Status: in uitvoering
+
+Afgerond:
+
 - `Settings` verder geharmoniseerd:
   - Nederlandstalige copy
-  - logische beheerstructuur
-  - abonnementenbeheer direct bereikbaar vanuit settings
-  - misleidende lokale weergavetoggle vervangen door neutrale statusregel
+  - logischere beheerstructuur
+  - abonnementenbeheer directer bereikbaar
+  - misleidende lokale weergavetoggle vervangen
 - `Subscriptions` voorzien van overzichtskaart en duidelijkere sectie-opbouw
 - `Transaction Detail` verder afgestemd op de abonnementenflow met statuschips
-  voor gekoppelde of verdachte PSP-betalingen
-- Unit tests toegevoegd voor:
+- web-fix toegevoegd voor de Material icon wrapper zodat style-arrays op web
+  niet meer als ruwe CSS-style doorlekken
+- extra tests toegevoegd voor:
   - budget save flows in `budget-plan-repository`
   - forecast-inkomensfilters voor structureel inkomen versus meevallers
 
-Wat binnen Fase 6 nog openstaat:
+Nog open binnen deze fase:
+
 - volledige simulator-polish op spacing, animatie en mobile feel
 - extra visuele QA op mobile interacties in `Settings`, `Subscriptions` en
   `Transaction Detail`
 - eventueel nog schermtests toevoegen voor de geharmoniseerde flows
 
-## Forecast backlog
+## Ideeën en backlog
 
-Deze punten zijn niet meer blokkerend, maar wel waardevol voor een volgende
-forecast-iteratie:
+### Kansrijke ideeën
 
-- Seizoensinkomsten expliciet modelleren:
-  - vakantiegeld
-  - bonus
-  - dertiende maand
-- Belastingteruggaves en fiscale correcties verder verfijnen in forecasting voor
-  uitzonderlijke patronen en seizoensgevallen
-- `lowest_expected_balance` of cash-gap-risico ook gebruiken in dashboard- of budgetnudges
-- forecastkaart eventueel nog uitbreiden naar dagniveau of mini-timeline binnen de maand
-- modellering van variabele uitgaven verder verfijnen met seizoenspatronen of maandprofielen
-
-## Ideeën
-
-- Kleine timeline in Insights:
+- kleine timeline in `Insights`:
   - budget aangepast
   - risico veranderd
   - forecast verbeterd of verslechterd
-- Positieve feedbacklaag:
+- positieve feedbacklaag:
   - weken op rij onder budget
   - maandbuffer beter dan vorige maand
   - spaardoel sneller gehaald dan verwacht
+- dashboard- of budgetnudges op basis van `lowest_expected_balance` of
+  cash-gap-risico
+
+### Forecast backlog
+
+Niet blokkerend, wel waardevol voor later:
+
+- seizoensinkomsten expliciet modelleren:
+  - vakantiegeld
+  - bonus
+  - dertiende maand
+- belastingteruggaves en fiscale correcties verder verfijnen voor
+  uitzonderlijke patronen en seizoensgevallen
+- forecastkaart uitbreiden naar dagniveau of mini-timeline
+- modellering van variabele uitgaven verfijnen met seizoenspatronen of
+  maandprofielen
 
 ## Open productvragen
 
-- Willen we Budget Beheer uiteindelijk als eigen scherm in plaats van tab-segment?
-- Willen we buiten-budget transacties ook direct recategoriseerbaar maken vanuit Budget?
-- Willen we forecastbewerkingen expliciet tonen als `verwacht` versus `geboekt` per categorie?
+- Willen we `Budget > Beheer` uiteindelijk als eigen scherm in plaats van als
+  tab-segment?
+- Willen we buiten-budget transacties ook direct recategoriseerbaar maken
+  vanuit `Budget`?
+- Willen we forecastbewerkingen expliciet tonen als `verwacht` versus
+  `geboekt` per categorie?
 - Willen we voor meevallers een vaste verdelingsnudge tonen richting buffer,
   jaarlijkse lasten en spaardoelen?

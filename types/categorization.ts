@@ -487,6 +487,7 @@ export type BudgetPlanComputation = {
   referenceDate: string;
   monthStart: string;
   monthProgress: number;
+  completedMonthBaselineThrough: string | null;
   settings: BudgetPlanSettings;
   trend: BudgetTrendSnapshot;
   monthToDateIncome: BudgetIncomeBreakdown;

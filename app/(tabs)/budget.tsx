@@ -311,6 +311,15 @@ function formatWeekRangeLabel(week: BudgetWeekPlanRow) {
   return `${startLabel} - ${endLabel}`;
 }
 
+function formatBudgetMonthYear(monthStartIso: string) {
+  const parsed = new Date(`${String(monthStartIso || "").slice(0, 10)}T12:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return String(monthStartIso || "");
+  return parsed.toLocaleDateString("nl-NL", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
 function getMonthOverlapLabel(
   txDateIso: string,
   monthStartIso: string | null | undefined,
@@ -979,6 +988,12 @@ export default function BudgetScreen() {
     () => getMonthVariableBudgetSnapshot(budgetPlan),
     [budgetPlan],
   );
+  const completedMonthBaselineHelper = React.useMemo(() => {
+    if (!budgetPlan?.completedMonthBaselineThrough) return null;
+    return `Gebaseerd op afgeronde maanden t/m ${formatBudgetMonthYear(
+      budgetPlan.completedMonthBaselineThrough,
+    )}.`;
+  }, [budgetPlan?.completedMonthBaselineThrough]);
   const monthlyRemaining = monthBudgetSnapshot.remaining;
   const categoryRows = React.useMemo(() => getCategoryRows(budgetPlan), [budgetPlan]);
   const actionRecommendation = React.useMemo(
@@ -2635,6 +2650,11 @@ export default function BudgetScreen() {
                       ? `${warningCount} aandachtspunt${warningCount > 1 ? "en" : ""}`
                       : "Rustige maand tot nu toe"}
                 </Text>
+                {completedMonthBaselineHelper ? (
+                  <Text style={styles.heroMetaSubtle}>
+                    {completedMonthBaselineHelper}
+                  </Text>
+                ) : null}
               </View>
 
               <View style={styles.card}>
@@ -3060,6 +3080,11 @@ export default function BudgetScreen() {
                   <Text style={styles.sectionTitle}>Maandbudget per categorie</Text>
                   <Text style={styles.sectionHelper}>{selectedMonth.label}</Text>
                 </View>
+                {completedMonthBaselineHelper ? (
+                  <Text style={styles.supportText}>
+                    {completedMonthBaselineHelper}
+                  </Text>
+                ) : null}
                 <Text style={styles.supportText}>
                   Deze maandbudgetten gebruik je ook in Voorspelling als je daar Budgetplan kiest.
                 </Text>
@@ -4199,6 +4224,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 12,
     color: FinColors.textMuted,
+  },
+  heroMetaSubtle: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
   },
   heroHint: {
     marginTop: 6,

@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 
+import { createBudgetPlanRequestDescriptors } from "./forecast-budget-plan-requests";
 import { resolveExpectedCashflowIncomeBaseline } from "./forecast-income-baseline";
+import { buildForecastMonthMath } from "./forecast-month-math";
 
 describe("resolveExpectedCashflowIncomeBaseline", () => {
-  it("prefers real income sources over the budget planner basis for cashflow", () => {
+  it("prefers the budget planner basis when budget forecast mode is active", () => {
     const result = resolveExpectedCashflowIncomeBaseline({
       monthStart: new Date("2026-03-01T00:00:00.000Z"),
       budgetPlan: {
+        settings: {
+          forecastExpenseSource: "budget_settings",
+        },
         flowSummary: {
           expectedIncomeMonthly: 2829,
         },
@@ -34,10 +39,13 @@ describe("resolveExpectedCashflowIncomeBaseline", () => {
     expect(result).toBe(2829);
   });
 
-  it("uses all expected income sources even when the budget planner excludes some", () => {
+  it("uses all expected income sources when trend forecast mode is active", () => {
     const result = resolveExpectedCashflowIncomeBaseline({
       monthStart: new Date("2026-03-01T00:00:00.000Z"),
       budgetPlan: {
+        settings: {
+          forecastExpenseSource: "trend",
+        },
         flowSummary: {
           expectedIncomeMonthly: 2829,
         },
@@ -77,6 +85,9 @@ describe("resolveExpectedCashflowIncomeBaseline", () => {
     const result = resolveExpectedCashflowIncomeBaseline({
       monthStart: new Date("2026-03-01T00:00:00.000Z"),
       budgetPlan: {
+        settings: {
+          forecastExpenseSource: "trend",
+        },
         flowSummary: {
           expectedIncomeMonthly: 2829,
         },
@@ -85,5 +96,77 @@ describe("resolveExpectedCashflowIncomeBaseline", () => {
     });
 
     expect(result).toBe(2829);
+  });
+
+  it("lets booked additional income stack on top of the budget basis in the current month", () => {
+    const result = buildForecastMonthMath({
+      startingBalance: 1000,
+      currentBalanceAnchor: 1500,
+      bookedIncomeTotal: 3300,
+      bookedForecastEligibleIncomeTotal: 2400,
+      bookedExpenseTotal: 900,
+      bookedSavingsOutflowTotal: 0,
+      bookedFixedCosts: 300,
+      bookedSubscriptions: 100,
+      bookedVariableCosts: 500,
+      expectedIncomeBaseline: 2829,
+      remainingCommittedIncomeTotal: 0,
+      expectedFixedCostsBaseline: 600,
+      expectedSubscriptionsBaseline: 120,
+      expectedVariableCostsBaseline: 900,
+      expectedSavingsOutflowBaseline: 0,
+      remainingCommittedFixedCosts: 0,
+      remainingCommittedSubscriptions: 0,
+      remainingCommittedSavingsOutflowTotal: 0,
+    });
+
+    expect(result.remainingExpectedIncomeTotal).toBe(429);
+    expect(result.expectedIncomeTotal).toBe(3729);
+    expect(result.expectedExpenseTotal).toBe(1620);
+  });
+});
+
+describe("createBudgetPlanRequestDescriptors", () => {
+  it("uses the specific future month as budget reference for future forecasts", () => {
+    const descriptors = createBudgetPlanRequestDescriptors(
+      [
+        new Date("2026-03-01T00:00:00.000Z"),
+        new Date("2026-04-01T00:00:00.000Z"),
+        new Date("2026-05-01T00:00:00.000Z"),
+      ],
+      new Date("2026-03-17T12:00:00.000Z"),
+    );
+
+    expect(
+      descriptors.map((item) => ({
+        monthStartIso: item.monthStartIso,
+        planReferenceIso: item.planReference.toISOString().slice(0, 10),
+      })),
+    ).toEqual([
+      {
+        monthStartIso: "2026-03-01",
+        planReferenceIso: "2026-03-17",
+      },
+      {
+        monthStartIso: "2026-04-01",
+        planReferenceIso: "2026-04-01",
+      },
+      {
+        monthStartIso: "2026-05-01",
+        planReferenceIso: "2026-05-01",
+      },
+    ]);
+  });
+
+  it("keeps historical forecasts anchored to the end of the selected month", () => {
+    const descriptors = createBudgetPlanRequestDescriptors(
+      [new Date("2026-01-01T00:00:00.000Z")],
+      new Date("2026-03-17T12:00:00.000Z"),
+    );
+
+    expect(descriptors[0]?.monthStartIso).toBe("2026-01-01");
+    expect(descriptors[0]?.planReference.toISOString().slice(0, 10)).toBe(
+      "2026-01-31",
+    );
   });
 });

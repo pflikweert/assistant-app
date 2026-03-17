@@ -1,5 +1,6 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { requireCurrentUserId } from "@/services/current-user";
+import { createBudgetPlanRequestDescriptors } from "@/services/forecast-budget-plan-requests";
 import {
   deriveIncomeSourcesFromTransactions,
   mergeForecastIncomeSources,
@@ -882,28 +883,33 @@ export async function recomputeCurrentMonthCashflowForecast(
   const targetMonthStartIso = dateToIso(startOfMonth(reference));
 
   const currentMonthStart = startOfMonth(now);
-  const includesCurrentOrFuture =
-    monthsDiff(currentMonthStart, startOfMonth(reference)) >= 0;
-
-  const currentBudgetPlanPromise = includesCurrentOrFuture
-    ? computeBudgetPlan(now, "default", now).catch((error) => {
-        console.warn(
-          "[forecast] stable income unavailable, using legacy sources",
-          error,
-        );
-        return null;
-      })
-    : Promise.resolve(null);
-  const historicalBudgetPlanPromise = !includesCurrentOrFuture
-    ? computeBudgetPlan(resolveForecastReferenceDate(startOfMonth(reference), now), "default", now).catch(
+  const budgetPlanRequestDescriptors = createBudgetPlanRequestDescriptors(
+    requestedMonths,
+    now,
+  );
+  const budgetPlanPromises = budgetPlanRequestDescriptors.map(
+    async ({ monthStartIso, planReference }) => {
+      const plan = await computeBudgetPlan(planReference, "default", now).catch(
         (error) => {
-          console.warn("[forecast] historical budget baseline unavailable", error);
+          console.warn(
+            `[forecast] budget baseline unavailable for ${monthStartIso}`,
+            error,
+          );
           return null;
         },
-      )
-    : Promise.resolve(null);
+      );
 
-  const [{ categories, categoryMap }, transactions, incomeSources, profiles, currentBudgetPlan, historicalBudgetPlan] =
+      return [monthStartIso, plan] as const;
+    },
+  );
+
+  const [
+    { categories, categoryMap },
+    transactions,
+    incomeSources,
+    profiles,
+    budgetPlanEntries,
+  ] =
     await Promise.all([
       fetchCategoryMap(),
       fetchTransactionsInRange(
@@ -919,9 +925,10 @@ export async function recomputeCurrentMonthCashflowForecast(
         console.warn("[forecast] subscription profiles unavailable", error);
         return [] as SubscriptionProfile[];
       }),
-      currentBudgetPlanPromise,
-      historicalBudgetPlanPromise,
+      Promise.all(budgetPlanPromises),
     ]);
+
+  const budgetPlanByMonthStartIso = new Map(budgetPlanEntries);
 
   const resolvedIncomeSources = mergeForecastIncomeSources(
     incomeSources,
@@ -953,10 +960,7 @@ export async function recomputeCurrentMonthCashflowForecast(
     const referenceDate = resolveForecastReferenceDate(monthStart, now);
     const referenceIso = dateToIso(referenceDate);
     const monthDiff = monthsDiff(currentMonthStart, monthStart);
-    const budgetPlanForMonth =
-      monthDiff < 0
-        ? historicalBudgetPlan
-        : currentBudgetPlan;
+    const budgetPlanForMonth = budgetPlanByMonthStartIso.get(monthStartIso) || null;
     const expenseHistoryForecast = estimateRecentExpenseForecastFromHistory({
       transactions,
       categoryMap,
