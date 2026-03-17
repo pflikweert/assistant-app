@@ -3,6 +3,7 @@ import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { MonthPickerSheet } from "@/components/month-picker-sheet";
 import { FinColors } from "@/constants/theme";
+import { upsertBudgetPlanSettings } from "@/services/budget-plan-repository";
 import {
   getMonthVariableBudgetSnapshot,
   getMonthVariableBudgetUsageText,
@@ -24,6 +25,11 @@ import {
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
 import {
+  FORECAST_EXPENSE_SOURCE_OPTIONS,
+  formatForecastExpenseSourceLabel,
+  getForecastExpenseSourceDescription,
+} from "@/services/forecast-expense-source-display";
+import {
   ensureForecastFresh,
   type EnsureForecastFreshOptions,
 } from "@/services/forecast-refresh";
@@ -41,6 +47,7 @@ import {
   type TransactionMonthOption,
 } from "@/services/transaction-month-options";
 import type {
+  BudgetForecastExpenseSource,
   BudgetPlanComputation,
   CategoryRecord,
   ExpenseAnalysisCategory,
@@ -343,12 +350,6 @@ function getBudgetIncludedIncomeAmount(
   }
 
   return Math.max(total, 0);
-}
-
-function getForecastExpenseSourceLabel(plan: BudgetPlanComputation | null) {
-  return plan?.settings.forecastExpenseSource === "budget_settings"
-    ? "Budgetplan"
-    : "Trend";
 }
 
 function parseUtcDate(dateIso: string) {
@@ -875,6 +876,8 @@ export default function InsightsScreen() {
   const [forecastRefreshStatus, setForecastRefreshStatus] =
     React.useState<ForecastRefreshStatus | null>(null);
   const [refreshingForecast, setRefreshingForecast] = React.useState(false);
+  const [updatingForecastExpenseSource, setUpdatingForecastExpenseSource] =
+    React.useState(false);
 
   const selectedMonth = React.useMemo(
     () =>
@@ -2048,6 +2051,45 @@ export default function InsightsScreen() {
     }
   }, [loadForecast]);
 
+  const handleForecastExpenseSourceChange = React.useCallback(
+    async (nextSource: BudgetForecastExpenseSource) => {
+      const currentSource =
+        budgetPlan?.settings.forecastExpenseSource || "trend";
+      if (updatingForecastExpenseSource || currentSource === nextSource) return;
+
+      setUpdatingForecastExpenseSource(true);
+      try {
+        await upsertBudgetPlanSettings({
+          planKey: "default",
+          forecastExpenseSource: nextSource,
+        });
+        setBudgetPlan((current) =>
+          current
+            ? {
+                ...current,
+                settings: {
+                  ...current.settings,
+                  forecastExpenseSource: nextSource,
+                },
+              }
+            : current,
+        );
+        await Promise.all([
+          loadBudgetPlan(),
+          loadForecast({
+            forceRecompute: true,
+            reason: "budget_toggle",
+          }),
+        ]);
+      } catch (error) {
+        console.error("[insights] forecast expense source update error", error);
+      } finally {
+        setUpdatingForecastExpenseSource(false);
+      }
+    },
+    [budgetPlan?.settings.forecastExpenseSource, loadBudgetPlan, loadForecast, updatingForecastExpenseSource],
+  );
+
   const openSelectedTransactionDetail = React.useCallback(() => {
     if (!selectedTx) return;
     const transactionId = selectedTx.id;
@@ -2070,6 +2112,11 @@ export default function InsightsScreen() {
     [budgetPlan],
   );
   const monthRiskTone = monthBudgetSnapshot.tone;
+  const activeForecastExpenseSource =
+    budgetPlan?.settings.forecastExpenseSource || "trend";
+  const forecastBudgetActionLabel = isFutureMonth
+    ? `Budget voor ${selectedMonth.label} instellen`
+    : `Budget voor ${selectedMonth.label} openen`;
 
   return (
     <View style={styles.root}>
@@ -2481,6 +2528,94 @@ export default function InsightsScreen() {
 
               <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Toekomstige uitgaven</Text>
+                  <Text style={styles.sectionHelper}>{selectedMonth.label}</Text>
+                </View>
+                <Text style={styles.supportText}>
+                  Kies welke bron deze voorspelling gebruikt voor toekomstige
+                  uitgaven.
+                </Text>
+                <View style={styles.choiceWrap}>
+                  {FORECAST_EXPENSE_SOURCE_OPTIONS.map((option) => {
+                    const selected =
+                      activeForecastExpenseSource === option.value;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        style={[
+                          styles.choiceChip,
+                          selected && styles.choiceChipActive,
+                        ]}
+                        onPress={() =>
+                          void handleForecastExpenseSourceChange(option.value)
+                        }
+                        disabled={updatingForecastExpenseSource}
+                      >
+                        <View style={styles.choiceChipInner}>
+                          <AppIcon
+                            name={
+                              selected
+                                ? "check-circle"
+                                : "radio-button-unchecked"
+                            }
+                            size={16}
+                            color={
+                              selected
+                                ? FinColors.textPrimary
+                                : FinColors.textMuted
+                            }
+                            variant="outlined"
+                          />
+                          <Text
+                            style={[
+                              styles.choiceChipText,
+                              selected && styles.choiceChipTextActive,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Text style={styles.helperText}>
+                  Nu actief:{" "}
+                  {formatForecastExpenseSourceLabel(activeForecastExpenseSource)}
+                  .{" "}
+                  {getForecastExpenseSourceDescription(activeForecastExpenseSource)}
+                </Text>
+                <Text style={styles.helperText}>
+                  Trend volgt je recente maandritme. Budgetplan volgt vaste
+                  lasten, abonnementen, variabele ruimte en sparen uit Budget.
+                </Text>
+                <Pressable
+                  style={styles.forecastBudgetLinkButton}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/budget",
+                      params: {
+                        month: selectedMonth.key,
+                        segment: "manage",
+                        focusToken: String(Date.now()),
+                      },
+                    })
+                  }
+                >
+                  <AppIcon
+                    name="calendar-month"
+                    size={16}
+                    color={FinColors.textPrimary}
+                    variant="outlined"
+                  />
+                  <Text style={styles.forecastBudgetLinkText}>
+                    {forecastBudgetActionLabel}
+                  </Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
                   <Text style={styles.sectionTitle}>Cashflow deze maand</Text>
                   <Text style={styles.sectionHelper}>
                     Saldo nu, maandmutatie en eindsaldo
@@ -2583,7 +2718,11 @@ export default function InsightsScreen() {
                           </Text>
                         </View>
                         <Text style={styles.helperText}>
-                          Toekomstige uitgaven volgen nu: {getForecastExpenseSourceLabel(budgetPlan)}.
+                          Toekomstige uitgaven volgen nu:{" "}
+                          {formatForecastExpenseSourceLabel(
+                            activeForecastExpenseSource,
+                          )}
+                          .
                         </Text>
                       </View>
                     </View>
@@ -3664,6 +3803,36 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: FinColors.textPrimary,
   },
+  choiceWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  choiceChip: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: FinColors.border,
+    backgroundColor: FinColors.bgInput,
+  },
+  choiceChipActive: {
+    backgroundColor: FinColors.yellow,
+    borderColor: FinColors.yellow,
+  },
+  choiceChipInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  choiceChipText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  choiceChipTextActive: {
+    color: FinColors.textPrimary,
+  },
   supportText: {
     fontSize: 14,
     lineHeight: 21,
@@ -3706,6 +3875,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     color: FinColors.textMuted,
+  },
+  forecastBudgetLinkButton: {
+    minHeight: 42,
+    alignSelf: "flex-start",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  forecastBudgetLinkText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
   },
   modalActionRow: {
     marginTop: -2,

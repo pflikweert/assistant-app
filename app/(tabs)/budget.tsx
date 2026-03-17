@@ -49,6 +49,10 @@ import {
   upsertBudgetPlanSettings,
   upsertMonthlyBudgetValue,
 } from "@/services/budget-plan-repository";
+import {
+  formatForecastExpenseSourceLabel,
+  getForecastExpenseSourceDescription,
+} from "@/services/forecast-expense-source-display";
 import type {
   BudgetCategoryKey,
   BudgetForecastExpenseSource,
@@ -62,7 +66,7 @@ import type {
 } from "@/types/categorization";
 import { AppIcon } from "@/components/ui/app-icon";
 import { useIsFocused } from "@react-navigation/native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
@@ -121,24 +125,8 @@ const INCOME_SOURCE_OPTIONS: {
   { key: "variable", label: "Variabel" },
 ];
 
-const FORECAST_EXPENSE_SOURCE_OPTIONS: {
-  value: BudgetForecastExpenseSource;
-  label: string;
-  description: string;
-}[] = [
-  {
-    value: "trend",
-    label: "Trend",
-    description: "Volgt je recente maandritme voor toekomstige uitgaven.",
-  },
-  {
-    value: "budget_settings",
-    label: "Budgetplan",
-    description: "Volgt je ingestelde budgetten voor vaste lasten, variabel en sparen.",
-  },
-];
-
 const SAVINGS_SLIDER_STEP = 25;
+const FUTURE_BUDGET_MONTH_COUNT = 6;
 
 type SegmentKey = (typeof SEGMENTS)[number]["key"];
 type BudgetDraftValues = Partial<Record<BudgetCategoryKey, string>>;
@@ -342,18 +330,6 @@ function getMonthOverlapLabel(
   if (txDate < monthStart) return "Vorige maand";
   if (txDate >= nextMonthStart) return "Volgende maand";
   return null;
-}
-
-function formatForecastExpenseSourceLabel(source: BudgetForecastExpenseSource) {
-  return source === "budget_settings" ? "Budgetplan" : "Trend";
-}
-
-function getForecastExpenseSourceDescription(
-  source: BudgetForecastExpenseSource,
-) {
-  return source === "budget_settings"
-    ? "Toekomstige uitgaven volgen je budgetinstellingen uit Beheer."
-    : "Toekomstige uitgaven volgen je recente uitgaventrend.";
 }
 
 function getIsoWeekNumberFromStartDate(startDateIso: string) {
@@ -696,11 +672,17 @@ function getPositiveLine(plan: BudgetPlanComputation | null) {
 
 export default function BudgetScreen() {
   const router = useRouter();
+  const routeParams = useLocalSearchParams<{
+    month?: string | string[];
+    segment?: string | string[];
+    focusToken?: string | string[];
+  }>();
   const isFocused = useIsFocused();
   const backgroundStatus = useCategorizationStatus();
   const budgetLoadInFlight = React.useRef(false);
   const budgetPlanRef = React.useRef<BudgetPlanComputation | null>(null);
   const lastHydratedDraftKeyRef = React.useRef<string | null>(null);
+  const lastAppliedRouteRequestRef = React.useRef<string | null>(null);
   const fallbackMonthOption = React.useMemo(
     () => getMonthOptionByKey(getCurrentMonthKey())!,
     [],
@@ -713,6 +695,7 @@ export default function BudgetScreen() {
   const [monthOptions, setMonthOptions] = React.useState<TransactionMonthOption[]>(
     [fallbackMonthOption],
   );
+  const [monthOptionsLoaded, setMonthOptionsLoaded] = React.useState(false);
   const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
   const [budgetPlan, setBudgetPlan] =
     React.useState<BudgetPlanComputation | null>(null);
@@ -794,14 +777,39 @@ export default function BudgetScreen() {
   const canGoToOlderMonth =
     selectedMonthIndex >= 0 && selectedMonthIndex < monthOptions.length - 1;
   const canGoToNewerMonth = selectedMonthIndex > 0;
+  const requestedRouteMonthKey = React.useMemo(() => {
+    const raw = Array.isArray(routeParams.month)
+      ? routeParams.month[0]
+      : routeParams.month;
+    return getMonthOptionByKey(raw || null)?.key || null;
+  }, [routeParams.month]);
+  const requestedRouteSegment = React.useMemo(() => {
+    const raw = Array.isArray(routeParams.segment)
+      ? routeParams.segment[0]
+      : routeParams.segment;
+    if (raw === "week" || raw === "month" || raw === "manage") {
+      return raw as SegmentKey;
+    }
+    return null;
+  }, [routeParams.segment]);
+  const requestedRouteFocusToken = React.useMemo(() => {
+    const raw = Array.isArray(routeParams.focusToken)
+      ? routeParams.focusToken[0]
+      : routeParams.focusToken;
+    return raw ? String(raw) : null;
+  }, [routeParams.focusToken]);
 
   const loadMonthOptions = React.useCallback(async () => {
     try {
-      const options = await listTransactionMonthOptions();
+      const options = await listTransactionMonthOptions({
+        includeFutureMonths: FUTURE_BUDGET_MONTH_COUNT,
+      });
       setMonthOptions(options);
     } catch (error) {
       console.warn("[budget] month options error", error);
       setMonthOptions([fallbackMonthOption]);
+    } finally {
+      setMonthOptionsLoaded(true);
     }
   }, [fallbackMonthOption]);
 
@@ -853,12 +861,34 @@ export default function BudgetScreen() {
   }, [backgroundStatus.lastCompletedAt, isFocused, loadBudget]);
 
   React.useEffect(() => {
-    if (!monthOptions.length) return;
+    if (!monthOptionsLoaded || !monthOptions.length) return;
     if (monthOptions.some((option) => option.key === selectedMonthKey)) return;
 
     const currentMonthOption = monthOptions.find((option) => option.isCurrentMonth);
     setSelectedMonthKey((currentMonthOption || monthOptions[0]).key);
-  }, [monthOptions, selectedMonthKey]);
+  }, [monthOptions, monthOptionsLoaded, selectedMonthKey]);
+
+  React.useEffect(() => {
+    const routeRequestKey = [
+      requestedRouteFocusToken || "direct",
+      requestedRouteMonthKey || "",
+      requestedRouteSegment || "",
+    ].join("|");
+    if (routeRequestKey === lastAppliedRouteRequestRef.current) return;
+    if (!requestedRouteMonthKey && !requestedRouteSegment) return;
+
+    lastAppliedRouteRequestRef.current = routeRequestKey;
+    if (requestedRouteMonthKey) {
+      setSelectedMonthKey(requestedRouteMonthKey);
+    }
+    if (requestedRouteSegment) {
+      setSegment(requestedRouteSegment);
+    }
+  }, [
+    requestedRouteFocusToken,
+    requestedRouteMonthKey,
+    requestedRouteSegment,
+  ]);
 
   React.useEffect(() => {
     if (!isFocused) return;
@@ -2980,56 +3010,6 @@ export default function BudgetScreen() {
               </View>
 
               <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Toekomstige uitgaven</Text>
-                <Text style={styles.supportText}>
-                  Kies of je forecast toekomstige uitgaven baseert op je recente trend of op je budgetinstellingen.
-                </Text>
-                <Text style={styles.supportText}>
-                  Nu actief: {formatForecastExpenseSourceLabel(forecastExpenseSourceDraft)}.{" "}
-                  {getForecastExpenseSourceDescription(forecastExpenseSourceDraft)}
-                </Text>
-                <View style={styles.choiceWrap}>
-                  {FORECAST_EXPENSE_SOURCE_OPTIONS.map((option) => {
-                    const selected =
-                      forecastExpenseSourceDraft === option.value;
-                    return (
-                      <Pressable
-                        key={option.value}
-                        style={[
-                          styles.choiceChip,
-                          selected && styles.choiceChipActive,
-                        ]}
-                        onPress={() => setForecastExpenseSourceDraft(option.value)}
-                      >
-                        <View style={styles.choiceChipInner}>
-                          <AppIcon
-                            name={selected ? "check-circle" : "radio-button-unchecked"}
-                            size={16}
-                            color={
-                              selected
-                                ? FinColors.textPrimary
-                                : FinColors.textMuted
-                            }
-                          />
-                          <Text
-                            style={[
-                              styles.choiceChipText,
-                              selected && styles.choiceChipTextActive,
-                            ]}
-                          >
-                            {option.label}
-                          </Text>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                <Text style={styles.compactBreakdownText}>
-                  Trend: recente maanduitgaven. Budgetplan: vaste lasten, abonnementen, variabele ruimte en sparen uit Beheer.
-                </Text>
-              </View>
-
-              <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Maandverdeling</Text>
                 <Text style={styles.supportText}>
                   Zo verdeel je je inkomende ruimte over vaste lasten, variabele uitgaven en sparen.
@@ -3080,6 +3060,13 @@ export default function BudgetScreen() {
                   <Text style={styles.sectionTitle}>Maandbudget per categorie</Text>
                   <Text style={styles.sectionHelper}>{selectedMonth.label}</Text>
                 </View>
+                <Text style={styles.supportText}>
+                  Deze maandbudgetten gebruik je ook in Voorspelling als je daar Budgetplan kiest.
+                </Text>
+                <Text style={styles.compactBreakdownText}>
+                  Forecast volgt nu: {formatForecastExpenseSourceLabel(forecastExpenseSourceDraft)}.{" "}
+                  {getForecastExpenseSourceDescription(forecastExpenseSourceDraft)}
+                </Text>
                 <Text style={styles.supportText}>
                   Trend volgt je recente maandritme. Vast laat jouw bedrag staan als de rest wordt herverdeeld.
                 </Text>
@@ -3279,7 +3266,7 @@ export default function BudgetScreen() {
       <MonthPickerSheet
         visible={monthPickerOpen}
         title="Kies maand"
-        helper="Alleen maanden met transacties"
+        helper="Historie plus 6 maanden vooruit"
         options={monthOptions}
         selectedKey={selectedMonth?.key || null}
         onClose={() => setMonthPickerOpen(false)}
