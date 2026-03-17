@@ -7,6 +7,20 @@ export type CategoryRecord = {
   sort_order: number | null;
 };
 
+export type EditableBudgetGroup = "fixed" | "variable" | "subscriptions";
+
+export type EffectiveBudgetGroup =
+  | EditableBudgetGroup
+  | "savings"
+  | null;
+
+export type CategoryBudgetGroupOverrideRecord = {
+  categoryId: string;
+  budgetGroup: EditableBudgetGroup;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
 export type CategoryRuleRecord = {
   id: string;
   category_id: string;
@@ -271,6 +285,8 @@ export type BudgetIncomeBreakdown = {
   childBudget: number;
   structuralOther: number;
   variable: number;
+  windfalls: number;
+  costRefunds: number;
   total: number;
 };
 

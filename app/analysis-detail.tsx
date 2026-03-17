@@ -8,9 +8,11 @@ import {
 import { requireCurrentUserId } from "@/services/current-user";
 import { supabase } from "@/services/supabase";
 import type {
+    AnalysisCategory,
     CategoryRecord,
     ExpenseAnalysisCategory,
 } from "@/types/categorization";
+import { useIsFocused } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
@@ -35,6 +37,7 @@ type DetailTx = {
   details: string;
   category_id_auto: string | null;
   category_id_user: string | null;
+  analysis_category: AnalysisCategory | null;
 };
 
 type ComparisonDirection = "up" | "down" | "flat" | "new";
@@ -260,6 +263,60 @@ function formatDisplayDate(value: string) {
   });
 }
 
+function resolveExpenseGroupForDetail(
+  tx: DetailTx,
+  categoryMap: Map<string, CategoryRecord>,
+): ExpenseAnalysisCategory | null {
+  const categoryId = tx.category_id_user || tx.category_id_auto;
+  const category = categoryId ? categoryMap.get(categoryId) || null : null;
+  const categoryKey = String(category?.key || "").toLowerCase();
+  const budgetGroup = String(category?.budget_group || "").toLowerCase();
+
+  if (budgetGroup === "subscriptions") return "subscriptions";
+  if (budgetGroup === "fixed") return "fixed_costs";
+  if (budgetGroup === "variable") return "variable_costs";
+  if (budgetGroup === "savings") return null;
+
+  if (categoryKey.startsWith("savings")) return null;
+  if (categoryKey.startsWith("subscriptions")) return "subscriptions";
+  if (
+    (categoryKey.startsWith("care_") || categoryKey.startsWith("health_")) &&
+    !categoryKey.startsWith("care_health_insurance") &&
+    !categoryKey.startsWith("insurance_health") &&
+    !categoryKey.startsWith("health_insurance")
+  ) {
+    return "variable_costs";
+  }
+  if (
+    categoryKey.startsWith("housing") ||
+    categoryKey.startsWith("care_health_insurance") ||
+    categoryKey.startsWith("insurance_health") ||
+    categoryKey.startsWith("health_insurance") ||
+    categoryKey.startsWith("auto_transport_car_insurance") ||
+    categoryKey.startsWith("auto_transport_road_tax")
+  ) {
+    return "fixed_costs";
+  }
+  if (
+    categoryKey.startsWith("groceries") ||
+    categoryKey.startsWith("fuel") ||
+    categoryKey.startsWith("smoking") ||
+    categoryKey.startsWith("shopping")
+  ) {
+    return "variable_costs";
+  }
+
+  if (
+    tx.analysis_category === "fixed_costs" ||
+    tx.analysis_category === "subscriptions" ||
+    tx.analysis_category === "variable_costs"
+  ) {
+    return tx.analysis_category;
+  }
+
+  return null;
+}
+
 function compareAmounts(
   current: number,
   previous: number,
@@ -387,6 +444,7 @@ function buildRecentMonths(lastMonthStartIso: string, count = 6) {
 
 export default function AnalysisDetailScreen() {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const params = useLocalSearchParams<{
     group?: string;
     monthStart?: string;
@@ -629,7 +687,7 @@ export default function AnalysisDetailScreen() {
   }, [categoryMap, monthEnd, monthStart, previousMonthStart, transactions]);
 
   React.useEffect(() => {
-    if (!validGroup || !monthStart || !monthEnd || !lookbackStart) {
+    if (!isFocused || !validGroup || !monthStart || !monthEnd || !lookbackStart) {
       setLoading(false);
       return;
     }
@@ -644,10 +702,9 @@ export default function AnalysisDetailScreen() {
           supabase
             .from("transactions")
             .select(
-              "id,date,amount,counterparty,details,category_id_auto,category_id_user",
+              "id,date,amount,counterparty,details,category_id_auto,category_id_user,analysis_category",
             )
             .eq("user_id", userId)
-            .eq("analysis_category", validGroup)
             .lt("amount", 0)
             .gte("date", lookbackStart)
             .lt("date", monthEnd)
@@ -658,8 +715,9 @@ export default function AnalysisDetailScreen() {
         if (rows.error) throw rows.error;
 
         setCategories(cats);
-        setTransactions(
-          ((rows.data || []) as any[]).map((row) => ({
+        const nextCategoryMap = buildCategoryRecordMap(cats);
+        const nextTransactions = ((rows.data || []) as any[])
+          .map((row) => ({
             id: String(row.id),
             date: String(row.date || ""),
             amount: Number(row.amount || 0),
@@ -667,8 +725,13 @@ export default function AnalysisDetailScreen() {
             details: String(row.details || ""),
             category_id_auto: row.category_id_auto || null,
             category_id_user: row.category_id_user || null,
-          })),
-        );
+            analysis_category: (row.analysis_category || null) as AnalysisCategory | null,
+          }))
+          .filter(
+            (row) => resolveExpenseGroupForDetail(row, nextCategoryMap) === validGroup,
+          );
+
+        setTransactions(nextTransactions);
       } catch (error) {
         console.error("[analysis-detail] load error", error);
         setTransactions([]);
@@ -678,7 +741,7 @@ export default function AnalysisDetailScreen() {
     };
 
     void run();
-  }, [lookbackStart, monthEnd, monthStart, validGroup]);
+  }, [isFocused, lookbackStart, monthEnd, monthStart, validGroup]);
 
   const toggleSubcategory = React.useCallback((label: string) => {
     setExpandedSubcategories((current) => ({

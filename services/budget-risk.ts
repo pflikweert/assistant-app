@@ -106,6 +106,34 @@ export function getMonthVariableBudgetSnapshot(
   };
 }
 
+export function getMonthVariableBudgetUsageText(
+  snapshot: MonthVariableBudgetSnapshot,
+  formatCurrency: Intl.NumberFormat,
+  noDataLabel = "Budgetgegevens laden...",
+) {
+  if (snapshot.state === "no_data") {
+    return noDataLabel;
+  }
+
+  if (snapshot.state === "no_budget") {
+    return "Stel eerst een variabel budget in om vrije ruimte te zien.";
+  }
+
+  if (snapshot.state === "over_budget") {
+    return `${formatCurrency.format(
+      Math.abs(snapshot.remaining || 0),
+    )} boven je variabele maandbudget van ${formatCurrency.format(
+      snapshot.budget || 0,
+    )}`;
+  }
+
+  return `${formatCurrency.format(
+    snapshot.spent || 0,
+  )} van ${formatCurrency.format(
+    snapshot.budget || 0,
+  )} van je variabele budget gebruikt`;
+}
+
 export function getMonthBudgetRiskTone(plan: BudgetPlanComputation | null) {
   if (!plan || plan.flowSummary.variableBudget <= 0) {
     return "neutral" as const;

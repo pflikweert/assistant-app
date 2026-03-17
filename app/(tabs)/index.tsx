@@ -3,6 +3,7 @@ import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import {
+  getMonthVariableBudgetUsageText,
   getMonthVariableBudgetSnapshot,
   getWeekBudgetSnapshot,
   getWeekTempoMessage,
@@ -16,7 +17,11 @@ import {
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
 import { supabase } from "@/services/supabase";
-import type { BudgetPlanComputation, CategoryRecord } from "@/types/categorization";
+import type {
+  BudgetPlanComputation,
+  BudgetWeekPlanRow,
+  CategoryRecord,
+} from "@/types/categorization";
 import { AppIcon } from "@/components/ui/app-icon";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -475,11 +480,7 @@ export default function DashboardScreen() {
           </View>
           <Text style={styles.primarySupport}>
             {budgetPlan
-              ? monthBudgetSnapshot.state === "no_budget"
-                ? "Stel eerst een variabel budget in om vrije ruimte te zien."
-                : monthBudgetSnapshot.state === "over_budget"
-                  ? `${fmt.format(Math.abs(monthBudgetSnapshot.remaining || 0))} boven je variabele maandbudget van ${fmt.format(monthBudgetSnapshot.budget || 0)}`
-                  : `${fmt.format(monthBudgetSnapshot.spent || 0)} van ${fmt.format(monthBudgetSnapshot.budget || 0)} variabel gebruikt`
+              ? getMonthVariableBudgetUsageText(monthBudgetSnapshot, fmt)
               : budgetSchemaMissing
                 ? "Budgetschema is nog niet beschikbaar in deze omgeving."
                 : "Budgetgegevens laden..."}

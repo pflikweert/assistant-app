@@ -21,7 +21,6 @@ import {
     Modal,
     ScrollView,
     StyleSheet,
-    Switch,
     Text,
     TouchableOpacity,
     View,
@@ -231,7 +230,6 @@ function SectionHeader({ title }: { title: string }) {
 export default function SettingsScreen() {
   const router = useRouter();
   const { logout, user } = useSession();
-  const [darkMode, setDarkMode] = React.useState(true);
   const [isClearing, setIsClearing] = React.useState(false);
   const [isSigningOut, setIsSigningOut] = React.useState(false);
   const [showConfirmModal, setShowConfirmModal] = React.useState(false);
@@ -243,6 +241,13 @@ export default function SettingsScreen() {
   const isBusy =
     backgroundStatus.phase === "queued" || backgroundStatus.phase === "running";
   const isPaused = backgroundStatus.phase === "paused";
+  const backgroundSummary = isBusy
+    ? "Categorisatie actief"
+    : isPaused
+      ? "Categorisatie gepauzeerd"
+      : backgroundStatus.queuedCount > 0
+        ? "Klaar om te hervatten"
+        : "Alles bijgewerkt";
   const userEmail = user?.email || "Geen e-mail beschikbaar";
   const userName =
     String(
@@ -259,17 +264,13 @@ export default function SettingsScreen() {
     .join("");
 
   const handleResetPress = () => {
-    console.log("[Settings] Reset button pressed");
     setShowConfirmModal(true);
   };
 
   const handleConfirmReset = async () => {
-    console.log("[Settings] Reset confirmed");
     setIsClearing(true);
     try {
-      console.log("Calling clearAllTransactionData...");
       await clearAllTransactionData();
-      console.log("Clear completed successfully");
       setShowConfirmModal(false);
       setShowSuccessModal(true);
     } catch (error) {
@@ -304,7 +305,7 @@ export default function SettingsScreen() {
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
-        <Text style={styles.pageTitle}>Settings</Text>
+        <Text style={styles.pageTitle}>Instellingen</Text>
         <HeaderDropdownMenu />
       </View>
 
@@ -312,31 +313,39 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        {/* Profile card */}
         <View style={styles.profileCard}>
-          <View style={styles.avatarLarge}>
-            <Text style={styles.avatarText}>{userInitials || "G"}</Text>
+          <View style={styles.profileTopRow}>
+            <View style={styles.avatarLarge}>
+              <Text style={styles.avatarText}>{userInitials || "G"}</Text>
+            </View>
+            <View style={styles.profileInfo}>
+              <Text style={styles.profileName}>{userName}</Text>
+              <Text style={styles.profileEmail}>{userEmail}</Text>
+            </View>
           </View>
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{userName}</Text>
-            <Text style={styles.profileEmail}>{userEmail}</Text>
+          <View style={styles.profileMetaRow}>
+            <View style={styles.profileStatusPill}>
+              <Text style={styles.profileStatusPillText}>{backgroundSummary}</Text>
+            </View>
+            <Text style={styles.profileMetaText}>
+              {backgroundStatus.updatedCount} transacties recent bijgewerkt
+            </Text>
           </View>
         </View>
 
-        {/* Accounts */}
-        <SectionHeader title="Accounts" />
+        <SectionHeader title="Import en accounts" />
         <View style={styles.card}>
           <SettingsRow
             iconName="upload-file"
-            label="Import transactions"
-            subtitle="Upload a Rabobank CSV"
+            label="Transacties importeren"
+            subtitle="Upload een Rabobank CSV"
             onPress={() => router.push("/csv-import")}
           />
           <View style={styles.divider} />
           <SettingsRow
             iconName="manage-accounts"
-            label="Manage accounts"
-            subtitle="Add or remove bank accounts"
+            label="Rekeningen beheren"
+            subtitle="Bankrekeningen toevoegen of verwijderen"
             onPress={() => {}}
           />
            <View style={styles.divider} />
@@ -348,41 +357,45 @@ export default function SettingsScreen() {
            />
         </View>
 
-        {/* Preferences */}
-        <SectionHeader title="Preferences" />
+        <SectionHeader title="Voorkeuren" />
         <View style={styles.card}>
           <SettingsRow
             iconName="euro-symbol"
-            label="Currency"
+            label="Valuta"
             value="EUR"
             onPress={() => {}}
           />
-          <View style={styles.divider} />
           <SettingsRow
-            iconName="dark-mode"
-            label="Appearance"
-            subtitle="Dark mode enabled"
-            rightElement={
-              <Switch
-                value={darkMode}
-                onValueChange={setDarkMode}
-                trackColor={{
-                  false: FinColors.bgElevated,
-                  true: FinColors.green,
-                }}
-                thumbColor={FinColors.textPrimary}
-              />
-            }
+            iconName="palette"
+            label="Weergave"
+            value="Standaard"
+            subtitle="Meer thema-opties volgen later"
           />
         </View>
 
-        {/* Data */}
+        <SectionHeader title="Beheer" />
+        <View style={styles.card}>
+          <SettingsRow
+            iconName="tune"
+            label="Categorie-indeling"
+            subtitle="Beheer wat onder vaste lasten, variabel of abonnementen valt"
+            onPress={() => router.push("/category-budget-groups")}
+          />
+          <View style={styles.divider} />
+          <SettingsRow
+            iconName="subscriptions"
+            label="Abonnementen"
+            subtitle="Beheer profielen, PSP-koppelingen en regels"
+            onPress={() => router.push("/subscriptions")}
+          />
+        </View>
+
         <SectionHeader title="Data" />
         <View style={styles.card}>
           <SettingsRow
             iconName="download"
-            label="Export data"
-            subtitle="Download all transactions as CSV"
+            label="Data exporteren"
+            subtitle="Download alle transacties als CSV"
             onPress={() => {}}
           />
           <View style={styles.divider} />
@@ -496,16 +509,15 @@ export default function SettingsScreen() {
         {/* About */}
         <SectionHeader title="About" />
         <View style={styles.card}>
-          <SettingsRow iconName="info-outline" label="Version" value="1.0.0" />
+          <SettingsRow iconName="info-outline" label="Versie" value="1.0.0" />
           <View style={styles.divider} />
           <SettingsRow
             iconName="support-agent"
-            label="Help & support"
+            label="Hulp en support"
             onPress={() => {}}
           />
         </View>
 
-        {/* Sign out */}
         <TouchableOpacity
           style={styles.signOutBtn}
           activeOpacity={0.7}
@@ -515,7 +527,7 @@ export default function SettingsScreen() {
           {isSigningOut ? (
             <ActivityIndicator size="small" color={FinColors.red} />
           ) : (
-            <Text style={styles.signOutText}>Sign out</Text>
+            <Text style={styles.signOutText}>Uitloggen</Text>
           )}
         </TouchableOpacity>
       </ScrollView>
@@ -559,15 +571,18 @@ const styles = StyleSheet.create({
 
   // Profile
   profileCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 18,
     backgroundColor: FinColors.bgCard,
     borderRadius: 18,
     padding: 22,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
+    gap: 14,
+  },
+  profileTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 18,
   },
   avatarLarge: {
     width: 56,
@@ -589,6 +604,30 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
   },
   profileEmail: { fontSize: 13, color: FinColors.textMuted, marginTop: 4 },
+  profileMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  profileStatusPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: FinColors.greenBg,
+    borderWidth: 1,
+    borderColor: FinColors.greenBorder,
+  },
+  profileStatusPillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.green,
+  },
+  profileMetaText: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    flexShrink: 1,
+  },
 
   // Section
   sectionHeader: {

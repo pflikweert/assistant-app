@@ -1,8 +1,14 @@
+import {
+  applyEffectiveBudgetGroupsToCategories,
+  listCategoryBudgetGroupOverrides,
+} from "@/services/category-budget-groups";
+import { resolveIncomeSemantics } from "@/services/income-semantics";
 import { supabase } from "@/services/supabase";
 import { requireCurrentUserId } from "@/services/current-user";
 import type {
     AnalysisCategory,
     AnalysisMainGroup,
+    CategoryRecord,
     ExpenseAnalysisCategory,
     ForecastIncomeSource,
     RecurringType,
@@ -217,6 +223,11 @@ function resolveExpenseAnalysisCategory(
   categoryKey: string | null,
   budgetGroup: string | null,
 ): ExpenseAnalysisCategory {
+  if (budgetGroup === "savings") return "savings_transfer";
+  if (budgetGroup === "subscriptions") return "subscriptions";
+  if (budgetGroup === "fixed") return "fixed_costs";
+  if (budgetGroup === "variable") return "variable_costs";
+
   if (categoryKey) {
     if (isSavingsCategoryKey(categoryKey)) return "savings_transfer";
     if (isSubscriptionCategoryKey(categoryKey)) return "subscriptions";
@@ -234,10 +245,6 @@ function resolveExpenseAnalysisCategory(
       return "fixed_costs";
     }
   }
-
-  if (budgetGroup === "savings") return "savings_transfer";
-  if (budgetGroup === "fixed") return "fixed_costs";
-  if (budgetGroup === "variable") return "variable_costs";
 
   if (includesAny(haystack, SAVINGS_TRANSFER_KEYWORDS)) {
     return "savings_transfer";
@@ -258,24 +265,62 @@ function resolveExpenseAnalysisCategory(
   return "variable_costs";
 }
 
-function resolveIncomeAnalysisCategory(haystack: string): AnalysisCategory {
+function resolveIncomeAnalysisCategory(
+  tx: Pick<AnalysisTx, "amount" | "counterparty" | "details" | "analysis_category">,
+  categoryKey: string | null,
+  budgetGroup: string | null,
+): AnalysisCategory {
+  const resolved = resolveIncomeSemantics({
+    amount: tx.amount,
+    counterparty: tx.counterparty,
+    details: tx.details,
+    categoryKey,
+    budgetGroup,
+    analysisCategory:
+      tx.analysis_category === "income_structural" ||
+      tx.analysis_category === "income_variable"
+        ? tx.analysis_category
+        : null,
+  });
+
+  if (resolved.analysisCategory) {
+    return resolved.analysisCategory;
+  }
+
+  const haystack = textHaystack(tx);
   if (includesAny(haystack, STRUCTURAL_INCOME_KEYWORDS)) {
     return "income_structural";
   }
   return "income_variable";
 }
 
-async function getCategoryMetaMap(): Promise<
+async function getCategoryMetaMap(userId: string): Promise<
   Map<string, AnalysisCategoryMeta>
 > {
   const { data, error } = await supabase
     .from("categories")
-    .select("id,key,budget_group");
+    .select("id,key,name,parent_id,budget_group,sort_order")
+    .or(`user_id.is.null,user_id.eq.${userId}`);
 
   if (error) throw error;
 
+  const rawCategories: CategoryRecord[] = ((data || []) as Record<string, unknown>[])
+    .map((row) => ({
+      id: String(row.id || ""),
+      key: String(row.key || ""),
+      name: String(row.name || ""),
+      parent_id: row.parent_id ? String(row.parent_id) : null,
+      budget_group: row.budget_group ? String(row.budget_group) : null,
+      sort_order: row.sort_order == null ? null : Number(row.sort_order),
+    }))
+    .filter((row) => row.id);
+  const categories = applyEffectiveBudgetGroupsToCategories(
+    rawCategories,
+    await listCategoryBudgetGroupOverrides(userId),
+  );
+
   const map = new Map<string, AnalysisCategoryMeta>();
-  for (const row of (data || []) as any[]) {
+  for (const row of categories) {
     map.set(String(row.id), {
       id: String(row.id),
       key: String(row.key || ""),
@@ -455,7 +500,11 @@ function buildAnalysisUpdate(
 
   const analysisCategory =
     analysisMainGroup === "income"
-      ? resolveIncomeAnalysisCategory(haystack)
+      ? resolveIncomeAnalysisCategory(
+          tx,
+          categoryMeta?.key || null,
+          categoryMeta?.budget_group || null,
+        )
       : resolveExpenseAnalysisCategory(
           haystack,
           categoryMeta?.key || null,
@@ -495,9 +544,27 @@ function updateChanged(
 function mergeIncomeSources(
   tx: AnalysisTx,
   update: TransactionAnalysisUpdate,
+  categoryMap: Map<string, AnalysisCategoryMeta>,
   collector: Map<string, ForecastIncomeSource>,
 ) {
   if (update.analysisMainGroup !== "income") return;
+  const effectiveCategoryId = tx.category_id_user || tx.category_id_auto;
+  const categoryMeta = effectiveCategoryId
+    ? categoryMap.get(effectiveCategoryId) || null
+    : null;
+  const semantics = resolveIncomeSemantics({
+    amount: tx.amount,
+    counterparty: tx.counterparty,
+    details: tx.details,
+    categoryKey: categoryMeta?.key || null,
+    budgetGroup: categoryMeta?.budget_group || null,
+    analysisCategory:
+      update.analysisCategory === "income_structural" ||
+      update.analysisCategory === "income_variable"
+        ? update.analysisCategory
+        : null,
+  });
+  if (!semantics.forecastEligible) return;
 
   const descriptor = getDescriptor(tx);
   if (!descriptor) return;
@@ -619,7 +686,7 @@ export async function enrichTransactionAnalysis(
     userId,
   );
 
-  const categoryMap = await getCategoryMetaMap();
+  const categoryMap = await getCategoryMetaMap(userId);
   const updates: TransactionAnalysisUpdate[] = [];
   const incomeCollector = new Map<string, ForecastIncomeSource>();
 
@@ -627,7 +694,7 @@ export async function enrichTransactionAnalysis(
     const update = buildAnalysisUpdate(tx, categoryMap, allWindowTransactions);
     if (!updateChanged(tx, update)) continue;
     updates.push(update);
-    mergeIncomeSources(tx, update, incomeCollector);
+    mergeIncomeSources(tx, update, categoryMap, incomeCollector);
   }
 
   if (updates.length) {

@@ -1,3 +1,7 @@
+import {
+  applyEffectiveBudgetGroupsToCategories,
+  listCategoryBudgetGroupOverrides,
+} from "@/services/category-budget-groups";
 import { supabase } from "@/services/supabase";
 import { requireCurrentUserId } from "@/services/current-user";
 import type {
@@ -344,9 +348,21 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
   };
 }
 
-export async function getTransactionCategories() {
+export async function getTransactionCategories(options?: {
+  applyBudgetGroupOverrides?: boolean;
+}) {
   const repo = createSupabaseCategorizationRepository();
-  return repo.getCategories();
+  const categories = await repo.getCategories();
+  if (options?.applyBudgetGroupOverrides === false) {
+    return categories;
+  }
+
+  const overrides = await listCategoryBudgetGroupOverrides().catch((error) => {
+    console.warn("[categories] budget group overrides load error", error);
+    return [];
+  });
+
+  return applyEffectiveBudgetGroupsToCategories(categories, overrides);
 }
 
 export async function setTransactionManualCategory(

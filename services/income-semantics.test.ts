@@ -1,0 +1,96 @@
+import { describe, expect, it } from "vitest";
+
+import { resolveIncomeSemantics } from "./income-semantics";
+
+describe("resolveIncomeSemantics", () => {
+  it("treats tax refunds as incidental windfalls instead of structural income", () => {
+    const result = resolveIncomeSemantics({
+      amount: 842.13,
+      counterparty: "Belastingdienst",
+      details: "Voorlopige aanslag teruggave inkomstenbelasting",
+      categoryKey: "income_tax_refund",
+      analysisCategory: "income_variable",
+    });
+
+    expect(result).toMatchObject({
+      kind: "tax_refund",
+      budgetBucket: "windfall",
+      analysisCategory: "income_variable",
+      forecastEligible: false,
+      countsAsIncome: true,
+      shortLabel: "Belastingmeevaller",
+    });
+  });
+
+  it("keeps kindgebonden budget as structural income", () => {
+    const result = resolveIncomeSemantics({
+      amount: 251,
+      counterparty: "Belastingdienst",
+      details: "Voorschot KIT/KGB",
+      categoryKey: "income_child_budget",
+      analysisCategory: "income_structural",
+    });
+
+    expect(result).toMatchObject({
+      kind: "child_budget",
+      budgetBucket: "childBudget",
+      analysisCategory: "income_structural",
+      forecastEligible: true,
+    });
+  });
+
+  it("treats positive bijdrage zvw settlements as cost refunds", () => {
+    const result = resolveIncomeSemantics({
+      amount: 129.44,
+      counterparty: "Belastingdienst",
+      details: "Bijdrage ZVW afrekening",
+      categoryKey: "care_health_insurance",
+      budgetGroup: "fixed",
+      analysisCategory: "income_variable",
+    });
+
+    expect(result).toMatchObject({
+      kind: "expense_refund",
+      budgetBucket: "costRefund",
+      analysisCategory: "income_variable",
+      forecastEligible: false,
+      countsAsIncome: false,
+      expenseOffsetBucket: "fixed_costs",
+    });
+  });
+
+  it("treats road tax corrections as cost refunds instead of income", () => {
+    const result = resolveIncomeSemantics({
+      amount: 48,
+      counterparty: "Belastingdienst",
+      details: "Teruggave wegenbelasting MRB",
+      categoryKey: "auto_transport_road_tax",
+      budgetGroup: "fixed",
+      analysisCategory: "income_variable",
+    });
+
+    expect(result).toMatchObject({
+      kind: "expense_refund",
+      countsAsIncome: false,
+      expenseOffsetBucket: "fixed_costs",
+    });
+  });
+
+  it("falls back to recurring-eligible variable income for generic inflows", () => {
+    const result = resolveIncomeSemantics({
+      amount: 75,
+      counterparty: "Marktplaats",
+      details: "Verkoop fiets",
+      categoryKey: null,
+      analysisCategory: "income_variable",
+    });
+
+    expect(result).toMatchObject({
+      kind: "variable_income",
+      budgetBucket: "variable",
+      analysisCategory: "income_variable",
+      forecastEligible: true,
+      countsAsIncome: true,
+    });
+  });
+});

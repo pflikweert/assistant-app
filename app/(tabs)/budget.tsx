@@ -2,6 +2,7 @@ import { BudgetAmountSlider } from "@/components/budget-amount-slider";
 import { BudgetCategoryProgressRow } from "@/components/budget-category-progress-row";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
+import { MonthPickerSheet } from "@/components/month-picker-sheet";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { FinColors } from "@/constants/theme";
 import {
@@ -20,6 +21,7 @@ import {
   getBudgetRiskLabel,
   getBudgetRiskProgress,
   getBudgetRiskTone,
+  getMonthVariableBudgetUsageText,
   getMonthVariableBudgetSnapshot,
   getWeekBudgetSnapshot,
   getWeekTempoMessage,
@@ -37,6 +39,12 @@ import {
 import { requireCurrentUserId } from "@/services/current-user";
 import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
 import { supabase } from "@/services/supabase";
+import {
+  getCurrentMonthKey,
+  getMonthOptionByKey,
+  listTransactionMonthOptions,
+  type TransactionMonthOption,
+} from "@/services/transaction-month-options";
 import {
   resetMonthlyBudgetValues,
   upsertBudgetPlanSettings,
@@ -255,13 +263,6 @@ function formatBudgetAmountDraft(value: number) {
   return String(normalizeBudgetAmount(value));
 }
 
-function toLocalIsoDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function normalizeLookupValue(value: string) {
   return String(value || "")
     .toLowerCase()
@@ -284,21 +285,6 @@ function getWeekSubcategoryCacheKey(
   subcategoryKey: string,
 ) {
   return `${weekNumber}:${mainCategoryKey}:${subcategoryKey}`;
-}
-
-function getMonthBounds(monthsAgo: number) {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
-  const end = new Date(now.getFullYear(), now.getMonth() - monthsAgo + 1, 1);
-
-  return {
-    startIso: toLocalIsoDate(start),
-    endIso: toLocalIsoDate(end),
-    label: start.toLocaleDateString("nl-NL", {
-      month: "long",
-      year: "numeric",
-    }),
-  };
 }
 
 function formatWeekRangeLabel(week: BudgetWeekPlanRow) {
@@ -416,11 +402,11 @@ function formatSavingsTargetDraftMetaLabel(mode: BudgetPlanMode) {
 function formatBudgetSourceLabel(
   source: BudgetPlanComputation["recommendations"][number]["overrideSource"],
 ) {
-  if (source === "monthly_override") return "handmatig deze maand";
-  if (source === "category_override") return "categorie-oversturing";
-  if (source === "settings") return "instellingen";
+  if (source === "monthly_override") return "zelf gekozen";
+  if (source === "category_override") return "bijgestuurd";
+  if (source === "settings") return "ingesteld";
   if (source === "trend_lock") return "vastgezet";
-  return "trend";
+  return "volgt trend";
 }
 
 function getIncludedIncomePreview(
@@ -482,29 +468,18 @@ function resolveVariableCategoryKeyForCategoryRecord(
       .toLowerCase()
       .trim();
 
-    if (
-      key === "subscriptions" ||
-      key.startsWith("subscriptions_") ||
-      key.startsWith("subscription_")
-    ) {
+    if (budgetGroup === "subscriptions") {
       return null;
     }
     if (
+      budgetGroup === "savings" ||
       key === "savings" ||
       key === "savings_transfer" ||
       key.startsWith("savings_")
     ) {
       return null;
     }
-    if (
-      budgetGroup === "fixed" ||
-      key.startsWith("housing") ||
-      key.startsWith("care_health_insurance") ||
-      key.startsWith("insurance_health") ||
-      key.startsWith("health_insurance") ||
-      key.startsWith("auto_transport_car_insurance") ||
-      key.startsWith("auto_transport_road_tax")
-    ) {
+    if (budgetGroup === "fixed") {
       return null;
     }
     if (key.includes("groceries") || key.includes("supermarket")) {
@@ -695,10 +670,21 @@ export default function BudgetScreen() {
   const isFocused = useIsFocused();
   const backgroundStatus = useCategorizationStatus();
   const budgetLoadInFlight = React.useRef(false);
+  const budgetPlanRef = React.useRef<BudgetPlanComputation | null>(null);
   const lastHydratedDraftKeyRef = React.useRef<string | null>(null);
+  const fallbackMonthOption = React.useMemo(
+    () => getMonthOptionByKey(getCurrentMonthKey())!,
+    [],
+  );
 
   const [segment, setSegment] = React.useState<SegmentKey>("week");
-  const [monthOffset, setMonthOffset] = React.useState(0);
+  const [selectedMonthKey, setSelectedMonthKey] = React.useState(
+    getCurrentMonthKey(),
+  );
+  const [monthOptions, setMonthOptions] = React.useState<TransactionMonthOption[]>(
+    [fallbackMonthOption],
+  );
+  const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
   const [budgetPlan, setBudgetPlan] =
     React.useState<BudgetPlanComputation | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -763,21 +749,45 @@ export default function BudgetScreen() {
     React.useState<string | null>(null);
 
   const selectedMonth = React.useMemo(
-    () => getMonthBounds(monthOffset),
-    [monthOffset],
+    () =>
+      monthOptions.find((option) => option.key === selectedMonthKey) ||
+      getMonthOptionByKey(selectedMonthKey) ||
+      monthOptions[0] ||
+      fallbackMonthOption,
+    [fallbackMonthOption, monthOptions, selectedMonthKey],
   );
+  const selectedMonthIndex = React.useMemo(
+    () => monthOptions.findIndex((option) => option.key === selectedMonth?.key),
+    [monthOptions, selectedMonth?.key],
+  );
+  const canGoToOlderMonth =
+    selectedMonthIndex >= 0 && selectedMonthIndex < monthOptions.length - 1;
+  const canGoToNewerMonth = selectedMonthIndex > 0;
+
+  const loadMonthOptions = React.useCallback(async () => {
+    try {
+      const options = await listTransactionMonthOptions();
+      setMonthOptions(options);
+    } catch (error) {
+      console.warn("[budget] month options error", error);
+      setMonthOptions([fallbackMonthOption]);
+    }
+  }, [fallbackMonthOption]);
 
   const loadBudget = React.useCallback(async () => {
     if (budgetLoadInFlight.current) return;
+    if (!selectedMonth) return;
 
-    setLoading(true);
+    if (budgetPlanRef.current == null) {
+      setLoading(true);
+    }
     budgetLoadInFlight.current = true;
     try {
       const referenceDate =
-        monthOffset === 0
+        selectedMonth.isCurrentMonth
           ? new Date()
           : new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
-      if (monthOffset !== 0) {
+      if (!selectedMonth.isCurrentMonth) {
         referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
       }
 
@@ -790,7 +800,16 @@ export default function BudgetScreen() {
       budgetLoadInFlight.current = false;
       setLoading(false);
     }
-  }, [monthOffset, selectedMonth.endIso]);
+  }, [selectedMonth]);
+
+  React.useEffect(() => {
+    budgetPlanRef.current = budgetPlan;
+  }, [budgetPlan]);
+
+  React.useEffect(() => {
+    if (!isFocused) return;
+    void loadMonthOptions();
+  }, [isFocused, loadMonthOptions]);
 
   React.useEffect(() => {
     if (!isFocused) return;
@@ -801,6 +820,14 @@ export default function BudgetScreen() {
     if (!isFocused || !backgroundStatus.lastCompletedAt) return;
     void loadBudget();
   }, [backgroundStatus.lastCompletedAt, isFocused, loadBudget]);
+
+  React.useEffect(() => {
+    if (!monthOptions.length) return;
+    if (monthOptions.some((option) => option.key === selectedMonthKey)) return;
+
+    const currentMonthOption = monthOptions.find((option) => option.isCurrentMonth);
+    setSelectedMonthKey((currentMonthOption || monthOptions[0]).key);
+  }, [monthOptions, selectedMonthKey]);
 
   React.useEffect(() => {
     if (!isFocused) return;
@@ -1401,20 +1428,20 @@ export default function BudgetScreen() {
   const variableAllocationFeedback = React.useMemo(() => {
     if (variableBudgetDraftSummary.delta === 0) {
       return {
-        label: "Volledig verdeeld",
+        label: "Je verdeling klopt",
         tone: "good" as const,
       };
     }
 
     if (variableBudgetDraftSummary.delta > 0) {
       return {
-        label: `${fmt.format(variableBudgetDraftSummary.delta)} nog te verdelen`,
+        label: `Nog ${fmt.format(variableBudgetDraftSummary.delta)} te verdelen`,
         tone: "watch" as const,
       };
     }
 
     return {
-      label: `${fmt.format(Math.abs(variableBudgetDraftSummary.delta))} te veel verdeeld`,
+      label: `${fmt.format(Math.abs(variableBudgetDraftSummary.delta))} boven je beschikbare ruimte`,
       tone: "critical" as const,
     };
   }, [variableBudgetDraftSummary.delta]);
@@ -1802,7 +1829,7 @@ export default function BudgetScreen() {
         await Promise.all(lockUpdates);
       }
 
-      if (monthOffset === 0) {
+      if (selectedMonth?.isCurrentMonth) {
         await recomputeCurrentMonthCashflowForecast(new Date()).catch(
           (error) => {
             console.warn(
@@ -1822,8 +1849,8 @@ export default function BudgetScreen() {
   }, [
     getTrendBudgetForCategory,
     loadBudget,
-    monthOffset,
     selectedMonth.startIso,
+    selectedMonth?.isCurrentMonth,
     lockedVariableCategories,
   ]);
 
@@ -2029,7 +2056,7 @@ export default function BudgetScreen() {
 
       try {
         await setTransactionBudgetExcluded(transactionId, nextExcluded);
-        if (monthOffset === 0) {
+        if (selectedMonth?.isCurrentMonth) {
           await recomputeCurrentMonthCashflowForecast(new Date()).catch(
             (error) => {
               console.warn(
@@ -2056,7 +2083,7 @@ export default function BudgetScreen() {
         );
       }
     },
-    [inlineUpdatingTransactionIds, loadBudget, monthOffset],
+    [inlineUpdatingTransactionIds, loadBudget, selectedMonth?.isCurrentMonth],
   );
 
   const fetchOutsideBudgetItemTransactions = React.useCallback(
@@ -2170,7 +2197,7 @@ export default function BudgetScreen() {
 
       try {
         await setTransactionBudgetExcluded(transactionId, nextExcluded);
-        if (monthOffset === 0) {
+        if (selectedMonth?.isCurrentMonth) {
           await recomputeCurrentMonthCashflowForecast(new Date()).catch(
             (error) => {
               console.warn(
@@ -2197,7 +2224,7 @@ export default function BudgetScreen() {
         );
       }
     },
-    [inlineUpdatingTransactionIds, loadBudget, monthOffset],
+    [inlineUpdatingTransactionIds, loadBudget, selectedMonth?.isCurrentMonth],
   );
 
   const fetchCategoryDetailTransactions = React.useCallback(
@@ -2323,7 +2350,7 @@ export default function BudgetScreen() {
 
       try {
         await setTransactionBudgetExcluded(transactionId, nextExcluded);
-        if (monthOffset === 0) {
+        if (selectedMonth?.isCurrentMonth) {
           await recomputeCurrentMonthCashflowForecast(new Date()).catch(
             (error) => {
               console.warn(
@@ -2350,7 +2377,7 @@ export default function BudgetScreen() {
         );
       }
     },
-    [inlineUpdatingTransactionIds, loadBudget, monthOffset],
+    [inlineUpdatingTransactionIds, loadBudget, selectedMonth?.isCurrentMonth],
   );
 
   return (
@@ -2376,23 +2403,40 @@ export default function BudgetScreen() {
           <Pressable
             style={[
               styles.monthNavButton,
-              monthOffset >= 24 && styles.monthNavButtonDisabled,
+              !canGoToOlderMonth && styles.monthNavButtonDisabled,
             ]}
-            onPress={() => setMonthOffset((current) => Math.min(current + 1, 24))}
-            disabled={monthOffset >= 24}
+            onPress={() => {
+              if (!canGoToOlderMonth) return;
+              const nextOption = monthOptions[selectedMonthIndex + 1];
+              if (nextOption) setSelectedMonthKey(nextOption.key);
+            }}
+            disabled={!canGoToOlderMonth}
           >
             <Text style={styles.monthNavButtonText}>‹</Text>
           </Pressable>
-          <View style={styles.monthBadge}>
-            <Text style={styles.monthBadgeText}>{selectedMonth.label}</Text>
-          </View>
+          <Pressable
+            style={styles.monthBadge}
+            onPress={() => setMonthPickerOpen(true)}
+          >
+            <Text style={styles.monthBadgeText}>{selectedMonth?.label}</Text>
+            <AppIcon
+              name="expand-more"
+              size={18}
+              color={FinColors.textSecondary}
+              variant="outlined"
+            />
+          </Pressable>
           <Pressable
             style={[
               styles.monthNavButton,
-              monthOffset === 0 && styles.monthNavButtonDisabled,
+              !canGoToNewerMonth && styles.monthNavButtonDisabled,
             ]}
-            onPress={() => setMonthOffset((current) => Math.max(current - 1, 0))}
-            disabled={monthOffset === 0}
+            onPress={() => {
+              if (!canGoToNewerMonth) return;
+              const nextOption = monthOptions[selectedMonthIndex - 1];
+              if (nextOption) setSelectedMonthKey(nextOption.key);
+            }}
+            disabled={!canGoToNewerMonth}
           >
             <Text style={styles.monthNavButtonText}>›</Text>
           </Pressable>
@@ -2421,7 +2465,7 @@ export default function BudgetScreen() {
         </View>
       </View>
 
-      {loading ? (
+      {loading && !budgetPlan ? (
         <View style={styles.centered}>
           <ActivityIndicator color={FinColors.textSecondary} />
         </View>
@@ -2494,11 +2538,21 @@ export default function BudgetScreen() {
                 {weekAttentionRows.length ? (
                   weekAttentionRows.slice(0, 4).map((row) => (
                     <View key={row.categoryKey} style={styles.categoryRow}>
-                      <View style={styles.categoryMain}>
-                        <Text style={styles.categoryLabel}>{row.label}</Text>
-                        <Text style={styles.categoryMeta}>
-                          {fmt.format(row.weeklyActual)} van {fmt.format(row.weeklyBudget)}
-                        </Text>
+                      <View style={styles.categoryListMain}>
+                        <View style={styles.categoryListIconBubble}>
+                          <AppIcon
+                            name={getVariableCategoryIconName(row.categoryKey)}
+                            size={18}
+                            color={FinColors.textPrimary}
+                            variant="outlined"
+                          />
+                        </View>
+                        <View style={styles.categoryMain}>
+                          <Text style={styles.categoryLabel}>{row.label}</Text>
+                          <Text style={styles.categoryMeta}>
+                            {fmt.format(row.weeklyActual)} van {fmt.format(row.weeklyBudget)}
+                          </Text>
+                        </View>
                       </View>
                       <View
                         style={[
@@ -2561,11 +2615,7 @@ export default function BudgetScreen() {
                 <Text style={styles.heroSupport}>
                   {monthSpent == null || !budgetPlan
                     ? "Maandsturing verschijnt zodra budgetdata beschikbaar is."
-                    : monthBudgetSnapshot.state === "no_budget"
-                      ? "Stel eerst een variabel budget in om vrije ruimte te zien."
-                      : monthBudgetSnapshot.state === "over_budget"
-                        ? `${fmt.format(Math.abs(monthBudgetSnapshot.remaining || 0))} boven je variabele maandbudget van ${fmt.format(monthBudgetSnapshot.budget || 0)}`
-                        : `${fmt.format(monthBudgetSnapshot.spent || 0)} van ${fmt.format(monthBudgetSnapshot.budget || 0)} variabel gebruikt`}
+                    : getMonthVariableBudgetUsageText(monthBudgetSnapshot, fmt)}
                 </Text>
                 <RiskProgressBar
                   progress={monthProgress}
@@ -2675,6 +2725,7 @@ export default function BudgetScreen() {
                           name={getVariableCategoryIconName(row.categoryKey)}
                           size={18}
                           color={FinColors.textPrimary}
+                          variant="outlined"
                         />
                       </View>
                       <View style={styles.categoryMain}>
@@ -2713,17 +2764,28 @@ export default function BudgetScreen() {
                   return (
                     <Pressable
                       key={week.endDateExclusive}
-                      style={styles.historyRow}
+                      style={[
+                        styles.historyRow,
+                        week.isCurrentWeek && styles.historyRowCurrent,
+                      ]}
                       onPress={() => openWeekDetail(week.weekNumber)}
                     >
                       <View style={styles.historyHeaderRow}>
                         <View style={styles.historyLabelWrap}>
-                          <Text style={styles.historyLabel}>
-                            {formatBudgetWeekLabel(week)}
-                          </Text>
+                          <View style={styles.historyLabelRow}>
+                            <Text style={styles.historyLabel}>
+                              {formatBudgetWeekLabel(week)}
+                            </Text>
+                            {week.isCurrentWeek ? (
+                              <View style={styles.currentWeekChip}>
+                                <Text style={styles.currentWeekChipText}>
+                                  Deze week
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
                           <Text style={styles.historyMeta}>
                             {formatWeekRangeLabel(week)}
-                            {week.isCurrentWeek ? " · huidige week" : ""}
                           </Text>
                         </View>
                         <View style={[styles.statusChip, riskStyle.chip]}>
@@ -2892,7 +2954,11 @@ export default function BudgetScreen() {
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Inkomstenbasis</Text>
                 <Text style={styles.supportText}>
-                  Kies welke inkomsten meetellen voor budget en voorspelling.
+                  Kies welke inkomsten je meeneemt in je maandplan en forecast.
+                </Text>
+                <Text style={styles.supportText}>
+                  Eenmalige belastingmeevallers en kostencompensaties tellen
+                  bewust niet mee als vaste inkomensbasis.
                 </Text>
                 <View style={styles.incomePreviewRow}>
                   <Text style={styles.incomePreviewLabel}>Preview inkomend budget</Text>
@@ -2938,16 +3004,19 @@ export default function BudgetScreen() {
               </View>
 
               <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Controle verdeling</Text>
+                <Text style={styles.sectionTitle}>Maandverdeling</Text>
+                <Text style={styles.supportText}>
+                  Zo verdeel je je inkomende ruimte over vaste lasten, variabele uitgaven en sparen.
+                </Text>
                 <View style={styles.summaryList}>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Totaal inkomend budget</Text>
+                    <Text style={styles.summaryLabel}>Inkomend budget</Text>
                     <Text style={styles.summaryValue}>
                       {fmt.format(draftBudgetAllocationSummary.incomingBudget)}
                     </Text>
                   </View>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Gepland totaal</Text>
+                    <Text style={styles.summaryLabel}>Ingepland</Text>
                     <Text style={styles.summaryValueNegative}>
                       -{fmt.format(draftBudgetAllocationSummary.allocatedTotal)}
                     </Text>
@@ -2970,12 +3039,12 @@ export default function BudgetScreen() {
                 <Text style={styles.compactBreakdownText}>
                   Vaste lasten {fmt.format(draftBudgetAllocationSummary.fixedCosts)} ·
                   Abonnementen {fmt.format(draftBudgetAllocationSummary.subscriptions)} ·
-                  Variabel {fmt.format(draftBudgetAllocationSummary.variable)} ·
+                  Variabele ruimte {fmt.format(draftBudgetAllocationSummary.variable)} ·
                   Sparen {fmt.format(draftBudgetAllocationSummary.savingsTarget)}
                 </Text>
                 {draftBudgetAllocationSummary.isOverAllocated ? (
                   <Text style={styles.warningInlineText}>
-                    Je planning zit boven je inkomend budget. Verlaag categoriebedragen of spaardoel.
+                    Je planning ligt nu boven je inkomend budget. Verlaag een categoriebedrag of je spaardoel.
                   </Text>
                 ) : null}
               </View>
@@ -2986,7 +3055,7 @@ export default function BudgetScreen() {
                   <Text style={styles.sectionHelper}>{selectedMonth.label}</Text>
                 </View>
                 <Text style={styles.supportText}>
-                  Trendbedrag = historische richtlijn. Vastgezette categorieen blijven buiten herverdeling.
+                  Trend volgt je recente maandritme. Vast laat jouw bedrag staan als de rest wordt herverdeeld.
                 </Text>
                 <Pressable
                   style={styles.sectionActionButton}
@@ -3000,8 +3069,8 @@ export default function BudgetScreen() {
                   />
                   <Text style={styles.sectionActionButtonText}>
                     {recalculatingBudget
-                      ? "Trendbedragen vernieuwen..."
-                      : "Zet categorieen terug op nieuwste trend"}
+                      ? "Trendbedragen verversen..."
+                      : "Herstel trendbedragen"}
                   </Text>
                 </Pressable>
 
@@ -3071,7 +3140,7 @@ export default function BudgetScreen() {
                         </Text>
                         <Text style={styles.editMeta}>
                           Trend {fmt.format(Math.round(row.baselineMonthly))} · Uitgegeven{" "}
-                          {fmt.format(row.monthlyActual)} · Bron {formatBudgetSourceLabel(
+                          {fmt.format(row.monthlyActual)} · Nu {formatBudgetSourceLabel(
                             row.overrideSource,
                           )}
                         </Text>
@@ -3180,6 +3249,16 @@ export default function BudgetScreen() {
           ) : null}
         </ScrollView>
       )}
+
+      <MonthPickerSheet
+        visible={monthPickerOpen}
+        title="Kies maand"
+        helper="Alleen maanden met transacties"
+        options={monthOptions}
+        selectedKey={selectedMonth?.key || null}
+        onClose={() => setMonthPickerOpen(false)}
+        onSelect={setSelectedMonthKey}
+      />
 
       <Modal
         animationType="slide"
@@ -3581,7 +3660,7 @@ export default function BudgetScreen() {
               <View style={styles.sheetHeaderMain}>
                 <Text style={styles.sheetTitle}>Categorie-detail</Text>
                 <Text style={styles.sheetSub}>
-                  Stuur op maandruimte, weektempo en recente uitgaven in deze categorie
+                  Stuur op maandruimte, maandtempo en transacties in deze categorie
                 </Text>
               </View>
               <Pressable
@@ -3608,6 +3687,7 @@ export default function BudgetScreen() {
                           )}
                           size={18}
                           color={FinColors.textPrimary}
+                          variant="outlined"
                         />
                       </View>
                       <View style={styles.categoryDetailTitleWrap}>
@@ -4012,8 +4092,10 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgCard,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 4,
     paddingHorizontal: 16,
   },
   monthBadgeText: {
@@ -4267,7 +4349,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   historyRow: {
-    paddingVertical: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+  },
+  historyRowCurrent: {
+    backgroundColor: FinColors.warningBg,
+    borderWidth: 1,
+    borderColor: FinColors.warningBorder,
   },
   historyHeaderRow: {
     flexDirection: "row",
@@ -4278,10 +4367,29 @@ const styles = StyleSheet.create({
   historyLabelWrap: {
     flex: 1,
   },
+  historyLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
   historyLabel: {
     fontSize: 15,
     fontWeight: "700",
     color: FinColors.textPrimary,
+  },
+  currentWeekChip: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: FinColors.yellowSoft,
+    borderWidth: 1,
+    borderColor: FinColors.warningBorder,
+  },
+  currentWeekChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: FinColors.warningText,
   },
   historyMeta: {
     marginTop: 4,
@@ -5046,7 +5154,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    backgroundColor: FinColors.bgMuted,
+    backgroundColor: FinColors.bgElevated,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },

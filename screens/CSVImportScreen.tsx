@@ -3,36 +3,39 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import React, { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 // @ts-ignore
 import { FinColors } from "@/constants/theme";
 import { runCategorizationInBackground } from "@/services/categorization";
 import {
-    createBankAccount,
-    findBankAccountByHash,
-    hashAccountNumber,
-    listBankAccounts,
-    normalizeAccountNumber,
-    maskAccountNumber,
-    BankAccount,
-    BankAccountType,
-    ACCOUNT_TYPES,
+  ACCOUNT_TYPES,
+  type BankAccount,
+  type BankAccountType,
+  createBankAccount,
+  findBankAccountByHash,
+  hashAccountNumber,
+  listBankAccounts,
+  maskAccountNumber,
+  normalizeAccountNumber,
 } from "@/services/bank-accounts";
 import { requireCurrentUserId } from "@/services/current-user";
+import {
+  ImportSource,
+  parseTransactionImport,
+  TransactionImportRecord,
+} from "@/services/import/transaction-import-parser";
 import { supabase } from "@/services/supabase";
-import Papa from "papaparse";
 
 type PreviewRow = { date: string; description: string; amount: string };
-type CsvRow = Record<string, string>;
 
 export default function CSVImportScreen() {
   const navigation = useNavigation();
@@ -45,7 +48,8 @@ export default function CSVImportScreen() {
   const [updatedCount, setUpdatedCount] = useState(0);
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [pendingRowCount, setPendingRowCount] = useState<number | null>(null);
-  const [pendingCsv, setPendingCsv] = useState<string | null>(null);
+  const [pendingContent, setPendingContent] = useState<string | null>(null);
+  const [importSource, setImportSource] = useState<ImportSource>("csv");
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [newAccountName, setNewAccountName] = useState("");
@@ -94,17 +98,18 @@ export default function CSVImportScreen() {
     void loadBankAccounts();
   }, [loadBankAccounts]);
 
-  const detectAccountFromRow = React.useCallback(async (row: CsvRow | null) => {
-    if (!row) {
+  const detectAccountFromRecord = React.useCallback(async (record: TransactionImportRecord | null) => {
+    if (!record) {
       setDetectedAccountNumber(null);
       return;
     }
     const candidate =
-      row["Tegenrekening IBAN/BBAN"] ||
-      row["IBAN"] ||
-      row["Rekeningnummer"] ||
-      row["Rekening"] ||
-      row["Rekening nummer"];
+      record.metadata["Tegenrekening IBAN/BBAN"] ||
+      record.metadata["IBAN"] ||
+      record.metadata["Rekeningnummer"] ||
+      record.metadata["Rekening"] ||
+      record.metadata["Rekening nummer"] ||
+      record.counterparty;
     const normalized = normalizeAccountNumber(candidate);
     if (!normalized) {
       setDetectedAccountNumber(null);
@@ -152,28 +157,35 @@ export default function CSVImportScreen() {
     }
   };
 
+
+  const toBase64 = (bytes: Uint8Array): string => {
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
+  };
+
   const buildPreview = (
-    csv: string,
+    source: ImportSource,
+    content: string,
   ): {
     previewRows: PreviewRow[];
     rowCount: number;
-    sampleRow: CsvRow | null;
+    sampleRecord: TransactionImportRecord | null;
   } => {
-    const { data } = Papa.parse(csv, { header: true, skipEmptyLines: true });
-    const rows = (data as CsvRow[]) || [];
-    const sampleRow = rows[0] || null;
+    const rows = parseTransactionImport(source, content);
+    const sampleRecord = rows[0] || null;
     return {
       rowCount: rows.length,
-      previewRows: rows.slice(0, 5).map((r: CsvRow) => ({
-        date: r["Datum"] || r.Date || "—",
-        description:
-          r["Omschrijving-1"] ||
-          r["Naam tegenpartij"] ||
-          r["Naam / Omschrijving"] ||
-          "—",
-        amount: r["Bedrag"] || r.Amount || "—",
+      previewRows: rows.slice(0, 5).map((r) => ({
+        date: r.date || "—",
+        description: r.details || r.counterparty || "—",
+        amount: Number.isFinite(r.amount) ? String(r.amount) : "—",
       })),
-      sampleRow,
+      sampleRecord,
     };
   };
 
@@ -186,37 +198,59 @@ export default function CSVImportScreen() {
     setUpdatedCount(0);
     setPreview([]);
     setPendingRowCount(null);
-    setPendingCsv(null);
+    setPendingContent(null);
 
     if (Platform.OS === "web") {
       const input = document.createElement("input");
       input.type = "file";
-      input.accept = ".csv,text/csv";
+      input.accept =
+        importSource === "pdf"
+          ? ".pdf,application/pdf"
+          : ".csv,text/csv";
       input.onchange = async (e: any) => {
         const file = e.target?.files?.[0];
         if (!file) return;
-        const text = await file.text();
-        const { previewRows, rowCount, sampleRow } = buildPreview(text);
+        const content =
+          importSource === "pdf"
+            ? toBase64(new Uint8Array(await file.arrayBuffer()))
+            : await file.text();
+
+        const { previewRows, rowCount, sampleRecord } = buildPreview(
+          importSource,
+          content,
+        );
         setPreview(previewRows);
         setPendingRowCount(rowCount);
-        setPendingCsv(text);
+        setPendingContent(content);
         setMessage(null);
-        void detectAccountFromRow(sampleRow);
+        void detectAccountFromRecord(sampleRecord);
       };
       input.click();
       return;
     }
     try {
-      const res: any = await DocumentPicker.getDocumentAsync({ type: "*/*" });
+      const pickerType =
+        importSource === "pdf"
+          ? ["application/pdf", ".pdf"]
+          : ["text/csv", ".csv"];
+      const res: any = await DocumentPicker.getDocumentAsync({ type: pickerType });
       if (res.type === "cancel") return;
       if (res?.uri) {
-        const text = await FileSystem.readAsStringAsync(res.uri);
-        const { previewRows, rowCount, sampleRow } = buildPreview(text);
+        const content = await FileSystem.readAsStringAsync(res.uri, {
+          encoding:
+            importSource === "pdf"
+              ? "base64"
+              : "utf8",
+        });
+        const { previewRows, rowCount, sampleRecord } = buildPreview(
+          importSource,
+          content,
+        );
         setPreview(previewRows);
         setPendingRowCount(rowCount);
-        setPendingCsv(text);
+        setPendingContent(content);
         setMessage(null);
-        void detectAccountFromRow(sampleRow);
+        void detectAccountFromRecord(sampleRecord);
       }
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -224,7 +258,7 @@ export default function CSVImportScreen() {
   };
 
   const doImport = async () => {
-    if (!pendingCsv) return;
+    if (!pendingContent) return;
     if (!selectedAccount) {
       Alert.alert(
         "Selecteer een rekening",
@@ -237,7 +271,7 @@ export default function CSVImportScreen() {
     setMessage("Importeren...");
     await Promise.resolve();
     try {
-      await handleCsvContent(pendingCsv, selectedAccount.id);
+      await handleImportContent(pendingContent, selectedAccount.id);
     } catch (err: any) {
       const msg = err?.message || String(err);
       setMessage(`Import failed: ${msg}`);
@@ -247,69 +281,9 @@ export default function CSVImportScreen() {
     }
   };
 
-  async function handleCsvContent(csv: string, bankAccountId: string) {
-    const { data, errors } = Papa.parse(csv, {
-      header: true,
-      skipEmptyLines: true,
-      dynamicTyping: false,
-    });
-    if (errors.length) {
-      console.warn("[v0] CSV parse errors", errors);
-    }
-
-    type Row = Record<string, string>;
-    const rows = (data as Row[]).map((r) => {
-      const date = r["Datum"] || r.Date;
-      const amountRaw = r["Bedrag"] || r.Amount || "0";
-      const amount = parseFloat(amountRaw.replace(",", ".")) || 0;
-      const currency = r["Munt"] || r.Currency;
-      const descParts: string[] = [];
-      if (r["Omschrijving-1"]) descParts.push(r["Omschrijving-1"]);
-      if (r["Omschrijving-2"]) descParts.push(r["Omschrijving-2"]);
-      if (r["Omschrijving-3"]) descParts.push(r["Omschrijving-3"]);
-      if (r["Naam tegenpartij"]) descParts.push(r["Naam tegenpartij"]);
-      if (r["Naam / Omschrijving"]) descParts.push(r["Naam / Omschrijving"]);
-      const description = descParts.filter(Boolean).join(" | ");
-      const counterparty =
-        r["Naam tegenpartij"] ||
-        r["Naam uiteindelijke partij"] ||
-        r["Tegenrekening IBAN/BBAN"];
-      const type = r["Code"] || r["Type"];
-      const metadata: Record<string, string> = {};
-      Object.entries(r).forEach(([k, v]) => {
-        if (
-          ![
-            "Datum",
-            "Bedrag",
-            "Munt",
-            "Omschrijving-1",
-            "Omschrijving-2",
-            "Omschrijving-3",
-            "Naam tegenpartij",
-            "Naam uiteindelijke partij",
-            "Tegenrekening IBAN/BBAN",
-            "Naam / Omschrijving",
-            "Code",
-            "Type",
-          ].includes(k)
-        ) {
-          metadata[k] = v;
-        }
-      });
-      const seqRaw = r["Volgnr"] || metadata["Volgnr"] || "";
-      const seq = parseInt(String(seqRaw).replace(/^0+/, ""), 10) || 0;
-      return {
-        date,
-        details: description,
-        counterparty,
-        amount,
-        currency,
-        type,
-        metadata,
-        seq,
-      };
-    });
-    rows.sort((a, b) => a.seq - b.seq);
+  async function handleImportContent(content: string, bankAccountId: string) {
+    const userId = await requireCurrentUserId();
+    const rows = parseTransactionImport(importSource, content);
     setTotal(rows.length);
     setProcessed(0);
     setInsertedCount(0);
@@ -318,8 +292,6 @@ export default function CSVImportScreen() {
     let insertedRows = 0;
     let updated = 0;
     const importedIds: string[] = [];
-
-    const userId = await requireCurrentUserId();
 
     for (const tx of rows) {
       setMessage(
@@ -344,7 +316,10 @@ export default function CSVImportScreen() {
         amount: tx.amount,
         currency: tx.currency,
         type: tx.type,
-        metadata: tx.metadata || {},
+        metadata: {
+          ...(tx.metadata || {}),
+          source: importSource,
+        },
       };
       if (existing?.length) {
         const { error: updErr } = await supabase
@@ -376,8 +351,9 @@ export default function CSVImportScreen() {
       `${imported} transacties verwerkt: ${insertedRows} nieuw, ${updated} bijgewerkt. Categorisatie is op de achtergrond gestart.`,
     );
     runCategorizationInBackground(importedIds);
-    setPendingCsv(null);
+    setPendingContent(null);
   }
+
 
   const pct = total ? Math.round((processed / total) * 100) : 0;
 
@@ -389,8 +365,36 @@ export default function CSVImportScreen() {
     >
       <Text style={styles.title}>Import Bank Transactions</Text>
       <Text style={styles.subtitle}>
-        Upload a Rabobank CSV export to sync your transactions.
+        Upload a Rabobank CSV/PDF export to sync your transactions.
       </Text>
+
+      <View style={styles.sourceSwitchRow}>
+        {(["csv", "pdf"] as ImportSource[]).map((source) => {
+          const selected = importSource === source;
+          return (
+            <TouchableOpacity
+              key={source}
+              style={[styles.sourceSwitchBtn, selected && styles.sourceSwitchBtnSelected]}
+              onPress={() => {
+                setImportSource(source);
+                setPendingContent(null);
+                setPendingRowCount(null);
+                setPreview([]);
+                setDetectedAccountNumber(null);
+              }}
+            >
+              <Text
+                style={[
+                  styles.sourceSwitchText,
+                  selected && styles.sourceSwitchTextSelected,
+                ]}
+              >
+                {source.toUpperCase()}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       <View style={styles.accountSection}>
         <Text style={styles.sectionTitle}>Rekeningcontext</Text>
@@ -436,7 +440,7 @@ export default function CSVImportScreen() {
         )}
         {!selectedAccount && detectedAccountNumber && (
           <Text style={styles.detectedLabel}>
-            CSV bevat rekening {maskAccountNumber(detectedAccountNumber)}.
+            {importSource.toUpperCase()} bevat rekening {maskAccountNumber(detectedAccountNumber)}.
           </Text>
         )}
       </View>
@@ -501,22 +505,24 @@ export default function CSVImportScreen() {
 
       {/* Upload card */}
       <TouchableOpacity
-        style={[styles.uploadCard, pendingCsv && styles.uploadCardReady]}
+        style={[styles.uploadCard, pendingContent && styles.uploadCardReady]}
         onPress={loading ? undefined : pickFile}
         activeOpacity={0.75}
       >
         <View style={styles.uploadIconWrap}>
           <Text style={{ fontSize: 28, color: FinColors.green }}>↑</Text>
         </View>
-        <Text style={styles.uploadLabel}>Upload Rabobank CSV</Text>
+        <Text style={styles.uploadLabel}>Upload Rabobank CSV/PDF</Text>
         <Text style={styles.uploadHint}>
-          {pendingCsv
+          {pendingContent
             ? "File selected — review below"
-            : "Tap to select a .csv file"}
+            : `Tap to select a ${importSource === "pdf" ? ".pdf" : ".csv"} file`}
         </Text>
         <View style={styles.uploadBtn}>
           <Text style={styles.uploadBtnText}>
-            {pendingCsv ? "Change file" : "Select CSV file"}
+            {pendingContent
+              ? "Change file"
+              : `Select ${importSource.toUpperCase()} file`}
           </Text>
         </View>
       </TouchableOpacity>
@@ -527,7 +533,7 @@ export default function CSVImportScreen() {
           <Text style={styles.previewTitle}>Preview</Text>
           {pendingRowCount != null ? (
             <Text style={styles.previewSummary}>
-              {pendingRowCount} rijen gevonden in CSV
+              {pendingRowCount} rijen gevonden in {importSource.toUpperCase()}
             </Text>
           ) : null}
           {/* Header */}
@@ -615,7 +621,7 @@ export default function CSVImportScreen() {
       )}
 
       {/* Import button */}
-      {pendingCsv && !loading && (
+      {pendingContent && !loading && (
         <TouchableOpacity style={styles.importBtn} onPress={doImport}>
           <Text style={styles.importBtnText}>Import Transactions</Text>
         </TouchableOpacity>
@@ -639,6 +645,33 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     lineHeight: 20,
   },
+  sourceSwitchRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 4,
+  },
+  sourceSwitchBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+    backgroundColor: FinColors.bgCard,
+  },
+  sourceSwitchBtnSelected: {
+    borderColor: FinColors.green,
+    backgroundColor: FinColors.greenBg,
+  },
+  sourceSwitchText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textMuted,
+  },
+  sourceSwitchTextSelected: {
+    color: FinColors.green,
+  },
+
   accountSection: {
     backgroundColor: FinColors.bgCard,
     borderRadius: 16,

@@ -466,7 +466,7 @@ function tryBelastingdienstHeuristicMatch(
   }
 
   const roadTaxCategory = categoriesByKey.get("auto_transport_road_tax");
-  if (!roadTaxCategory || tx.amount >= 0) return null;
+  if (!roadTaxCategory) return null;
 
   const firstSegment = detailsRaw.split("|")[0]?.trim().toLowerCase() || "";
   const hasDateRange = /\b\d{2}-\d{2}-\d{4}\s+t\/m\s+\d{2}-\d{2}-\d{4}\b/.test(
@@ -481,7 +481,10 @@ function tryBelastingdienstHeuristicMatch(
       categoryId: roadTaxCategory.id,
       confidence: 0.97,
       model: "heuristic-belastingdienst-road-tax-v1",
-      reason: "Belastingdienst period reference with date range",
+      reason:
+        tx.amount < 0
+          ? "Belastingdienst road tax charge with period reference"
+          : "Belastingdienst road tax correction with period reference",
     };
   }
 

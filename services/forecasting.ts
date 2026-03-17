@@ -1,6 +1,7 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { requireCurrentUserId } from "@/services/current-user";
 import { estimateRecentExpenseForecastFromHistory } from "@/services/forecast-expense-utils";
+import { isForecastEligibleIncomeTransaction } from "@/services/forecast-income-utils";
 import {
   buildForecastTimelineProjection,
   buildScheduledDateForMonth,
@@ -38,6 +39,7 @@ type ForecastTx = {
 type CategoryMeta = {
   id: string;
   key: string;
+  budget_group: string | null;
 };
 
 type IncomeSourceRow = {
@@ -185,7 +187,9 @@ async function fetchTransactionsInRange(
 }
 
 async function fetchCategoryMap() {
-  const { data, error } = await supabase.from("categories").select("id,key");
+  const { data, error } = await supabase
+    .from("categories")
+    .select("id,key,budget_group");
   if (error) throw error;
 
   const map = new Map<string, CategoryMeta>();
@@ -193,6 +197,7 @@ async function fetchCategoryMap() {
     map.set(String(row.id || ""), {
       id: String(row.id || ""),
       key: String(row.key || ""),
+      budget_group: row.budget_group ? String(row.budget_group) : null,
     });
   }
 
@@ -285,12 +290,20 @@ function labelForTransaction(tx: Pick<ForecastTx, "counterparty" | "details">) {
 
 function buildRecurringHistoryEvents(params: {
   transactions: ForecastTx[];
+  categoryMap: Map<string, CategoryMeta>;
   monthStart: Date;
   monthEndExclusive: Date;
   referenceDate: Date;
   direction: "income" | "expense";
 }) {
-  const { transactions, monthStart, monthEndExclusive, referenceDate, direction } =
+  const {
+    transactions,
+    categoryMap,
+    monthStart,
+    monthEndExclusive,
+    referenceDate,
+    direction,
+  } =
     params;
   const monthStartIso = dateToIso(monthStart);
   const monthEndIso = dateToIso(monthEndExclusive);
@@ -303,12 +316,7 @@ function buildRecurringHistoryEvents(params: {
     if (tx.budget_excluded) continue;
 
     if (direction === "income") {
-      if (tx.amount <= 0) continue;
-      if (tx.analysis_main_group !== "income") continue;
-      if (
-        tx.analysis_category !== "income_structural" &&
-        tx.analysis_category !== "income_variable"
-      ) {
+      if (!isForecastEligibleIncomeTransaction(tx, categoryMap)) {
         continue;
       }
     } else {
@@ -405,11 +413,20 @@ function mergeIncomeSourceEvents(params: {
   incomeSources: IncomeSourceRow[];
   existingEvents: Map<string, ForecastTimelineEvent>;
   transactions: ForecastTx[];
+  categoryMap: Map<string, CategoryMeta>;
   monthStart: Date;
   monthEndExclusive: Date;
   referenceDate: Date;
 }) {
-  const { incomeSources, existingEvents, transactions, monthStart, monthEndExclusive, referenceDate } =
+  const {
+    incomeSources,
+    existingEvents,
+    transactions,
+    categoryMap,
+    monthStart,
+    monthEndExclusive,
+    referenceDate,
+  } =
     params;
   const next = new Map(existingEvents);
   const monthStartIso = dateToIso(monthStart);
@@ -423,7 +440,7 @@ function mergeIncomeSourceEvents(params: {
           tx.date <= referenceIso &&
           tx.date >= monthStartIso &&
           tx.date < monthEndIso &&
-          tx.amount > 0,
+          isForecastEligibleIncomeTransaction(tx, categoryMap),
       )
       .map((tx) => descriptor(tx))
       .filter(Boolean),
@@ -530,6 +547,7 @@ export async function recomputeCurrentMonthCashflowForecast(
 
   const recurringExpenseEvents = buildRecurringHistoryEvents({
     transactions: historyTransactions,
+    categoryMap,
     monthStart,
     monthEndExclusive,
     referenceDate: reference,
@@ -537,6 +555,7 @@ export async function recomputeCurrentMonthCashflowForecast(
   });
   const recurringIncomeEvents = buildRecurringHistoryEvents({
     transactions: historyTransactions,
+    categoryMap,
     monthStart,
     monthEndExclusive,
     referenceDate: reference,
@@ -546,6 +565,7 @@ export async function recomputeCurrentMonthCashflowForecast(
     incomeSources,
     existingEvents: recurringIncomeEvents,
     transactions: historyTransactions,
+    categoryMap,
     monthStart,
     monthEndExclusive,
     referenceDate: reference,
@@ -641,7 +661,7 @@ export async function recomputeCurrentMonthCashflowForecast(
 
   const timelineProjection = buildForecastTimelineProjection({
     currentBalanceAnchor,
-    referenceDate,
+    referenceDate: reference,
     monthEndExclusive,
     events: [
       ...recurringExpenseEvents.values(),

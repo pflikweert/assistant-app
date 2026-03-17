@@ -241,6 +241,18 @@ export default function SubscriptionsScreen() {
   const [validationError, setValidationError] = React.useState<string | null>(
     null,
   );
+  const activeProfilesCount = React.useMemo(
+    () => profiles.filter((profile) => profile.isActive).length,
+    [profiles],
+  );
+  const suggestedQueueCount = React.useMemo(
+    () => queueItems.filter((item) => item.suggestions.length > 0).length,
+    [queueItems],
+  );
+  const summaryHeadline =
+    activeProfilesCount > 0
+      ? `${activeProfilesCount} actief profiel${activeProfilesCount === 1 ? "" : "en"} houden je terugkerende betalingen centraal.`
+      : "Zet je terugkerende PSP-betalingen om naar beheerde abonnementen.";
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -702,7 +714,7 @@ export default function SubscriptionsScreen() {
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
-        <Text style={styles.pageTitle}>Abonnementenbeheer</Text>
+        <Text style={styles.pageTitle}>Abonnementen</Text>
         <HeaderDropdownMenu />
       </View>
 
@@ -721,9 +733,38 @@ export default function SubscriptionsScreen() {
             </View>
           ) : null}
 
+          <View style={styles.heroCard}>
+            <Text style={styles.heroEyebrow}>Beheer</Text>
+            <Text style={styles.heroTitle}>{summaryHeadline}</Text>
+            <Text style={styles.heroCopy}>
+              Houd profielen, aliases en transactiekoppelingen op een plek, zodat
+              verborgen PSP-betalingen sneller opvallen.
+            </Text>
+            <View style={styles.heroMetricsRow}>
+              <View style={styles.heroMetricCard}>
+                <Text style={styles.heroMetricLabel}>Actieve profielen</Text>
+                <Text style={styles.heroMetricValue}>{activeProfilesCount}</Text>
+              </View>
+              <View style={styles.heroMetricCard}>
+                <Text style={styles.heroMetricLabel}>Open PSP-betalingen</Text>
+                <Text style={styles.heroMetricValue}>{queueItems.length}</Text>
+              </View>
+              <View style={styles.heroMetricCard}>
+                <Text style={styles.heroMetricLabel}>Met suggestie</Text>
+                <Text style={styles.heroMetricValue}>{suggestedQueueCount}</Text>
+              </View>
+            </View>
+            {focusProfileId ? (
+              <Text style={styles.heroHint}>
+                Geopend vanuit een transactie. Controleer hier de koppeling of
+                maak direct een nieuw profiel.
+              </Text>
+            ) : null}
+          </View>
+
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Abonnementen</Text>
+              <Text style={styles.sectionTitle}>Abonnementprofielen</Text>
               <TouchableOpacity
                 style={styles.smallActionBtn}
                 onPress={() => openCreateProfileModal()}
@@ -907,7 +948,7 @@ export default function SubscriptionsScreen() {
 
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Onbekende PSP-betalingen</Text>
+              <Text style={styles.sectionTitle}>Nog te koppelen PSP-betalingen</Text>
               <TouchableOpacity
                 style={styles.smallActionBtn}
                 onPress={() => void loadData()}
@@ -1459,6 +1500,66 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     gap: 14,
+  },
+  heroCard: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 18,
+    gap: 12,
+  },
+  heroEyebrow: {
+    color: FinColors.textSecondary,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  heroTitle: {
+    color: FinColors.textPrimary,
+    fontSize: 20,
+    fontWeight: "800",
+    lineHeight: 26,
+  },
+  heroCopy: {
+    color: FinColors.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  heroMetricsRow: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  heroMetricCard: {
+    minWidth: 112,
+    flexGrow: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    gap: 4,
+  },
+  heroMetricLabel: {
+    color: FinColors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+  },
+  heroMetricValue: {
+    color: FinColors.textPrimary,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  heroHint: {
+    color: FinColors.green,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "600",
   },
   sectionCard: {
     backgroundColor: FinColors.bgCard,

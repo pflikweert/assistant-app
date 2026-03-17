@@ -1,5 +1,7 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
+import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
+import { getBudgetGroupLabel } from "@/services/category-budget-groups";
 import { recategorizeSingleTransaction } from "@/services/categorization";
 import {
     bulkUpdateCategoryByCounterparty,
@@ -16,6 +18,7 @@ import {
     getCategoryPathLabel,
     getLeafCategories,
 } from "@/services/category-display";
+import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import {
     createSubscriptionProfile,
     getTransactionSubscriptionMatch,
@@ -29,6 +32,7 @@ import type {
     SubscriptionProfile,
     SubscriptionProviderHint,
 } from "@/types/categorization";
+import { useIsFocused } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
@@ -230,6 +234,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function TransactionDetailScreen() {
+  const isFocused = useIsFocused();
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const transactionId = React.useMemo(
     () => normalizeRouteParam(params.id),
@@ -318,6 +323,16 @@ export default function TransactionDetailScreen() {
   const parentCategory = effectiveCategory?.parent_id
     ? categoryById.get(effectiveCategory.parent_id) || null
     : null;
+  const budgetGroupLabel = getBudgetGroupLabel(effectiveCategory?.budget_group);
+  const incomeSemantics = React.useMemo(
+    () =>
+      tx
+        ? resolveIncomeSemanticsForTransaction(tx, categoryById)
+        : null,
+    [categoryById, tx],
+  );
+  const incomeSemanticLabel =
+    tx && tx.amount > 0 ? incomeSemantics?.shortLabel || null : null;
   const isSubjectDrivenProvider = React.useMemo(
     () => isSubjectDrivenCounterparty(tx?.counterparty),
     [tx?.counterparty],
@@ -332,6 +347,11 @@ export default function TransactionDetailScreen() {
     if (tx.amount >= 0) return false;
     return isLikelySubscriptionPspTransaction(tx.counterparty, tx.details);
   }, [tx]);
+  const subscriptionStatusLabel = linkedSubscriptionProfile
+    ? "Abonnement gekoppeld"
+    : isPspLikeExpense
+      ? "PSP-betaling"
+      : null;
 
   React.useEffect(() => {
     if (!subscriptionModalOpen || !tx) return;
@@ -376,8 +396,9 @@ export default function TransactionDetailScreen() {
   }, [transactionId]);
 
   React.useEffect(() => {
+    if (!isFocused) return;
     void loadData();
-  }, [loadData]);
+  }, [isFocused, loadData]);
 
   // ── Manual category ─────────────────────────────────────────────────────
   const handleManualCategory = React.useCallback(
@@ -700,6 +721,29 @@ export default function TransactionDetailScreen() {
               ? ` • Saldo na transactie ${euroFormatter.format(saldoNaTrn)}`
               : ""}
           </Text>
+          {subscriptionStatusLabel ? (
+            <View style={styles.heroPillsRow}>
+              <View
+                style={[
+                  styles.heroPill,
+                  linkedSubscriptionProfile
+                    ? styles.heroPillLinked
+                    : styles.heroPillDetected,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.heroPillText,
+                    linkedSubscriptionProfile
+                      ? styles.heroPillTextLinked
+                      : styles.heroPillTextDetected,
+                  ]}
+                >
+                  {subscriptionStatusLabel}
+                </Text>
+              </View>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.card}>
@@ -712,10 +756,33 @@ export default function TransactionDetailScreen() {
                     <Text style={styles.parentBadge}>{parentCategory.name}</Text>
                   ) : null}
                   <Text style={styles.categoryBadge}>{effectiveCategory.name}</Text>
+                  {budgetGroupLabel ? (
+                    <Text style={styles.budgetGroupBadge}>{budgetGroupLabel}</Text>
+                  ) : null}
+                  {incomeSemanticLabel ? (
+                    <Text
+                      style={[
+                        styles.incomeSemanticBadge,
+                        incomeSemantics?.kind === "expense_refund" &&
+                          styles.incomeSemanticBadgeRefund,
+                      ]}
+                    >
+                      {incomeSemanticLabel}
+                    </Text>
+                  ) : null}
                 </View>
               ) : (
                 <Text style={styles.mutedText}>Ongecategoriseerd</Text>
               )}
+              {incomeSemanticLabel ? (
+                <Text style={styles.mutedText}>
+                  {incomeSemantics?.kind === "expense_refund"
+                    ? "Deze ontvangst verlaagt vooral een kostenpost en telt niet als vast inkomen."
+                    : incomeSemantics?.kind === "tax_refund"
+                      ? "Deze ontvangst hoort bij deze maand, maar niet bij je vaste inkomensbasis."
+                      : "Deze inkomensduiding wordt ook gebruikt in budget en insights."}
+                </Text>
+              ) : null}
 
               <View style={styles.quickActionsRow}>
                 <View style={styles.quickToggleChip}>
@@ -733,6 +800,22 @@ export default function TransactionDetailScreen() {
                     }
                   />
                 </View>
+                {effectiveCategory ? (
+                  <TouchableOpacity
+                    style={styles.quickActionChip}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/category-budget-groups",
+                        params: { categoryId: effectiveCategory.id },
+                      })
+                    }
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.quickActionChipText}>
+                      Budgetgroep beheren
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
 
               <View style={styles.metaRow}>
@@ -1130,7 +1213,11 @@ export default function TransactionDetailScreen() {
                 style={styles.subscriptionModalCloseBtn}
                 onPress={() => setSubscriptionModalOpen(false)}
               >
-                <Text style={styles.subscriptionModalCloseText}>✕</Text>
+                <AppIcon
+                  name="close"
+                  size={18}
+                  color={FinColors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
 
@@ -1290,6 +1377,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  heroPillsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  heroPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  heroPillLinked: {
+    backgroundColor: FinColors.greenBg,
+    borderColor: FinColors.greenBorder,
+  },
+  heroPillDetected: {
+    backgroundColor: FinColors.warningBg,
+    borderColor: FinColors.warningBorder,
+  },
+  heroPillText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  heroPillTextLinked: {
+    color: FinColors.green,
+  },
+  heroPillTextDetected: {
+    color: FinColors.warningText,
+  },
   card: {
     backgroundColor: FinColors.bgCard,
     borderRadius: 14,
@@ -1408,6 +1524,35 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
     overflow: "hidden",
+  },
+  budgetGroupBadge: {
+    color: FinColors.warningText,
+    fontSize: 12,
+    fontWeight: "700",
+    backgroundColor: FinColors.warningBg,
+    borderColor: FinColors.warningBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  incomeSemanticBadge: {
+    color: FinColors.green,
+    fontSize: 12,
+    fontWeight: "700",
+    backgroundColor: FinColors.greenBg,
+    borderColor: FinColors.greenBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  incomeSemanticBadgeRefund: {
+    color: FinColors.warningText,
+    backgroundColor: FinColors.warningBg,
+    borderColor: FinColors.warningBorder,
   },
   metaRow: {
     flexDirection: "row",
@@ -1564,11 +1709,6 @@ const styles = StyleSheet.create({
     borderColor: FinColors.borderSubtle,
     paddingHorizontal: 8,
     paddingVertical: 4,
-  },
-  subscriptionModalCloseText: {
-    color: FinColors.textSecondary,
-    fontSize: 13,
-    fontWeight: "700",
   },
   subscriptionModalSubtitle: {
     color: FinColors.textSecondary,

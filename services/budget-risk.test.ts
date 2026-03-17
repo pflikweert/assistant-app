@@ -11,10 +11,16 @@ import {
   getMonthBudgetRiskLabel,
   getMonthBudgetRiskProgress,
   getMonthBudgetRiskTone,
+  getMonthVariableBudgetUsageText,
   getMonthVariableBudgetSnapshot,
   getWeekBudgetSnapshot,
   getWeekTempoMessage,
 } from "./budget-risk";
+
+const fmt = new Intl.NumberFormat("nl-NL", {
+  style: "currency",
+  currency: "EUR",
+});
 
 function createBudgetPlanStub(params: {
   variableBudget: number;
@@ -162,6 +168,30 @@ describe("getMonthBudgetRiskTone", () => {
     expect(snapshot.remaining).toBe(570);
     expect(snapshot.label).toBe("Op schema");
     expect(snapshot.progress).toBe(0.43);
+  });
+
+  it("formats shared month usage copy for all budget surfaces", () => {
+    const healthySnapshot = getMonthVariableBudgetSnapshot(
+      createBudgetPlanStub({
+        variableBudget: 1000,
+        variableSpent: 430,
+        monthProgress: 0.4,
+      }),
+    );
+    const overBudgetSnapshot = getMonthVariableBudgetSnapshot(
+      createBudgetPlanStub({
+        variableBudget: 1000,
+        variableSpent: 1040,
+        monthProgress: 0.8,
+      }),
+    );
+
+    expect(getMonthVariableBudgetUsageText(healthySnapshot, fmt)).toContain(
+      "van je variabele budget gebruikt",
+    );
+    expect(getMonthVariableBudgetUsageText(overBudgetSnapshot, fmt)).toContain(
+      "boven je variabele maandbudget",
+    );
   });
 });
 

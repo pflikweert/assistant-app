@@ -1,8 +1,12 @@
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
+import { MonthPickerSheet } from "@/components/month-picker-sheet";
 import { FinColors } from "@/constants/theme";
-import { getMonthVariableBudgetSnapshot } from "@/services/budget-risk";
+import {
+  getMonthVariableBudgetSnapshot,
+  getMonthVariableBudgetUsageText,
+} from "@/services/budget-risk";
 import { computeBudgetPlan } from "@/services/budget-plan";
 import {
   getTransactionCategories,
@@ -20,7 +24,19 @@ import {
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
 import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
+import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
+import {
+  detectRareSubscriptionItems,
+  type RareSubscriptionItem,
+  type RareSubscriptionTransaction,
+} from "@/services/rare-subscriptions";
 import { supabase } from "@/services/supabase";
+import {
+  getCurrentMonthKey,
+  getMonthOptionByKey,
+  listTransactionMonthOptions,
+  type TransactionMonthOption,
+} from "@/services/transaction-month-options";
 import type {
   BudgetPlanComputation,
   CategoryRecord,
@@ -50,6 +66,7 @@ const fmt = new Intl.NumberFormat("nl-NL", {
 const SEGMENTS = [
   { key: "trends", label: "Trends" },
   { key: "forecast", label: "Voorspelling" },
+  { key: "rare", label: "Verborgen" },
   { key: "review", label: "Controle" },
 ] as const;
 
@@ -113,6 +130,8 @@ const VARIABLE_FALLBACK_HINTS = [
 ];
 
 const CAT_COLORS = ["#7dd3a1", "#d7b64c", "#94a3b8", "#9b9186", "#6b6b6b"];
+const RARE_SUBSCRIPTION_LOOKBACK_DAYS = 760;
+const RARE_SUBSCRIPTION_PAGE_SIZE = 500;
 
 type SegmentKey = (typeof SEGMENTS)[number]["key"];
 type CategoryBarRow = { label: string; amount: number; color: string };
@@ -163,11 +182,38 @@ type CashflowForecast = {
   top_cost_bucket_3: string | null;
 };
 
+type GenericRowsResult = {
+  data: Record<string, unknown>[] | null;
+  error: unknown;
+};
+
+type GenericRecordResult = {
+  data: Record<string, unknown> | null;
+  error: unknown;
+};
+
 type ReviewableInsightTx = InsightTx & { categoryLabel: string };
+type InsightIncomeTx = ReviewableInsightTx & {
+  incomeGroupLabel: string | null;
+  incomeShortLabel: string | null;
+  countsAsIncome: boolean;
+  expenseOffsetBucket:
+    | "fixed_costs"
+    | "subscriptions"
+    | "variable_costs"
+    | null;
+};
 type IncomeBreakdownRow = {
   label: string;
   total: number;
   count: number;
+  tone: "income" | "refund";
+};
+type IncomeMetricCard = {
+  label: string;
+  value: string;
+  meta: string;
+  tone: "neutral" | "positive" | "refund";
 };
 type DrilldownExpenseGroup = Exclude<
   ExpenseAnalysisCategory,
@@ -237,26 +283,54 @@ function formatIncludedIncomeLabel(plan: BudgetPlanComputation | null) {
   return labels.join(", ");
 }
 
+function parseUtcDate(dateIso: string) {
+  const parsed = new Date(`${String(dateIso || "").slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function addDaysToIsoDate(dateIso: string, days: number) {
+  const parsed = parseUtcDate(dateIso);
+  if (!parsed) return dateIso;
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function getInsightsReferenceDateIso(selectedMonth: TransactionMonthOption) {
+  if (selectedMonth.isCurrentMonth) {
+    return toLocalIsoDate(new Date());
+  }
+  return addDaysToIsoDate(selectedMonth.endIso, -1);
+}
+
+function getRareSubscriptionStatus(item: RareSubscriptionItem) {
+  if (item.daysUntilNext == null || !item.nextExpectedDate) {
+    return item.evidence === "possible"
+      ? "Nog maar 1 keer gezien, dus makkelijk te missen."
+      : `Laatst gezien op ${formatShortDate(item.lastChargeDate)}.`;
+  }
+
+  if (item.daysUntilNext < -45) {
+    return `Had rond ${formatShortDate(item.nextExpectedDate)} opnieuw kunnen terugkomen.`;
+  }
+  if (item.daysUntilNext < 0) {
+    return `Rond ${formatShortDate(item.nextExpectedDate)} verwacht.`;
+  }
+  if (item.daysUntilNext === 0) {
+    return "Vandaag verwacht.";
+  }
+  if (item.daysUntilNext <= 30) {
+    return `Binnen ${item.daysUntilNext} dagen verwacht.`;
+  }
+
+  return `Volgende moment rond ${formatShortDate(item.nextExpectedDate)}.`;
+}
+
 function toLocalIsoDate(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function getMonthBounds(monthsAgo: number) {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
-  const end = new Date(now.getFullYear(), now.getMonth() - monthsAgo + 1, 1);
-
-  return {
-    startIso: toLocalIsoDate(start),
-    endIso: toLocalIsoDate(end),
-    label: start.toLocaleDateString("nl-NL", {
-      month: "long",
-      year: "numeric",
-    }),
-  };
 }
 
 function isMissingColumnError(error: unknown) {
@@ -312,6 +386,11 @@ function resolveExpenseBucket(
   const category = categoryId ? categoryMap.get(categoryId) || null : null;
   const categoryKey = String(category?.key || "").toLowerCase();
 
+  if (category?.budget_group === "savings") return "savings_transfer";
+  if (category?.budget_group === "subscriptions") return "subscriptions";
+  if (category?.budget_group === "fixed") return "fixed_costs";
+  if (category?.budget_group === "variable") return "variable_costs";
+
   if (categoryKey.startsWith("savings")) return "savings_transfer";
   if (categoryKey.startsWith("subscriptions")) return "subscriptions";
   if (
@@ -338,12 +417,8 @@ function resolveExpenseBucket(
     categoryKey.startsWith("smoking") ||
     categoryKey.startsWith("shopping")
   ) {
-    return "variable_costs";
+      return "variable_costs";
   }
-
-  if (category?.budget_group === "savings") return "savings_transfer";
-  if (category?.budget_group === "fixed") return "fixed_costs";
-  if (category?.budget_group === "variable") return "variable_costs";
 
   if (
     tx.analysis_category === "fixed_costs" ||
@@ -355,6 +430,22 @@ function resolveExpenseBucket(
   }
 
   return fallbackExpenseCategory(tx);
+}
+
+function applyExpenseBucketDelta(
+  totals: {
+    fixed: number;
+    subscriptions: number;
+    variable: number;
+    savingsTransfers: number;
+  },
+  bucket: ExpenseAnalysisCategory,
+  amount: number,
+) {
+  if (bucket === "fixed_costs") totals.fixed += amount;
+  else if (bucket === "subscriptions") totals.subscriptions += amount;
+  else if (bucket === "variable_costs") totals.variable += amount;
+  else totals.savingsTransfers += amount;
 }
 
 function getTrendHeadline(
@@ -531,17 +622,80 @@ function ReviewItem({
   );
 }
 
+function RareSubscriptionRow({
+  item,
+  onPress,
+}: {
+  item: RareSubscriptionItem;
+  onPress: (item: RareSubscriptionItem) => void;
+}) {
+  return (
+    <Pressable style={styles.rareRow} onPress={() => onPress(item)}>
+      <View style={styles.rareIconWrap}>
+        <AppIcon
+          name={item.evidence === "confirmed" ? "visibility" : "help-outline"}
+          size={18}
+          color={
+            item.evidence === "confirmed"
+              ? FinColors.warningText
+              : FinColors.textSecondary
+          }
+        />
+      </View>
+
+      <View style={styles.rareMain}>
+        <Text style={styles.rareName} numberOfLines={1}>
+          {item.label}
+        </Text>
+        <Text style={styles.rareSub} numberOfLines={1}>
+          {item.latestDetails || item.lastChargeDate}
+        </Text>
+        <View style={styles.rareMetaRow}>
+          <View
+            style={[
+              styles.rareBadge,
+              item.evidence === "confirmed"
+                ? styles.rareBadgeConfirmed
+                : styles.rareBadgePossible,
+            ]}
+          >
+            <Text style={styles.rareBadgeText}>{item.frequencyLabel}</Text>
+          </View>
+          <Text style={styles.rareMetaText}>
+            {item.evidence === "confirmed" ? "Bevestigd" : "Mogelijk verborgen"}
+          </Text>
+        </View>
+        <Text style={styles.rareStatus}>{getRareSubscriptionStatus(item)}</Text>
+      </View>
+
+      <View style={styles.rareAside}>
+        <Text style={styles.rareAmount}>{fmt.format(item.expectedAmount)}</Text>
+        <Text style={styles.rareAsideSub}>
+          Jaarimpact {fmt.format(item.annualSpendEstimate)}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function InsightsScreen() {
   const router = useRouter();
   const isFocused = useIsFocused();
   const backgroundStatus = useCategorizationStatus();
   const forecastLoadInFlight = React.useRef(false);
   const budgetLoadInFlight = React.useRef(false);
+  const fallbackMonthOption = React.useMemo(
+    () => getMonthOptionByKey(getCurrentMonthKey())!,
+    [],
+  );
 
   const [segment, setSegment] = React.useState<SegmentKey>("trends");
   const [loading, setLoading] = React.useState(true);
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
   const [transactions, setTransactions] = React.useState<InsightTx[]>([]);
+  const [rareSubscriptionItems, setRareSubscriptionItems] = React.useState<
+    RareSubscriptionItem[]
+  >([]);
   const [forecast, setForecast] = React.useState<CashflowForecast | null>(null);
   const [budgetPlan, setBudgetPlan] =
     React.useState<BudgetPlanComputation | null>(null);
@@ -550,8 +704,13 @@ export default function InsightsScreen() {
   const [forecastSchemaMissing, setForecastSchemaMissing] =
     React.useState(false);
   const [budgetSchemaMissing, setBudgetSchemaMissing] = React.useState(false);
-  const [monthOffset, setMonthOffset] = React.useState(0);
-  const [totalIncome, setTotalIncome] = React.useState(0);
+  const [selectedMonthKey, setSelectedMonthKey] = React.useState(
+    getCurrentMonthKey(),
+  );
+  const [monthOptions, setMonthOptions] = React.useState<TransactionMonthOption[]>(
+    [fallbackMonthOption],
+  );
+  const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
   const [txCount, setTxCount] = React.useState(0);
   const [selectedTx, setSelectedTx] =
     React.useState<ReviewableInsightTx | null>(null);
@@ -563,8 +722,23 @@ export default function InsightsScreen() {
   >({});
 
   const selectedMonth = React.useMemo(
-    () => getMonthBounds(monthOffset),
-    [monthOffset],
+    () =>
+      monthOptions.find((option) => option.key === selectedMonthKey) ||
+      getMonthOptionByKey(selectedMonthKey) ||
+      monthOptions[0] ||
+      fallbackMonthOption,
+    [fallbackMonthOption, monthOptions, selectedMonthKey],
+  );
+  const selectedMonthIndex = React.useMemo(
+    () => monthOptions.findIndex((option) => option.key === selectedMonth.key),
+    [monthOptions, selectedMonth.key],
+  );
+  const canGoToOlderMonth =
+    selectedMonthIndex >= 0 && selectedMonthIndex < monthOptions.length - 1;
+  const canGoToNewerMonth = selectedMonthIndex > 0;
+  const insightsReferenceDateIso = React.useMemo(
+    () => getInsightsReferenceDateIso(selectedMonth),
+    [selectedMonth],
   );
 
   const categoryMap = React.useMemo(
@@ -666,37 +840,187 @@ export default function InsightsScreen() {
     [transactions],
   );
 
-  const monthReport = React.useMemo(() => {
-    let fixed = 0;
-    let subscriptions = 0;
-    let variable = 0;
-    let savingsTransfers = 0;
+  const incomeTransactions = React.useMemo<InsightIncomeTx[]>(
+    () =>
+      displayTransactions
+        .filter((tx) => tx.amount > 0)
+        .map((tx) => {
+          const semantics = resolveIncomeSemanticsForTransaction(tx, categoryMap);
+          return {
+            ...tx,
+            incomeGroupLabel: semantics.groupLabel,
+            incomeShortLabel: semantics.shortLabel,
+            countsAsIncome: semantics.countsAsIncome,
+            expenseOffsetBucket: semantics.expenseOffsetBucket,
+          };
+        })
+        .sort((left, right) => {
+          if (left.date !== right.date) return right.date.localeCompare(left.date);
+          return right.amount - left.amount;
+        }),
+    [categoryMap, displayTransactions],
+  );
 
-    for (const tx of transactions) {
-      if (tx.amount >= 0) continue;
+  const incomeSummary = React.useMemo(() => {
+    let structural = 0;
+    let variableIncome = 0;
+    let windfalls = 0;
+    let costRefunds = 0;
+    let structuralCount = 0;
+    let variableIncomeCount = 0;
+    let windfallsCount = 0;
+    let costRefundsCount = 0;
 
-      const bucket = resolveExpenseBucket(tx, categoryMap);
-      const value = Math.abs(tx.amount);
-      if (bucket === "fixed_costs") fixed += value;
-      else if (bucket === "subscriptions") subscriptions += value;
-      else if (bucket === "variable_costs") variable += value;
-      else savingsTransfers += value;
+    const totals = new Map<string, { total: number; count: number; tone: "income" | "refund" }>();
+
+    for (const tx of incomeTransactions) {
+      const semantics = resolveIncomeSemanticsForTransaction(tx, categoryMap);
+      const label =
+        semantics.groupLabel ||
+        (semantics.countsAsIncome ? "Variabel inkomen" : "Kostencompensaties");
+      const tone = semantics.kind === "expense_refund" ? "refund" : "income";
+      const existing = totals.get(label);
+      if (existing) {
+        existing.total += tx.amount;
+        existing.count += 1;
+      } else {
+        totals.set(label, { total: tx.amount, count: 1, tone });
+      }
+
+      if (
+        semantics.kind === "salary" ||
+        semantics.kind === "child_budget" ||
+        semantics.kind === "structural_government" ||
+        semantics.kind === "structural_other"
+      ) {
+        structural += tx.amount;
+        structuralCount += 1;
+      } else if (semantics.kind === "tax_refund") {
+        windfalls += tx.amount;
+        windfallsCount += 1;
+      } else if (semantics.kind === "expense_refund") {
+        costRefunds += tx.amount;
+        costRefundsCount += 1;
+      } else if (semantics.countsAsIncome) {
+        variableIncome += tx.amount;
+        variableIncomeCount += 1;
+      }
     }
 
-    const expenses = fixed + subscriptions + variable;
-    const outflow = expenses + savingsTransfers;
+    const breakdown = Array.from(totals.entries())
+      .map(([label, value]) => ({
+        label,
+        total: value.total,
+        count: value.count,
+        tone: value.tone,
+      }))
+      .sort((left, right) => right.total - left.total);
 
     return {
-      fixed,
-      subscriptions,
-      variable,
-      savingsTransfers,
+      structural,
+      structuralCount,
+      variableIncome,
+      variableIncomeCount,
+      windfalls,
+      windfallsCount,
+      costRefunds,
+      costRefundsCount,
+      totalIncome: structural + variableIncome + windfalls,
+      breakdown,
+    };
+  }, [categoryMap, incomeTransactions]);
+
+  const incomeMetricCards = React.useMemo<IncomeMetricCard[]>(() => {
+    const cards: (IncomeMetricCard | null)[] = [
+      {
+        label: "Transacties",
+        value: String(incomeTransactions.length),
+        meta: `${incomeTransactions.length} inkomende transactie${incomeTransactions.length === 1 ? "" : "s"}`,
+        tone: "neutral" as const,
+      },
+      incomeSummary.structural > 0
+        ? {
+            label: "Structureel",
+            value: `+${fmt.format(incomeSummary.structural)}`,
+            meta: `${incomeSummary.structuralCount} transactie${incomeSummary.structuralCount === 1 ? "" : "s"}`,
+            tone: "positive" as const,
+          }
+        : null,
+      incomeSummary.variableIncome > 0
+        ? {
+            label: "Variabel",
+            value: `+${fmt.format(incomeSummary.variableIncome)}`,
+            meta: `${incomeSummary.variableIncomeCount} transactie${incomeSummary.variableIncomeCount === 1 ? "" : "s"}`,
+            tone: "positive" as const,
+          }
+        : null,
+      incomeSummary.windfalls > 0
+        ? {
+            label: "Meevallers",
+            value: `+${fmt.format(incomeSummary.windfalls)}`,
+            meta: `${incomeSummary.windfallsCount} transactie${incomeSummary.windfallsCount === 1 ? "" : "s"}`,
+            tone: "positive" as const,
+          }
+        : null,
+      incomeSummary.costRefunds > 0
+        ? {
+            label: "Compensaties",
+            value: `+${fmt.format(incomeSummary.costRefunds)}`,
+            meta: `${incomeSummary.costRefundsCount} transactie${incomeSummary.costRefundsCount === 1 ? "" : "s"}`,
+            tone: "refund" as const,
+          }
+        : null,
+    ];
+
+    return cards.filter((item): item is IncomeMetricCard => Boolean(item));
+  }, [incomeSummary, incomeTransactions.length]);
+
+  const monthReport = React.useMemo(() => {
+    const totals = {
+      fixed: 0,
+      subscriptions: 0,
+      variable: 0,
+      savingsTransfers: 0,
+    };
+
+    for (const tx of transactions) {
+      if (tx.amount > 0) {
+        const semantics = resolveIncomeSemanticsForTransaction(tx, categoryMap);
+        if (semantics.kind === "expense_refund" && semantics.expenseOffsetBucket) {
+          applyExpenseBucketDelta(
+            totals,
+            semantics.expenseOffsetBucket,
+            -tx.amount,
+          );
+        }
+        continue;
+      }
+
+      if (tx.amount >= 0) continue;
+
+      applyExpenseBucketDelta(
+        totals,
+        resolveExpenseBucket(tx, categoryMap),
+        Math.abs(tx.amount),
+      );
+    }
+
+    const expenses = totals.fixed + totals.subscriptions + totals.variable;
+    const outflow = expenses + totals.savingsTransfers;
+
+    return {
+      fixed: totals.fixed,
+      subscriptions: totals.subscriptions,
+      variable: totals.variable,
+      savingsTransfers: totals.savingsTransfers,
       expenses,
       outflow,
-      income: totalIncome,
-      net: totalIncome - expenses,
+      income: incomeSummary.totalIncome,
+      windfalls: incomeSummary.windfalls,
+      costRefunds: incomeSummary.costRefunds,
+      net: incomeSummary.totalIncome - expenses,
     };
-  }, [categoryMap, totalIncome, transactions]);
+  }, [categoryMap, incomeSummary.costRefunds, incomeSummary.totalIncome, incomeSummary.windfalls, transactions]);
 
   const spendingByCategory = React.useMemo<CategoryBarRow[]>(() => {
     const expenseRows = displayTransactions.filter((tx) => {
@@ -728,39 +1052,9 @@ export default function InsightsScreen() {
     [displayTransactions],
   );
 
-  const incomeTransactions = React.useMemo(
-    () =>
-      displayTransactions
-        .filter((tx) => tx.amount > 0)
-        .sort((left, right) => {
-          if (left.date !== right.date) return right.date.localeCompare(left.date);
-          return right.amount - left.amount;
-        }),
-    [displayTransactions],
-  );
-
   const incomeBreakdown = React.useMemo<IncomeBreakdownRow[]>(() => {
-    const totals = new Map<string, { total: number; count: number }>();
-
-    for (const tx of incomeTransactions) {
-      const key = tx.categoryLabel || "Overig";
-      const existing = totals.get(key);
-      if (existing) {
-        existing.total += tx.amount;
-        existing.count += 1;
-      } else {
-        totals.set(key, { total: tx.amount, count: 1 });
-      }
-    }
-
-    return Array.from(totals.entries())
-      .map(([label, value]) => ({
-        label,
-        total: value.total,
-        count: value.count,
-      }))
-      .sort((left, right) => right.total - left.total);
-  }, [incomeTransactions]);
+    return incomeSummary.breakdown;
+  }, [incomeSummary.breakdown]);
 
   const trendHeadline = React.useMemo(
     () => getTrendHeadline(monthReport, budgetPlan),
@@ -799,14 +1093,168 @@ export default function InsightsScreen() {
     ],
   );
 
+  const rareSubscriptionSummary = React.useMemo(() => {
+    const yearly = rareSubscriptionItems.filter(
+      (item) => item.cadence === "yearly",
+    ).length;
+    const semiannual = rareSubscriptionItems.filter(
+      (item) => item.cadence === "semiannual",
+    ).length;
+    const possible = rareSubscriptionItems.filter(
+      (item) => item.evidence === "possible",
+    ).length;
+    const upcoming = rareSubscriptionItems.filter(
+      (item) =>
+        item.daysUntilNext != null &&
+        item.daysUntilNext >= -45 &&
+        item.daysUntilNext <= 120,
+    );
+    const annualImpact = rareSubscriptionItems.reduce(
+      (sum, item) => sum + item.annualSpendEstimate,
+      0,
+    );
+
+    return {
+      yearly,
+      semiannual,
+      possible,
+      upcoming,
+      annualImpact,
+    };
+  }, [rareSubscriptionItems]);
+
+  const rareSubscriptionHeadline = React.useMemo(() => {
+    if (!rareSubscriptionItems.length) {
+      return "Geen zeldzame abonnementen gevonden in de laatste 24 maanden.";
+    }
+    if (rareSubscriptionSummary.upcoming.length > 0) {
+      return `${rareSubscriptionSummary.upcoming.length} zeldzame afschrijvingen verdienen binnenkort aandacht.`;
+    }
+    if (rareSubscriptionSummary.possible > 0) {
+      return `${rareSubscriptionSummary.possible} betaling${rareSubscriptionSummary.possible === 1 ? "" : "en"} is maar 1 keer gezien en kan daardoor verborgen blijven.`;
+    }
+    return `${rareSubscriptionItems.length} zeldzame abonnementen gevonden die makkelijk uit beeld raken.`;
+  }, [rareSubscriptionItems.length, rareSubscriptionSummary.possible, rareSubscriptionSummary.upcoming.length]);
+
+  const loadMonthOptions = React.useCallback(async () => {
+    try {
+      const options = await listTransactionMonthOptions();
+      setMonthOptions(options);
+    } catch (error) {
+      console.error("[insights] month options load error", error);
+      setMonthOptions([fallbackMonthOption]);
+    }
+  }, [fallbackMonthOption]);
+
   const loadCategories = React.useCallback(async () => {
     try {
       const rows = await getTransactionCategories();
       setCategories(rows);
+      return rows;
     } catch (error) {
       console.error("[insights] categories load error", error);
+      setCategories([]);
+      return [] as CategoryRecord[];
     }
   }, []);
+
+  const loadRareSubscriptions = React.useCallback(
+    async (resolvedCategories: CategoryRecord[]) => {
+      try {
+        const userId = await requireCurrentUserId();
+        const baseSelect =
+          "id,amount,details,counterparty,date,category_id_auto,category_id_user";
+        const analysisSelect = "analysis_category";
+        const startIso = addDaysToIsoDate(
+          insightsReferenceDateIso,
+          -RARE_SUBSCRIPTION_LOOKBACK_DAYS,
+        );
+        const rows: RareSubscriptionTransaction[] = [];
+        let offset = 0;
+        let omitAnalysisColumns = analysisSchemaMissing;
+
+        while (true) {
+          const query = supabase
+            .from("transactions")
+            .select(
+              omitAnalysisColumns
+                ? baseSelect
+                : `${baseSelect},${analysisSelect}`,
+            )
+            .eq("user_id", userId)
+            .gte("date", startIso)
+            .lt("date", selectedMonth.endIso)
+            .lt("amount", 0)
+            .order("date", { ascending: false })
+            .range(offset, offset + RARE_SUBSCRIPTION_PAGE_SIZE - 1);
+
+          let result = (await query) as GenericRowsResult;
+
+          if (
+            result.error &&
+            !omitAnalysisColumns &&
+            isMissingColumnError(result.error)
+          ) {
+            omitAnalysisColumns = true;
+            setAnalysisSchemaMissing(true);
+            result = (await supabase
+              .from("transactions")
+              .select(baseSelect)
+              .eq("user_id", userId)
+              .gte("date", startIso)
+              .lt("date", selectedMonth.endIso)
+              .lt("amount", 0)
+              .order("date", { ascending: false })
+              .range(offset, offset + RARE_SUBSCRIPTION_PAGE_SIZE - 1)) as GenericRowsResult;
+          }
+
+          if (result.error) throw result.error;
+
+          const page = ((result.data || []) as Record<string, unknown>[]).map(
+            (row) => ({
+              id: String(row.id || ""),
+              date: String(row.date || ""),
+              details: String(row.details || ""),
+              counterparty: row.counterparty
+                ? String(row.counterparty).trim()
+                : null,
+              amount: Number(row.amount || 0),
+              category_id_auto: row.category_id_auto
+                ? String(row.category_id_auto)
+                : null,
+              category_id_user: row.category_id_user
+                ? String(row.category_id_user)
+                : null,
+              analysis_category: row.analysis_category
+                ? String(row.analysis_category)
+                : null,
+            }),
+          );
+
+          rows.push(...page);
+
+          if (page.length < RARE_SUBSCRIPTION_PAGE_SIZE) break;
+          offset += RARE_SUBSCRIPTION_PAGE_SIZE;
+        }
+
+        setRareSubscriptionItems(
+          detectRareSubscriptionItems({
+            transactions: rows,
+            categories: resolvedCategories,
+            referenceDate: insightsReferenceDateIso,
+          }),
+        );
+      } catch (error) {
+        console.error("[insights] rare subscriptions load error", error);
+        setRareSubscriptionItems([]);
+      }
+    },
+    [
+      analysisSchemaMissing,
+      insightsReferenceDateIso,
+      selectedMonth.endIso,
+    ],
+  );
 
   const loadTransactions = React.useCallback(async () => {
     try {
@@ -817,7 +1265,7 @@ export default function InsightsScreen() {
         "analysis_main_group,analysis_category,recurring,recurring_type,spending_pattern";
       const transactionsQuery = supabase.from("transactions");
 
-      let queryResult = await transactionsQuery
+      let queryResult = (await transactionsQuery
         .select(
           analysisSchemaMissing
             ? baseSelect
@@ -827,7 +1275,7 @@ export default function InsightsScreen() {
         .gte("date", selectedMonth.startIso)
         .lt("date", selectedMonth.endIso)
         .order("date", { ascending: false })
-        .limit(300);
+        .limit(300)) as GenericRowsResult;
 
       if (
         queryResult.error &&
@@ -837,13 +1285,13 @@ export default function InsightsScreen() {
         setAnalysisSchemaMissing(true);
         setForecastSchemaMissing(true);
 
-        queryResult = await transactionsQuery
+        queryResult = (await transactionsQuery
           .select(baseSelect)
           .eq("user_id", userId)
           .gte("date", selectedMonth.startIso)
           .lt("date", selectedMonth.endIso)
           .order("date", { ascending: false })
-          .limit(300);
+          .limit(300)) as GenericRowsResult;
       }
 
       if (queryResult.error) throw queryResult.error;
@@ -852,7 +1300,6 @@ export default function InsightsScreen() {
       if (!data.length) {
         setTransactions([]);
         setTxCount(0);
-        setTotalIncome(0);
         return;
       }
 
@@ -903,9 +1350,6 @@ export default function InsightsScreen() {
 
       setTransactions(rows);
       setTxCount(rows.length);
-      setTotalIncome(
-        rows.filter((item) => item.amount > 0).reduce((sum, item) => sum + item.amount, 0),
-      );
     } catch (error) {
       console.error("[insights] transactions load error", error);
     }
@@ -926,15 +1370,17 @@ export default function InsightsScreen() {
         "month_start,current_balance_anchor,current_balance_anchor_date,expected_income_total,expected_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,upcoming_committed_income_total,upcoming_committed_expense_total,lowest_expected_balance,lowest_expected_balance_date,next_expected_event_date,next_expected_event_label,cash_risk_flag,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3";
       const legacyForecastSelect =
         "month_start,expected_income_total,expected_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3";
-      const fetchForecastRow = async (useLegacy = false) =>
-        supabase
-          .from("monthly_cashflow_forecasts")
+      const forecastQuery = supabase.from("monthly_cashflow_forecasts") as any;
+      const fetchForecastRow = async (
+        useLegacy = false,
+      ): Promise<GenericRecordResult> =>
+        (await forecastQuery
           .select(useLegacy ? legacyForecastSelect : enhancedForecastSelect)
           .eq("user_id", userId)
           .eq("month_start", selectedMonth.startIso)
-          .maybeSingle();
+          .maybeSingle()) as GenericRecordResult;
 
-      const isCurrentMonth = selectedMonth.startIso === getMonthBounds(0).startIso;
+      const isCurrentMonth = selectedMonth.isCurrentMonth;
       const referenceDate = isCurrentMonth
         ? new Date()
         : new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
@@ -1046,7 +1492,12 @@ export default function InsightsScreen() {
     } finally {
       forecastLoadInFlight.current = false;
     }
-  }, [forecastSchemaMissing, selectedMonth.endIso, selectedMonth.startIso]);
+  }, [
+    forecastSchemaMissing,
+    selectedMonth.endIso,
+    selectedMonth.isCurrentMonth,
+    selectedMonth.startIso,
+  ]);
 
   const loadBudgetPlan = React.useCallback(async () => {
     if (budgetSchemaMissing) {
@@ -1057,8 +1508,12 @@ export default function InsightsScreen() {
 
     budgetLoadInFlight.current = true;
     try {
-      const referenceDate = new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
-      referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
+      const referenceDate = selectedMonth.isCurrentMonth
+        ? new Date()
+        : new Date(`${selectedMonth.endIso}T12:00:00.000Z`);
+      if (!selectedMonth.isCurrentMonth) {
+        referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
+      }
       const computed = await computeBudgetPlan(referenceDate, "default", new Date());
       setBudgetPlan(computed);
     } catch (error) {
@@ -1073,17 +1528,44 @@ export default function InsightsScreen() {
     } finally {
       budgetLoadInFlight.current = false;
     }
-  }, [budgetSchemaMissing, selectedMonth.endIso]);
+  }, [budgetSchemaMissing, selectedMonth.endIso, selectedMonth.isCurrentMonth]);
 
   const refreshAll = React.useCallback(async () => {
     setLoading(true);
     try {
-      await loadCategories();
-      await Promise.all([loadTransactions(), loadForecast(), loadBudgetPlan()]);
+      const loadedCategories = categories.length
+        ? categories
+        : await loadCategories();
+      await Promise.all([
+        loadTransactions(),
+        loadForecast(),
+        loadBudgetPlan(),
+        loadRareSubscriptions(loadedCategories),
+      ]);
     } finally {
       setLoading(false);
     }
-  }, [loadBudgetPlan, loadCategories, loadForecast, loadTransactions]);
+  }, [
+    categories,
+    loadBudgetPlan,
+    loadCategories,
+    loadForecast,
+    loadRareSubscriptions,
+    loadTransactions,
+  ]);
+
+  React.useEffect(() => {
+    if (!monthOptions.length) return;
+    if (monthOptions.some((option) => option.key === selectedMonthKey)) return;
+
+    const currentMonthOption = monthOptions.find((option) => option.isCurrentMonth);
+    setSelectedMonthKey((currentMonthOption || monthOptions[0]).key);
+  }, [monthOptions, selectedMonthKey]);
+
+  React.useEffect(() => {
+    if (!isFocused) return;
+    void loadMonthOptions();
+  }, [isFocused, loadMonthOptions]);
 
   React.useEffect(() => {
     if (!isFocused) return;
@@ -1191,6 +1673,13 @@ export default function InsightsScreen() {
     router.push(`/transaction-detail?id=${transactionId}`);
   }, [router, selectedTx]);
 
+  const openRareTransactionDetail = React.useCallback(
+    (item: RareSubscriptionItem) => {
+      router.push(`/transaction-detail?id=${item.latestTransactionId}`);
+    },
+    [router],
+  );
+
   const hasMonthData = txCount > 0;
   const netResult = monthReport.net;
   const monthBudgetSnapshot = React.useMemo(
@@ -1222,23 +1711,40 @@ export default function InsightsScreen() {
           <Pressable
             style={[
               styles.monthNavButton,
-              monthOffset >= 24 && styles.monthNavButtonDisabled,
+              !canGoToOlderMonth && styles.monthNavButtonDisabled,
             ]}
-            onPress={() => setMonthOffset((current) => Math.min(current + 1, 24))}
-            disabled={monthOffset >= 24}
+            onPress={() => {
+              if (!canGoToOlderMonth) return;
+              const nextOption = monthOptions[selectedMonthIndex + 1];
+              if (nextOption) setSelectedMonthKey(nextOption.key);
+            }}
+            disabled={!canGoToOlderMonth}
           >
             <Text style={styles.monthNavButtonText}>‹</Text>
           </Pressable>
-          <View style={styles.monthBadge}>
+          <Pressable
+            style={styles.monthBadge}
+            onPress={() => setMonthPickerOpen(true)}
+          >
             <Text style={styles.monthBadgeText}>{selectedMonth.label}</Text>
-          </View>
+            <AppIcon
+              name="expand-more"
+              size={18}
+              color={FinColors.textSecondary}
+              variant="outlined"
+            />
+          </Pressable>
           <Pressable
             style={[
               styles.monthNavButton,
-              monthOffset === 0 && styles.monthNavButtonDisabled,
+              !canGoToNewerMonth && styles.monthNavButtonDisabled,
             ]}
-            onPress={() => setMonthOffset((current) => Math.max(current - 1, 0))}
-            disabled={monthOffset === 0}
+            onPress={() => {
+              if (!canGoToNewerMonth) return;
+              const nextOption = monthOptions[selectedMonthIndex - 1];
+              if (nextOption) setSelectedMonthKey(nextOption.key);
+            }}
+            disabled={!canGoToNewerMonth}
           >
             <Text style={styles.monthNavButtonText}>›</Text>
           </Pressable>
@@ -1290,7 +1796,9 @@ export default function InsightsScreen() {
                         hasMonthData ? styles.positiveText : styles.mutedText,
                       ]}
                     >
-                      {hasMonthData ? `+${fmt.format(totalIncome)}` : "Nog geen data"}
+                      {hasMonthData
+                        ? `+${fmt.format(monthReport.income)}`
+                        : "Nog geen data"}
                     </Text>
                   </View>
                   <View style={styles.metricCard}>
@@ -1320,12 +1828,8 @@ export default function InsightsScreen() {
                 ) : null}
                 {budgetPlan ? (
                   <Text style={styles.helperText}>
-                    Status: {monthBudgetSnapshot.label}.{" "}
-                    {monthBudgetSnapshot.state === "no_budget"
-                      ? "Stel eerst een variabel budget in om maandsturing te zien."
-                      : monthBudgetSnapshot.state === "over_budget"
-                        ? `${fmt.format(Math.abs(monthBudgetSnapshot.remaining || 0))} boven je variabele maandbudget van ${fmt.format(monthBudgetSnapshot.budget || 0)}`
-                        : `${fmt.format(monthBudgetSnapshot.spent || 0)} van ${fmt.format(monthBudgetSnapshot.budget || 0)} variabel gebruikt`}
+                    {monthBudgetSnapshot.label}.{" "}
+                    {getMonthVariableBudgetUsageText(monthBudgetSnapshot, fmt)}
                   </Text>
                 ) : null}
               </View>
@@ -1339,7 +1843,7 @@ export default function InsightsScreen() {
                   style={styles.reportRowButton}
                   onPress={() => setIncomeDetailsOpen(true)}
                 >
-                  <Text style={styles.reportLabel}>Inkomsten</Text>
+                  <Text style={styles.reportLabel}>Inkomsten totaal</Text>
                   <View style={styles.reportRight}>
                     <Text style={[styles.reportValue, styles.positiveText]}>
                       +{fmt.format(monthReport.income)}
@@ -1347,6 +1851,38 @@ export default function InsightsScreen() {
                     <Text style={styles.reportHint}>Details</Text>
                   </View>
                 </Pressable>
+                {incomeSummary.structural > 0 ? (
+                  <View style={styles.reportRow}>
+                    <Text style={styles.reportLabel}>Structureel inkomen</Text>
+                    <Text style={[styles.reportValue, styles.positiveText]}>
+                      +{fmt.format(incomeSummary.structural)}
+                    </Text>
+                  </View>
+                ) : null}
+                {incomeSummary.variableIncome > 0 ? (
+                  <View style={styles.reportRow}>
+                    <Text style={styles.reportLabel}>Variabel inkomen</Text>
+                    <Text style={[styles.reportValue, styles.positiveText]}>
+                      +{fmt.format(incomeSummary.variableIncome)}
+                    </Text>
+                  </View>
+                ) : null}
+                {monthReport.windfalls > 0 ? (
+                  <View style={styles.reportRow}>
+                    <Text style={styles.reportLabel}>Incidentele meevallers</Text>
+                    <Text style={[styles.reportValue, styles.positiveText]}>
+                      +{fmt.format(monthReport.windfalls)}
+                    </Text>
+                  </View>
+                ) : null}
+                {monthReport.costRefunds > 0 ? (
+                  <View style={styles.reportRow}>
+                    <Text style={styles.reportLabel}>Kostencompensaties</Text>
+                    <Text style={[styles.reportValue, styles.positiveText]}>
+                      +{fmt.format(monthReport.costRefunds)}
+                    </Text>
+                  </View>
+                ) : null}
                 <View style={styles.reportRow}>
                   <Text style={styles.reportLabel}>Uitgaven totaal</Text>
                   <Text style={styles.reportValue}>
@@ -1397,6 +1933,12 @@ export default function InsightsScreen() {
                     {fmt.format(monthReport.net)}
                   </Text>
                 </View>
+                {monthReport.windfalls > 0 || monthReport.costRefunds > 0 ? (
+                  <Text style={styles.helperText}>
+                    Belastingmeevallers tellen mee in je cashflow, maar niet als
+                    vast maandinkomen. Kostencompensaties verlagen je kosten.
+                  </Text>
+                ) : null}
               </View>
 
               <View style={styles.card}>
@@ -1701,6 +2243,99 @@ export default function InsightsScreen() {
             </>
           ) : null}
 
+          {segment === "rare" ? (
+            <>
+              <View style={styles.heroCard}>
+                <Text style={styles.eyebrow}>Verborgen betalingen</Text>
+                <Text style={styles.heroSummary}>{rareSubscriptionHeadline}</Text>
+                <Text style={styles.helperText}>
+                  Gebaseerd op maximaal 24 maanden historie en transacties die
+                  als abonnement herkenbaar zijn.
+                </Text>
+              </View>
+
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Samenvatting</Text>
+                  <Text style={styles.sectionHelper}>Zeldzame afschrijvingen</Text>
+                </View>
+                <View style={styles.summaryList}>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>1x per jaar</Text>
+                    <Text style={styles.summaryValue}>
+                      {rareSubscriptionSummary.yearly}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>2x per jaar</Text>
+                    <Text style={styles.summaryValue}>
+                      {rareSubscriptionSummary.semiannual}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>1x gezien</Text>
+                    <Text style={styles.summaryValue}>
+                      {rareSubscriptionSummary.possible}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Geschatte jaarimpact</Text>
+                    <Text style={styles.summaryValue}>
+                      {fmt.format(rareSubscriptionSummary.annualImpact)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Binnenkort relevant</Text>
+                  <Text style={styles.sectionHelper}>
+                    Terug verwacht of net gemist
+                  </Text>
+                </View>
+                {rareSubscriptionSummary.upcoming.length ? (
+                  <View style={styles.rareList}>
+                    {rareSubscriptionSummary.upcoming.map((item) => (
+                      <RareSubscriptionRow
+                        key={item.id}
+                        item={item}
+                        onPress={openRareTransactionDetail}
+                      />
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.supportText}>
+                    Er zijn nu geen zeldzame abonnementen die binnenkort opnieuw
+                    verwacht worden.
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.card}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.sectionTitle}>Alle signalen</Text>
+                  <Text style={styles.sectionHelper}>Tik om de transactie te openen</Text>
+                </View>
+                {rareSubscriptionItems.length ? (
+                  <View style={styles.rareList}>
+                    {rareSubscriptionItems.map((item) => (
+                      <RareSubscriptionRow
+                        key={item.id}
+                        item={item}
+                        onPress={openRareTransactionDetail}
+                      />
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.supportText}>
+                    Nog geen zeldzame abonnementen gevonden voor deze periode.
+                  </Text>
+                )}
+              </View>
+            </>
+          ) : null}
+
           {segment === "review" ? (
             <>
               <View style={styles.heroCard}>
@@ -1767,6 +2402,16 @@ export default function InsightsScreen() {
         </ScrollView>
       )}
 
+      <MonthPickerSheet
+        visible={monthPickerOpen}
+        title="Kies maand"
+        helper="Alleen maanden met transacties"
+        options={monthOptions}
+        selectedKey={selectedMonth.key}
+        onClose={() => setMonthPickerOpen(false)}
+        onSelect={setSelectedMonthKey}
+      />
+
       <Modal
         animationType="slide"
         transparent
@@ -1776,7 +2421,7 @@ export default function InsightsScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Inkomsten details</Text>
+              <Text style={styles.modalTitle}>Inkomsten</Text>
               <Pressable
                 style={styles.modalIconCloseButton}
                 onPress={() => setIncomeDetailsOpen(false)}
@@ -1790,29 +2435,68 @@ export default function InsightsScreen() {
             </View>
             <Text style={styles.modalSub}>{selectedMonth.label}</Text>
 
-            <View style={styles.reportRow}>
-              <Text style={styles.reportLabel}>Totaal inkomsten</Text>
-              <Text style={[styles.reportValue, styles.positiveText]}>
+            <View style={styles.modalHeroCard}>
+              <Text style={styles.modalHeroLabel}>Totaal inkomsten</Text>
+              <Text style={[styles.modalHeroValue, styles.positiveText]}>
                 +{fmt.format(monthReport.income)}
               </Text>
+              <Text style={styles.modalHeroMeta}>
+                {incomeTransactions.length} inkomende transactie
+                {incomeTransactions.length === 1 ? "" : "s"} in {selectedMonth.label}
+              </Text>
             </View>
-            <View style={styles.reportRow}>
-              <Text style={styles.reportLabel}>Aantal transacties</Text>
-              <Text style={styles.reportValue}>{incomeTransactions.length}</Text>
+
+            <View style={styles.modalMetricGrid}>
+              {incomeMetricCards.map((item) => (
+                <View key={item.label} style={styles.modalMetricCard}>
+                  <Text style={styles.modalMetricLabel}>{item.label}</Text>
+                  <Text
+                    style={[
+                      styles.modalMetricValue,
+                      item.tone === "positive" && styles.positiveText,
+                      item.tone === "refund" && styles.refundText,
+                    ]}
+                  >
+                    {item.value}
+                  </Text>
+                  <Text style={styles.modalMetricMeta}>{item.meta}</Text>
+                </View>
+              ))}
             </View>
+
+            {incomeSummary.windfalls > 0 || incomeSummary.costRefunds > 0 ? (
+              <View style={styles.modalNoteCard}>
+                <Text style={styles.modalNoteText}>
+                  Meevallers horen wel bij deze maand, maar niet bij je vaste
+                  inkomensbasis. Kostencompensaties verlagen je kosten.
+                </Text>
+              </View>
+            ) : null}
 
             {incomeBreakdown.length ? (
               <View style={styles.modalSection}>
-                <Text style={styles.modalSectionTitle}>Verdeling inkomsten</Text>
+                <View style={styles.modalSectionHeader}>
+                  <Text style={styles.modalSectionTitle}>Waar het vandaan komt</Text>
+                  <Text style={styles.modalSectionHelper}>
+                    {incomeBreakdown.length} groep{incomeBreakdown.length === 1 ? "" : "en"}
+                  </Text>
+                </View>
                 {incomeBreakdown.map((item) => (
-                  <View key={item.label} style={styles.reportRow}>
+                  <View key={item.label} style={styles.modalBreakdownRow}>
                     <View style={styles.modalBreakdownMain}>
                       <Text style={styles.reportLabel}>{item.label}</Text>
                       <Text style={styles.modalBreakdownMeta}>
                         {item.count} transactie{item.count === 1 ? "" : "s"}
                       </Text>
                     </View>
-                    <Text style={[styles.reportValue, styles.positiveText]}>
+                    <Text
+                      style={[
+                        styles.reportValue,
+                        item.tone === "refund"
+                          ? styles.refundText
+                          : styles.positiveText,
+                      ]}
+                    >
                       +{fmt.format(item.total)}
                     </Text>
                   </View>
@@ -1820,7 +2504,10 @@ export default function InsightsScreen() {
               </View>
             ) : null}
 
-            <Text style={styles.modalSectionTitle}>Transacties</Text>
+            <View style={styles.modalSectionHeader}>
+              <Text style={styles.modalSectionTitle}>Transacties</Text>
+              <Text style={styles.modalSectionHelper}>Tik voor detail</Text>
+            </View>
             <ScrollView style={styles.modalScroll}>
               {incomeTransactions.length ? (
                 incomeTransactions.map((tx) => (
@@ -1843,7 +2530,9 @@ export default function InsightsScreen() {
                         {tx.details || tx.date}
                       </Text>
                       <Text style={styles.incomeTxCategory} numberOfLines={1}>
-                        {tx.categoryLabel}
+                        {tx.incomeShortLabel
+                          ? `${tx.categoryLabel} • ${tx.incomeShortLabel}`
+                          : tx.categoryLabel}
                       </Text>
                     </View>
                     <View style={styles.incomeTxAside}>
@@ -2038,8 +2727,10 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgCard,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 4,
     paddingHorizontal: 16,
   },
   monthBadgeText: {
@@ -2068,6 +2759,7 @@ const styles = StyleSheet.create({
   },
   segmentRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
     marginTop: 16,
   },
@@ -2152,6 +2844,9 @@ const styles = StyleSheet.create({
   },
   positiveText: {
     color: FinColors.green,
+  },
+  refundText: {
+    color: FinColors.warningText,
   },
   negativeText: {
     color: FinColors.red,
@@ -2368,6 +3063,88 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: FinColors.textPrimary,
   },
+  rareList: {
+    gap: 12,
+  },
+  rareRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 18,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 14,
+  },
+  rareIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: FinColors.warningBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rareMain: {
+    flex: 1,
+    gap: 4,
+  },
+  rareName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  rareSub: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+  },
+  rareMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    marginTop: 2,
+  },
+  rareBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  rareBadgeConfirmed: {
+    backgroundColor: FinColors.warningBg,
+  },
+  rareBadgePossible: {
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  rareBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  rareMetaText: {
+    fontSize: 11,
+    color: FinColors.textSecondary,
+  },
+  rareStatus: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
+  },
+  rareAside: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
+  rareAmount: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  rareAsideSub: {
+    fontSize: 11,
+    color: FinColors.textMuted,
+    textAlign: "right",
+  },
   reviewList: {
     gap: 12,
   },
@@ -2500,6 +3277,60 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: FinColors.textSecondary,
   },
+  modalHeroCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    padding: 16,
+    gap: 6,
+  },
+  modalHeroLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    color: FinColors.textMuted,
+  },
+  modalHeroValue: {
+    fontSize: 30,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  modalHeroMeta: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: FinColors.textSecondary,
+  },
+  modalMetricGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  modalMetricCard: {
+    minWidth: "47%",
+    flexGrow: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    padding: 14,
+    gap: 4,
+  },
+  modalMetricLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+  },
+  modalMetricValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  modalMetricMeta: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+  },
   modalName: {
     fontSize: 16,
     fontWeight: "700",
@@ -2508,10 +3339,32 @@ const styles = StyleSheet.create({
   modalSection: {
     gap: 10,
   },
+  modalSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   modalSectionTitle: {
     fontSize: 13,
     fontWeight: "700",
     color: FinColors.textPrimary,
+  },
+  modalSectionHelper: {
+    fontSize: 12,
+    color: FinColors.textMuted,
+  },
+  modalBreakdownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   modalBreakdownMain: {
     flex: 1,
@@ -2520,6 +3373,18 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12,
     color: FinColors.textMuted,
+  },
+  modalNoteCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    padding: 14,
+  },
+  modalNoteText: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: FinColors.textSecondary,
   },
   modalSearchInput: {
     minHeight: 46,

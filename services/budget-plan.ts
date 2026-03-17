@@ -1,7 +1,12 @@
 import { suggestAutomaticSavingsTarget } from "@/services/budget-coach";
 import {
+  applyEffectiveBudgetGroupsToCategories,
+  listCategoryBudgetGroupOverrides,
+} from "@/services/category-budget-groups";
+import {
     resolveLockedVariableMainCategories,
 } from "@/services/budget-lock-utils";
+import { requireCurrentUserId } from "@/services/current-user";
 import {
     getBudgetCategoryOverrides,
     getBudgetPlanSettings,
@@ -14,6 +19,7 @@ import {
     resolveBaseWeeklyBudgetsByDailyMonthRates,
 } from "@/services/budget-week-utils";
 import { normalizePattern } from "@/services/categorization-repository";
+import { resolveIncomeSemantics } from "@/services/income-semantics";
 import { supabase } from "@/services/supabase";
 import type {
     AnalysisCategory,
@@ -40,6 +46,7 @@ import type {
     BudgetWeekPlanRow,
     BudgetWeekSpendBreakdown,
     BudgetWeekSubcategorySpend,
+    CategoryRecord,
 } from "@/types/categorization";
 
 const PAGE_SIZE = 500;
@@ -68,7 +75,13 @@ type CategoryMeta = {
   budget_group: string | null;
 };
 
-type IncomeBucket = "salary" | "childBudget" | "structuralOther" | "variable";
+type IncomeBucket =
+  | "salary"
+  | "childBudget"
+  | "structuralOther"
+  | "variable"
+  | "windfall"
+  | "costRefund";
 
 type ExpenseBucket =
   | "fixed_costs"
@@ -130,19 +143,6 @@ const RECOMMENDATION_LABELS: Record<BudgetCategoryKey, string> = {
   other: "Overig",
   savings_target: "Spaardoel",
 };
-
-const STRUCTURAL_INCOME_KEYWORDS = [
-  "salaris",
-  "loon",
-  "salary",
-  "kindgebonden",
-  "kgb",
-  "toeslag",
-  "uitkering",
-  "refund",
-  "declaratie",
-  "teruggave",
-];
 
 const FIXED_EXPENSE_KEYWORDS = [
   "hypotheek",
@@ -353,6 +353,11 @@ function resolveExpenseBucket(
   const budgetGroup = normalizePattern(categoryMeta?.budget_group || "");
   const haystack = getHaystack(tx);
 
+  if (budgetGroup === "savings") return "savings_transfer";
+  if (budgetGroup === "subscriptions") return "subscriptions";
+  if (budgetGroup === "fixed") return "fixed_costs";
+  if (budgetGroup === "variable") return "variable_costs";
+
   if (categoryKey) {
     if (isSavingsCategoryKey(categoryKey)) return "savings_transfer";
     if (isSubscriptionCategoryKey(categoryKey)) return "subscriptions";
@@ -372,10 +377,6 @@ function resolveExpenseBucket(
       return "variable_costs";
     }
   }
-
-  if (budgetGroup === "savings") return "savings_transfer";
-  if (budgetGroup === "fixed") return "fixed_costs";
-  if (budgetGroup === "variable") return "variable_costs";
 
   if (includesAny(haystack, SAVINGS_TRANSFER_KEYWORDS))
     return "savings_transfer";
@@ -448,38 +449,56 @@ function classifyIncome(
   tx: BudgetTx,
   categoryMeta: CategoryMeta | null,
 ): IncomeBucket {
-  const categoryKey = categoryMeta
-    ? normalizeCategoryKey(categoryMeta.key)
-    : "";
-  const haystack = getHaystack(tx);
+  const semantics = resolveIncomeSemantics({
+    amount: tx.amount,
+    counterparty: tx.counterparty,
+    details: tx.details,
+    categoryKey: categoryMeta?.key || null,
+    budgetGroup: categoryMeta?.budget_group || null,
+    analysisCategory:
+      tx.analysis_category === "income_structural" ||
+      tx.analysis_category === "income_variable"
+        ? tx.analysis_category
+        : null,
+  });
 
-  if (
-    categoryKey.includes("income_salary") ||
-    haystack.includes("salaris") ||
-    haystack.includes("loon") ||
-    haystack.includes("salary")
-  ) {
-    return "salary";
+  return semantics.budgetBucket || "variable";
+}
+
+function addIncomeToBreakdown(
+  breakdown: BudgetIncomeBreakdown,
+  bucket: IncomeBucket,
+  amount: number,
+) {
+  if (bucket === "salary") breakdown.salary += amount;
+  if (bucket === "childBudget") breakdown.childBudget += amount;
+  if (bucket === "structuralOther") breakdown.structuralOther += amount;
+  if (bucket === "variable") breakdown.variable += amount;
+  if (bucket === "windfall") breakdown.windfalls += amount;
+  if (bucket === "costRefund") breakdown.costRefunds += amount;
+}
+
+function applyExpenseDelta(
+  expenses: BudgetExpenseBreakdown,
+  bucket: ExpenseBucket,
+  amount: number,
+  tx: BudgetTx,
+  categoryMeta: CategoryMeta | null,
+) {
+  if (bucket === "fixed_costs") expenses.fixedCosts += amount;
+  if (bucket === "subscriptions") expenses.subscriptions += amount;
+  if (bucket === "savings_transfer") expenses.savingsTransfer += amount;
+
+  if (bucket === "variable_costs") {
+    expenses.variableCosts += amount;
+    const subbucket = resolveVariableSubbucket(tx, categoryMeta);
+    if (subbucket === "groceries") expenses.variable.groceries += amount;
+    if (subbucket === "fuel") expenses.variable.fuel += amount;
+    if (subbucket === "smoking") expenses.variable.smoking += amount;
+    if (subbucket === "other") expenses.variable.other += amount;
   }
 
-  if (
-    categoryKey.includes("income_child_budget") ||
-    haystack.includes("kindgebonden budget") ||
-    haystack.includes("kgb") ||
-    haystack.includes("child budget")
-  ) {
-    return "childBudget";
-  }
-
-  if (
-    tx.analysis_category === "income_structural" ||
-    categoryKey.startsWith("income_") ||
-    includesAny(haystack, STRUCTURAL_INCOME_KEYWORDS)
-  ) {
-    return "structuralOther";
-  }
-
-  return "variable";
+  expenses.total += amount;
 }
 
 function emptyIncomeBreakdown(): BudgetIncomeBreakdown {
@@ -488,6 +507,8 @@ function emptyIncomeBreakdown(): BudgetIncomeBreakdown {
     childBudget: 0,
     structuralOther: 0,
     variable: 0,
+    windfalls: 0,
+    costRefunds: 0,
     total: 0,
   };
 }
@@ -522,6 +543,8 @@ function multiplyIncomeBy(
     childBudget: round2(value.childBudget * factor),
     structuralOther: round2(value.structuralOther * factor),
     variable: round2(value.variable * factor),
+    windfalls: round2(value.windfalls * factor),
+    costRefunds: round2(value.costRefunds * factor),
     total: round2(value.total * factor),
   };
 }
@@ -638,13 +661,22 @@ function computeIncomeTotalsByMonth(
     const categoryMeta = categoryId
       ? categoryMap.get(categoryId) || null
       : null;
+    const semantics = resolveIncomeSemantics({
+      amount,
+      counterparty: row.counterparty,
+      details: row.details,
+      categoryKey: categoryMeta?.key || null,
+      budgetGroup: categoryMeta?.budget_group || null,
+      analysisCategory:
+        row.analysis_category === "income_structural" ||
+        row.analysis_category === "income_variable"
+          ? row.analysis_category
+          : null,
+    });
     const bucket = classifyIncome(row, categoryMeta);
 
-    if (bucket === "salary") current.salary += amount;
-    if (bucket === "childBudget") current.childBudget += amount;
-    if (bucket === "structuralOther") current.structuralOther += amount;
-    if (bucket === "variable") current.variable += amount;
-    current.total += amount;
+    addIncomeToBreakdown(current, bucket, amount);
+    if (semantics.countsAsIncome) current.total += amount;
 
     byMonth.set(monthKey, current);
   }
@@ -656,6 +688,8 @@ function computeIncomeTotalsByMonth(
       childBudget: round2(income.childBudget),
       structuralOther: round2(income.structuralOther),
       variable: round2(income.variable),
+      windfalls: round2(income.windfalls),
+      costRefunds: round2(income.costRefunds),
       total: round2(income.total),
     });
   }
@@ -709,6 +743,12 @@ function resolveIncomeForecastFromCompletedMonths(
       variable: weightedRecentAverage(
         completedMonths.map((row) => row.value.variable),
       ),
+      windfalls: weightedRecentAverage(
+        completedMonths.map((row) => row.value.windfalls),
+      ),
+      costRefunds: weightedRecentAverage(
+        completedMonths.map((row) => row.value.costRefunds),
+      ),
       total: 0,
     },
     settings,
@@ -742,7 +782,6 @@ function computeExpenseTotalsByMonth(
     if (row.budget_excluded) continue;
 
     const amount = asNumber(row.amount, 0);
-    if (amount >= 0) continue;
 
     const monthKey = monthKeyFromIsoDate(row.date);
     if (!monthKey || monthKey.length !== 7) continue;
@@ -752,23 +791,40 @@ function computeExpenseTotalsByMonth(
     const categoryMeta = categoryId
       ? categoryMap.get(categoryId) || null
       : null;
-    const bucket = resolveExpenseBucket(row, categoryMeta);
-    const absAmount = Math.abs(amount);
 
-    if (bucket === "fixed_costs") current.fixedCosts += absAmount;
-    if (bucket === "subscriptions") current.subscriptions += absAmount;
-    if (bucket === "savings_transfer") current.savingsTransfer += absAmount;
+    if (amount > 0) {
+      const semantics = resolveIncomeSemantics({
+        amount,
+        counterparty: row.counterparty,
+        details: row.details,
+        categoryKey: categoryMeta?.key || null,
+        budgetGroup: categoryMeta?.budget_group || null,
+        analysisCategory:
+          row.analysis_category === "income_structural" ||
+          row.analysis_category === "income_variable"
+            ? row.analysis_category
+            : null,
+      });
 
-    if (bucket === "variable_costs") {
-      current.variableCosts += absAmount;
-      const subbucket = resolveVariableSubbucket(row, categoryMeta);
-      if (subbucket === "groceries") current.variable.groceries += absAmount;
-      if (subbucket === "fuel") current.variable.fuel += absAmount;
-      if (subbucket === "smoking") current.variable.smoking += absAmount;
-      if (subbucket === "other") current.variable.other += absAmount;
+      if (semantics.kind !== "expense_refund" || !semantics.expenseOffsetBucket) {
+        continue;
+      }
+
+      applyExpenseDelta(
+        current,
+        semantics.expenseOffsetBucket,
+        -amount,
+        row,
+        categoryMeta,
+      );
+      byMonth.set(monthKey, current);
+      continue;
     }
 
-    current.total += absAmount;
+    if (amount >= 0) continue;
+
+    const bucket = resolveExpenseBucket(row, categoryMeta);
+    applyExpenseDelta(current, bucket, Math.abs(amount), row, categoryMeta);
     byMonth.set(monthKey, current);
   }
 
@@ -830,7 +886,9 @@ function resolveExpenseBaselinesFromCompletedMonths(
     baselines.set(
       key,
       weightedRecentAverage(
-        completedMonths.map((row) => getBudgetCategoryActual(key, row.value)),
+        completedMonths.map((row) =>
+          Math.max(0, getBudgetCategoryActual(key, row.value)),
+        ),
       ),
     );
   }
@@ -1570,17 +1628,35 @@ async function fetchTransactionsInRange(
 }
 
 async function fetchCategoryMap(userId?: string): Promise<Map<string, CategoryMeta>> {
-  let query = supabase.from("categories").select("id,key,name,budget_group");
-  if (userId) {
-    query = query.or(`user_id.is.null,user_id.eq.${userId}`);
-  }
+  const resolvedUserId = userId || (await requireCurrentUserId());
+  let query = supabase
+    .from("categories")
+    .select("id,key,name,parent_id,budget_group,sort_order");
+  query = query.or(`user_id.is.null,user_id.eq.${resolvedUserId}`);
 
   const { data, error } = await query;
 
   if (error) throw error;
 
+  const rawCategories: CategoryRecord[] = ((data || []) as Record<string, unknown>[])
+    .map((row) => ({
+      id: String(row.id || ""),
+      key: String(row.key || ""),
+      name: String(row.name || ""),
+      parent_id: row.parent_id ? String(row.parent_id) : null,
+      budget_group: row.budget_group ? String(row.budget_group) : null,
+      sort_order:
+        row.sort_order == null ? null : Number(row.sort_order),
+    }))
+    .filter((row) => row.id);
+
+  const effectiveCategories = applyEffectiveBudgetGroupsToCategories(
+    rawCategories,
+    await listCategoryBudgetGroupOverrides(resolvedUserId),
+  );
+
   const map = new Map<string, CategoryMeta>();
-  for (const row of (data || []) as Record<string, unknown>[]) {
+  for (const row of effectiveCategories) {
     const id = String(row.id || "");
     map.set(id, {
       id,
@@ -1611,32 +1687,38 @@ function computeBreakdowns(
       : null;
 
     if (amount > 0) {
+      const semantics = resolveIncomeSemantics({
+        amount,
+        counterparty: row.counterparty,
+        details: row.details,
+        categoryKey: categoryMeta?.key || null,
+        budgetGroup: categoryMeta?.budget_group || null,
+        analysisCategory:
+          row.analysis_category === "income_structural" ||
+          row.analysis_category === "income_variable"
+            ? row.analysis_category
+            : null,
+      });
       const incomeBucket = classifyIncome(row, categoryMeta);
-      if (incomeBucket === "salary") income.salary += amount;
-      if (incomeBucket === "childBudget") income.childBudget += amount;
-      if (incomeBucket === "structuralOther") income.structuralOther += amount;
-      if (incomeBucket === "variable") income.variable += amount;
-      income.total += amount;
+
+      addIncomeToBreakdown(income, incomeBucket, amount);
+      if (semantics.countsAsIncome) {
+        income.total += amount;
+      }
+      if (semantics.kind === "expense_refund" && semantics.expenseOffsetBucket) {
+        applyExpenseDelta(
+          expenses,
+          semantics.expenseOffsetBucket,
+          -amount,
+          row,
+          categoryMeta,
+        );
+      }
       continue;
     }
 
-    const absAmount = Math.abs(amount);
     const bucket = resolveExpenseBucket(row, categoryMeta);
-
-    if (bucket === "fixed_costs") expenses.fixedCosts += absAmount;
-    if (bucket === "subscriptions") expenses.subscriptions += absAmount;
-    if (bucket === "savings_transfer") expenses.savingsTransfer += absAmount;
-
-    if (bucket === "variable_costs") {
-      expenses.variableCosts += absAmount;
-      const subbucket = resolveVariableSubbucket(row, categoryMeta);
-      if (subbucket === "groceries") expenses.variable.groceries += absAmount;
-      if (subbucket === "fuel") expenses.variable.fuel += absAmount;
-      if (subbucket === "smoking") expenses.variable.smoking += absAmount;
-      if (subbucket === "other") expenses.variable.other += absAmount;
-    }
-
-    expenses.total += absAmount;
+    applyExpenseDelta(expenses, bucket, Math.abs(amount), row, categoryMeta);
   }
 
   expenses.variable.total =
@@ -1649,6 +1731,8 @@ function computeBreakdowns(
   income.childBudget = round2(income.childBudget);
   income.structuralOther = round2(income.structuralOther);
   income.variable = round2(income.variable);
+  income.windfalls = round2(income.windfalls);
+  income.costRefunds = round2(income.costRefunds);
   income.total = round2(income.total);
 
   expenses.fixedCosts = round2(expenses.fixedCosts);

@@ -197,6 +197,10 @@ function RootNavigator() {
           name="subscriptions"
           options={{ title: "Abonnementen", headerShown: true }}
         />
+        <Stack.Screen
+          name="category-budget-groups"
+          options={{ title: "Categorie-indeling", headerShown: true }}
+        />
       </Stack>
     </AuthGate>
   );

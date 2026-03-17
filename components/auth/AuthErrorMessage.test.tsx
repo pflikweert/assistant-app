@@ -1,29 +1,35 @@
-import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
-import AuthErrorMessage from './AuthErrorMessage';
+import React from "react";
+import renderer, { act } from "react-test-renderer";
+import { describe, expect, it, vi } from "vitest";
 
-describe('AuthErrorMessage', () => {
-  it('toont juiste foutmelding voor verlopen link', () => {
-    const { getByText } = render(
-      <AuthErrorMessage code="otp_expired" onReset={jest.fn()} />
-    );
-    expect(getByText(/verlopen/i)).toBeTruthy();
-    expect(getByText(/Vraag nieuw wachtwoord aan/i)).toBeTruthy();
+import AuthErrorMessage, { getAuthErrorMessage } from "./AuthErrorMessage";
+
+describe("AuthErrorMessage", () => {
+  it("toont juiste foutmelding voor verlopen link", () => {
+    expect(getAuthErrorMessage("otp_expired")).toMatch(/verlopen/i);
   });
 
-  it('toont custom error description', () => {
-    const { getByText } = render(
-      <AuthErrorMessage code="unknown" description="Testfout" onReset={jest.fn()} />
+  it("toont custom error description voor onbekende code", () => {
+    expect(getAuthErrorMessage("some_unknown_code", "Testfout")).toMatch(
+      /Testfout/,
     );
-    expect(getByText(/Testfout/)).toBeTruthy();
   });
 
-  it('roept onReset aan bij knopdruk', () => {
-    const onReset = jest.fn();
-    const { getByText } = render(
-      <AuthErrorMessage code="otp_expired" onReset={onReset} />
-    );
-    fireEvent.press(getByText(/Vraag nieuw wachtwoord aan/i));
-    expect(onReset).toHaveBeenCalled();
+  it("roept onReset aan bij knopdruk", () => {
+    const onReset = vi.fn();
+    let tree: renderer.ReactTestRenderer;
+
+    act(() => {
+      tree = renderer.create(
+        <AuthErrorMessage code="otp_expired" onReset={onReset} />,
+      );
+    });
+
+    const button = tree!.root.findByProps({ title: "Vraag nieuw wachtwoord aan" });
+    act(() => {
+      button.props.onPress();
+    });
+
+    expect(onReset).toHaveBeenCalledTimes(1);
   });
 });

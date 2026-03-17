@@ -1,6 +1,8 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
+import { MonthPickerSheet } from "@/components/month-picker-sheet";
 import { FinColors } from "@/constants/theme";
+import { getBudgetGroupLabel } from "@/services/category-budget-groups";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
 import {
@@ -9,7 +11,14 @@ import {
   getEffectiveCategoryId,
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
+import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import { supabase } from "@/services/supabase";
+import {
+  getCurrentMonthKey,
+  getMonthOptionByKey,
+  listTransactionMonthOptions,
+  type TransactionMonthOption,
+} from "@/services/transaction-month-options";
 import type { CategoryRecord } from "@/types/categorization";
 import { AppIcon } from "@/components/ui/app-icon";
 import { useIsFocused } from "@react-navigation/native";
@@ -17,7 +26,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -42,13 +50,6 @@ const PRIMARY_FILTERS = [
 ] as const;
 
 type PrimaryFilterKey = (typeof PRIMARY_FILTERS)[number]["key"];
-
-type MonthOption = {
-  key: string;
-  label: string;
-  startIso: string | null;
-  endIso: string | null;
-};
 
 type Tx = {
   id: string;
@@ -94,86 +95,6 @@ function formatSectionDateLabel(value: string) {
   });
 }
 
-function buildMonthOptions(oldestDate: string | null): MonthOption[] {
-  const options: MonthOption[] = [
-    {
-      key: "all",
-      label: "Alle maanden",
-      startIso: null,
-      endIso: null,
-    },
-  ];
-
-  if (!oldestDate) return options;
-
-  const oldest = new Date(`${oldestDate}T00:00:00`);
-  if (Number.isNaN(oldest.getTime())) return options;
-
-  const oldestMonth = new Date(oldest.getFullYear(), oldest.getMonth(), 1);
-  let cursor = new Date();
-  cursor = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
-
-  while (cursor >= oldestMonth) {
-    const start = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
-    const end = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-    options.push({
-      key: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`,
-      label: start.toLocaleDateString("nl-NL", {
-        month: "long",
-        year: "numeric",
-      }),
-      startIso: start.toISOString().slice(0, 10),
-      endIso: end.toISOString().slice(0, 10),
-    });
-
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
-  }
-
-  return options;
-}
-
-function getMonthOptionByKey(monthKey: string) {
-  if (monthKey === "all") {
-    return {
-      key: "all",
-      label: "Alle maanden",
-      startIso: null,
-      endIso: null,
-    };
-  }
-
-  const [yearValue, monthValue] = monthKey.split("-");
-  const year = Number.parseInt(yearValue || "", 10);
-  const month = Number.parseInt(monthValue || "", 10);
-
-  if (
-    !Number.isFinite(year) ||
-    !Number.isFinite(month) ||
-    month < 1 ||
-    month > 12
-  ) {
-    return {
-      key: "all",
-      label: "Alle maanden",
-      startIso: null,
-      endIso: null,
-    };
-  }
-
-  const start = new Date(year, month - 1, 1);
-  const end = new Date(year, month, 1);
-
-  return {
-    key: monthKey,
-    label: start.toLocaleDateString("nl-NL", {
-      month: "long",
-      year: "numeric",
-    }),
-    startIso: start.toISOString().slice(0, 10),
-    endIso: end.toISOString().slice(0, 10),
-  };
-}
-
 function getStatusMeta(tx: Tx) {
   if (tx.category_id_user) {
     return {
@@ -205,6 +126,18 @@ function TxRow({
   categoryMap: Map<string, CategoryRecord>;
 }) {
   const isPositive = item.amount >= 0;
+  const effectiveCategoryId = getEffectiveCategoryId(item);
+  const budgetGroupLabel = getBudgetGroupLabel(
+    effectiveCategoryId ? categoryMap.get(effectiveCategoryId)?.budget_group : null,
+  );
+  const incomeSemantics = isPositive
+    ? resolveIncomeSemanticsForTransaction(item, categoryMap)
+    : null;
+  const incomeSemanticLabel =
+    incomeSemantics?.shortLabel &&
+    incomeSemantics.shortLabel !== "Variabel inkomen"
+      ? incomeSemantics.shortLabel
+      : null;
 
   return (
     <TouchableOpacity
@@ -244,6 +177,20 @@ function TxRow({
 
         <View style={styles.txBottomLine}>
           <Text style={styles.categoryBadge}>{item.categoryLabel}</Text>
+          {budgetGroupLabel ? (
+            <Text style={styles.budgetGroupBadge}>{budgetGroupLabel}</Text>
+          ) : null}
+          {incomeSemanticLabel ? (
+            <Text
+              style={[
+                styles.incomeSemanticBadge,
+                incomeSemantics?.kind === "expense_refund" &&
+                  styles.incomeSemanticBadgeRefund,
+              ]}
+            >
+              {incomeSemanticLabel}
+            </Text>
+          ) : null}
           <Text
             style={[
               styles.statusBadge,
@@ -275,6 +222,10 @@ export default function TransactionsTab() {
   const counterparty = Array.isArray(rawCounterparty)
     ? rawCounterparty[0]
     : rawCounterparty;
+  const fallbackMonthOption = React.useMemo(
+    () => getMonthOptionByKey(getCurrentMonthKey())!,
+    [],
+  );
 
   const [transactions, setTransactions] = React.useState<Tx[]>([]);
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
@@ -283,13 +234,15 @@ export default function TransactionsTab() {
   const [hasMore, setHasMore] = React.useState(true);
   const [primaryFilter, setPrimaryFilter] =
     React.useState<PrimaryFilterKey>("all");
-  const [filterSheetOpen, setFilterSheetOpen] = React.useState(false);
+  const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
   const [searchInput, setSearchInput] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [selectedMonthKey, setSelectedMonthKey] = React.useState("all");
-  const [monthOptions, setMonthOptions] = React.useState<MonthOption[]>([
-    getMonthOptionByKey("all"),
-  ]);
+  const [selectedMonthKey, setSelectedMonthKey] = React.useState(
+    getCurrentMonthKey(),
+  );
+  const [monthOptions, setMonthOptions] = React.useState<TransactionMonthOption[]>(
+    [fallbackMonthOption],
+  );
   const isFocused = useIsFocused();
   const backgroundStatus = useCategorizationStatus();
 
@@ -299,11 +252,23 @@ export default function TransactionsTab() {
   );
 
   const selectedMonth = React.useMemo(
-    () =>
-      monthOptions.find((option) => option.key === selectedMonthKey) ||
-      getMonthOptionByKey(selectedMonthKey),
-    [monthOptions, selectedMonthKey],
+    () => {
+      return (
+        monthOptions.find((option) => option.key === selectedMonthKey) ||
+        getMonthOptionByKey(selectedMonthKey) ||
+        monthOptions[0] ||
+        fallbackMonthOption
+      );
+    },
+    [fallbackMonthOption, monthOptions, selectedMonthKey],
   );
+  const selectedMonthIndex = React.useMemo(
+    () => monthOptions.findIndex((option) => option.key === selectedMonth?.key),
+    [monthOptions, selectedMonth?.key],
+  );
+  const canGoToOlderMonth =
+    selectedMonthIndex >= 0 && selectedMonthIndex < monthOptions.length - 1;
+  const canGoToNewerMonth = selectedMonthIndex > 0;
 
   const searchTokens = React.useMemo(
     () => normalizeSearch(searchQuery).split(" ").filter(Boolean),
@@ -312,7 +277,6 @@ export default function TransactionsTab() {
 
   const activeFilterCount = [
     primaryFilter !== "all",
-    selectedMonthKey !== "all",
     Boolean(searchQuery),
     Boolean(counterparty),
   ].filter(Boolean).length;
@@ -330,25 +294,13 @@ export default function TransactionsTab() {
 
   const loadMonthOptions = React.useCallback(async () => {
     try {
-      const userId = await requireCurrentUserId();
-      const base = supabase
-        .from("transactions")
-        .select("date")
-        .eq("user_id", userId)
-        .order("date", { ascending: true })
-        .limit(1);
-
-      const query = counterparty ? base.eq("counterparty", counterparty) : base;
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const oldestDate = data?.[0]?.date ? String(data[0].date) : null;
-      setMonthOptions(buildMonthOptions(oldestDate));
+      const options = await listTransactionMonthOptions({ counterparty });
+      setMonthOptions(options);
     } catch (error) {
       console.warn("[transactions] month options error", error);
-      setMonthOptions(buildMonthOptions(null));
+      setMonthOptions([fallbackMonthOption]);
     }
-  }, [counterparty]);
+  }, [counterparty, fallbackMonthOption]);
 
   const loadPage = React.useCallback(
     async (nextPage: number) => {
@@ -371,11 +323,9 @@ export default function TransactionsTab() {
           query = query.eq("counterparty", counterparty);
         }
 
-        if (selectedMonth.startIso && selectedMonth.endIso) {
-          query = query
-            .gte("date", selectedMonth.startIso)
-            .lt("date", selectedMonth.endIso);
-        }
+        query = query
+          .gte("date", selectedMonth.startIso)
+          .lt("date", selectedMonth.endIso);
 
         if (searchTokens.length) {
           const orFilters = searchTokens
@@ -450,8 +400,11 @@ export default function TransactionsTab() {
 
   React.useEffect(() => {
     if (monthOptions.some((option) => option.key === selectedMonthKey)) return;
-    setSelectedMonthKey("all");
-  }, [monthOptions, selectedMonthKey]);
+    const currentMonthOption = monthOptions.find((option) => option.isCurrentMonth);
+    setSelectedMonthKey(
+      (currentMonthOption || monthOptions[0] || fallbackMonthOption).key,
+    );
+  }, [fallbackMonthOption, monthOptions, selectedMonthKey]);
 
   React.useEffect(() => {
     if (!isFocused) return;
@@ -533,7 +486,6 @@ export default function TransactionsTab() {
 
   const handleResetFilters = React.useCallback(() => {
     setPrimaryFilter("all");
-    setSelectedMonthKey("all");
     setSearchInput("");
     setSearchQuery("");
     setPage(0);
@@ -556,30 +508,50 @@ export default function TransactionsTab() {
               </Text>
             </View>
           </View>
+        </View>
 
-          <TouchableOpacity
+        <View style={styles.monthRow}>
+          <Pressable
             style={[
-              styles.filterButton,
-              filterSheetOpen && styles.filterButtonActive,
+              styles.monthNavButton,
+              !canGoToOlderMonth && styles.monthNavButtonDisabled,
             ]}
-            onPress={() => setFilterSheetOpen(true)}
+            onPress={() => {
+              if (!canGoToOlderMonth) return;
+              const nextOption = monthOptions[selectedMonthIndex + 1];
+              if (nextOption) setSelectedMonthKey(nextOption.key);
+            }}
+            disabled={!canGoToOlderMonth}
           >
+            <Text style={styles.monthNavButtonText}>‹</Text>
+          </Pressable>
+          <Pressable
+            style={styles.monthBadge}
+            onPress={() => setMonthPickerOpen(true)}
+          >
+            <Text style={styles.monthBadgeText}>{selectedMonth.label}</Text>
             <AppIcon
-              name="tune"
+              name="expand-more"
               size={18}
-              color={
-                filterSheetOpen ? FinColors.bgCard : FinColors.textPrimary
-              }
+              color={FinColors.textSecondary}
+              variant="outlined"
+              style={styles.monthBadgeIcon}
             />
-            <Text
-              style={[
-                styles.filterButtonText,
-                filterSheetOpen && styles.filterButtonTextActive,
-              ]}
-            >
-              {activeFilterCount ? `${activeFilterCount}` : "Filter"}
-            </Text>
-          </TouchableOpacity>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.monthNavButton,
+              !canGoToNewerMonth && styles.monthNavButtonDisabled,
+            ]}
+            onPress={() => {
+              if (!canGoToNewerMonth) return;
+              const nextOption = monthOptions[selectedMonthIndex - 1];
+              if (nextOption) setSelectedMonthKey(nextOption.key);
+            }}
+            disabled={!canGoToNewerMonth}
+          >
+            <Text style={styles.monthNavButtonText}>›</Text>
+          </Pressable>
         </View>
 
         <View style={styles.searchWrap}>
@@ -623,13 +595,8 @@ export default function TransactionsTab() {
           ))}
         </View>
 
-        {(selectedMonthKey !== "all" || counterparty || hasActiveFilters) && (
+        {(counterparty || hasActiveFilters) && (
           <View style={styles.activeChipsRow}>
-            {selectedMonthKey !== "all" ? (
-              <View style={styles.activeChip}>
-                <Text style={styles.activeChipText}>{selectedMonth.label}</Text>
-              </View>
-            ) : null}
             {counterparty ? (
               <View style={styles.activeChip}>
                 <Text style={styles.activeChipText}>{counterparty}</Text>
@@ -711,69 +678,15 @@ export default function TransactionsTab() {
         </TouchableOpacity>
       </View>
 
-      {filterSheetOpen ? (
-        <Modal
-          transparent
-          visible={filterSheetOpen}
-          animationType="slide"
-          onRequestClose={() => setFilterSheetOpen(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <Pressable
-              style={styles.modalBackdrop}
-              onPress={() => setFilterSheetOpen(false)}
-            />
-            <View style={styles.sheet}>
-              <View style={styles.sheetHandle} />
-              <View style={styles.sheetHeader}>
-                <Text style={styles.sheetTitle}>Filters</Text>
-                <TouchableOpacity onPress={() => setFilterSheetOpen(false)}>
-                  <Text style={styles.sheetClose}>Sluit</Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.sheetLabel}>Maand</Text>
-              <View style={styles.monthGrid}>
-                {monthOptions.slice(0, 8).map((option) => (
-                  <TouchableOpacity
-                    key={option.key}
-                    style={[
-                      styles.monthChip,
-                      selectedMonthKey === option.key && styles.monthChipActive,
-                    ]}
-                    onPress={() => setSelectedMonthKey(option.key)}
-                  >
-                    <Text
-                      style={[
-                        styles.monthChipText,
-                        selectedMonthKey === option.key &&
-                          styles.monthChipTextActive,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={styles.sheetActions}>
-                <TouchableOpacity
-                  style={styles.sheetSecondaryButton}
-                  onPress={handleResetFilters}
-                >
-                  <Text style={styles.sheetSecondaryButtonText}>Reset</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.sheetPrimaryButton}
-                  onPress={() => setFilterSheetOpen(false)}
-                >
-                  <Text style={styles.sheetPrimaryButtonText}>Toepassen</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
-      ) : null}
+      <MonthPickerSheet
+        visible={monthPickerOpen}
+        title="Kies maand"
+        helper="Alleen maanden met transacties"
+        options={monthOptions}
+        selectedKey={selectedMonth.key}
+        onClose={() => setMonthPickerOpen(false)}
+        onSelect={setSelectedMonthKey}
+      />
     </View>
   );
 }
@@ -815,30 +728,51 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: FinColors.textSecondary,
   },
-  filterButton: {
-    minWidth: 46,
-    height: 40,
-    borderRadius: 12,
+  monthRow: {
+    marginTop: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  monthBadge: {
+    flex: 1,
+    minHeight: 40,
+    marginHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgCard,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
-    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 16,
   },
-  filterButtonActive: {
-    backgroundColor: FinColors.textPrimary,
-    borderColor: FinColors.textPrimary,
-  },
-  filterButtonText: {
-    marginLeft: 6,
-    fontSize: 12,
+  monthBadgeText: {
+    fontSize: 13,
     fontWeight: "700",
     color: FinColors.textPrimary,
+    textTransform: "capitalize",
   },
-  filterButtonTextActive: {
-    color: FinColors.bgCard,
+  monthBadgeIcon: {
+    marginLeft: 4,
+  },
+  monthNavButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  monthNavButtonDisabled: {
+    opacity: 0.45,
+  },
+  monthNavButtonText: {
+    fontSize: 22,
+    lineHeight: 22,
+    color: FinColors.textPrimary,
   },
   searchWrap: {
     marginTop: 14,
@@ -1025,6 +959,39 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: "hidden",
   },
+  budgetGroupBadge: {
+    marginRight: 8,
+    marginBottom: 6,
+    fontSize: 11,
+    fontWeight: "700",
+    color: FinColors.warningText,
+    backgroundColor: FinColors.warningBg,
+    borderWidth: 1,
+    borderColor: FinColors.warningBorder,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  incomeSemanticBadge: {
+    marginRight: 8,
+    marginBottom: 6,
+    fontSize: 11,
+    fontWeight: "700",
+    color: FinColors.green,
+    backgroundColor: FinColors.greenBg,
+    borderWidth: 1,
+    borderColor: FinColors.greenBorder,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  incomeSemanticBadgeRefund: {
+    color: FinColors.warningText,
+    backgroundColor: FinColors.warningBg,
+    borderColor: FinColors.warningBorder,
+  },
   statusBadge: {
     marginRight: 8,
     marginBottom: 6,
@@ -1105,111 +1072,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: FinColors.textSecondary,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(17,17,17,0.16)",
-  },
-  sheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    backgroundColor: FinColors.bgCard,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 28,
-  },
-  sheetHandle: {
-    width: 44,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: FinColors.border,
-    alignSelf: "center",
-  },
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 10,
-  },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-  },
-  sheetClose: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: FinColors.warningText,
-  },
-  sheetLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    color: FinColors.textSecondary,
-  },
-  monthGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  monthChip: {
-    marginRight: 8,
-    marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  monthChipActive: {
-    backgroundColor: FinColors.textPrimary,
-    borderColor: FinColors.textPrimary,
-  },
-  monthChipText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: FinColors.textSecondary,
-  },
-  monthChipTextActive: {
-    color: FinColors.bgCard,
-  },
-  sheetActions: {
-    flexDirection: "row",
-    marginTop: 6,
-  },
-  sheetSecondaryButton: {
-    flex: 1,
-    marginRight: 5,
-    minHeight: 48,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgElevated,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  sheetSecondaryButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-  },
-  sheetPrimaryButton: {
-    flex: 1,
-    marginLeft: 5,
-    minHeight: 48,
-    borderRadius: 16,
-    backgroundColor: FinColors.textPrimary,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  sheetPrimaryButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: FinColors.bgCard,
   },
 });
