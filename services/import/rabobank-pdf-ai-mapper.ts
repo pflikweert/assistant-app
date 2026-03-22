@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
+import { postOpenAIChatCompletion } from "../openai-proxy";
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const appEnv = ((Constants.expoConfig?.extra as Record<string, string | undefined>) ||
   process.env) as Record<string, string | undefined>;
 const DEFAULT_MODEL = appEnv.OPENAI_MODEL || "gpt-4.1-mini";
@@ -138,30 +138,23 @@ function buildPrompt(rawPdfText: string, deterministicRows: CanonicalPdfTransact
   ].join("\n\n");
 }
 
-async function requestOpenAI(prompt: string, apiKey: string) {
+async function requestOpenAI(prompt: string) {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < OPENAI_RETRY_ATTEMPTS; attempt += 1) {
     try {
-      const response = await fetch(OPENAI_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: DEFAULT_MODEL,
-          temperature: 0,
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "system",
-              content:
-                "Extract Rabobank PDF transactions and return strict canonical JSON only.",
-            },
-            { role: "user", content: prompt },
-          ],
-        }),
+      const response = await postOpenAIChatCompletion({
+        model: DEFAULT_MODEL,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "Extract Rabobank PDF transactions and return strict canonical JSON only.",
+          },
+          { role: "user", content: prompt },
+        ],
       });
 
       if (!response.ok) {
@@ -205,13 +198,8 @@ export async function mapRabobankPdfTransactionsWithAI(input: {
   rawPdfText: string;
   deterministicRows: CanonicalPdfTransaction[];
 }): Promise<CanonicalPdfTransaction[]> {
-  const apiKey = appEnv.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY niet geconfigureerd voor PDF AI-fallback.");
-  }
-
   const prompt = buildPrompt(input.rawPdfText, input.deterministicRows);
-  const content = await requestOpenAI(prompt, apiKey);
+  const content = await requestOpenAI(prompt);
 
   try {
     return parseAndValidateAiPayload(content);

@@ -4,8 +4,7 @@ import type {
     BudgetPlanMode,
 } from "@/types/categorization";
 import Constants from "expo-constants";
-
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+import { postOpenAIChatCompletion } from "./openai-proxy";
 const appEnv = ((Constants.expoConfig?.extra as Record<
   string,
   string | undefined
@@ -367,7 +366,6 @@ function buildCoachPromptPayload(plan: BudgetPlanComputation) {
 }
 
 async function requestAutomaticSavingsTarget(
-  apiKey: string,
   model: string,
   input: AutomaticSavingsTargetInput,
 ): Promise<number> {
@@ -410,14 +408,7 @@ async function requestAutomaticSavingsTarget(
 
   await waitForOpenAIRateLimitWindow(estimatedTokens);
 
-  const response = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: payloadText,
-  });
+  const response = await postOpenAIChatCompletion(payload);
 
   updateOpenAIRateLimitStateFromHeaders(response.headers);
 
@@ -444,12 +435,12 @@ async function requestAutomaticSavingsTarget(
   }
 
   const data = (await response.json()) as {
-    choices?: Array<{
+    choices?: {
       finish_reason?: string;
       message?: {
         content?: string;
       };
-    }>;
+    }[];
   };
 
   if (data.choices?.[0]?.finish_reason === "length") {
@@ -475,7 +466,6 @@ async function requestAutomaticSavingsTarget(
 }
 
 async function requestAutomaticSavingsTargetWithRetry(
-  apiKey: string,
   model: string,
   input: AutomaticSavingsTargetInput,
 ) {
@@ -483,7 +473,7 @@ async function requestAutomaticSavingsTargetWithRetry(
 
   while (true) {
     try {
-      return await requestAutomaticSavingsTarget(apiKey, model, input);
+      return await requestAutomaticSavingsTarget(model, input);
     } catch (error) {
       const typedErr = error as OpenAIRequestError;
       const isRateLimit = typedErr.status === 429;
@@ -518,14 +508,6 @@ export async function suggestAutomaticSavingsTarget(
     };
   }
 
-  const apiKey = appEnv.OPENAI_API_KEY;
-  if (!apiKey) {
-    return {
-      amount: boundedDeterministicTarget,
-      usedOpenAI: false,
-    };
-  }
-
   const cacheKey = buildAutomaticSavingsCacheKey({
     ...input,
     deterministicTarget: boundedDeterministicTarget,
@@ -535,7 +517,6 @@ export async function suggestAutomaticSavingsTarget(
 
   try {
     const amount = await requestAutomaticSavingsTargetWithRetry(
-      apiKey,
       DEFAULT_MODEL,
       {
         ...input,
@@ -561,7 +542,6 @@ export async function suggestAutomaticSavingsTarget(
 }
 
 async function requestCoachReport(
-  apiKey: string,
   model: string,
   plan: BudgetPlanComputation,
 ): Promise<BudgetCoachReport> {
@@ -614,14 +594,7 @@ async function requestCoachReport(
 
   await waitForOpenAIRateLimitWindow(estimatedTokens);
 
-  const response = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: payloadText,
-  });
+  const response = await postOpenAIChatCompletion(payload);
 
   updateOpenAIRateLimitStateFromHeaders(response.headers);
 
@@ -648,12 +621,12 @@ async function requestCoachReport(
   }
 
   const data = (await response.json()) as {
-    choices?: Array<{
+    choices?: {
       finish_reason?: string;
       message?: {
         content?: string;
       };
-    }>;
+    }[];
   };
 
   if (data.choices?.[0]?.finish_reason === "length") {
@@ -669,7 +642,6 @@ async function requestCoachReport(
 }
 
 async function requestCoachReportWithRetry(
-  apiKey: string,
   model: string,
   plan: BudgetPlanComputation,
 ) {
@@ -677,7 +649,7 @@ async function requestCoachReportWithRetry(
 
   while (true) {
     try {
-      return await requestCoachReport(apiKey, model, plan);
+      return await requestCoachReport(model, plan);
     } catch (error) {
       const typedErr = error as OpenAIRequestError;
       const isRateLimit = typedErr.status === 429;
@@ -696,16 +668,12 @@ async function requestCoachReportWithRetry(
 export async function generateBudgetCoachReport(
   plan: BudgetPlanComputation,
 ): Promise<BudgetCoachReport> {
-  const apiKey = appEnv.OPENAI_API_KEY;
-  if (!apiKey) return plan.coachReport;
-
   const cacheKey = buildCacheKey(plan);
   const cached = readCachedReport(cacheKey);
   if (cached) return cached;
 
   try {
     const report = await requestCoachReportWithRetry(
-      apiKey,
       DEFAULT_MODEL,
       plan,
     );

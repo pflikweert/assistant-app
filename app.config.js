@@ -9,8 +9,11 @@ export default {
     extra: {
       SUPABASE_URL: process.env.SUPABASE_URL,
       SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       OPENAI_MODEL: process.env.OPENAI_MODEL,
+      APP_BASE_URL:
+        process.env.APP_BASE_URL ||
+        process.env.EXPO_PUBLIC_SITE_URL ||
+        process.env.SITE_URL,
       DEV_AUTH_BYPASS: process.env.DEV_AUTH_BYPASS,
       DEV_AUTH_USER_ID: process.env.DEV_AUTH_USER_ID,
       DEV_AUTH_USER_EMAIL: process.env.DEV_AUTH_USER_EMAIL,

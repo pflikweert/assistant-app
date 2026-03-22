@@ -16,8 +16,7 @@ import {
 } from "./categorization-status";
 import { getLeafCategories } from "./category-display";
 import { requestForecastRefresh } from "./forecast-refresh";
-
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+import { postOpenAIChatCompletion } from "./openai-proxy";
 const appEnv = ((Constants.expoConfig?.extra as Record<
   string,
   string | undefined
@@ -765,7 +764,6 @@ function isOpenAIResponseMalformed(error: unknown) {
 }
 
 async function requestOpenAICategories(
-  apiKey: string,
   model: string,
   categories: CategoryRecord[],
   transactions: TransactionCategorizationRecord[],
@@ -837,14 +835,7 @@ async function requestOpenAICategories(
 
   await waitForOpenAIRateLimitWindow(estimatedTokens);
 
-  const response = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: payloadText,
-  });
+  const response = await postOpenAIChatCompletion(payload);
 
   updateOpenAIRateLimitStateFromHeaders(response.headers);
 
@@ -892,7 +883,6 @@ function wait(ms: number) {
 }
 
 async function requestOpenAICategoriesWithRetry(
-  apiKey: string,
   model: string,
   categories: CategoryRecord[],
   transactions: TransactionCategorizationRecord[],
@@ -901,12 +891,7 @@ async function requestOpenAICategoriesWithRetry(
 
   while (true) {
     try {
-      return await requestOpenAICategories(
-        apiKey,
-        model,
-        categories,
-        transactions,
-      );
+      return await requestOpenAICategories(model, categories, transactions);
     } catch (error) {
       const typedErr = error as OpenAIRequestError;
       const isRateLimit = typedErr.status === 429;
@@ -934,7 +919,6 @@ async function requestOpenAICategoriesWithRetry(
 }
 
 async function requestOpenAICategoriesForBatch(
-  apiKey: string,
   model: string,
   categories: CategoryRecord[],
   transactions: TransactionCategorizationRecord[],
@@ -942,12 +926,7 @@ async function requestOpenAICategoriesForBatch(
   if (!transactions.length) return [];
 
   try {
-    return await requestOpenAICategoriesWithRetry(
-      apiKey,
-      model,
-      categories,
-      transactions,
-    );
+    return await requestOpenAICategoriesWithRetry(model, categories, transactions);
   } catch (error) {
     if (transactions.length <= 1 || !isOpenAIResponseMalformed(error)) {
       throw error;
@@ -967,13 +946,11 @@ async function requestOpenAICategoriesForBatch(
     );
 
     const leftResults = await requestOpenAICategoriesForBatch(
-      apiKey,
       model,
       categories,
       leftBatch,
     );
     const rightResults = await requestOpenAICategoriesForBatch(
-      apiKey,
       model,
       categories,
       rightBatch,
@@ -1080,7 +1057,6 @@ export async function categorizeTransactions(
     unresolved.push(tx);
   }
 
-  const openAiKey = appEnv.OPENAI_API_KEY;
   if (unresolved.length) {
     const byFingerprint = new Map<string, TransactionCategorizationRecord[]>();
     for (const tx of unresolved) {
@@ -1121,7 +1097,7 @@ export async function categorizeTransactions(
       repToFingerprint.set(representative.id, fingerprint);
     }
 
-    if (representatives.length && openAiKey) {
+    if (representatives.length) {
       for (let i = 0; i < representatives.length; i += OPENAI_BATCH_SIZE) {
         if (i > 0) {
           await waitWithStatus(
@@ -1135,7 +1111,6 @@ export async function categorizeTransactions(
 
         try {
           aiItems = await requestOpenAICategoriesForBatch(
-            openAiKey,
             DEFAULT_MODEL,
             selectableCategories,
             batch,
@@ -1177,8 +1152,6 @@ export async function categorizeTransactions(
           }
         }
       }
-    } else if (representatives.length && !openAiKey) {
-      console.warn("categorization openai skipped: OPENAI_API_KEY missing");
     }
   }
 
@@ -1682,11 +1655,7 @@ export async function recategorizeSingleTransaction(
     : getLeafCategories(allCategories);
   const categoriesByKey = new Map(selectableCategories.map((c) => [c.key, c]));
 
-  const openAiKey = appEnv.OPENAI_API_KEY;
-  if (!openAiKey) throw new Error("OPENAI_API_KEY niet geconfigureerd.");
-
   const items = await requestOpenAICategoriesWithRetry(
-    openAiKey,
     DEFAULT_MODEL,
     selectableCategories,
     [tx],
