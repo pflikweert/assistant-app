@@ -227,7 +227,7 @@ function RecoveryRedirector({ children }: { children: React.ReactNode }) {
         .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
         .join('&');
       const target =
-        `/auth/new-password${query ? `?${query}` : ""}` as Href;
+        `/auth/reset-password${query ? `?${query}` : ""}` as Href;
       router.replace(target);
     }
   }, [params, router]);

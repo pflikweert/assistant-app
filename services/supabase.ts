@@ -1,12 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
+import "dotenv/config";
 
-// try to load a local .env file if present (expo may already do this)
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  require("dotenv").config();
-} catch {
-  // ignore if dotenv isn't installed or fails
-}
+import { createClient } from "@supabase/supabase-js";
 
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
@@ -181,10 +175,15 @@ export async function loginWithEmail(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
 }
 
-export async function registerWithEmail(email: string, password: string) {
+export async function registerWithEmail(
+  email: string,
+  password: string,
+  emailRedirectTo?: string,
+) {
   return supabase.auth.signUp({
     email,
     password,
+    options: emailRedirectTo ? { emailRedirectTo } : undefined,
   });
 }
 

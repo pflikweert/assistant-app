@@ -6,6 +6,7 @@ import {
 import type { Href } from "expo-router";
 import React from "react";
 import { ActivityIndicator, Pressable, Text, TextInput } from "react-native";
+import { getAuthRedirectUrl } from "@/services/auth-url";
 
 export default function RegisterScreen() {
   const { register } = useSession();
@@ -35,9 +36,11 @@ export default function RegisterScreen() {
     setSuccess(null);
 
     try {
+      const emailRedirectTo = getAuthRedirectUrl("/auth/login");
       const { data, error: registerError } = await register(
         email.trim(),
         password,
+        emailRedirectTo,
       );
       if (registerError) {
         setError(registerError.message || "Registratie mislukt.");

@@ -4,13 +4,18 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
-  Button,
-  Platform,
+  Pressable,
+  StyleSheet,
   Text,
   TextInput,
   View,
+  Platform,
 } from "react-native";
 import type { Session } from "@supabase/supabase-js";
+import {
+  AuthScreenShell,
+  authScreenStyles,
+} from "@/components/auth/auth-screen-shell";
 import AuthErrorMessage from "@/components/auth/AuthErrorMessage";
 import { supabase } from "@/services/supabase";
 
@@ -134,19 +139,17 @@ export default function ResetPasswordScreen() {
 
   if (sessionLoading) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          padding: 24,
-        }}
+      <AuthScreenShell
+        title="Resetlink controleren"
+        subtitle="Even geduld, we controleren of je link nog geldig is."
       >
-        <ActivityIndicator size="large" />
-        <Text style={{ marginTop: 12, color: "#7E8A9A" }}>
-          Bezig met het valideren van je resetlink…
-        </Text>
-      </View>
+        <View style={styles.loadingCard}>
+          <ActivityIndicator size="large" color="#111111" />
+          <Text style={styles.loadingText}>
+            Bezig met het valideren van je resetlink…
+          </Text>
+        </View>
+      </AuthScreenShell>
     );
   }
 
@@ -168,33 +171,73 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <View style={{ padding: 24 }}>
-      <Text
-        style={{ fontSize: 22, fontWeight: "bold", marginBottom: 16 }}
-      >
-        Nieuw wachtwoord instellen
-      </Text>
+    <AuthScreenShell
+      title="Nieuw wachtwoord"
+      subtitle="Stel een nieuw wachtwoord in voor je account."
+      links={[
+        {
+          href: "/auth/login" as Href,
+          prompt: "Terug naar",
+          label: "Inloggen",
+        },
+      ]}
+    >
+      <Text style={authScreenStyles.fieldLabel}>Nieuw wachtwoord</Text>
       <TextInput
-        placeholder="Nieuw wachtwoord"
+        style={authScreenStyles.input}
+        placeholder="Kies een nieuw wachtwoord"
+        placeholderTextColor="#8F8A83"
         secureTextEntry
         value={password}
         onChangeText={setPassword}
-        style={{ marginBottom: 12, borderBottomWidth: 1, padding: 8 }}
         editable={!loading}
       />
+      <Text style={authScreenStyles.fieldLabel}>Bevestig wachtwoord</Text>
       <TextInput
-        placeholder="Bevestig wachtwoord"
+        style={authScreenStyles.input}
+        placeholder="Herhaal het wachtwoord"
+        placeholderTextColor="#8F8A83"
         secureTextEntry
         value={confirm}
         onChangeText={setConfirm}
-        style={{ marginBottom: 24, borderBottomWidth: 1, padding: 8 }}
         editable={!loading}
       />
-      <Button
-        title={loading ? "Bezig..." : "Wachtwoord instellen"}
+      <Text style={authScreenStyles.helperText}>
+        Gebruik minimaal 8 tekens. Je huidige wachtwoord is hier niet nodig.
+      </Text>
+      <Pressable
+        style={[
+          authScreenStyles.button,
+          disabled && authScreenStyles.buttonDisabled,
+        ]}
         onPress={handleSubmit}
         disabled={disabled}
-      />
-    </View>
+      >
+        {loading ? (
+          <ActivityIndicator color="#111111" />
+        ) : (
+          <Text style={authScreenStyles.buttonText}>Wachtwoord instellen</Text>
+        )}
+      </Pressable>
+    </AuthScreenShell>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingCard: {
+    gap: 14,
+    paddingVertical: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 28,
+    backgroundColor: "rgba(255,255,255,0.7)",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.06)",
+  },
+  loadingText: {
+    color: "#5F5A54",
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+});

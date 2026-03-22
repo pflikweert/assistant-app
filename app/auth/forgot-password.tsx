@@ -3,10 +3,10 @@ import {
   AuthScreenShell,
   authScreenStyles,
 } from "@/components/auth/auth-screen-shell";
-import * as Linking from "expo-linking";
 import type { Href } from "expo-router";
 import React from "react";
 import { ActivityIndicator, Pressable, Text, TextInput } from "react-native";
+import { getAuthRedirectUrl } from "@/services/auth-url";
 
 export default function ForgotPasswordScreen() {
   const { requestPasswordReset } = useSession();
@@ -24,7 +24,7 @@ export default function ForgotPasswordScreen() {
     setSuccess(null);
 
     try {
-      const redirectTo = Linking.createURL("/auth/reset-password");
+      const redirectTo = getAuthRedirectUrl("/auth/reset-password");
       const { error: resetError } = await requestPasswordReset(
         email.trim(),
         redirectTo,
