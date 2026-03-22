@@ -105,3 +105,12 @@ You can override the fake user by defining these additional vars:
 
 The bypass only runs outside production builds and never removes the required
 Supabase credentials for the rest of the app.
+
+## UI Richting
+
+Voor schermopbouw, componenthergebruik, kleuren en spacing gelden de projectrichtlijnen uit:
+
+- [AGENTS.md](./AGENTS.md)
+- [docs/UI_PATTERNS.md](./docs/UI_PATTERNS.md)
+
+Nieuwe UI hoort zoveel mogelijk via gedeelde componenten en shells te lopen, zodat styling en lay-out op één plek te onderhouden blijven.

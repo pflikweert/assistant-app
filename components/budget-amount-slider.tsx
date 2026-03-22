@@ -113,8 +113,11 @@ export function BudgetAmountSlider({
             />
           </View>
           <View
-            pointerEvents="none"
-            style={[styles.thumb, { left: `${Math.round(progress * 100)}%` }]}
+            style={[
+              styles.thumb,
+              styles.thumbPointerEvents,
+              { left: `${Math.round(progress * 100)}%` },
+            ]}
           />
         </View>
 
@@ -206,6 +209,9 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.green,
     borderWidth: 2,
     borderColor: FinColors.bgCard,
+  },
+  thumbPointerEvents: {
+    pointerEvents: "none",
   },
   rangeRow: {
     flexDirection: "row",

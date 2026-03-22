@@ -48,7 +48,7 @@ vi.mock("@/services/budget-plan-repository", () => ({
   getMonthlyBudgetValues: vi.fn(async () => []),
 }));
 
-vi.mock("@/services/categorization-repository", () => ({
+vi.mock("@/services/pattern-normalization", () => ({
   normalizePattern: (value: string) =>
     String(value || "")
       .toLowerCase()

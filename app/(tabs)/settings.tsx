@@ -755,10 +755,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    shadowColor: "#111111",
-    shadowOpacity: 0.04,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    boxShadow: "0px 10px 18px rgba(17,17,17,0.04)",
     elevation: 2,
   },
 

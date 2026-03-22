@@ -1,10 +1,11 @@
 import { BudgetAmountSlider } from "@/components/budget-amount-slider";
 import { BudgetCategoryProgressRow } from "@/components/budget-category-progress-row";
 import { TransactionCategoryIcon } from "@/components/category-icon";
-import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { MonthPickerSheet } from "@/components/month-picker-sheet";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { FinColors } from "@/constants/theme";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import {
   resolveLockedVariableMainCategories,
   shouldPersistCategoryOnBudgetSave,
@@ -2430,23 +2431,23 @@ export default function BudgetScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.topBar}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <HeaderDropdownMenu />
-            <View>
-              <Text style={styles.pageTitle}>Budget</Text>
-              <Text style={styles.pageSubtitle}>Week sturen, maand bewaken, slim beheren.</Text>
-            </View>
-          </View>
+      <FinanceScreenBackdrop tone="warm" />
+      <FinanceTopBar
+        shellStyle={styles.topBar}
+        innerStyle={styles.topBarInner}
+        title="Budget"
+        subtitle="Week sturen, maand bewaken, slim beheren."
+        titleStyle={styles.pageTitle}
+        subtitleStyle={styles.pageSubtitle}
+        rightSlot={
           <TouchableOpacity
             style={styles.headerCta}
             onPress={() => router.push("/insights")}
           >
             <Text style={styles.headerCtaText}>Insights</Text>
           </TouchableOpacity>
-        </View>
-
+        }
+      >
         <View style={styles.monthRow}>
           <Pressable
             style={[
@@ -2511,7 +2512,7 @@ export default function BudgetScreen() {
             </TouchableOpacity>
           ))}
         </View>
-      </View>
+      </FinanceTopBar>
 
       {loading && !budgetPlan ? (
         <View style={styles.centered}>
@@ -4104,30 +4105,19 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: FinColors.bgBase,
+    overflow: "hidden",
   },
   topBar: {
-    paddingTop: 20,
-    paddingHorizontal: 24,
-    paddingBottom: 14,
-    backgroundColor: "rgba(246,245,242,0.82)",
+    backgroundColor: "rgba(246,245,242,0.9)",
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.06)",
-    shadowColor: "#111111",
-    shadowOpacity: 0.03,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    borderBottomColor: "rgba(17,17,17,0.08)",
+    boxShadow: "0px 8px 16px rgba(17,17,17,0.05)",
     elevation: 1,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flex: 1,
+  topBarInner: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 14,
   },
   pageTitle: {
     fontSize: 28,
@@ -4226,7 +4216,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-    paddingBottom: 32,
+    paddingBottom: 128,
     gap: 16,
   },
   heroCard: {
@@ -4235,10 +4225,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     padding: 22,
-    shadowColor: "#111111",
-    shadowOpacity: 0.04,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    boxShadow: "0px 10px 18px rgba(17,17,17,0.04)",
     elevation: 2,
   },
   eyebrow: {
@@ -4311,10 +4298,7 @@ const styles = StyleSheet.create({
     borderColor: FinColors.borderSubtle,
     padding: 18,
     gap: 14,
-    shadowColor: "#111111",
-    shadowOpacity: 0.03,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
+    boxShadow: "0px 8px 14px rgba(17,17,17,0.03)",
     elevation: 1,
   },
   actionCard: {
@@ -4701,10 +4685,7 @@ const styles = StyleSheet.create({
     borderColor: FinColors.borderSubtle,
     padding: 16,
     gap: 8,
-    shadowColor: "#111111",
-    shadowOpacity: 0.02,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    boxShadow: "0px 6px 12px rgba(17,17,17,0.02)",
     elevation: 1,
   },
   modeDescriptionTitle: {

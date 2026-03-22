@@ -176,18 +176,25 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="csv-import"
-          options={{ title: "Import Transactions", headerShown: true }}
+          options={{
+            title: "Import Transactions",
+            headerShown: true,
+            headerRight: () => <HeaderDropdownMenu mode="detail" />,
+          }}
         />
         <Stack.Screen
           name="modal"
-          options={{ presentation: "modal", title: "Info" }}
+          options={{
+            presentation: "modal",
+            title: "Info",
+            headerRight: () => <HeaderDropdownMenu mode="detail" />,
+          }}
         />
         <Stack.Screen
           name="transaction-detail"
           options={{
             presentation: "modal",
-            title: "Transactie",
-            headerShown: true,
+            headerShown: false,
           }}
         />
         <Stack.Screen
@@ -196,19 +203,27 @@ function RootNavigator() {
         />
         <Stack.Screen
           name="analysis-detail"
-          options={{ title: "Analyse detail", headerShown: true }}
+          options={{
+            title: "Analyse detail",
+            headerShown: true,
+            headerRight: () => <HeaderDropdownMenu mode="detail" />,
+          }}
         />
         <Stack.Screen
           name="subscriptions"
           options={{
             title: "Abonnementen",
             headerShown: true,
-            headerRight: () => <HeaderDropdownMenu />,
+            headerRight: () => <HeaderDropdownMenu mode="detail" />,
           }}
         />
         <Stack.Screen
           name="category-budget-groups"
-          options={{ title: "Categorie-indeling", headerShown: true }}
+          options={{
+            title: "Categorie-indeling",
+            headerShown: true,
+            headerRight: () => <HeaderDropdownMenu mode="detail" />,
+          }}
         />
       </Stack>
     </AuthGate>

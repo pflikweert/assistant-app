@@ -1,7 +1,11 @@
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { TransactionCategoryIcon } from "@/components/category-icon";
-import HeaderDropdownMenu from "@/components/header-dropdown-menu";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
+import { FinanceLoadingSplash } from "@/components/ui/finance-loading-splash";
+import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { AppIcon } from "@/components/ui/app-icon";
+import { SquareAccentBlock } from "@/components/ui/square-accent-block";
 import { FinColors } from "@/constants/theme";
 import {
   getMonthVariableBudgetUsageText,
@@ -94,21 +98,8 @@ function formatRemainingDaysInWeekLabel(
   return `${remainingDays} ${dayLabel} resterend`;
 }
 
-function getGreetingLabel(now = new Date()) {
-  const hour = now.getHours();
-  if (hour < 12) return "Goedemorgen";
-  if (hour < 18) return "Goedemiddag";
-  return "Goedenavond";
-}
-
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
-}
-
-function formatDeltaLabel(value: number | null) {
-  if (value == null) return null;
-  if (value === 0) return "Geen verandering sinds gisteren";
-  return `${value > 0 ? "+" : "-"}${fmt.format(Math.abs(value))} sinds gisteren`;
 }
 
 function isMissingRelationError(error: unknown) {
@@ -191,7 +182,7 @@ export default function DashboardScreen() {
     React.useState<BudgetPlanComputation | null>(null);
   const [budgetSchemaMissing, setBudgetSchemaMissing] = React.useState(false);
   const [balance, setBalance] = React.useState<number | null>(null);
-  const [balanceDelta, setBalanceDelta] = React.useState<number | null>(null);
+  const [isBootstrapping, setIsBootstrapping] = React.useState(true);
   const budgetLoadInFlight = React.useRef(false);
   const isFocused = useIsFocused();
   const backgroundStatus = useCategorizationStatus();
@@ -362,7 +353,6 @@ export default function DashboardScreen() {
       if (!rows.length) {
         setTransactions([]);
         setBalance(null);
-        setBalanceDelta(null);
         return;
       }
 
@@ -370,14 +360,8 @@ export default function DashboardScreen() {
 
       const balanceRows = rows.filter((row) => row.runningBalance != null);
       const latestBalance = balanceRows[0]?.runningBalance ?? null;
-      const previousBalance = balanceRows[1]?.runningBalance ?? null;
 
       setBalance(latestBalance);
-      setBalanceDelta(
-        latestBalance != null && previousBalance != null
-          ? latestBalance - previousBalance
-          : null,
-      );
     } catch (error) {
       console.error("[dashboard] load error", error);
     }
@@ -408,24 +392,39 @@ export default function DashboardScreen() {
     }
   }, [budgetSchemaMissing]);
 
-  React.useEffect(() => {
-    if (!isFocused) return;
-    void loadCategories();
-  }, [isFocused, loadCategories]);
+  const loadInitialDashboard = React.useCallback(async () => {
+    try {
+      await Promise.all([loadCategories(), loadDashboard(), loadBudget()]);
+    } finally {
+      setIsBootstrapping(false);
+    }
+  }, [loadBudget, loadCategories, loadDashboard]);
 
   React.useEffect(() => {
-    if (!isFocused) return;
+    if (!isFocused || !isBootstrapping) return;
+    void loadInitialDashboard();
+  }, [isBootstrapping, isFocused, loadInitialDashboard]);
+
+  React.useEffect(() => {
+    if (!isFocused || isBootstrapping) return;
+    void loadCategories();
+  }, [isBootstrapping, isFocused, loadCategories]);
+
+  React.useEffect(() => {
+    if (!isFocused || isBootstrapping) return;
     void loadDashboard();
     void loadBudget();
-  }, [isFocused, loadBudget, loadDashboard]);
+  }, [isBootstrapping, isFocused, loadBudget, loadDashboard]);
 
   React.useEffect(() => {
-    if (!isFocused || !backgroundStatus.lastCompletedAt) return;
+    if (!isFocused || !backgroundStatus.lastCompletedAt || isBootstrapping)
+      return;
     void loadCategories();
     void loadDashboard();
     void loadBudget();
   }, [
     backgroundStatus.lastCompletedAt,
+    isBootstrapping,
     isFocused,
     loadBudget,
     loadCategories,
@@ -434,12 +433,11 @@ export default function DashboardScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.topBar}>
-        <View style={styles.topBarInner}>
-          <View style={styles.topBarLeft}>
-            <HeaderDropdownMenu />
-            <Text style={styles.topBarTitle}>Mijn Financiën</Text>
-          </View>
+      <FinanceScreenBackdrop tone="warm" />
+      <FinanceTopBar
+        shellStyle={styles.topBar}
+        title="Mijn Financiën"
+        rightSlot={
           <View style={styles.headerBadge}>
             <AppIcon
               name="notifications-none"
@@ -447,48 +445,45 @@ export default function DashboardScreen() {
               color={FinColors.textPrimary}
             />
           </View>
-        </View>
-      </View>
+        }
+      />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
-      >
-        <View style={styles.heroShell}>
-          <View style={styles.heroInner}>
-            <View style={styles.heroEyebrowRow}>
-              <View style={styles.heroEyebrowDot} />
-              <Text style={styles.eyebrow}>Totaal saldo</Text>
-            </View>
-            <Text style={styles.greeting}>{getGreetingLabel()}</Text>
-            <Text style={[styles.heroAmount, !hasTransactions && styles.emptyAmount]}>
-              {hasTransactions && balance != null ? fmt.format(balance) : "Nog geen data"}
-            </Text>
-            <View style={styles.heroMetaRow}>
-              <Text style={styles.heroMeta}>
-                {hasTransactions
-                  ? formatDeltaLabel(balanceDelta) || "Saldo is bijgewerkt"
-                  : "Importeer transacties om je stand te tonen"}
-              </Text>
-              {hasTransactions ? (
-                <View style={styles.livePill}>
-                  <View style={styles.liveDot} />
-                  <Text style={styles.liveText}>Actueel</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={styles.heroSupport}>
-              {hasTransactions
-                ? "Actuele momentopname van je hoofdrekening, met direct daaronder je ruimte en tempo."
-                : "Koppel of importeer transacties om direct overzicht en budgetsturing te krijgen."}
-            </Text>
-
-            <Pressable
+      {isBootstrapping ? (
+        <FinanceLoadingSplash
+          title="Dashboard laden"
+          subtitle="We halen je actuele saldo, maandbudget en laatste transacties op."
+          steps={[
+            "Saldo synchroniseren",
+            "Budget berekenen",
+            "Recente transacties ophalen",
+          ]}
+          note="Dit duurt meestal maar een paar seconden."
+        />
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scroll}
+        >
+          <FinanceHeroShell
+            eyebrow="Huidig saldo"
+            title={hasTransactions && balance != null ? fmt.format(balance) : "Nog geen data"}
+            subtitle={
+              hasTransactions
+                ? "Actuele momentopname van je hoofdrekening."
+                : "Koppel of importeer transacties om direct overzicht en budgetsturing te krijgen."
+            }
+            titleStyle={[
+              styles.heroAmount,
+              !hasTransactions && styles.emptyAmount,
+            ]}
+            subtitleStyle={styles.heroSupport}
+          >
+            <SquareAccentBlock
               style={styles.heroBudgetCard}
               onPress={() => router.push("/budget")}
             >
-              <View style={styles.heroBudgetTop}>
-                <Text style={styles.heroBudgetEyebrow}>Vrij te besteden</Text>
+              <View style={styles.heroBudgetHeader}>
+                <Text style={styles.heroBudgetEyebrow}>Huidig maandbudget</Text>
                 <View style={styles.inlineCta}>
                   <Text style={styles.inlineCtaText}>Bekijk budget</Text>
                   <AppIcon
@@ -511,247 +506,237 @@ export default function DashboardScreen() {
                     : "Budgetgegevens laden..."}
               </Text>
               {budgetPlan ? (
-                <>
-                  <View style={styles.heroBudgetTrack}>
-                    <View
-                      style={[
-                        styles.heroBudgetTrackFill,
-                        {
-                          width: `${monthBudgetFill}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <View style={styles.heroBudgetMetaRow}>
-                    <Text style={styles.heroBudgetMeta}>
-                      {monthSpentInBudget == null
-                        ? "Onbekend"
-                        : `${fmt.format(monthSpentInBudget)} gebruikt`}
-                    </Text>
-                    <Text style={styles.heroBudgetMeta}>
-                      {monthBudgetTotal == null
-                        ? "Onbekend"
-                        : `${fmt.format(monthBudgetTotal)} totaal`}
-                    </Text>
-                  </View>
-                </>
-              ) : null}
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.contentMax}>
-          <View style={styles.mainStack}>
-            <View style={[styles.gridRow, isWideLayout && styles.gridRowWide]}>
-              <Pressable
-                style={[styles.surfaceCard, styles.weekCard, isWideLayout && styles.weekCardWide]}
-                onPress={() => router.push("/budget")}
-              >
-                <View style={styles.cardHeaderRow}>
-                  <View style={styles.cardHeaderText}>
-                    <Text style={styles.sectionTitle}>Deze week</Text>
-                    <Text style={styles.sectionSubtle}>
-                      {currentWeekPlan
-                        ? formatWeekRangeLabel(
-                            currentWeekPlan.startDate,
-                            currentWeekPlan.endDateExclusive,
-                          )
-                        : "Weekbudget volgt zodra je budget actief is"}
-                    </Text>
-                  </View>
+                <View style={styles.heroBudgetTrack}>
                   <View
                     style={[
-                      styles.statusChip,
-                      currentWeekRiskTone === "good" &&
-                        styles.statusChipGood,
-                      currentWeekRiskTone === "watch" &&
-                        styles.statusChipWatch,
-                      currentWeekRiskTone === "critical" &&
-                        styles.statusChipCritical,
+                      styles.heroBudgetTrackFill,
+                      {
+                        width: `${monthBudgetFill}%`,
+                      },
                     ]}
-                  >
-                    <Text
-                      style={[
-                        styles.statusChipText,
-                        currentWeekRiskTone === "good" &&
-                          styles.statusChipTextGood,
-                        currentWeekRiskTone === "watch" &&
-                          styles.statusChipTextWatch,
-                        currentWeekRiskTone === "critical" &&
-                          styles.statusChipTextCritical,
-                      ]}
-                    >
-                      {currentWeekSnapshot.label}
-                    </Text>
-                  </View>
+                  />
                 </View>
-                <View style={styles.weekSummaryRow}>
-                  <Text style={styles.weekSummaryValue}>
-                    {currentWeekPlan
-                      ? `${fmt.format(currentWeekPlan.actual)} van ${fmt.format(currentWeekPlan.budget)}`
-                      : "Nog geen weekbudget"}
-                  </Text>
-                  <Text style={styles.weekSummaryMeta}>
-                    {currentWeekRemainingDays || "Deze week"}
-                  </Text>
-                </View>
-                <RiskProgressBar
-                  progress={currentWeekProgress}
-                  tone={currentWeekRiskTone}
-                  style={styles.progressTrack}
-                />
-                {weeklyTrendBars.length ? (
-                  <View style={styles.sparklineRow}>
-                    {weeklyTrendBars.map((bar) => (
-                      <View key={bar.key} style={styles.sparklineItem}>
-                        <View style={styles.sparklineTrack}>
-                          <View
-                            style={[
-                              styles.sparklineFill,
-                              {
-                                height: `${Math.round(bar.utilization * 100)}%`,
-                              },
-                              bar.isCurrentWeek && styles.sparklineFillCurrent,
-                            ]}
-                          />
-                        </View>
-                        <Text
-                          style={[
-                            styles.sparklineLabel,
-                            bar.isCurrentWeek && styles.sparklineLabelCurrent,
-                          ]}
-                        >
-                          {bar.label.replace("Week ", "W")}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-                <Text style={styles.weekTrendText}>
-                  {getWeekTempoMessage(currentWeekPlan)}
-                </Text>
-              </Pressable>
+              ) : null}
+            </SquareAccentBlock>
+          </FinanceHeroShell>
 
-              <View style={[styles.sideStack, isWideLayout && styles.sideStackWide]}>
-                <View style={[styles.surfaceCard, styles.monthStatusCard]}>
+          <View style={styles.contentMax}>
+            <View style={styles.mainStack}>
+              <View style={[styles.gridRow, isWideLayout && styles.gridRowWide]}>
+                <Pressable
+                  style={[
+                    styles.surfaceCard,
+                    styles.weekCard,
+                    isWideLayout && styles.weekCardWide,
+                  ]}
+                  onPress={() => router.push("/budget")}
+                >
                   <View style={styles.cardHeaderRow}>
                     <View style={styles.cardHeaderText}>
-                      <Text style={styles.sectionTitle}>Maandstatus</Text>
-                      <Text style={styles.sectionSubtle}>Uitgaven van deze maand</Text>
+                      <Text style={styles.sectionTitle}>Deze week</Text>
+                      <Text style={styles.sectionSubtle}>
+                        {currentWeekPlan
+                          ? formatWeekRangeLabel(
+                              currentWeekPlan.startDate,
+                              currentWeekPlan.endDateExclusive,
+                            )
+                          : "Weekbudget volgt zodra je budget actief is"}
+                      </Text>
                     </View>
                     <View
                       style={[
                         styles.statusChip,
-                        monthRiskTone === "good" && styles.statusChipGood,
-                        monthRiskTone === "watch" && styles.statusChipWatch,
-                        monthRiskTone === "critical" && styles.statusChipCritical,
+                        currentWeekRiskTone === "good" &&
+                          styles.statusChipGood,
+                        currentWeekRiskTone === "watch" &&
+                          styles.statusChipWatch,
+                        currentWeekRiskTone === "critical" &&
+                          styles.statusChipCritical,
                       ]}
                     >
                       <Text
                         style={[
                           styles.statusChipText,
-                          monthRiskTone === "good" && styles.statusChipTextGood,
-                          monthRiskTone === "watch" && styles.statusChipTextWatch,
-                          monthRiskTone === "critical" && styles.statusChipTextCritical,
+                          currentWeekRiskTone === "good" &&
+                            styles.statusChipTextGood,
+                          currentWeekRiskTone === "watch" &&
+                            styles.statusChipTextWatch,
+                          currentWeekRiskTone === "critical" &&
+                            styles.statusChipTextCritical,
                         ]}
                       >
-                        {monthBudgetSnapshot.label}
+                        {currentWeekSnapshot.label}
                       </Text>
                     </View>
                   </View>
-                  <View style={styles.subStatsColumn}>
-                    <View style={styles.subStatCard}>
-                      <Text style={styles.subStatLabel}>Variabel gebruikt</Text>
-                      <Text style={styles.subStatValue}>
-                        {monthSpentInBudget == null
-                          ? "Onbekend"
-                          : fmt.format(monthSpentInBudget)}
-                      </Text>
-                    </View>
-                    <View style={styles.subStatCard}>
-                      <Text style={styles.subStatLabel}>Nog vrij</Text>
-                      <Text style={styles.subStatValue}>
-                        {remainingBudget == null
-                          ? "Onbekend"
-                          : fmt.format(Math.max(remainingBudget, 0))}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View style={[styles.accentCard, styles.nudgeCard]}>
-                  <View style={styles.nudgeHeader}>
-                    <Text style={styles.sectionTitle}>Positieve signalen</Text>
-                    <AppIcon name="wb-sunny" size={16} color={FinColors.warningText} />
-                  </View>
-                  {positiveNudges.length ? (
-                    positiveNudges.map((item) => (
-                      <View key={item} style={styles.nudgeRow}>
-                        <View style={styles.nudgeDot} />
-                        <Text style={styles.nudgeText}>{item}</Text>
-                      </View>
-                    ))
-                  ) : (
-                    <Text style={styles.nudgeFallback}>
-                      Zodra er wat meer ritme in je transacties zit, laten we hier je positieve voortgang zien.
+                  <View style={styles.weekSummaryRow}>
+                    <Text style={styles.weekSummaryValue}>
+                      {currentWeekPlan
+                        ? `${fmt.format(currentWeekPlan.actual)} van ${fmt.format(currentWeekPlan.budget)}`
+                        : "Nog geen weekbudget"}
                     </Text>
-                  )}
+                    <Text style={styles.weekSummaryMeta}>
+                      {currentWeekRemainingDays || "Deze week"}
+                    </Text>
+                  </View>
+                  <RiskProgressBar
+                    progress={currentWeekProgress}
+                    tone={currentWeekRiskTone}
+                    style={styles.progressTrack}
+                  />
+                  {weeklyTrendBars.length ? (
+                    <View style={styles.sparklineRow}>
+                      {weeklyTrendBars.map((bar) => (
+                        <View key={bar.key} style={styles.sparklineItem}>
+                          <View style={styles.sparklineTrack}>
+                            <View
+                              style={[
+                                styles.sparklineFill,
+                                {
+                                  height: `${Math.round(bar.utilization * 100)}%`,
+                                },
+                                bar.isCurrentWeek && styles.sparklineFillCurrent,
+                              ]}
+                            />
+                          </View>
+                          <Text
+                            style={[
+                              styles.sparklineLabel,
+                              bar.isCurrentWeek && styles.sparklineLabelCurrent,
+                            ]}
+                          >
+                            {bar.label.replace("Week ", "W")}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                  <Text style={styles.weekTrendText}>
+                    {getWeekTempoMessage(currentWeekPlan)}
+                  </Text>
+                </Pressable>
+
+                <View style={[styles.sideStack, isWideLayout && styles.sideStackWide]}>
+                  <View style={[styles.surfaceCard, styles.monthStatusCard]}>
+                    <View style={styles.cardHeaderRow}>
+                      <View style={styles.cardHeaderText}>
+                        <Text style={styles.sectionTitle}>Maandstatus</Text>
+                        <Text style={styles.sectionSubtle}>Uitgaven van deze maand</Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.statusChip,
+                          monthRiskTone === "good" && styles.statusChipGood,
+                          monthRiskTone === "watch" && styles.statusChipWatch,
+                          monthRiskTone === "critical" && styles.statusChipCritical,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusChipText,
+                            monthRiskTone === "good" && styles.statusChipTextGood,
+                            monthRiskTone === "watch" && styles.statusChipTextWatch,
+                            monthRiskTone === "critical" && styles.statusChipTextCritical,
+                          ]}
+                        >
+                          {monthBudgetSnapshot.label}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.subStatsColumn}>
+                      <View style={styles.subStatCard}>
+                        <Text style={styles.subStatLabel}>Variabel gebruikt</Text>
+                        <Text style={styles.subStatValue}>
+                          {monthSpentInBudget == null
+                            ? "Onbekend"
+                            : fmt.format(monthSpentInBudget)}
+                        </Text>
+                      </View>
+                      <View style={styles.subStatCard}>
+                        <Text style={styles.subStatLabel}>Nog vrij</Text>
+                        <Text style={styles.subStatValue}>
+                          {remainingBudget == null
+                            ? "Onbekend"
+                            : fmt.format(Math.max(remainingBudget, 0))}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={[styles.accentCard, styles.nudgeCard]}>
+                    <View style={styles.nudgeHeader}>
+                      <Text style={styles.sectionTitle}>Positieve signalen</Text>
+                      <AppIcon name="wb-sunny" size={16} color={FinColors.warningText} />
+                    </View>
+                    {positiveNudges.length ? (
+                      positiveNudges.map((item) => (
+                        <View key={item} style={styles.nudgeRow}>
+                          <View style={styles.nudgeDot} />
+                          <Text style={styles.nudgeText}>{item}</Text>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={styles.nudgeFallback}>
+                        Zodra er wat meer ritme in je transacties zit, laten we hier je positieve voortgang zien.
+                      </Text>
+                    )}
+                  </View>
                 </View>
               </View>
-            </View>
 
-            <View style={styles.actionsRow}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.actionButtonPrimary]}
-                onPress={() => router.push("/transactions")}
-              >
-                <Text style={styles.actionButtonPrimaryText}>Transacties bekijken</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => router.push("/csv-import")}
-              >
-                <Text style={styles.actionButtonText}>Importeren</Text>
-              </TouchableOpacity>
-            </View>
+              <View style={styles.actionsRow}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.actionButtonPrimary]}
+                  onPress={() => router.push("/transactions")}
+                >
+                  <Text style={styles.actionButtonPrimaryText}>Transacties bekijken</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => router.push("/csv-import")}
+                >
+                  <Text style={styles.actionButtonText}>Importeren</Text>
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Laatste transacties</Text>
-              <TouchableOpacity onPress={() => router.push("/transactions")}>
-                <Text style={styles.seeAll}>Open lijst</Text>
-              </TouchableOpacity>
-            </View>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Laatste transacties</Text>
+                <TouchableOpacity onPress={() => router.push("/transactions")}>
+                  <Text style={styles.seeAll}>Open lijst</Text>
+                </TouchableOpacity>
+              </View>
 
-            <View style={styles.txCard}>
-              {recentTransactions.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <View style={styles.emptyIconWrap}>
-                    <AppIcon
-                      name="history"
-                      size={28}
-                      color={FinColors.textMuted}
-                      variant="outlined"
-                    />
+              <View style={styles.txCard}>
+                {recentTransactions.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <View style={styles.emptyIconWrap}>
+                      <AppIcon
+                        name="history"
+                        size={28}
+                        color={FinColors.textMuted}
+                        variant="outlined"
+                      />
+                    </View>
+                    <Text style={styles.emptyTitle}>Nog geen transacties</Text>
+                    <Text style={styles.emptyText}>
+                      Zodra er transacties zijn, zie je hier een rustige momentopname van je laatste bewegingen.
+                    </Text>
                   </View>
-                  <Text style={styles.emptyTitle}>Nog geen transacties</Text>
-                  <Text style={styles.emptyText}>
-                    Zodra er transacties zijn, zie je hier een rustige momentopname van je laatste bewegingen.
-                  </Text>
-                </View>
-              ) : (
-                recentTransactions.map((tx, index) => (
-                  <React.Fragment key={tx.id}>
-                    <TxRow tx={tx} categoryMap={categoryMap} />
-                    {index < recentTransactions.length - 1 ? (
-                      <View style={styles.divider} />
-                    ) : null}
-                  </React.Fragment>
-                ))
-              )}
+                ) : (
+                  recentTransactions.map((tx, index) => (
+                    <React.Fragment key={tx.id}>
+                      <TxRow tx={tx} categoryMap={categoryMap} />
+                      {index < recentTransactions.length - 1 ? (
+                        <View style={styles.divider} />
+                      ) : null}
+                    </React.Fragment>
+                  ))
+                )}
+              </View>
             </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -760,6 +745,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: FinColors.bgBase,
+    overflow: "hidden",
   },
   topBar: {
     position: "absolute",
@@ -767,32 +753,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 20,
-    backgroundColor: "rgba(246,245,242,0.84)",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.05)",
-  },
-  topBarInner: {
-    width: "100%",
-    maxWidth: CONTENT_MAX_WIDTH,
-    alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  topBarLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  topBarTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: FinColors.textPrimary,
-    letterSpacing: -0.4,
   },
   headerBadge: {
     width: 40,
@@ -805,49 +765,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   scroll: {
-    paddingBottom: 36,
-  },
-  heroShell: {
-    backgroundColor: FinColors.bgElevated,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.05)",
-  },
-  heroInner: {
-    width: "100%",
-    maxWidth: CONTENT_MAX_WIDTH,
-    alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingTop: 86,
-    paddingBottom: 30,
-  },
-  heroEyebrowRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
-  },
-  heroEyebrowDot: {
-    width: 8,
-    height: 8,
-    backgroundColor: FinColors.warningText,
-  },
-  eyebrow: {
-    fontSize: 10,
-    lineHeight: 14,
-    color: FinColors.textMuted,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 2,
-  },
-  greeting: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: FinColors.textSecondary,
-    fontWeight: "700",
-    marginTop: 4,
+    paddingBottom: 128,
   },
   heroAmount: {
-    marginTop: 10,
     fontSize: 52,
     lineHeight: 54,
     fontWeight: "900",
@@ -860,44 +780,7 @@ const styles = StyleSheet.create({
     color: FinColors.textMuted,
     letterSpacing: 0,
   },
-  heroMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 14,
-    gap: 10,
-  },
-  heroMeta: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-    color: FinColors.textSecondary,
-    fontWeight: "600",
-  },
-  livePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: FinColors.warningBg,
-    borderWidth: 1,
-    borderColor: FinColors.warningBorder,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: FinColors.yellow,
-  },
-  liveText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: FinColors.warningText,
-  },
   heroSupport: {
-    marginTop: 14,
     maxWidth: 720,
     fontSize: 18,
     lineHeight: 26,
@@ -905,15 +788,8 @@ const styles = StyleSheet.create({
   },
   heroBudgetCard: {
     marginTop: 24,
-    backgroundColor: "rgba(242,201,76,0.12)",
-    borderRadius: 32,
-    paddingHorizontal: 22,
-    paddingVertical: 22,
-    borderWidth: 1,
-    borderColor: FinColors.warningBorder,
-    gap: 14,
   },
-  heroBudgetTop: {
+  heroBudgetHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -942,25 +818,14 @@ const styles = StyleSheet.create({
   heroBudgetTrack: {
     width: "100%",
     height: 6,
-    borderRadius: 999,
+    borderRadius: 0,
     backgroundColor: "rgba(17,17,17,0.08)",
     overflow: "hidden",
   },
   heroBudgetTrackFill: {
     height: "100%",
-    borderRadius: 999,
+    borderRadius: 0,
     backgroundColor: FinColors.warningText,
-  },
-  heroBudgetMetaRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  heroBudgetMeta: {
-    fontSize: 11,
-    lineHeight: 15,
-    color: FinColors.textSecondary,
-    fontWeight: "700",
   },
   contentMax: {
     width: "100%",

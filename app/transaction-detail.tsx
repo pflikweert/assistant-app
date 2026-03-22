@@ -1,8 +1,13 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { AppIcon } from "@/components/ui/app-icon";
+import { FinanceDetailCard } from "@/components/ui/finance-detail-card";
+import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
+import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
+import { FinanceModalTopBar } from "@/components/ui/finance-modal-top-bar";
+import { FinanceQuickMenu } from "@/components/navigation/finance-quick-menu";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceTextBlock } from "@/components/ui/finance-text-block";
 import { FinColors } from "@/constants/theme";
-import { getBudgetGroupLabel } from "@/services/category-budget-groups";
-import { recategorizeSingleTransaction } from "@/services/categorization";
 import {
     bulkUpdateCategoryByCounterparty,
     countCounterpartyTransactions,
@@ -18,7 +23,6 @@ import {
     getCategoryPathLabel,
     getLeafCategories,
 } from "@/services/category-display";
-import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import {
     getTransactionSubscriptionMatch,
     linkTransactionToSubscription,
@@ -30,7 +34,6 @@ import {
 import type {
     CategoryRecord,
     SubscriptionProfile,
-    SubscriptionProviderHint,
 } from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -38,6 +41,7 @@ import React from "react";
 import {
     ActivityIndicator,
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Switch,
@@ -58,13 +62,21 @@ function parseSaldo(value: unknown): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
-function truncateMsg(s: string, max: number) {
-  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
-}
-
 function normalizeRouteParam(value?: string | string[]) {
   if (Array.isArray(value)) return value[0];
   return value;
+}
+
+function formatTransactionDateLabel(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  return parsed.toLocaleDateString("nl-NL", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 const SUBJECT_DRIVEN_PROVIDERS = [
@@ -85,38 +97,6 @@ function isSubjectDrivenCounterparty(counterparty: string | null | undefined) {
 
 function getSubjectFromDetails(details: string) {
   return details.split("|")[0]?.trim() || details;
-}
-
-function detectProviderHintFromTransaction(
-  counterparty: string | null,
-  details: string,
-): SubscriptionProviderHint | null {
-  const haystack = normalizeSubscriptionText(
-    `${counterparty || ""} ${details || ""}`,
-  );
-  if (!haystack) return null;
-
-  if (haystack.includes("paypal")) return "paypal";
-  if (haystack.includes("google play") || haystack.includes("googleplay")) {
-    return "google_play";
-  }
-  if (
-    haystack.includes("apple") ||
-    haystack.includes("itunes") ||
-    haystack.includes("apple com bill")
-  ) {
-    return "apple";
-  }
-  if (
-    haystack.includes("klarna") ||
-    haystack.includes("riverty") ||
-    haystack.includes("afterpay") ||
-    haystack.includes("billink") ||
-    haystack.includes("in3")
-  ) {
-    return "klarna";
-  }
-  return null;
 }
 
 const PSP_HINTS = [
@@ -156,16 +136,6 @@ function isLikelySubscriptionPspTransaction(
   );
 }
 
-type AiSuggestion = {
-  categoryId: string;
-  categoryKey: string;
-  categoryName: string;
-  parentName: string | null;
-  confidence: number;
-  reason: string;
-  isSameAsCurrent: boolean;
-};
-
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
@@ -192,13 +162,6 @@ export default function TransactionDetailScreen() {
   const [loading, setLoading] = React.useState(true);
   const [showPicker, setShowPicker] = React.useState(false);
   const [savingCategory, setSavingCategory] = React.useState(false);
-  const [aiState, setAiState] = React.useState<
-    "idle" | "loading" | "result" | "error"
-  >("idle");
-  const [aiSuggestion, setAiSuggestion] = React.useState<AiSuggestion | null>(
-    null,
-  );
-  const [aiError, setAiError] = React.useState<string | null>(null);
   const [bulkPhase, setBulkPhase] = React.useState<
     "idle" | "confirming" | "updating" | "done"
   >("idle");
@@ -222,7 +185,12 @@ export default function TransactionDetailScreen() {
     React.useState(false);
   const [setCategoryToSubscriptions, setSetCategoryToSubscriptions] =
     React.useState(true);
-  const [detailsExpanded, setDetailsExpanded] = React.useState(false);
+
+  const blurActiveWebElement = React.useCallback(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const activeElement = document.activeElement as HTMLElement | null;
+    activeElement?.blur?.();
+  }, []);
 
   // ── Derived maps ───────────────────────────────────────────────────────
   const categoryById = React.useMemo(
@@ -263,20 +231,6 @@ export default function TransactionDetailScreen() {
   const parentCategory = effectiveCategory?.parent_id
     ? categoryById.get(effectiveCategory.parent_id) || null
     : null;
-  const budgetGroupLabel = getBudgetGroupLabel(effectiveCategory?.budget_group);
-  const incomeSemantics = React.useMemo(
-    () =>
-      tx
-        ? resolveIncomeSemanticsForTransaction(tx, categoryById)
-        : null,
-    [categoryById, tx],
-  );
-  const incomeSemanticLabel =
-    tx && tx.amount > 0 ? incomeSemantics?.shortLabel || null : null;
-  const isSubjectDrivenProvider = React.useMemo(
-    () => isSubjectDrivenCounterparty(tx?.counterparty),
-    [tx?.counterparty],
-  );
   const activeSubscriptionProfiles = React.useMemo(
     () => subscriptionProfiles.filter((profile) => profile.isActive),
     [subscriptionProfiles],
@@ -287,11 +241,6 @@ export default function TransactionDetailScreen() {
     if (tx.amount >= 0) return false;
     return isLikelySubscriptionPspTransaction(tx.counterparty, tx.details);
   }, [tx]);
-  const subscriptionStatusLabel = linkedSubscriptionProfile
-    ? "Abonnement gekoppeld"
-    : isPspLikeExpense
-      ? "PSP-betaling"
-      : null;
 
   // ── Data loading ────────────────────────────────────────────────────────
   const loadData = React.useCallback(async () => {
@@ -353,66 +302,6 @@ export default function TransactionDetailScreen() {
         setShowPicker(false);
         const detail = await getTransactionDetail(transactionId);
         setTx(detail);
-      } catch (e) {
-        console.warn("setCategory error", e);
-      } finally {
-        setSavingCategory(false);
-      }
-    },
-    [transactionId, tx?.counterparty],
-  );
-
-  // ── AI reclassification ─────────────────────────────────────────────────
-  const handleAiReclassify = React.useCallback(async () => {
-    if (!transactionId || !tx) return;
-    setAiState("loading");
-    setAiSuggestion(null);
-    setAiError(null);
-    setShowPicker(false);
-    try {
-      const result = await recategorizeSingleTransaction(transactionId);
-      if (!result) {
-        setAiError("Geen resultaat ontvangen van AI.");
-        setAiState("error");
-        return;
-      }
-      const resultCat = categoryById.get(result.categoryId);
-      const parent = resultCat?.parent_id
-        ? categoryById.get(resultCat.parent_id) || null
-        : null;
-      const isSameAsCurrent =
-        result.categoryId === (tx.category_id_user || tx.category_id_auto);
-      setAiSuggestion({
-        ...result,
-        parentName: parent?.name ?? null,
-        isSameAsCurrent,
-      });
-      setAiState("result");
-    } catch (e) {
-      setAiError(truncateMsg(e instanceof Error ? e.message : String(e), 200));
-      setAiState("error");
-    }
-  }, [transactionId, tx, categoryById]);
-
-  const handleApplyAi = React.useCallback(
-    async (learnRule: boolean) => {
-      if (!transactionId || !aiSuggestion) return;
-      setSavingCategory(true);
-      try {
-        await setTransactionManualCategory(
-          transactionId,
-          aiSuggestion.categoryId,
-          {
-            reason: "AI herclassificatie",
-            learnFromCounterparty:
-              learnRule && !isSubjectDrivenCounterparty(tx?.counterparty),
-          },
-        );
-        const detail = await getTransactionDetail(transactionId);
-        setTx(detail);
-        setAiState("idle");
-        setAiSuggestion(null);
-
         if (
           detail?.counterparty &&
           !isSubjectDrivenCounterparty(detail.counterparty)
@@ -427,12 +316,12 @@ export default function TransactionDetailScreen() {
           setBulkPhase("idle");
         }
       } catch (e) {
-        console.warn("apply AI error", e);
+        console.warn("setCategory error", e);
       } finally {
         setSavingCategory(false);
       }
     },
-    [transactionId, aiSuggestion, tx?.counterparty],
+    [transactionId, tx?.counterparty],
   );
 
   // ── Bulk update ─────────────────────────────────────────────────────────
@@ -503,6 +392,7 @@ export default function TransactionDetailScreen() {
         ]);
         setTx(detail);
         setSubscriptionMatch(match);
+        blurActiveWebElement();
         setSubscriptionModalOpen(false);
       } catch (e) {
         console.warn("link subscription error", e);
@@ -510,7 +400,12 @@ export default function TransactionDetailScreen() {
         setSubscriptionActionBusy(false);
       }
     },
-    [transactionId, setCategoryToSubscriptions, subscriptionActionBusy],
+    [
+      blurActiveWebElement,
+      transactionId,
+      setCategoryToSubscriptions,
+      subscriptionActionBusy,
+    ],
   );
 
   const handleMarkNoSubscription = React.useCallback(async () => {
@@ -523,13 +418,14 @@ export default function TransactionDetailScreen() {
       );
       const match = await getTransactionSubscriptionMatch(transactionId);
       setSubscriptionMatch(match);
+      blurActiveWebElement();
       setSubscriptionModalOpen(false);
     } catch (e) {
       console.warn("ignore subscription error", e);
     } finally {
       setSubscriptionActionBusy(false);
     }
-  }, [transactionId, subscriptionActionBusy]);
+  }, [blurActiveWebElement, transactionId, subscriptionActionBusy]);
 
   const handleOpenSubscriptionAction = React.useCallback(() => {
     if (linkedSubscriptionProfile?.id) {
@@ -539,12 +435,14 @@ export default function TransactionDetailScreen() {
       });
       return;
     }
+    blurActiveWebElement();
     setSubscriptionModalOpen(true);
-  }, [linkedSubscriptionProfile?.id, router]);
+  }, [blurActiveWebElement, linkedSubscriptionProfile?.id, router]);
 
   const handleOpenCreateSubscriptionProfile = React.useCallback(() => {
     if (!transactionId || !tx) return;
 
+    blurActiveWebElement();
     setSubscriptionModalOpen(false);
     router.push({
       pathname: "/subscriptions",
@@ -554,12 +452,11 @@ export default function TransactionDetailScreen() {
         createFromTransactionCounterparty: tx.counterparty || "",
         createFromTransactionDetails: tx.details,
         createFromTransactionAmount: String(tx.amount),
-        createFromTransactionProvider:
-          detectProviderHintFromTransaction(tx.counterparty, tx.details) || "",
+        createFromTransactionProvider: "",
         createSetCategoryOnLink: setCategoryToSubscriptions ? "1" : "0",
       },
     });
-  }, [router, setCategoryToSubscriptions, transactionId, tx]);
+  }, [blurActiveWebElement, router, setCategoryToSubscriptions, transactionId, tx]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   if (loading) {
@@ -580,274 +477,92 @@ export default function TransactionDetailScreen() {
 
   const saldoNaTrn = parseSaldo(tx.metadata["Saldo na trn"]);
   const omschrijving = tx.details.split("|")[0]?.trim() || tx.details;
-  const categoryStatusLabel = tx.category_id_user
-    ? "Handmatig aangepast"
-    : effectiveCategory
-      ? null
-      : "Controle nodig";
-  const categoryStatusTone = tx.category_id_user
-    ? styles.statusChipManual
-    : styles.statusChipWarning;
-  const categoryStatusTextTone = tx.category_id_user
-    ? styles.statusChipTextManual
-    : styles.statusChipTextWarning;
-
+  const transactionDateLabel = formatTransactionDateLabel(tx.date);
+  const budgetStatusLabel = tx.budget_excluded
+    ? "Buiten budget"
+    : "Binnen budget opgenomen";
   return (
-    <>
+    <View style={styles.root}>
+      <FinanceScreenBackdrop tone="warm" />
+      <FinanceDetailTopBar
+        title="Transactie"
+        onBack={() => router.back()}
+      />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
       >
-        <View style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
-            <View style={styles.heroIconWrap}>
-              <TransactionCategoryIcon row={tx} categoryById={categoryById} />
-            </View>
-            <View style={styles.heroCopy}>
-              <Text style={styles.counterparty} numberOfLines={2}>
-                {tx.counterparty || "Onbekende tegenpartij"}
-              </Text>
-              {categoryStatusLabel ? (
-                <View style={[styles.statusChip, categoryStatusTone]}>
-                  <Text style={[styles.statusChipText, categoryStatusTextTone]}>
-                    {categoryStatusLabel}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
+        <FinanceHeroShell
+          shellStyle={styles.heroShell}
+          innerStyle={styles.heroInner}
+          eyebrow="Transactie detail"
+          title={tx.counterparty || "Onbekende tegenpartij"}
+          subtitle={`${tx.amount < 0 ? "−" : "+"}${euroFormatter.format(Math.abs(tx.amount))}`}
+          titleStyle={styles.heroTitle}
+          subtitleStyle={styles.heroAmountLine}
+          subtitleLineStyle={styles.heroAmountWrap}
+        >
+          <View style={styles.heroMetaRow}>
+            <Text style={styles.heroMetaText}>{transactionDateLabel}</Text>
+            {saldoNaTrn != null ? (
+              <View style={styles.heroSaldoPill}>
+                <Text style={styles.heroSaldoPillText}>
+                  Saldo: {euroFormatter.format(saldoNaTrn)}
+                </Text>
+              </View>
+            ) : null}
           </View>
-          <Text
-            style={[
-              styles.heroAmount,
-              { color: tx.amount < 0 ? FinColors.red : FinColors.green },
-            ]}
+        </FinanceHeroShell>
+
+        <View style={styles.mainColumn}>
+          <FinanceTextBlock label="Omschrijving" style={styles.textBlock}>
+            <Text style={styles.descriptionText}>{omschrijving}</Text>
+          </FinanceTextBlock>
+
+          <FinanceTextBlock
+            label="Categorie"
+            style={styles.textBlock}
+            rightSlot={
+              <TouchableOpacity
+                style={styles.categoryEditButton}
+                onPress={() => setShowPicker((v) => !v)}
+                disabled={savingCategory}
+                activeOpacity={0.8}
+              >
+                <AppIcon
+                  name="edit"
+                  size={16}
+                  color={FinColors.warningText}
+                  variant="outlined"
+                />
+              </TouchableOpacity>
+            }
           >
-            {tx.amount < 0 ? "−" : "+"}
-            {euroFormatter.format(Math.abs(tx.amount))}
-          </Text>
-          <Text style={styles.heroMetaText}>
-            {tx.date}
-            {saldoNaTrn != null
-              ? ` • Saldo na transactie ${euroFormatter.format(saldoNaTrn)}`
-              : ""}
-          </Text>
-          {subscriptionStatusLabel ? (
-            <View style={styles.heroPillsRow}>
-              <View
-                style={[
-                  styles.heroPill,
-                  linkedSubscriptionProfile
-                    ? styles.heroPillLinked
-                    : styles.heroPillDetected,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.heroPillText,
-                    linkedSubscriptionProfile
-                      ? styles.heroPillTextLinked
-                      : styles.heroPillTextDetected,
-                  ]}
-                >
-                  {subscriptionStatusLabel}
+            {effectiveCategory ? (
+              <View style={styles.categoryPathRow}>
+                <Text style={styles.categoryPathParent}>
+                  {parentCategory?.name || effectiveCategory.name}
                 </Text>
-              </View>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.rowBetween}>
-            <View style={styles.categoryMain}>
-              <Text style={styles.sectionTitle}>Categorie</Text>
-              {effectiveCategory ? (
-                <View style={styles.badgesRow}>
-                  {parentCategory ? (
-                    <Text style={styles.parentBadge}>{parentCategory.name}</Text>
-                  ) : null}
-                  <Text style={styles.categoryBadge}>{effectiveCategory.name}</Text>
-                  {budgetGroupLabel ? (
-                    <Text style={styles.budgetGroupBadge}>{budgetGroupLabel}</Text>
-                  ) : null}
-                  {incomeSemanticLabel ? (
-                    <Text
-                      style={[
-                        styles.incomeSemanticBadge,
-                        incomeSemantics?.kind === "expense_refund" &&
-                          styles.incomeSemanticBadgeRefund,
-                      ]}
-                    >
-                      {incomeSemanticLabel}
+                {parentCategory ? (
+                  <>
+                    <Text style={styles.categoryPathSeparator}>›</Text>
+                    <Text style={styles.categoryPathChild}>
+                      {effectiveCategory.name}
                     </Text>
-                  ) : null}
-                </View>
-              ) : (
-                <Text style={styles.mutedText}>Ongecategoriseerd</Text>
-              )}
-              {incomeSemanticLabel ? (
-                <Text style={styles.mutedText}>
-                  {incomeSemantics?.kind === "expense_refund"
-                    ? "Deze ontvangst verlaagt vooral een kostenpost en telt niet als vast inkomen."
-                    : incomeSemantics?.kind === "tax_refund"
-                      ? "Deze ontvangst hoort bij deze maand, maar niet bij je vaste inkomensbasis."
-                      : "Deze inkomensduiding wordt ook gebruikt in budget en insights."}
-                </Text>
-              ) : null}
-
-              <View style={styles.quickActionsRow}>
-                <View style={styles.quickToggleChip}>
-                  <Text style={styles.quickToggleText}>Buiten budget</Text>
-                  <Switch
-                    value={tx.budget_excluded}
-                    onValueChange={handleBudgetExcludedToggle}
-                    disabled={budgetExclusionToggling}
-                    trackColor={{
-                      false: FinColors.bgElevated,
-                      true: FinColors.red,
-                    }}
-                    thumbColor={
-                      tx.budget_excluded ? FinColors.red : FinColors.textMuted
-                    }
-                  />
-                </View>
-                {effectiveCategory ? (
-                  <TouchableOpacity
-                    style={styles.quickActionChip}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/category-budget-groups",
-                        params: { categoryId: effectiveCategory.id },
-                      })
-                    }
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.quickActionChipText}>
-                      Budgetgroep beheren
-                    </Text>
-                  </TouchableOpacity>
+                  </>
                 ) : null}
               </View>
-
-              <View style={styles.metaRow}>
-                {tx.category_id_user ? (
-                  <Text style={styles.sourcePill}>● Handmatig</Text>
-                ) : tx.category_source ? (
-                  <Text style={styles.sourcePill}>
-                    ●{" "}
-                    {tx.category_source === "rule"
-                      ? "Regel"
-                      : tx.category_source === "openai"
-                        ? "AI"
-                        : tx.category_source === "fallback"
-                          ? "Onbekend"
-                          : tx.category_source}
-                  </Text>
-                ) : null}
-                {tx.category_confidence != null && !tx.category_id_user ? (
-                  <Text style={styles.mutedText}>
-                    {Math.round(tx.category_confidence * 100)}% zekerheid
-                  </Text>
-                ) : null}
-              </View>
-            </View>
-            <View style={styles.categoryActionStack}>
-              <TouchableOpacity
-                style={styles.primaryActionBtn}
-                onPress={() => {
-                  setShowPicker((v) => !v);
-                  setAiState("idle");
-                }}
-                disabled={savingCategory}
-              >
-                <Text style={styles.primaryActionBtnText}>
-                  {showPicker ? "Sluiten" : "Categorie wijzigen"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.secondaryActionBtn,
-                  savingCategory && styles.btnDisabled,
-                ]}
-                onPress={() => void handleAiReclassify()}
-                disabled={savingCategory}
-              >
-                <Text style={styles.secondaryActionBtnText}>
-                  Herclassificeer via AI
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {aiState === "error" && aiError ? (
-            <Text style={styles.errorText}>{aiError}</Text>
-          ) : null}
-
-          {aiState === "loading" ? (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color={FinColors.green} size="small" />
-              <Text style={styles.loadingText}>AI analyseert transactie…</Text>
-            </View>
-          ) : null}
-
-          {aiState === "result" && aiSuggestion ? (
-            <View style={styles.aiResultCard}>
-              {aiSuggestion.isSameAsCurrent ? (
-                <>
-                  <Text style={styles.aiSameText}>
-                    ✓ AI bevestigt de huidige categorie
-                  </Text>
-                  <Text style={styles.aiCategoryLine}>
-                    {aiSuggestion.parentName
-                      ? `${aiSuggestion.parentName} › ${aiSuggestion.categoryName}`
-                      : aiSuggestion.categoryName}
-                  </Text>
-                  <Text style={styles.mutedText}>{aiSuggestion.reason}</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.mutedText}>Suggestie van AI:</Text>
-                  <Text style={styles.aiCategoryLine}>
-                    {aiSuggestion.parentName
-                      ? `${aiSuggestion.parentName} › ${aiSuggestion.categoryName}`
-                      : aiSuggestion.categoryName}
-                  </Text>
-                  <Text style={styles.aiConf}>
-                    {Math.round(aiSuggestion.confidence * 100)}% zekerheid
-                  </Text>
-                  <Text style={styles.mutedText}>{aiSuggestion.reason}</Text>
-                  <View style={styles.aiActions}>
-                    {!isSubjectDrivenProvider ? (
-                      <TouchableOpacity
-                        style={[styles.aiBtn, styles.aiBtnPrimary]}
-                        onPress={() => void handleApplyAi(true)}
-                        disabled={savingCategory}
-                      >
-                        <Text style={styles.aiBtnTextPrimary}>
-                          Toepassen + regel
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    <TouchableOpacity
-                      style={styles.aiBtn}
-                      onPress={() => void handleApplyAi(false)}
-                      disabled={savingCategory}
-                    >
-                      <Text style={styles.aiBtnText}>Alleen toepassen</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
-            </View>
-          ) : null}
+            ) : (
+              <Text style={styles.mutedText}>Ongecategoriseerd</Text>
+            )}
+          </FinanceTextBlock>
 
           {showPicker ? (
-            <View style={styles.pickerWrap}>
+            <FinanceDetailCard style={styles.pickerCard}>
               {savingCategory ? (
-                <ActivityIndicator
-                  color={FinColors.green}
-                  style={{ margin: 16 }}
-                />
+                <ActivityIndicator color={FinColors.green} style={{ margin: 16 }} />
               ) : (
                 categoryGroups.map((group) => (
                   <View key={group.parent?.id ?? "__root"}>
@@ -881,8 +596,37 @@ export default function TransactionDetailScreen() {
                   </View>
                 ))
               )}
-            </View>
+            </FinanceDetailCard>
           ) : null}
+
+        <FinanceDetailCard tone="subtle" style={styles.statusCard}>
+          <View style={styles.statusCardRow}>
+            <View style={styles.statusIconWrap}>
+              <AppIcon
+                name="check-circle"
+                size={18}
+                color={FinColors.warningText}
+                variant="outlined"
+              />
+            </View>
+            <View style={styles.statusCopyWrap}>
+              <Text style={styles.statusTitle}>
+                Status: {budgetStatusLabel}
+              </Text>
+              <Text style={styles.statusSubtitle}>Markeer als uitzondering</Text>
+            </View>
+            <Switch
+              value={tx.budget_excluded}
+              onValueChange={handleBudgetExcludedToggle}
+              disabled={budgetExclusionToggling}
+              trackColor={{
+                false: FinColors.bgElevated,
+                true: FinColors.red,
+              }}
+              thumbColor={tx.budget_excluded ? FinColors.red : FinColors.textMuted}
+            />
+          </View>
+        </FinanceDetailCard>
         </View>
 
         <View style={styles.card}>
@@ -897,7 +641,7 @@ export default function TransactionDetailScreen() {
         </View>
 
         {isPspLikeExpense || linkedSubscriptionProfile ? (
-          <View style={styles.subscriptionCard}>
+          <FinanceDetailCard tone="warning" style={styles.subscriptionCard}>
             <Text style={styles.sectionTitle}>
               {linkedSubscriptionProfile ? "Abonnement" : "Mogelijk abonnement"}
             </Text>
@@ -926,304 +670,315 @@ export default function TransactionDetailScreen() {
                   : "Koppel aan abonnement"}
               </Text>
             </TouchableOpacity>
+          </FinanceDetailCard>
+        ) : null}
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Extra informatie</Text>
+          {tx.type ? <InfoRow label="Type" value={tx.type} /> : null}
+          {tx.currency ? <InfoRow label="Valuta" value={tx.currency} /> : null}
+          {saldoNaTrn != null ? (
+            <InfoRow
+              label="Saldo na transactie"
+              value={euroFormatter.format(saldoNaTrn)}
+            />
+          ) : null}
+          {tx.created_at ? (
+            <InfoRow
+              label="Aangemaakt op"
+              value={new Date(tx.created_at).toLocaleDateString("nl-NL", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            />
+          ) : null}
+        </View>
+
+        {bulkPhase !== "idle" && tx.counterparty ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              Bijwerken:{" "}
+              <Text style={styles.counterpartyInline}>{tx.counterparty}</Text>
+            </Text>
+            {bulkPhase === "confirming" && bulkCounts ? (
+              <>
+                <Text style={styles.mutedText}>
+                  Wil je ook andere transacties van deze tegenpartij bijwerken?
+                </Text>
+                <View style={styles.scopeRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.scopeBtn,
+                      bulkScope === "uncategorized" && styles.scopeBtnActive,
+                    ]}
+                    onPress={() => setBulkScope("uncategorized")}
+                  >
+                    <Text
+                      style={[
+                        styles.scopeBtnText,
+                        bulkScope === "uncategorized" &&
+                          styles.scopeBtnTextActive,
+                      ]}
+                    >
+                      Ongecategoriseerde ({bulkCounts.uncategorized})
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.scopeBtn,
+                      bulkScope === "all" && styles.scopeBtnActive,
+                    ]}
+                    onPress={() => setBulkScope("all")}
+                  >
+                    <Text
+                      style={[
+                        styles.scopeBtnText,
+                        bulkScope === "all" && styles.scopeBtnTextActive,
+                      ]}
+                    >
+                      Alle ({bulkCounts.all})
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.bulkActions}>
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, { flex: 1 }]}
+                    onPress={() => void handleBulkUpdate()}
+                  >
+                    <Text style={styles.primaryBtnText}>Bijwerken</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.ghostBtn, { flex: 1 }]}
+                    onPress={() => setBulkPhase("idle")}
+                  >
+                    <Text style={styles.ghostBtnText}>Overslaan</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : bulkPhase === "updating" ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color={FinColors.green} size="small" />
+                <Text style={styles.loadingText}>Transacties bijwerken…</Text>
+              </View>
+            ) : bulkPhase === "done" ? (
+              <Text style={styles.aiSameText}>✓ Transacties bijgewerkt</Text>
+            ) : null}
           </View>
         ) : null}
 
-        <TouchableOpacity
-          style={styles.expandBtn}
-          onPress={() => setDetailsExpanded((value) => !value)}
-        >
-          <Text style={styles.expandBtnText}>
-            {detailsExpanded ? "Minder details" : "Meer details"}
-          </Text>
-        </TouchableOpacity>
-
-        {detailsExpanded ? (
-          <>
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Extra informatie</Text>
-              {tx.type ? <InfoRow label="Type" value={tx.type} /> : null}
-              {tx.currency ? <InfoRow label="Valuta" value={tx.currency} /> : null}
-              {saldoNaTrn != null ? (
-                <InfoRow
-                  label="Saldo na transactie"
-                  value={euroFormatter.format(saldoNaTrn)}
-                />
-              ) : null}
-              {tx.created_at ? (
-                <InfoRow
-                  label="Aangemaakt op"
-                  value={new Date(tx.created_at).toLocaleDateString("nl-NL", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                />
-              ) : null}
-            </View>
-
-            {bulkPhase !== "idle" && tx.counterparty ? (
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>
-                  Bijwerken:{" "}
-                  <Text style={styles.counterpartyInline}>{tx.counterparty}</Text>
-                </Text>
-                {bulkPhase === "confirming" && bulkCounts ? (
-                  <>
-                    <Text style={styles.mutedText}>
-                      Wil je ook andere transacties van deze tegenpartij bijwerken?
+        {tx.counterparty ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>
+              Andere transacties:{" "}
+              <Text style={styles.counterpartyInline}>{tx.counterparty}</Text>
+            </Text>
+            {history.length === 0 ? (
+              <Text style={styles.mutedText}>
+                Geen andere transacties gevonden.
+              </Text>
+            ) : (
+              history.map((item) => {
+                const categoryLabel = getCategoryPathLabel(item, categoryById);
+                const subject = getSubjectFromDetails(item.details);
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.historyItem}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/transaction-detail",
+                        params: { id: item.id },
+                      })
+                    }
+                  >
+                    <View style={styles.historyIconWrap}>
+                      <TransactionCategoryIcon
+                        row={item}
+                        categoryById={categoryById}
+                      />
+                    </View>
+                    <View style={styles.historyLeft}>
+                      <Text style={styles.historyDate}>{item.date}</Text>
+                      <Text style={styles.historyDesc} numberOfLines={2}>
+                        {item.subscriptionProfileName || subject}
+                      </Text>
+                      <Text style={styles.historyCat}>{categoryLabel}</Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.historyAmount,
+                        {
+                          color:
+                            item.amount < 0 ? FinColors.red : FinColors.green,
+                        },
+                      ]}
+                    >
+                      {item.amount < 0 ? "−" : "+"}
+                      {euroFormatter.format(Math.abs(item.amount))}
                     </Text>
-                    <View style={styles.scopeRow}>
-                      <TouchableOpacity
-                        style={[
-                          styles.scopeBtn,
-                          bulkScope === "uncategorized" && styles.scopeBtnActive,
-                        ]}
-                        onPress={() => setBulkScope("uncategorized")}
-                      >
-                        <Text
-                          style={[
-                            styles.scopeBtnText,
-                            bulkScope === "uncategorized" &&
-                              styles.scopeBtnTextActive,
-                          ]}
-                        >
-                          Ongecategoriseerde ({bulkCounts.uncategorized})
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.scopeBtn,
-                          bulkScope === "all" && styles.scopeBtnActive,
-                        ]}
-                        onPress={() => setBulkScope("all")}
-                      >
-                        <Text
-                          style={[
-                            styles.scopeBtnText,
-                            bulkScope === "all" && styles.scopeBtnTextActive,
-                          ]}
-                        >
-                          Alle ({bulkCounts.all})
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.bulkActions}>
-                      <TouchableOpacity
-                        style={[styles.primaryBtn, { flex: 1 }]}
-                        onPress={() => void handleBulkUpdate()}
-                      >
-                        <Text style={styles.primaryBtnText}>Bijwerken</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.ghostBtn, { flex: 1 }]}
-                        onPress={() => setBulkPhase("idle")}
-                      >
-                        <Text style={styles.ghostBtnText}>Overslaan</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                ) : bulkPhase === "updating" ? (
-                  <View style={styles.loadingRow}>
-                    <ActivityIndicator color={FinColors.green} size="small" />
-                    <Text style={styles.loadingText}>Transacties bijwerken…</Text>
-                  </View>
-                ) : bulkPhase === "done" ? (
-                  <Text style={styles.aiSameText}>✓ Transacties bijgewerkt</Text>
-                ) : null}
-              </View>
-            ) : null}
-
-            {tx.counterparty ? (
-              <View style={styles.card}>
-                <Text style={styles.sectionTitle}>
-                  Andere transacties:{" "}
-                  <Text style={styles.counterpartyInline}>{tx.counterparty}</Text>
-                </Text>
-                {history.length === 0 ? (
-                  <Text style={styles.mutedText}>
-                    Geen andere transacties gevonden.
-                  </Text>
-                ) : (
-                  history.map((item) => {
-                    const categoryLabel = getCategoryPathLabel(item, categoryById);
-                    const subject = getSubjectFromDetails(item.details);
-                    return (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={styles.historyItem}
-                        onPress={() =>
-                          router.push({
-                            pathname: "/transaction-detail",
-                            params: { id: item.id },
-                          })
-                        }
-                      >
-                        <View style={styles.historyIconWrap}>
-                          <TransactionCategoryIcon
-                            row={item}
-                            categoryById={categoryById}
-                          />
-                        </View>
-                        <View style={styles.historyLeft}>
-                          <Text style={styles.historyDate}>{item.date}</Text>
-                          <Text style={styles.historyDesc} numberOfLines={2}>
-                            {item.subscriptionProfileName || subject}
-                          </Text>
-                          <Text style={styles.historyCat}>{categoryLabel}</Text>
-                        </View>
-                        <Text
-                          style={[
-                            styles.historyAmount,
-                            {
-                              color:
-                                item.amount < 0 ? FinColors.red : FinColors.green,
-                            },
-                          ]}
-                        >
-                          {item.amount < 0 ? "−" : "+"}
-                          {euroFormatter.format(Math.abs(item.amount))}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })
-                )}
-                <TouchableOpacity
-                  style={styles.viewAllBtn}
-                  onPress={() =>
-                    router.push(
-                      `/transactions?counterparty=${encodeURIComponent(tx.counterparty!)}`,
-                    )
-                  }
-                >
-                  <Text style={styles.viewAllText}>
-                    Bekijk alle transacties van {tx.counterparty} →
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+            <TouchableOpacity
+              style={styles.viewAllBtn}
+              onPress={() =>
+                router.push(
+                  `/transactions?counterparty=${encodeURIComponent(tx.counterparty!)}`,
+                )
+              }
+            >
+              <Text style={styles.viewAllText}>
+                Bekijk alle transacties van {tx.counterparty} →
+              </Text>
+            </TouchableOpacity>
+          </View>
         ) : null}
 
         <View style={{ height: 32 }} />
       </ScrollView>
 
+      <FinanceQuickMenu
+        activeKey="transactions"
+        onSelect={(key) => {
+          if (key === "index") {
+            router.push("/");
+          } else if (key === "budget") {
+            router.push("/budget");
+          } else if (key === "transactions") {
+            router.push("/transactions");
+          } else if (key === "insights") {
+            router.push("/insights");
+          }
+        }}
+      />
+
       <Modal
         visible={subscriptionModalOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setSubscriptionModalOpen(false)}
+        onRequestClose={() => {
+          blurActiveWebElement();
+          setSubscriptionModalOpen(false);
+        }}
       >
         <View style={styles.subscriptionModalOverlay}>
           <View style={styles.subscriptionModalCard}>
-            <View style={styles.subscriptionModalHeaderRow}>
-              <Text style={styles.subscriptionModalTitle}>
-                Koppel abonnement
-              </Text>
-              <TouchableOpacity
-                style={styles.subscriptionModalCloseBtn}
-                onPress={() => setSubscriptionModalOpen(false)}
-              >
-                <AppIcon
-                  name="close"
-                  size={18}
-                  color={FinColors.textSecondary}
+            <FinanceModalTopBar
+              title="Koppel abonnement"
+              subtitle={getSubjectFromDetails(tx.details)}
+              onClose={() => {
+                blurActiveWebElement();
+                setSubscriptionModalOpen(false);
+              }}
+            />
+
+            <View style={styles.subscriptionModalBody}>
+              <View style={styles.subscriptionToggleRow}>
+                <Text style={styles.subscriptionToggleLabel}>
+                  Zet categorie op abonnementen
+                </Text>
+                <Switch
+                  value={setCategoryToSubscriptions}
+                  onValueChange={setSetCategoryToSubscriptions}
+                  trackColor={{
+                    false: FinColors.bgElevated,
+                    true: FinColors.greenBorder,
+                  }}
+                  thumbColor={
+                    setCategoryToSubscriptions
+                      ? FinColors.green
+                      : FinColors.textMuted
+                  }
                 />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.subscriptionModalSubtitle}>
-              {getSubjectFromDetails(tx.details)}
-            </Text>
-
-            <View style={styles.subscriptionToggleRow}>
-              <Text style={styles.subscriptionToggleLabel}>
-                Zet categorie op abonnementen
-              </Text>
-              <Switch
-                value={setCategoryToSubscriptions}
-                onValueChange={setSetCategoryToSubscriptions}
-                trackColor={{
-                  false: FinColors.bgElevated,
-                  true: FinColors.greenBorder,
-                }}
-                thumbColor={
-                  setCategoryToSubscriptions
-                    ? FinColors.green
-                    : FinColors.textMuted
-                }
-              />
-            </View>
+              </View>
 
               <ScrollView
                 style={styles.subscriptionProfileList}
                 contentContainerStyle={styles.subscriptionProfileListContent}
               >
-              {activeSubscriptionProfiles.length === 0 ? (
-                <View style={styles.subscriptionQuickCreateWrap}>
-                  <Text style={styles.subscriptionModalEmptyText}>
-                    Geen actieve abonnementen gevonden.
-                  </Text>
-                  <Text style={styles.subscriptionQuickCreateHint}>
-                    Maak direct een nieuw profiel aan met de gegevens van deze
-                    betaling.
-                  </Text>
-                </View>
-              ) : (
-                activeSubscriptionProfiles.map((profile) => (
-                  <TouchableOpacity
-                    key={profile.id}
-                    style={styles.subscriptionProfileRow}
-                    onPress={() => void handleLinkToSubscription(profile.id)}
-                    disabled={subscriptionActionBusy}
-                  >
-                    <Text style={styles.subscriptionProfileName}>
-                      {profile.name}
+                {activeSubscriptionProfiles.length === 0 ? (
+                  <View style={styles.subscriptionQuickCreateWrap}>
+                    <Text style={styles.subscriptionModalEmptyText}>
+                      Geen actieve abonnementen gevonden.
                     </Text>
-                    <Text style={styles.subscriptionProfileMeta}>
-                      {profile.billingCycle === "quarterly"
-                        ? "Per kwartaal"
-                        : profile.billingCycle === "yearly"
-                          ? "Jaarlijks"
-                          : "Maandelijks"}
+                    <Text style={styles.subscriptionQuickCreateHint}>
+                      Maak direct een nieuw profiel aan met de gegevens van deze
+                      betaling.
                     </Text>
-                  </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
+                  </View>
+                ) : (
+                  activeSubscriptionProfiles.map((profile) => (
+                    <TouchableOpacity
+                      key={profile.id}
+                      style={styles.subscriptionProfileRow}
+                      onPress={() => void handleLinkToSubscription(profile.id)}
+                      disabled={subscriptionActionBusy}
+                    >
+                      <Text style={styles.subscriptionProfileName}>
+                        {profile.name}
+                      </Text>
+                      <Text style={styles.subscriptionProfileMeta}>
+                        {profile.billingCycle === "quarterly"
+                          ? "Per kwartaal"
+                          : profile.billingCycle === "yearly"
+                            ? "Jaarlijks"
+                            : "Maandelijks"}
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </ScrollView>
 
-            <View style={styles.subscriptionModalActionsRow}>
-              <TouchableOpacity
-                style={styles.subscriptionGhostBtn}
-                onPress={() => void handleMarkNoSubscription()}
-                disabled={subscriptionActionBusy}
-              >
-                <Text style={styles.subscriptionGhostBtnText}>
-                  Geen abonnement
-                </Text>
-              </TouchableOpacity>
-              {!linkedSubscriptionProfile ? (
+              <View style={styles.subscriptionModalActionsRow}>
                 <TouchableOpacity
-                  style={styles.subscriptionManageBtn}
-                  onPress={handleOpenCreateSubscriptionProfile}
+                  style={styles.subscriptionGhostBtn}
+                  onPress={() => void handleMarkNoSubscription()}
                   disabled={subscriptionActionBusy}
                 >
-                  <Text style={styles.subscriptionManageBtnText}>
-                    Nieuw profiel
+                  <Text style={styles.subscriptionGhostBtnText}>
+                    Geen abonnement
                   </Text>
                 </TouchableOpacity>
-              ) : null}
+                {!linkedSubscriptionProfile ? (
+                  <TouchableOpacity
+                    style={styles.subscriptionManageBtn}
+                    onPress={handleOpenCreateSubscriptionProfile}
+                    disabled={subscriptionActionBusy}
+                  >
+                    <Text style={styles.subscriptionManageBtnText}>
+                      Nieuw profiel
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </View>
           </View>
         </View>
       </Modal>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: FinColors.bgBase },
-  content: { padding: 24, gap: 14 },
+  root: {
+    flex: 1,
+    backgroundColor: FinColors.bgBase,
+    overflow: "hidden",
+  },
+  scroll: {
+    flex: 1,
+    backgroundColor: "transparent",
+    overflow: "hidden",
+  },
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 0,
+    paddingBottom: 132,
+    overflow: "hidden",
+    gap: 32,
+  },
   centered: {
     flex: 1,
     justifyContent: "center",
@@ -1231,6 +986,305 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgBase,
   },
   emptyText: { color: FinColors.textSecondary, fontSize: 15 },
+
+  heroShell: {
+    marginHorizontal: -16,
+    marginTop: -8,
+    backgroundColor: FinColors.bgElevated,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(17,17,17,0.06)",
+  },
+  heroInner: {
+    paddingTop: 16,
+    paddingBottom: 18,
+    gap: 10,
+  },
+  heroTitle: {
+    fontSize: 40,
+    lineHeight: 42,
+    fontWeight: "900",
+    color: FinColors.textPrimary,
+    letterSpacing: -1.5,
+  },
+  heroAmountLine: {
+    fontSize: 28,
+    lineHeight: 30,
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+    letterSpacing: -0.8,
+  },
+  heroAmountWrap: {
+    borderLeftWidth: 0,
+    paddingLeft: 0,
+    marginTop: 0,
+  },
+  heroMetaRow: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 8,
+    alignSelf: "flex-start",
+  },
+  heroMetaText: {
+    color: FinColors.textSecondary,
+    fontSize: 16,
+    lineHeight: 22,
+    paddingLeft: 12,
+    borderLeftWidth: 2,
+    borderLeftColor: FinColors.borderSubtle,
+  },
+  heroSaldoPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  heroSaldoPillText: {
+    color: FinColors.textSecondary,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  textBlock: {
+    gap: 4,
+  },
+  categoryBlock: {
+    flex: 1,
+    gap: 8,
+  },
+  pickerCard: {
+    paddingTop: 10,
+    gap: 10,
+  },
+  statusCard: {
+    gap: 0,
+  },
+  statusCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  statusIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  statusCopyWrap: {
+    flex: 1,
+    gap: 4,
+  },
+  statusTitle: {
+    color: FinColors.textPrimary,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "800",
+  },
+  statusSubtitle: {
+    color: FinColors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  subscriptionChipLinked: {
+    backgroundColor: FinColors.warningBg,
+    borderColor: FinColors.warningBorder,
+  },
+  subscriptionChipDetected: {
+    backgroundColor: FinColors.yellowSoft,
+    borderColor: FinColors.warningBorder,
+  },
+  subscriptionChipTextLinked: {
+    color: FinColors.warningText,
+  },
+  subscriptionChipTextDetected: {
+    color: FinColors.warningText,
+  },
+  typeChip: {
+    backgroundColor: FinColors.bgElevated,
+    borderColor: FinColors.borderSubtle,
+  },
+  typeChipText: {
+    color: FinColors.textSecondary,
+  },
+  mainColumn: {
+    gap: 32,
+  },
+  detailCard: {
+    marginTop: 2,
+  },
+  sectionBlock: {
+    gap: 8,
+  },
+  sectionLabel: {
+    color: FinColors.textMuted,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1.6,
+  },
+  descriptionText: {
+    color: FinColors.textPrimary,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "600",
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  categoryEditButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryPathRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+  },
+  categoryPathParent: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  categoryPathSeparator: {
+    color: FinColors.textMuted,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  categoryPathChild: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+  },
+  categoryMetaText: {
+    color: FinColors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  statusCopy: {
+    color: FinColors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  actionsGrid: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  actionTile: {
+    flex: 1,
+    minWidth: 96,
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    backgroundColor: FinColors.bgInput,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  actionTileWarning: {
+    backgroundColor: FinColors.warningBg,
+    borderColor: FinColors.warningBorder,
+  },
+  actionTileIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: FinColors.bgCard,
+  },
+  actionTileIconWarning: {
+    backgroundColor: "rgba(255,255,255,0.55)",
+  },
+  actionTileLabel: {
+    color: FinColors.textPrimary,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    textAlign: "center",
+  },
+  calloutCard: {
+    gap: 14,
+  },
+  calloutRow: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "flex-start",
+  },
+  calloutIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.5)",
+  },
+  calloutCopy: {
+    flex: 1,
+    gap: 6,
+  },
+  calloutTitle: {
+    color: FinColors.textPrimary,
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 20,
+  },
+  calloutText: {
+    color: FinColors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  calloutButton: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    backgroundColor: FinColors.warningText,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  calloutButtonText: {
+    color: FinColors.yellowSoft,
+    fontWeight: "800",
+    fontSize: 13,
+  },
+  historyLink: {
+    color: FinColors.warningText,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  subscriptionCard: {
+    marginTop: 2,
+  },
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  infoLabel: { color: FinColors.textMuted, fontSize: 13, flex: 1 },
+  infoValue: {
+    color: FinColors.textPrimary,
+    fontSize: 13,
+    flex: 2,
+    textAlign: "right",
+  },
 
   heroCard: {
     backgroundColor: FinColors.bgCard,
@@ -1253,11 +1307,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   heroAmount: { fontSize: 32, fontWeight: "800", letterSpacing: -0.8 },
-  heroMetaText: {
-    color: FinColors.textSecondary,
-    fontSize: 13,
-    lineHeight: 18,
-  },
   heroPillsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1366,21 +1415,6 @@ const styles = StyleSheet.create({
   },
   amount: { fontSize: 30, fontWeight: "800" },
   dateText: { color: FinColors.textSecondary, fontSize: 14 },
-
-  // Info rows
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  infoLabel: { color: FinColors.textMuted, fontSize: 13, flex: 1 },
-  infoValue: {
-    color: FinColors.textPrimary,
-    fontSize: 13,
-    flex: 2,
-    textAlign: "right",
-  },
 
   // Category badges
   badgesRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
@@ -1511,6 +1545,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   expandBtn: {
+    display: "none",
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: FinColors.borderSubtle,
@@ -1525,7 +1560,7 @@ const styles = StyleSheet.create({
   },
 
   // Subscription hint
-  subscriptionCard: {
+  subscriptionCardLegacy: {
     backgroundColor: FinColors.warningBg,
     borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
@@ -1570,31 +1605,12 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: FinColors.border,
     backgroundColor: FinColors.bgCard,
-    padding: 14,
-    gap: 10,
+    overflow: "hidden",
     maxHeight: "80%",
   },
-  subscriptionModalHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  subscriptionModalTitle: {
-    color: FinColors.textPrimary,
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  subscriptionModalCloseBtn: {
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: FinColors.borderSubtle,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  subscriptionModalSubtitle: {
-    color: FinColors.textSecondary,
-    fontSize: 13,
-    lineHeight: 18,
+  subscriptionModalBody: {
+    padding: 14,
+    gap: 10,
   },
   subscriptionToggleRow: {
     flexDirection: "row",

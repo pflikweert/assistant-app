@@ -1,6 +1,5 @@
 import type {
   BudgetIncomeInclusionSettings,
-  BudgetPlanSettings,
   ForecastIncomeBucket,
 } from "@/types/categorization";
 import { resolveIncomeSemanticsForTransaction } from "./income-semantics";
@@ -73,7 +72,12 @@ export function resolveForecastIncomeBucketForTransaction<
 
 export function isIncludedForecastIncomeBucket(
   bucket: ForecastIncomeBucket | null | undefined,
-  settings: Pick<BudgetPlanSettings, "includeIncome"> | null | undefined,
+  settings:
+    | {
+        includeIncome?: BudgetIncomeInclusionSettings;
+      }
+    | null
+    | undefined,
 ) {
   if (!bucket) return true;
   const includeIncome = settings?.includeIncome ?? DEFAULT_INCLUDE_INCOME;

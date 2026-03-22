@@ -33,8 +33,8 @@ export function AuthScreenShell({
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={styles.root}
     >
-      <View style={styles.backgroundGlowTop} pointerEvents="none" />
-      <View style={styles.backgroundGlowBottom} pointerEvents="none" />
+      <View style={[styles.backgroundGlowTop, styles.noPointerEvents]} />
+      <View style={[styles.backgroundGlowBottom, styles.noPointerEvents]} />
       <View style={styles.topBar}>
         <View style={styles.brandWrap}>
           <View style={styles.brandMark}>
@@ -45,8 +45,10 @@ export function AuthScreenShell({
         </View>
       </View>
       <ScrollView
+        style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        showsHorizontalScrollIndicator={false}
       >
         <View style={styles.contentInner}>
           <View style={styles.hero}>
@@ -119,10 +121,7 @@ export const authScreenStyles = StyleSheet.create({
     minHeight: 58,
     backgroundColor: FinColors.yellow,
     paddingHorizontal: 20,
-    shadowColor: "#B99500",
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    boxShadow: "0px 10px 18px rgba(185,149,0,0.18)",
     elevation: 4,
   },
   buttonDisabled: {
@@ -166,6 +165,10 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: FinColors.bgBase,
+    overflow: "hidden",
+  },
+  scroll: {
+    flex: 1,
   },
   backgroundGlowTop: {
     position: "absolute",
@@ -185,6 +188,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "rgba(17,17,17,0.05)",
   },
+  noPointerEvents: {
+    pointerEvents: "none",
+  },
   topBar: {
     position: "absolute",
     top: 0,
@@ -198,6 +204,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(17,17,17,0.06)",
     justifyContent: "flex-end",
     paddingBottom: 18,
+    boxShadow: "0px 8px 16px rgba(17,17,17,0.08)",
   },
   brandWrap: {
     flexDirection: "row",
@@ -236,12 +243,14 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 24,
     paddingTop: 104,
-    paddingBottom: 40,
+    paddingBottom: 32,
+    overflow: "hidden",
   },
   contentInner: {
     width: "100%",
     maxWidth: 460,
     alignSelf: "center",
+    overflow: "hidden",
     gap: 28,
   },
   hero: {

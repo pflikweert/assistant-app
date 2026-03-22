@@ -25,13 +25,13 @@ import {
 import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import { detectRareSubscriptionItems } from "@/services/rare-subscriptions";
 import { supabase } from "@/services/supabase";
+import { normalizePattern } from "@/services/pattern-normalization";
 import type {
   CategoryRecord,
   ForecastIncomeBucket,
   RecurringType,
   SubscriptionProfile,
 } from "@/types/categorization";
-import { normalizePattern } from "./categorization-repository";
 
 type ForecastTx = {
   id: string;
@@ -339,7 +339,7 @@ async function fetchIncomeSources(userId: string): Promise<IncomeSourceRow[]> {
       .from("forecast_income_sources")
       .select(legacySelect)
       .eq("user_id", userId);
-    data = legacyResult.data;
+    data = legacyResult.data as typeof data;
     error = legacyResult.error;
   }
 

@@ -15,6 +15,16 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 - Maak klikbaarheid zichtbaar via vorm, contrast en iconografie, niet via extra uitleg.
 - Lege staten moeten richting geven: wat zie ik niet, waarom niet, en wat kan ik nu doen?
 
+## Component-First Werkafspraken
+
+- Bouw nieuwe UI eerst als herbruikbare component of style-module als het patroon op meer dan één scherm relevant kan zijn.
+- Houd schermen zo dun mogelijk: schermen leveren inhoud, data en schermspecifieke uitzonderingen; componenten dragen layout, spacing en shellgedrag.
+- Als je op één scherm een nieuwe hero, topbar, kaart, filter, dock of modal bedenkt die later elders kan terugkomen, centraliseer die direct in dezelfde wijziging.
+- Ruim oude inline varianten meteen op zodra een gedeelde component bestaat, zodat we geen parallelle stylingpaden behouden.
+- Verander terugkerende shell-elementen nooit alleen lokaal in één scherm als het een app-brede component hoort te zijn.
+- Kies liever één sterke gedeelde implementatie met kleine props dan meerdere bijna-gelijke schermspecifieke varianten.
+- Als een nieuwe uitzondering echt nodig is, documenteer die in de betreffende sectie van dit bestand.
+
 ## Core Patterns
 
 De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als primaire referentie voor nieuwe schermen en redesigns.
@@ -40,12 +50,16 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web altijd een vaste `max-width` voor content
   - op native geen desktop-achtige gutters simuleren als het toestel die ruimte niet heeft
+- Componentrichtlijn:
+  - gebruik gedeelde shells voor backdrop, hero, topbar en dock
+  - laat schermen niet zelf hun eigen layout-variant bouwen als dezelfde shell al bestaat
 
 ### Patroon: Topbars / Headers
 
 - Naam: Transparante compact header
 - Doel: navigatie en context tonen zonder de contentvisuele hiërarchie te domineren
 - Waar toepasbaar in de app: Transactions, Dashboard, Budget, Insights, modal-achtige tools
+- Shared implementation: gebruik `components/ui/finance-top-bar.tsx` als basis, tenzij een scherm expliciet een native stack header nodig heeft.
 - Structuur / opbouw:
   - vaste bovenbalk
   - links menu of terugactie
@@ -62,6 +76,9 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web werkt translucency goed met backdrop-blur uitstraling
   - op native liever subtiel transparant dan te glazig als blur niet consistent is
+- Componentrichtlijn:
+  - hergebruik `components/ui/finance-top-bar.tsx` of een daarop gebaseerde variant
+  - maak een nieuwe headercomponent alleen als de interaction of context echt fundamenteel afwijkt
 
 ### Patroon: Cards
 
@@ -82,6 +99,9 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - web kan iets meer lucht gebruiken
   - native moet kaarten niet te veel als desktop-panelen laten voelen
+- Componentrichtlijn:
+  - maak cardvarianten gedeeld zodra eenzelfde card op meerdere schermen terugkomt
+  - gebruik geen unieke card-styling per scherm als de inhoud grotendeels hetzelfde is
 
 ### Patroon: Stat Blocks
 
@@ -103,6 +123,9 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web kan een secundair blok naast het hoofdgetal
   - op native liever onder elkaar voor rust
+- Componentrichtlijn:
+  - stat blocks zijn bij voorkeur herbruikbare bouwstenen met wisselbare inhoud
+  - bouw varianten voor kerngetal, secundair statblok en accentblok op dezelfde componentfamilie
 
 ### Patroon: List Rows
 
@@ -124,6 +147,9 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web extra breedte niet vullen met ruis
   - op native bedragen rechts strak uitlijnen
+- Componentrichtlijn:
+  - maak rijen die per scherm terugkomen direct gedeeld, inclusief icon sizing en spacing
+  - gebruik één rijcomponentfamilie voor transacties, historie en vergelijkbare lijstitems
 
 ### Patroon: Filter Bars
 
@@ -145,6 +171,9 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web kan een bredere launcher meer context tonen
   - op native is een bottom sheet vaak natuurlijker dan een inline filterpaneel
+- Componentrichtlijn:
+  - maak de launcher, chips en modal/sheet samen onderdeel van één filterflow-componentset
+  - wijzig filtervormgeving op één plek zodat alle schermen mee bewegen
 
 ### Patroon: Tabs / Segment Controls
 
@@ -164,6 +193,33 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web kan segment iets breder worden
   - op native moet touch target ruim genoeg blijven
+- Componentrichtlijn:
+  - segment controls alleen delen via een gezamenlijke component wanneer ze hetzelfde gedrag en dezelfde states delen
+
+### Patroon: Bottom Navigation / Quick Menu
+
+- Naam: Docked quick menu
+- Doel: de belangrijkste schermen snel bereikbaar maken zonder dat de contenttop druk wordt
+- Waar toepasbaar in de app: tab-based schermen, globale app-shells, snelle routes naar Dashboard, Budget, Transactions en Insights
+- Structuur / opbouw:
+  - afgeronde container met zachte schaduw of border
+  - maximaal 4 primaire items
+  - 1 actieve item met gevuld of sterk geaccentueerd vlak
+  - label onder icoon of compacte pill-indicator
+- Belangrijkste visuele regels:
+  - dock voelt los van de content maar dicht op de onderrand
+  - actieve staat gebruikt geel of een duidelijk functioneel accent
+  - container blijft licht en compact, niet massief
+- Mobile-first aandachtspunten:
+  - min mogelijk tekst, geen extra secundaire uitleg
+  - voldoende touch targets ondanks compacte vorm
+  - op kleine schermen altijd de hoogte beperken
+- Web/native aandachtspunten:
+  - op web mag de dock iets zweven boven de onderrand
+  - op native moet de dock ook zonder blur of translucency sterk genoeg zijn
+- Componentrichtlijn:
+  - pas dock layout, active state en hoogte altijd in de gedeelde quick-menu component aan
+  - laat geen scherm eigen dock-variant behouden als het patroon overeenkomt
 
 ### Patroon: Status Labels / Pills
 
@@ -184,6 +240,8 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web kunnen meerdere pills naast elkaar
   - op native liever 1 duidelijke status per informatielaag
+- Componentrichtlijn:
+  - status pills zijn kleine herbruikbare tokens, geen losse schermspecifieke mini-cards
 
 ### Patroon: CTA Buttons
 
@@ -204,6 +262,8 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web kunnen CTA’s vaker inline naast elkaar
   - op native moeten touch targets groot genoeg blijven
+- Componentrichtlijn:
+  - primaire en secundaire actievarianten worden per app-shell consistent gehouden
 
 ### Patroon: Detail Layouts
 
@@ -225,6 +285,9 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web kun je inhoudssecties iets breder of tweekoloms maken
   - op native vooral lineaire flow behouden
+- Componentrichtlijn:
+  - detailschermen gebruiken waar mogelijk dezelfde hero, topbar, card en text-block componenten
+  - maak alleen detail-specifieke componenten voor daadwerkelijk afwijkende interaction patterns
 
 ### Patroon: Form Patterns
 
@@ -245,6 +308,8 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web kan grid-layout bij formulieren
   - op native liever 1-kolomsflow met duidelijke verticale ritmiek
+- Componentrichtlijn:
+  - zet herbruikbare form controls en keuzevakken in gedeelde componenten zodra ze vaker terugkomen
 
 ### Patroon: Spacing / Padding / Rhythm
 
@@ -267,6 +332,9 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web iets ruimere sectieruimte
   - op native compacte topbars, maar nooit gepropte content
+- Componentrichtlijn:
+  - spacing hoort bij de gedeelde shell of component, niet bij losse scherm-lokale uitzonderingen
+  - houd ritme consistent door dezelfde padding- en gap-tokens te hergebruiken
 
 ### Patroon: Typography Hierarchy
 
@@ -289,6 +357,8 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web kunnen hero-titels groter
   - op native moeten regels compact genoeg blijven voor kleine viewports
+- Componentrichtlijn:
+  - typografische schaal hoort in componenten of gedeelde tokens thuis, niet per scherm opnieuw gedefinieerd
 
 ### Patroon: Empty States / Feedback Blocks
 
@@ -310,6 +380,9 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web kunnen extra ondersteunende voordelen of contextkaarten onder de lege staat
   - op native vooral kort en actiegericht blijven
+- Componentrichtlijn:
+  - maak lege-staat blokken gedeeld zodra eenzelfde structuur op meerdere plekken terugkomt
+  - houd primary/secondary CTA-ordes consistent
 
 ## Screen-specific Examples
 
@@ -328,11 +401,11 @@ Toegepaste patronen:
 - rustige zoekbalk en actieve filterchips onder de hero
 - list rows met icoon, 2-regelige omschrijving, categoriepad en bedrag rechts
 - mobiele pager met compacte status en icon-navigatie
-- bottom navigation als losse shell tegen de onderrand
+- docked quick menu als losse shell tegen de onderrand
 
 Waarom dit scherm belangrijk is:
 - dit is momenteel de beste productievertaling van Stitch naar de bestaande app-architectuur
-- gebruik dit scherm als eerste implementatievoorbeeld voor lijsten, hero-opbouw en mobiele filtering
+- gebruik dit scherm als eerste implementatievoorbeeld voor lijsten, hero-opbouw, mobiele filtering en docked quick menu
 
 ### Budget
 
@@ -340,10 +413,12 @@ Referentie:
 - Stitch: `design_refs/stitch_v1/budget_verbeterde_hero`
 
 Belangrijkste patronen:
+- full-bleed shell met compacte topbar en maandkiezers in de headerlaag
 - hero met groot kerngetal en compacte statuslabel
 - progress bars voor budgetverbruik
 - tactische stat blocks onder de hero
 - kaarten voor overlapweken en categorie-inzichten
+- quick menu en topactie blijven visueel rustig, niet concurrerend met de hero
 
 Wanneer hergebruiken:
 - bij schermen waar dagsturing, maandsturing en signalering samenkomen
@@ -354,9 +429,11 @@ Referentie:
 - Stitch: `design_refs/stitch_v1/dashboard_verbeterde_hero`
 
 Belangrijkste patronen:
-- hero met totaalstand en secundair budgetblok
+- full-bleed hero met totaalstand en secundair budgetblok
+- compacte topbar met appcontext en secundaire actie
 - compacte status cards
 - korte snapshot-lijsten in plaats van zware dashboards
+- bottom quick menu blijft docked en licht
 
 Wanneer hergebruiken:
 - bij schermen die overzicht eerst en details pas daarna tonen

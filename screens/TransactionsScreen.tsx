@@ -1,7 +1,13 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
-import HeaderDropdownMenu from "@/components/header-dropdown-menu";
+import {
+  FinanceQuickMenu,
+  type FinanceQuickMenuKey,
+} from "@/components/navigation/finance-quick-menu";
+import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
+import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
 import { requireCurrentUserId } from "@/services/current-user";
@@ -114,92 +120,20 @@ function TopAvatar() {
   );
 }
 
-function BottomNav({ active }: { active: "dashboard" | "budget" | "transactions" | "insights"; }) {
-  const router = useRouter();
-
-  return (
-    <View style={styles.bottomNavShell}>
-      <View style={styles.bottomNav}>
-        <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push("/")}>
-          <AppIcon
-            name="space-dashboard"
-            size={22}
-            color={active === "dashboard" ? FinColors.warningText : FinColors.textSecondary}
-            variant="outlined"
-          />
-          <Text
-            style={[
-              styles.bottomNavLabel,
-              active === "dashboard" && styles.bottomNavLabelActive,
-            ]}
-          >
-            Dashboard
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push("/budget")}>
-          <AppIcon
-            name="account-balance-wallet"
-            size={22}
-            color={active === "budget" ? FinColors.warningText : FinColors.textSecondary}
-            variant="outlined"
-          />
-          <Text
-            style={[
-              styles.bottomNavLabel,
-              active === "budget" && styles.bottomNavLabelActive,
-            ]}
-          >
-            Budget
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.bottomNavItem, styles.bottomNavItemActive]} onPress={() => router.push("/transactions")}>
-          <AppIcon
-            name="receipt-long"
-            size={22}
-            color={FinColors.warningText}
-            variant="outlined"
-          />
-          <Text style={[styles.bottomNavLabel, styles.bottomNavLabelActive]}>
-            Transacties
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push("/insights")}>
-          <AppIcon
-            name="query-stats"
-            size={22}
-            color={active === "insights" ? FinColors.warningText : FinColors.textSecondary}
-            variant="outlined"
-          />
-          <Text
-            style={[
-              styles.bottomNavLabel,
-              active === "insights" && styles.bottomNavLabelActive,
-            ]}
-          >
-            Inzichten
-          </Text>
-        </TouchableOpacity>
-
-      </View>
-    </View>
-  );
-}
-
 export default function TransactionsScreen({
   counterpartyFilter,
   analysisCategoryFilter,
   monthStartFilter,
   monthEndExclusiveFilter,
   categoryKeyFilter,
+  showQuickMenu = true,
 }: {
   counterpartyFilter?: string;
   analysisCategoryFilter?: string;
   monthStartFilter?: string;
   monthEndExclusiveFilter?: string;
   categoryKeyFilter?: string;
+  showQuickMenu?: boolean;
 } = {}) {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -521,22 +455,15 @@ export default function TransactionsScreen({
 
   const header = (
     <View style={styles.headerBlock}>
-      <View style={styles.heroShell}>
-        <View style={styles.heroInner}>
-          <View style={styles.hero}>
-            <View style={styles.heroEyebrowRow}>
-              <View style={styles.heroEyebrowDot} />
-              <Text style={styles.heroEyebrow}>Transactie overzicht</Text>
-            </View>
-            <Text style={styles.heroTitle}>Transacties</Text>
-            <View style={styles.heroCopyWrap}>
-              <Text style={styles.heroCopy}>
-                Recent overzicht van al je uitgaven en inkomsten, georganiseerd op tijd en categorie.
-              </Text>
-            </View>
-          </View>
-        </View>
-      </View>
+      <FinanceHeroShell
+        shellStyle={styles.heroShell}
+        innerStyle={styles.heroInner}
+        eyebrow="Transactie overzicht"
+        title="Transacties"
+        subtitle="Recent overzicht van al je uitgaven en inkomsten, georganiseerd op tijd en categorie."
+        titleStyle={styles.heroTitle}
+        subtitleStyle={styles.heroCopy}
+      />
 
       <View style={styles.contentMax}>
         <View style={styles.filterRow}>
@@ -598,13 +525,13 @@ export default function TransactionsScreen({
 
   return (
     <View style={[styles.root, isWideLayout && styles.rootWide]}>
-      <View style={styles.topBar}>
-        <View style={styles.topBarLeft}>
-          <HeaderDropdownMenu />
-          <Text style={styles.topBarTitle}>Mijn Financiën</Text>
-        </View>
-        <TopAvatar />
-      </View>
+      <FinanceScreenBackdrop tone="warm" />
+      <FinanceTopBar
+        shellStyle={styles.topBar}
+        innerStyle={styles.topBarInner}
+        title="Mijn Financiën"
+        rightSlot={<TopAvatar />}
+      />
 
       <SectionList
         ref={listRef}
@@ -739,7 +666,22 @@ export default function TransactionsScreen({
         <AppIcon name="add" size={28} color={FinColors.bgCard} variant="outlined" />
       </TouchableOpacity>
 
-      <BottomNav active="transactions" />
+      {showQuickMenu ? (
+        <FinanceQuickMenu
+          activeKey="transactions"
+          onSelect={(key: FinanceQuickMenuKey) => {
+            if (key === "index") {
+              router.push("/");
+            } else if (key === "budget") {
+              router.push("/budget");
+            } else if (key === "transactions") {
+              router.push("/transactions");
+            } else if (key === "insights") {
+              router.push("/insights");
+            }
+          }}
+        />
+      ) : null}
 
       <Modal
         visible={filterModalOpen}
@@ -899,7 +841,7 @@ export default function TransactionsScreen({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: FinColors.bgBase,
+    backgroundColor: "transparent",
   },
   rootWide: {
     alignItems: "center",
@@ -920,27 +862,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    minHeight: 60,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 12,
     backgroundColor: "rgba(246,245,242,0.84)",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(17,17,17,0.05)",
   },
-  topBarLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  topBarTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: FinColors.textPrimary,
-    letterSpacing: -0.4,
+  topBarInner: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
   },
   avatar: {
     width: 40,
@@ -959,18 +888,8 @@ const styles = StyleSheet.create({
   },
   heroShell: {
     marginHorizontal: -16,
-    backgroundColor: FinColors.bgElevated,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.05)",
   },
   heroInner: {
-    width: "100%",
-    maxWidth: CONTENT_MAX_WIDTH,
-    alignSelf: "center",
-    paddingHorizontal: 16,
-  },
-  hero: {
-    backgroundColor: FinColors.bgElevated,
     paddingTop: 102,
     paddingBottom: 32,
     gap: 18,
@@ -981,35 +900,12 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     paddingHorizontal: 16,
   },
-  heroEyebrowRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  heroEyebrowDot: {
-    width: 9,
-    height: 9,
-    backgroundColor: FinColors.warningText,
-  },
-  heroEyebrow: {
-    fontSize: 10,
-    lineHeight: 14,
-    letterSpacing: 2.5,
-    textTransform: "uppercase",
-    fontWeight: "800",
-    color: FinColors.textMuted,
-  },
   heroTitle: {
     fontSize: 52,
     lineHeight: 54,
     letterSpacing: -1.8,
     fontWeight: "900",
     color: FinColors.textPrimary,
-  },
-  heroCopyWrap: {
-    borderLeftWidth: 2,
-    borderLeftColor: FinColors.border,
-    paddingLeft: 14,
   },
   heroCopy: {
     fontSize: 18,
@@ -1129,7 +1025,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 16,
     paddingBottom: 120,
-    backgroundColor: FinColors.bgBase,
+    backgroundColor: "transparent",
   },
   sectionHeader: {
     paddingTop: 10,

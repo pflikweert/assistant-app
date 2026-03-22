@@ -1,5 +1,4 @@
 import { requireCurrentUserId } from "@/services/current-user";
-import { markForecastDirty } from "@/services/forecast-refresh";
 import { supabase } from "@/services/supabase";
 import type {
   CategoryBudgetGroupOverrideRecord,
@@ -232,12 +231,6 @@ export async function upsertCategoryBudgetGroupOverride(input: {
     .upsert(payload, { onConflict: "user_id,category_id" });
 
   if (error) throw error;
-  await markForecastDirty("budget_save").catch((refreshError) => {
-    console.warn(
-      "[category-budget-groups] forecast dirty mark after override failed",
-      refreshError,
-    );
-  });
 }
 
 export async function resetCategoryBudgetGroupOverride(categoryId: string) {
@@ -249,10 +242,4 @@ export async function resetCategoryBudgetGroupOverride(categoryId: string) {
     .eq("category_id", categoryId);
 
   if (error) throw error;
-  await markForecastDirty("budget_save").catch((refreshError) => {
-    console.warn(
-      "[category-budget-groups] forecast dirty mark after reset failed",
-      refreshError,
-    );
-  });
 }

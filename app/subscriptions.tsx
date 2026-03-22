@@ -1,5 +1,6 @@
 import { FinColors } from "@/constants/theme";
 import { normalizePattern } from "@/services/categorization-repository";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import {
     createSubscriptionProfile,
     deleteSubscriptionProfile,
@@ -976,6 +977,7 @@ export default function SubscriptionsScreen() {
 
   return (
     <View style={styles.root}>
+      <FinanceScreenBackdrop tone="warm" />
       {loading ? (
         <View style={styles.centered}>
           <ActivityIndicator color={FinColors.warningText} size="large" />

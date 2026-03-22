@@ -3,6 +3,7 @@ import {
   applyEffectiveBudgetGroupsToCategories,
   listCategoryBudgetGroupOverrides,
 } from "@/services/category-budget-groups";
+import { normalizePattern } from "@/services/pattern-normalization";
 import {
     allocateIntegerBudget,
     allocateWeekBudgetsByMainCategory,
@@ -21,23 +22,23 @@ import {
     resolveBaseWeeklyBudgetsByDailyMonthRates,
     resolveBaseWeeklyMainCategoryBudgetsByDailyMonthRates,
 } from "@/services/budget-week-utils";
-import { normalizePattern } from "@/services/categorization-repository";
 import { resolveIncomeSemantics } from "@/services/income-semantics";
 import { supabase } from "@/services/supabase";
 import type {
     AnalysisCategory,
     AnalysisMainGroup,
-    BudgetCategoryKey,
-    BudgetCoachReport,
-    BudgetExpenseBreakdown,
-    BudgetExpenseDetailItem,
-    BudgetFlowSummary,
+  BudgetCategoryKey,
+  BudgetCoachReport,
+  BudgetExpenseBreakdown,
+  BudgetExpenseDetailItem,
+  BudgetFlowSummary,
     BudgetIncomeBreakdown,
     BudgetOutsideExpenseItem,
     BudgetOutsideExpenseSummary,
     BudgetOverrideSource,
-    BudgetPlanComputation,
-    BudgetPlanSettings,
+  BudgetPlanComputation,
+  BudgetIncomeInclusionSettings,
+  BudgetPlanSettings,
     BudgetRecommendationRow,
     BudgetSavingsProgress,
     BudgetSavingsTargetSource,

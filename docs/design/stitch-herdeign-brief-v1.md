@@ -1,5 +1,12 @@
 Okay, as no specific context was provided, I will create a sample Project PRD/Brief for a common scenario: **Enhancing an existing SaaS product with an "In-App Subscription Management" feature.**
 
+For the actual finance-app implementation in this repository, use the living UI guidance in:
+
+- `AGENTS.md`
+- `docs/UI_PATTERNS.md`
+
+Those files contain the current component-first design rules, shell patterns, and shared styling instructions used by the app.
+
 This will demonstrate the structure and typical content of such a document.
 
 ---
@@ -205,4 +212,3 @@ We propose creating a new "Subscription & Billing" section within the user's "Se
 
 ---
 :wq
-

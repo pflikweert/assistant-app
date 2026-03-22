@@ -73,15 +73,7 @@ export default function LoginScreen() {
         editable={!submitting}
       />
       <View style={authScreenStyles.fieldGroup}>
-        <View style={authScreenStyles.fieldRow}>
-          <Text style={authScreenStyles.fieldLabel}>Wachtwoord</Text>
-          <Link
-            href={"/auth/forgot-password" as Href}
-            style={authScreenStyles.textLink}
-          >
-            Wachtwoord vergeten?
-          </Link>
-        </View>
+        <Text style={authScreenStyles.fieldLabel}>Wachtwoord</Text>
         <TextInput
           style={authScreenStyles.input}
           placeholder="Voer je wachtwoord in"
@@ -93,6 +85,12 @@ export default function LoginScreen() {
           onChangeText={setPassword}
           editable={!submitting}
         />
+        <Link
+          href={"/auth/forgot-password" as Href}
+          style={[authScreenStyles.textLink, styles.forgotLink]}
+        >
+          Wachtwoord vergeten?
+        </Link>
       </View>
       {error ? <Text style={authScreenStyles.errorText}>{error}</Text> : null}
       <Pressable
@@ -134,5 +132,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
     paddingHorizontal: 8,
+  },
+  forgotLink: {
+    alignSelf: "flex-end",
+    marginTop: -2,
   },
 });

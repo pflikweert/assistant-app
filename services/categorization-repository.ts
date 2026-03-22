@@ -3,6 +3,7 @@ import {
   listCategoryBudgetGroupOverrides,
 } from "@/services/category-budget-groups";
 import { markForecastDirty } from "@/services/forecast-refresh";
+import { normalizePattern } from "@/services/pattern-normalization";
 import { supabase } from "@/services/supabase";
 import { requireCurrentUserId } from "@/services/current-user";
 import type {
@@ -45,6 +46,8 @@ export type CategorizationRepository = {
   ) => Promise<void>;
   clearAllTransactionData: () => Promise<void>;
 };
+
+export { normalizePattern };
 
 function asNumber(value: unknown, fallback = 0): number {
   const n = Number(value);
@@ -402,15 +405,6 @@ export async function setTransactionManualCategory(
   await markForecastDirty("manual_category").catch((error) => {
     console.warn("[categories] forecast dirty mark after manual category failed", error);
   });
-}
-
-export function normalizePattern(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
 }
 
 // ── Transaction detail + counterparty helpers ──────────────────────────────

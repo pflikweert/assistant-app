@@ -15,6 +15,7 @@ import {
 } from "react-native";
 // @ts-ignore
 import { FinColors } from "@/constants/theme";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { runCategorizationInBackground } from "@/services/categorization";
 import {
   ACCOUNT_TYPES,
@@ -369,148 +370,150 @@ export default function CSVImportScreen() {
   const pct = total ? Math.round((processed / total) * 100) : 0;
 
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.title}>Import Bank Transactions</Text>
-      <Text style={styles.subtitle}>
-        Upload a Rabobank CSV/PDF export to sync your transactions.
-      </Text>
+    <View style={styles.root}>
+      <FinanceScreenBackdrop tone="warm" />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.title}>Import Bank Transactions</Text>
+        <Text style={styles.subtitle}>
+          Upload a Rabobank CSV/PDF export to sync your transactions.
+        </Text>
 
-      <View style={styles.sourceSwitchRow}>
-        {(["csv", "pdf"] as ImportSource[]).map((source) => {
-          const selected = importSource === source;
-          return (
-            <TouchableOpacity
-              key={source}
-              style={[styles.sourceSwitchBtn, selected && styles.sourceSwitchBtnSelected]}
-              onPress={() => {
-                setImportSource(source);
-                setPendingContent(null);
-                setPendingRowCount(null);
-                setPreview([]);
-                setDetectedAccountNumber(null);
-              }}
-            >
-              <Text
-                style={[
-                  styles.sourceSwitchText,
-                  selected && styles.sourceSwitchTextSelected,
-                ]}
+        <View style={styles.sourceSwitchRow}>
+          {(["csv", "pdf"] as ImportSource[]).map((source) => {
+            const selected = importSource === source;
+            return (
+              <TouchableOpacity
+                key={source}
+                style={[styles.sourceSwitchBtn, selected && styles.sourceSwitchBtnSelected]}
+                onPress={() => {
+                  setImportSource(source);
+                  setPendingContent(null);
+                  setPendingRowCount(null);
+                  setPreview([]);
+                  setDetectedAccountNumber(null);
+                }}
               >
-                {source.toUpperCase()}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      <View style={styles.accountSection}>
-        <Text style={styles.sectionTitle}>Rekeningcontext</Text>
-        {bankAccounts.length ? (
-          <View style={styles.accountListRow}>
-            {bankAccounts.map((account) => {
-              const isSelected = account.id === selectedAccountId;
-              return (
-                <TouchableOpacity
-                  key={account.id}
+                <Text
                   style={[
-                    styles.accountPill,
-                    isSelected && styles.accountPillSelected,
+                    styles.sourceSwitchText,
+                    selected && styles.sourceSwitchTextSelected,
                   ]}
-                  onPress={() => setSelectedAccountId(account.id)}
                 >
-                  <Text
-                    style={[
-                      styles.accountPillName,
-                      isSelected && styles.accountPillNameSelected,
-                    ]}
-                  >
-                    {account.name}
-                  </Text>
-                  <Text style={styles.accountPillMeta}>
-                    {account.account_type} ·{" "}
-                    {account.account_masked ?? account.currency}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        ) : (
-          <Text style={styles.hintText}>
-            Geen rekeningen gevonden, voeg hieronder een rekening toe.
-          </Text>
-        )}
-        {selectedAccount && (
-          <Text style={styles.selectedAccountText}>
-            Geselecteerd: {selectedAccount.name} ·{" "}
-            {selectedAccount.account_masked ?? selectedAccount.currency}
-          </Text>
-        )}
-        {!selectedAccount && detectedAccountNumber && (
-          <Text style={styles.detectedLabel}>
-            {importSource.toUpperCase()} bevat rekening {maskAccountNumber(detectedAccountNumber)}.
-          </Text>
-        )}
-      </View>
-
-      <View style={styles.accountForm}>
-        <Text style={styles.sectionTitle}>Nieuwe rekening toevoegen</Text>
-        <TextInput
-          value={newAccountName}
-          onChangeText={setNewAccountName}
-          placeholder="Naam voor deze rekening"
-          style={styles.textInput}
-        />
-        <TextInput
-          value={newAccountNumber}
-          onChangeText={setNewAccountNumber}
-          placeholder="IBAN of rekeningnummer"
-          style={styles.textInput}
-        />
-        <TextInput
-          value={newAccountProvider}
-          onChangeText={setNewAccountProvider}
-          placeholder="Provider (optioneel)"
-          style={styles.textInput}
-        />
-        <Text style={styles.fieldLabel}>Type</Text>
-        <View style={styles.accountTypeList}>
-          {ACCOUNT_TYPES.map((type) => (
-            <TouchableOpacity
-              key={type}
-              style={[
-                styles.accountTypePill,
-                newAccountType === type && styles.accountTypePillSelected,
-              ]}
-              onPress={() => setNewAccountType(type)}
-            >
-              <Text
-                style={[
-                  styles.accountTypeText,
-                  newAccountType === type && styles.accountTypeTextSelected,
-                ]}
-              >
-                {type}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                  {source.toUpperCase()}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
-        <TouchableOpacity
-          style={[
-            styles.createAccountBtn,
-            creatingAccount && styles.importBtnDisabled,
-          ]}
-          disabled={creatingAccount}
-          onPress={handleAddBankAccount}
-        >
-          <Text style={styles.createAccountBtnText}>
-            {creatingAccount ? "Rekening opslaan..." : "Rekening toevoegen"}
-          </Text>
-        </TouchableOpacity>
-      </View>
+
+        <View style={styles.accountSection}>
+          <Text style={styles.sectionTitle}>Rekeningcontext</Text>
+          {bankAccounts.length ? (
+            <View style={styles.accountListRow}>
+              {bankAccounts.map((account) => {
+                const isSelected = account.id === selectedAccountId;
+                return (
+                  <TouchableOpacity
+                    key={account.id}
+                    style={[
+                      styles.accountPill,
+                      isSelected && styles.accountPillSelected,
+                    ]}
+                    onPress={() => setSelectedAccountId(account.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.accountPillName,
+                        isSelected && styles.accountPillNameSelected,
+                      ]}
+                    >
+                      {account.name}
+                    </Text>
+                    <Text style={styles.accountPillMeta}>
+                      {account.account_type} ·{" "}
+                      {account.account_masked ?? account.currency}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={styles.hintText}>
+              Geen rekeningen gevonden, voeg hieronder een rekening toe.
+            </Text>
+          )}
+          {selectedAccount && (
+            <Text style={styles.selectedAccountText}>
+              Geselecteerd: {selectedAccount.name} ·{" "}
+              {selectedAccount.account_masked ?? selectedAccount.currency}
+            </Text>
+          )}
+          {!selectedAccount && detectedAccountNumber && (
+            <Text style={styles.detectedLabel}>
+              {importSource.toUpperCase()} bevat rekening {maskAccountNumber(detectedAccountNumber)}.
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.accountForm}>
+          <Text style={styles.sectionTitle}>Nieuwe rekening toevoegen</Text>
+          <TextInput
+            value={newAccountName}
+            onChangeText={setNewAccountName}
+            placeholder="Naam voor deze rekening"
+            style={styles.textInput}
+          />
+          <TextInput
+            value={newAccountNumber}
+            onChangeText={setNewAccountNumber}
+            placeholder="IBAN of rekeningnummer"
+            style={styles.textInput}
+          />
+          <TextInput
+            value={newAccountProvider}
+            onChangeText={setNewAccountProvider}
+            placeholder="Provider (optioneel)"
+            style={styles.textInput}
+          />
+          <Text style={styles.fieldLabel}>Type</Text>
+          <View style={styles.accountTypeList}>
+            {ACCOUNT_TYPES.map((type) => (
+              <TouchableOpacity
+                key={type}
+                style={[
+                  styles.accountTypePill,
+                  newAccountType === type && styles.accountTypePillSelected,
+                ]}
+                onPress={() => setNewAccountType(type)}
+              >
+                <Text
+                  style={[
+                    styles.accountTypeText,
+                    newAccountType === type && styles.accountTypeTextSelected,
+                  ]}
+                >
+                  {type}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.createAccountBtn,
+              creatingAccount && styles.importBtnDisabled,
+            ]}
+            disabled={creatingAccount}
+            onPress={handleAddBankAccount}
+          >
+            <Text style={styles.createAccountBtnText}>
+              {creatingAccount ? "Rekening opslaan..." : "Rekening toevoegen"}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
 
 
@@ -637,12 +640,14 @@ export default function CSVImportScreen() {
           <Text style={styles.importBtnText}>Import Transactions</Text>
         </TouchableOpacity>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: FinColors.bgBase },
+  root: { flex: 1, backgroundColor: "transparent" },
+  scroll: { flex: 1, backgroundColor: "transparent" },
   content: { padding: 24, paddingTop: 12, gap: 16 },
   title: {
     fontSize: 24,

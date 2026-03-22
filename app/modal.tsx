@@ -1,10 +1,12 @@
 import { Link } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 import { FinColors } from "@/constants/theme";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 
 export default function ModalScreen() {
   return (
     <View style={styles.container}>
+      <FinanceScreenBackdrop tone="warm" />
       <View style={styles.card}>
         <Text style={styles.eyebrow}>Voorbeeldmodal</Text>
         <Text style={styles.title}>This is a modal</Text>
@@ -25,7 +27,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     padding: 20,
-    backgroundColor: FinColors.bgBase,
+    backgroundColor: "transparent",
   },
   card: {
     borderRadius: 28,

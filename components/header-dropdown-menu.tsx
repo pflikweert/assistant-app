@@ -31,7 +31,19 @@ function normalizePath(pathname: string): string {
   return pathname;
 }
 
-export default function HeaderDropdownMenu() {
+type HeaderDropdownMenuBaseProps = {
+  mode?: "default" | "detail";
+};
+
+export default function HeaderDropdownMenu({
+  mode = "default",
+}: HeaderDropdownMenuBaseProps) {
+  return <HeaderDropdownMenuBase mode={mode} />;
+}
+
+export function HeaderDropdownMenuBase({
+  mode = "default",
+}: HeaderDropdownMenuBaseProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = React.useState(false);

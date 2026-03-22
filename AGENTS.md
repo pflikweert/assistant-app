@@ -32,6 +32,8 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 - Basispalet blijft wit, grijs en zwart met geel als spaarzaam functioneel accent, zoals uitgewerkt in `docs/UI_PATTERNS.md`
 - Pas bestaande Stitch-afgeleide patronen uit `docs/UI_PATTERNS.md` toe voordat je nieuwe visuele patronen introduceert
 - Als een scherm bewust afwijkt van `docs/UI_PATTERNS.md`, benoem dan expliciet waarom dat productmatig of technisch nodig is
+- Nieuwe visuele patronen eerst als gedeelde component of style-module bouwen; pas daarna op schermniveau invullen
+- Laat shell-elementen die op meerdere schermen terugkomen nooit per scherm opnieuw uitvinden, maar centraliseer ze direct
 
 ## Kernbegrippen
 
@@ -151,6 +153,13 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Voeg nieuwe componenten alleen toe als hergebruik nergens logisch past
 - Als een patroon op meerdere schermen terugkomt, centraliseer het zo vroeg mogelijk
 - Als een UI-patroon al beschreven staat in `docs/UI_PATTERNS.md`, sluit daar dan eerst op aan voordat je een afwijkende componentstructuur kiest
+- Als een shell-element op meerdere schermen terugkomt, maak er een gedeelde component of style-module van en hergebruik die direct
+- Gebruik voor topbars en headers bij voorkeur `components/ui/finance-top-bar.tsx` als gedeelde basis, en pas alleen per scherm de title, right slot en children aan
+- Pas quick menu-, tabbar-, topbar- en achtergronddecoratie-layouts op één centrale plek aan zodat alle schermen mee bewegen
+- Ruim oude inline varianten op zodra een gedeelde component of module bestaat, zodat nieuwe schermen niet opnieuw dezelfde code krijgen
+- Maak componenten bewust breder inzetbaar: stop stijl, spacing en shellgedrag in de component zelf; schermen leveren vooral inhoud en uitzonderingen aan
+- Als een nieuwe stijl, hero, card, block, filter, modal of dock op 2 schermen nuttig blijkt, refactor hem direct naar een gedeeld component in dezelfde wijziging
+- Houd tijdelijke scherm-specifieke styling klein en verwijder die weer zodra het patroon is gecentraliseerd
 
 ## QA En Tests
 

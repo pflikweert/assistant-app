@@ -1,7 +1,8 @@
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { TransactionCategoryIcon } from "@/components/category-icon";
-import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { MonthPickerSheet } from "@/components/month-picker-sheet";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { FinColors } from "@/constants/theme";
 import { upsertBudgetPlanSettings } from "@/services/budget-plan-repository";
 import {
@@ -2408,23 +2409,23 @@ export default function InsightsScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.topBar}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <HeaderDropdownMenu />
-            <View>
-              <Text style={styles.pageTitle}>Insights</Text>
-              <Text style={styles.pageSubtitle}>Begrijpen, voorspellen, verbeteren.</Text>
-            </View>
-          </View>
+      <FinanceScreenBackdrop tone="warm" />
+      <FinanceTopBar
+        shellStyle={styles.topBar}
+        innerStyle={styles.topBarInner}
+        title="Insights"
+        subtitle="Begrijpen, voorspellen, verbeteren."
+        titleStyle={styles.pageTitle}
+        subtitleStyle={styles.pageSubtitle}
+        rightSlot={
           <TouchableOpacity
             style={styles.headerCta}
             onPress={() => router.push("/budget")}
           >
             <Text style={styles.headerCtaText}>Budget</Text>
           </TouchableOpacity>
-        </View>
-
+        }
+      >
         <View style={styles.monthRow}>
           <Pressable
             style={[
@@ -2489,7 +2490,7 @@ export default function InsightsScreen() {
             </TouchableOpacity>
           ))}
         </View>
-      </View>
+      </FinanceTopBar>
 
       {loading ? (
         <View style={styles.centered}>
@@ -4132,25 +4133,19 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: FinColors.bgBase,
+    overflow: "hidden",
   },
   topBar: {
-    paddingTop: 20,
-    paddingHorizontal: 24,
-    paddingBottom: 14,
-    backgroundColor: "rgba(246,245,242,0.82)",
+    backgroundColor: "rgba(246,245,242,0.9)",
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.06)",
+    borderBottomColor: "rgba(17,17,17,0.08)",
+    boxShadow: "0px 8px 16px rgba(17,17,17,0.05)",
+    elevation: 1,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flex: 1,
+  topBarInner: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 14,
   },
   pageTitle: {
     fontSize: 28,
@@ -4250,7 +4245,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-    paddingBottom: 32,
+    paddingBottom: 128,
     gap: 16,
   },
   heroCard: {

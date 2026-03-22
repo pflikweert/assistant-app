@@ -1,5 +1,6 @@
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import {
   BUDGET_GROUP_LABELS,
   EDITABLE_BUDGET_GROUPS,
@@ -13,6 +14,7 @@ import {
   upsertCategoryBudgetGroupOverride,
 } from "@/services/category-budget-groups";
 import { getTransactionCategories } from "@/services/categorization-repository";
+import { markForecastDirty } from "@/services/forecast-refresh";
 import { buildCategoryRecordMap, sortCategories } from "@/services/category-display";
 import type {
   CategoryBudgetGroupOverrideRecord,
@@ -293,11 +295,23 @@ export default function CategoryBudgetGroupsScreen() {
       try {
         if (systemGroup === nextGroup) {
           await resetCategoryBudgetGroupOverride(categoryId);
+          await markForecastDirty("budget_save").catch((refreshError) => {
+            console.warn(
+              "[category-budget-groups] forecast dirty mark after reset failed",
+              refreshError,
+            );
+          });
           setOverrides((current) => applyOverrideState(current, categoryId, null));
         } else {
           await upsertCategoryBudgetGroupOverride({
             categoryId,
             budgetGroup: nextGroup,
+          });
+          await markForecastDirty("budget_save").catch((refreshError) => {
+            console.warn(
+              "[category-budget-groups] forecast dirty mark after override failed",
+              refreshError,
+            );
           });
           setOverrides((current) =>
             applyOverrideState(current, categoryId, nextGroup),
@@ -322,6 +336,12 @@ export default function CategoryBudgetGroupsScreen() {
     setErrorMessage(null);
     try {
       await resetCategoryBudgetGroupOverride(categoryId);
+      await markForecastDirty("budget_save").catch((refreshError) => {
+        console.warn(
+          "[category-budget-groups] forecast dirty mark after reset failed",
+          refreshError,
+        );
+      });
       setOverrides((current) => applyOverrideState(current, categoryId, null));
     } catch (error) {
       console.error("[category-budget-groups] reset error", error);
@@ -335,49 +355,54 @@ export default function CategoryBudgetGroupsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={FinColors.green} />
+      <View style={styles.root}>
+        <FinanceScreenBackdrop tone="warm" />
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={FinColors.green} />
+        </View>
       </View>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.heroCard}>
-        <Text style={styles.heroTitle}>Budgetgroep per categorie</Text>
-        <Text style={styles.heroText}>
-          Hier stuur je alleen de budgetbak aan. De transactiecategorie zelf
-          blijft ongewijzigd.
-        </Text>
-        <View style={styles.heroMetaRow}>
-          <View style={styles.heroMetaPill}>
-            <Text style={styles.heroMetaValue}>{manageableCategoryCount}</Text>
-            <Text style={styles.heroMetaLabel}>beheerbare categorieen</Text>
+    <View style={styles.root}>
+      <FinanceScreenBackdrop tone="warm" />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.heroCard}>
+          <Text style={styles.heroTitle}>Budgetgroep per categorie</Text>
+          <Text style={styles.heroText}>
+            Hier stuur je alleen de budgetbak aan. De transactiecategorie zelf
+            blijft ongewijzigd.
+          </Text>
+          <View style={styles.heroMetaRow}>
+            <View style={styles.heroMetaPill}>
+              <Text style={styles.heroMetaValue}>{manageableCategoryCount}</Text>
+              <Text style={styles.heroMetaLabel}>beheerbare categorieen</Text>
+            </View>
+            <View style={styles.heroMetaPill}>
+              <Text style={styles.heroMetaValue}>{activeOverrideCount}</Text>
+              <Text style={styles.heroMetaLabel}>aangepaste indelingen</Text>
+            </View>
           </View>
-          <View style={styles.heroMetaPill}>
-            <Text style={styles.heroMetaValue}>{activeOverrideCount}</Text>
-            <Text style={styles.heroMetaLabel}>aangepaste indelingen</Text>
-          </View>
+          {focusCategory ? (
+            <View style={styles.focusBanner}>
+              <AppIcon
+                name="push-pin"
+                size={16}
+                color={FinColors.warningText}
+                variant="outlined"
+              />
+              <Text style={styles.focusBannerText}>
+                Gefocust op {focusCategory.name}
+              </Text>
+            </View>
+          ) : null}
         </View>
-        {focusCategory ? (
-          <View style={styles.focusBanner}>
-            <AppIcon
-              name="push-pin"
-              size={16}
-              color={FinColors.warningText}
-              variant="outlined"
-            />
-            <Text style={styles.focusBannerText}>
-              Gefocust op {focusCategory.name}
-            </Text>
-          </View>
-        ) : null}
-      </View>
 
       <View style={styles.controlsCard}>
         <View style={styles.searchWrap}>
@@ -575,14 +600,19 @@ export default function CategoryBudgetGroupsScreen() {
           </View>
         </View>
       ))}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: FinColors.bgBase,
+    backgroundColor: "transparent",
+  },
+  scroll: {
+    flex: 1,
+    backgroundColor: "transparent",
   },
   content: {
     padding: 24,
@@ -592,7 +622,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: FinColors.bgBase,
+    backgroundColor: "transparent",
   },
   heroCard: {
     borderRadius: 28,
