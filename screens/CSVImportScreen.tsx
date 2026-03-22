@@ -643,7 +643,7 @@ export default function CSVImportScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: FinColors.bgBase },
-  content: { padding: 20, paddingTop: 8, gap: 16 },
+  content: { padding: 24, paddingTop: 12, gap: 16 },
   title: {
     fontSize: 24,
     fontWeight: "800",
@@ -665,14 +665,14 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    borderRadius: 10,
-    paddingVertical: 10,
+    borderRadius: 999,
+    paddingVertical: 11,
     alignItems: "center",
     backgroundColor: FinColors.bgCard,
   },
   sourceSwitchBtnSelected: {
-    borderColor: FinColors.green,
-    backgroundColor: FinColors.greenBg,
+    borderColor: FinColors.warningBorder,
+    backgroundColor: FinColors.warningBg,
   },
   sourceSwitchText: {
     fontSize: 12,
@@ -680,7 +680,7 @@ const styles = StyleSheet.create({
     color: FinColors.textMuted,
   },
   sourceSwitchTextSelected: {
-    color: FinColors.green,
+    color: FinColors.warningText,
   },
 
   accountSection: {
@@ -742,7 +742,7 @@ const styles = StyleSheet.create({
 
   uploadCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 20,
+    borderRadius: 26,
     borderWidth: 2,
     borderColor: FinColors.borderSubtle,
     borderStyle: "dashed",
@@ -751,14 +751,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   uploadCardReady: {
-    borderColor: FinColors.greenBorder,
-    backgroundColor: FinColors.greenBg,
+    borderColor: FinColors.warningBorder,
+    backgroundColor: FinColors.warningBg,
   },
   uploadIconWrap: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: FinColors.greenBg,
+    backgroundColor: FinColors.warningBg,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 4,
@@ -771,10 +771,10 @@ const styles = StyleSheet.create({
   uploadHint: { fontSize: 12, color: FinColors.textMuted, textAlign: "center" },
   uploadBtn: {
     marginTop: 8,
-    backgroundColor: FinColors.bgElevated,
+    backgroundColor: FinColors.bgInput,
     paddingHorizontal: 20,
     paddingVertical: 9,
-    borderRadius: 12,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
@@ -786,7 +786,7 @@ const styles = StyleSheet.create({
 
   previewCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
+    borderRadius: 24,
     padding: 16,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
@@ -803,7 +803,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   previewRow: { flexDirection: "row", paddingVertical: 7 },
-  previewRowAlt: { backgroundColor: "rgba(148,163,184,0.04)", borderRadius: 6 },
+  previewRowAlt: { backgroundColor: "rgba(17,17,17,0.03)", borderRadius: 8 },
   previewHeaderRow: {
     borderBottomWidth: 1,
     borderBottomColor: FinColors.borderSubtle,
@@ -824,7 +824,7 @@ const styles = StyleSheet.create({
   },
   accountForm: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
+    borderRadius: 24,
     padding: 16,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
@@ -832,12 +832,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   textInput: {
-    backgroundColor: FinColors.bgElevated,
-    borderRadius: 10,
+    backgroundColor: FinColors.bgInput,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     color: FinColors.textPrimary,
-    padding: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 13,
   },
   fieldLabel: {
@@ -859,27 +860,27 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgBase,
   },
   accountTypePillSelected: {
-    borderColor: FinColors.green,
-    backgroundColor: FinColors.greenBg,
+    borderColor: FinColors.warningBorder,
+    backgroundColor: FinColors.warningBg,
   },
   accountTypeText: {
     fontSize: 12,
     color: FinColors.textPrimary,
   },
   accountTypeTextSelected: {
-    color: FinColors.green,
+    color: FinColors.warningText,
   },
   createAccountBtn: {
     marginTop: 8,
-    backgroundColor: FinColors.textPrimary,
-    borderRadius: 14,
+    backgroundColor: FinColors.yellow,
+    borderRadius: 999,
     paddingVertical: 14,
     alignItems: "center",
   },
   createAccountBtnText: {
     fontSize: 14,
     fontWeight: "700",
-    color: FinColors.bgBase,
+    color: FinColors.textPrimary,
   },
   importBtnDisabled: {
     opacity: 0.6,
@@ -887,7 +888,7 @@ const styles = StyleSheet.create({
 
   progressCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
+    borderRadius: 24,
     padding: 16,
     gap: 10,
     borderWidth: 1,
@@ -897,17 +898,17 @@ const styles = StyleSheet.create({
   progressText: { fontSize: 12, color: FinColors.textSecondary, flex: 1 },
   progressBarBg: {
     height: 4,
-    backgroundColor: FinColors.bgElevated,
+    backgroundColor: FinColors.bgInput,
     borderRadius: 4,
   },
   progressBarFill: {
     height: 4,
-    backgroundColor: FinColors.green,
+    backgroundColor: FinColors.warningText,
     borderRadius: 4,
   },
   progressPct: {
     fontSize: 11,
-    color: FinColors.green,
+    color: FinColors.warningText,
     fontWeight: "700",
     textAlign: "right",
   },
@@ -923,26 +924,26 @@ const styles = StyleSheet.create({
   },
 
   successCard: {
-    backgroundColor: FinColors.greenBg,
-    borderRadius: 16,
+    backgroundColor: FinColors.warningBg,
+    borderRadius: 24,
     padding: 18,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     borderWidth: 1,
-    borderColor: FinColors.greenBorder,
+    borderColor: FinColors.warningBorder,
   },
-  successIcon: { fontSize: 20, color: FinColors.green },
+  successIcon: { fontSize: 20, color: FinColors.warningText },
   successText: {
     fontSize: 14,
     fontWeight: "600",
-    color: FinColors.green,
+    color: FinColors.warningText,
     flex: 1,
   },
 
   errorCard: {
     backgroundColor: FinColors.redBg,
-    borderRadius: 14,
+    borderRadius: 24,
     padding: 14,
     borderWidth: 1,
     borderColor: "rgba(248,113,113,0.3)",
@@ -951,7 +952,7 @@ const styles = StyleSheet.create({
 
   importBtn: {
     backgroundColor: FinColors.textPrimary,
-    borderRadius: 14,
+    borderRadius: 999,
     paddingVertical: 16,
     alignItems: "center",
   },

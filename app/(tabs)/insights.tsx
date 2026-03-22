@@ -1894,7 +1894,8 @@ export default function InsightsScreen() {
 
       const usedLegacyForecastShape = forecastShape === "legacy";
       const supportsCentralIncomeBreakdown = forecastShape === "latest";
-      const rowsByMonth = ((data || []) as Record<string, unknown>[]).reduce((acc, row) => {
+      const rowsByMonth = ((data || []) as Record<string, unknown>[]).reduce(
+        (acc: Record<string, CashflowForecast>, row) => {
         const mapped: CashflowForecast = {
           month_start: String(row.month_start || ""),
           forecast_reference_date:
@@ -1997,9 +1998,11 @@ export default function InsightsScreen() {
             ? String(row.top_cost_bucket_3)
             : null,
         };
-        acc[mapped.month_start] = mapped;
-        return acc;
-      }, {} as Record<string, CashflowForecast>);
+          acc[mapped.month_start] = mapped;
+          return acc;
+        },
+        {} as Record<string, CashflowForecast>,
+      );
 
       setForecastByMonth(rowsByMonth);
       setForecast(rowsByMonth[selectedMonth.startIso] || null);
@@ -4131,10 +4134,12 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgBase,
   },
   topBar: {
-    paddingTop: 56,
-    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingHorizontal: 24,
     paddingBottom: 14,
-    backgroundColor: FinColors.bgBase,
+    backgroundColor: "rgba(246,245,242,0.82)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(17,17,17,0.06)",
   },
   headerRow: {
     flexDirection: "row",
@@ -4148,13 +4153,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pageTitle: {
-    fontSize: 24,
-    fontWeight: "700",
+    fontSize: 28,
+    fontWeight: "800",
     color: FinColors.textPrimary,
   },
   pageSubtitle: {
     marginTop: 2,
-    fontSize: 13,
+    fontSize: 14,
     color: FinColors.textSecondary,
   },
   headerCta: {
@@ -4244,29 +4249,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   content: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingBottom: 32,
     gap: 16,
   },
   heroCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 22,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    padding: 20,
+    padding: 22,
     gap: 14,
   },
   eyebrow: {
     fontSize: 12,
     textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 2,
     color: FinColors.textSecondary,
     fontWeight: "700",
   },
   heroSummary: {
-    fontSize: 24,
-    lineHeight: 31,
-    fontWeight: "700",
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: "800",
     color: FinColors.textPrimary,
   },
   metricRow: {
@@ -4275,8 +4280,8 @@ const styles = StyleSheet.create({
   },
   metricCard: {
     flex: 1,
-    borderRadius: 18,
-    backgroundColor: FinColors.bgElevated,
+    borderRadius: 22,
+    backgroundColor: FinColors.bgInput,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     padding: 14,
@@ -4287,7 +4292,7 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
     fontWeight: "700",
     textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 2,
   },
   metricValue: {
     fontSize: 18,
@@ -4309,7 +4314,7 @@ const styles = StyleSheet.create({
   progressTrack: {
     height: 10,
     borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
+    backgroundColor: FinColors.bgInput,
     overflow: "hidden",
   },
   progressFill: {
@@ -4319,7 +4324,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     padding: 18,
@@ -4334,7 +4339,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 12,
     textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 2,
     color: FinColors.textSecondary,
     fontWeight: "700",
   },

@@ -585,7 +585,7 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgBase,
   },
   content: {
-    padding: 20,
+    padding: 24,
     paddingBottom: 40,
   },
   centered: {
@@ -595,23 +595,23 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgBase,
   },
   heroCard: {
-    borderRadius: 24,
+    borderRadius: 28,
     backgroundColor: FinColors.bgCard,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    padding: 20,
+    padding: 22,
   },
   heroTitle: {
     color: FinColors.textPrimary,
-    fontSize: 22,
-    fontWeight: "700",
-    letterSpacing: -0.4,
+    fontSize: 30,
+    fontWeight: "800",
+    letterSpacing: -1,
   },
   heroText: {
-    marginTop: 8,
+    marginTop: 10,
     color: FinColors.textSecondary,
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 23,
   },
   heroMetaRow: {
     flexDirection: "row",
@@ -620,15 +620,15 @@ const styles = StyleSheet.create({
   },
   heroMetaPill: {
     flex: 1,
-    borderRadius: 18,
-    backgroundColor: FinColors.bgElevated,
+    borderRadius: 20,
+    backgroundColor: FinColors.bgInput,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   heroMetaValue: {
     color: FinColors.textPrimary,
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 20,
+    fontWeight: "800",
   },
   heroMetaLabel: {
     marginTop: 2,
@@ -654,18 +654,18 @@ const styles = StyleSheet.create({
   },
   controlsCard: {
     marginTop: 16,
-    borderRadius: 20,
+    borderRadius: 24,
     backgroundColor: FinColors.bgCard,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    padding: 14,
+    padding: 16,
   },
   searchWrap: {
-    minHeight: 50,
-    borderRadius: 16,
+    minHeight: 54,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgBase,
+    backgroundColor: FinColors.bgInput,
     justifyContent: "center",
   },
   searchIcon: {
@@ -676,7 +676,7 @@ const styles = StyleSheet.create({
   searchInput: {
     paddingLeft: 42,
     paddingRight: 14,
-    paddingVertical: 14,
+    paddingVertical: 16,
     color: FinColors.textPrimary,
     fontSize: 14,
   },
@@ -755,11 +755,11 @@ const styles = StyleSheet.create({
     color: FinColors.textMuted,
     fontSize: 12,
     fontWeight: "700",
-    letterSpacing: 1,
+    letterSpacing: 2,
     textTransform: "uppercase",
   },
   sectionCard: {
-    borderRadius: 22,
+    borderRadius: 24,
     backgroundColor: FinColors.bgCard,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
@@ -808,12 +808,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   stateBadgeDefault: {
-    backgroundColor: FinColors.bgElevated,
+    backgroundColor: FinColors.bgInput,
     borderColor: FinColors.borderSubtle,
   },
   stateBadgeCustom: {
-    backgroundColor: FinColors.greenBg,
-    borderColor: FinColors.greenBorder,
+    backgroundColor: FinColors.warningBg,
+    borderColor: FinColors.warningBorder,
   },
   stateBadgeText: {
     fontSize: 11,
@@ -823,7 +823,7 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
   },
   stateBadgeTextCustom: {
-    color: FinColors.green,
+    color: FinColors.warningText,
   },
   optionRow: {
     flexDirection: "row",
@@ -859,7 +859,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   resetText: {
-    color: FinColors.green,
+    color: "#705B00",
     fontSize: 12,
     fontWeight: "700",
   },
