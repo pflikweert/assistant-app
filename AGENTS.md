@@ -13,6 +13,11 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 - maakt forecasts met cashflow- en risicosignalen
 - geeft rustige, duidelijke feedback die gebruikers helpt betere keuzes te maken
 
+## Doelgroep
+
+- van tiener tot en met bejaarden
+- Niet gericht op zakelijk gebruik
+
 ## Productprincipes
 
 - Toon eerst de huidige stand, daarna de beschikbare ruimte, daarna trend of risico, daarna advies
@@ -23,13 +28,10 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 
 ## Design Richting
 
-- Basis: wit, grijs en zwart
-- Accent: geel, spaarzaam en functioneel
-- Vermijd drukke cards, te veel badges en overvolle schermen
-- Geef grote kerngetallen en status duidelijk visuele prioriteit
-- Houd topbars compact en rustiger op mobiel
-- Gebruik tabs en segmenten alleen als ze echt helpen bij beslissen
-- Pas bestaande designpatronen toe voordat je iets nieuws introduceert
+- Voor UI-patronen, kleuren, spacing, typografie, headers, cards, filters, detailopbouw en mobile-first ontwerpkeuzes is `docs/UI_PATTERNS.md` de primaire designreferentie
+- Basispalet blijft wit, grijs en zwart met geel als spaarzaam functioneel accent, zoals uitgewerkt in `docs/UI_PATTERNS.md`
+- Pas bestaande Stitch-afgeleide patronen uit `docs/UI_PATTERNS.md` toe voordat je nieuwe visuele patronen introduceert
+- Als een scherm bewust afwijkt van `docs/UI_PATTERNS.md`, benoem dan expliciet waarom dat productmatig of technisch nodig is
 
 ## Kernbegrippen
 
@@ -60,8 +62,9 @@ Gebruik deze volgorde bij twijfel:
 
 1. bestaande werkende businesslogica in services en dataflows
 2. dit playbook
-3. schermspecifieke bestaande patronen in de codebase
-4. open taken in `OPEN_TAKEN_FINANCE_APP.md`
+3. `docs/UI_PATTERNS.md` voor UI-patronen, kleuren en designbeslissingen
+4. schermspecifieke bestaande patronen in de codebase
+5. open taken in `OPEN_TAKEN_FINANCE_APP.md`
 
 Als iets in code en playbook lijkt te botsen, analyseer eerst of de code legacygedrag bevat of een bewuste productkeuze is. Verander dit niet zomaar zonder expliciet te benoemen.
 
@@ -147,6 +150,7 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Gebruik gedeelde helpers voor formattering, normalisatie en matching
 - Voeg nieuwe componenten alleen toe als hergebruik nergens logisch past
 - Als een patroon op meerdere schermen terugkomt, centraliseer het zo vroeg mogelijk
+- Als een UI-patroon al beschreven staat in `docs/UI_PATTERNS.md`, sluit daar dan eerst op aan voordat je een afwijkende componentstructuur kiest
 
 ## QA En Tests
 

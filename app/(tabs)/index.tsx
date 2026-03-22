@@ -1,6 +1,7 @@
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
+import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
 import {
   getMonthVariableBudgetUsageText,
@@ -23,7 +24,6 @@ import type {
   BudgetWeekPlanRow,
   CategoryRecord,
 } from "@/types/categorization";
-import { AppIcon } from "@/components/ui/app-icon";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -34,12 +34,14 @@ import {
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
 });
+const CONTENT_MAX_WIDTH = 1040;
 
 type DashboardTx = {
   id: string;
@@ -164,15 +166,12 @@ function TxRow({
         <TransactionCategoryIcon row={tx} categoryById={categoryMap} />
       </View>
       <View style={styles.txMid}>
-        <Text style={styles.txName} numberOfLines={1}>
+        <Text style={styles.txName} numberOfLines={2}>
           {tx.subscriptionProfileName || tx.counterparty || "Onbekend"}
         </Text>
-        <View style={styles.txMetaRow}>
-          <Text style={styles.txSub} numberOfLines={1}>
-            {formatShortDateLabel(tx.date)}
-          </Text>
-          <Text style={styles.txCategory}>{tx.categoryLabel}</Text>
-        </View>
+        <Text style={styles.txSub} numberOfLines={1}>
+          {formatShortDateLabel(tx.date)} • {tx.categoryLabel}
+        </Text>
       </View>
       <Text style={[styles.txAmount, isPositive && styles.txAmountPos]}>
         {isPositive ? "+" : ""}
@@ -184,6 +183,8 @@ function TxRow({
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isWideLayout = width >= 980;
   const [transactions, setTransactions] = React.useState<DashboardTx[]>([]);
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
   const [budgetPlan, setBudgetPlan] =
@@ -219,6 +220,14 @@ export default function DashboardScreen() {
     [budgetPlan],
   );
   const monthSpentInBudget = monthBudgetSnapshot.spent;
+  const monthBudgetTotal = monthBudgetSnapshot.budget;
+  const monthBudgetFill =
+    monthBudgetTotal != null && monthBudgetTotal > 0 && monthSpentInBudget != null
+      ? Math.max(
+          0,
+          Math.min(100, Math.round((monthSpentInBudget / monthBudgetTotal) * 100)),
+        )
+      : 0;
 
   const currentWeekPlan = React.useMemo(() => {
     if (!budgetPlan) return null;
@@ -425,20 +434,19 @@ export default function DashboardScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <HeaderDropdownMenu />
-          <View>
-            <Text style={styles.greeting}>{getGreetingLabel()}</Text>
-            <Text style={styles.headerTitle}>Je geld vandaag</Text>
+      <View style={styles.topBar}>
+        <View style={styles.topBarInner}>
+          <View style={styles.topBarLeft}>
+            <HeaderDropdownMenu />
+            <Text style={styles.topBarTitle}>Mijn Financiën</Text>
           </View>
-        </View>
-        <View style={styles.headerBadge}>
-          <AppIcon
-            name="notifications-none"
-            size={18}
-            color={FinColors.textPrimary}
-          />
+          <View style={styles.headerBadge}>
+            <AppIcon
+              name="notifications-none"
+              size={18}
+              color={FinColors.textPrimary}
+            />
+          </View>
         </View>
       </View>
 
@@ -446,228 +454,302 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        <View style={styles.heroCard}>
-          <Text style={styles.eyebrow}>Rekeningstand</Text>
-          <Text style={[styles.heroAmount, !hasTransactions && styles.emptyAmount]}>
-            {hasTransactions && balance != null ? fmt.format(balance) : "Nog geen data"}
-          </Text>
-          <View style={styles.heroMetaRow}>
-            <Text style={styles.heroMeta}>
-              {hasTransactions
-                ? formatDeltaLabel(balanceDelta) || "Saldo is bijgewerkt"
-                : "Importeer transacties om je stand te tonen"}
+        <View style={styles.heroShell}>
+          <View style={styles.heroInner}>
+            <View style={styles.heroEyebrowRow}>
+              <View style={styles.heroEyebrowDot} />
+              <Text style={styles.eyebrow}>Totaal saldo</Text>
+            </View>
+            <Text style={styles.greeting}>{getGreetingLabel()}</Text>
+            <Text style={[styles.heroAmount, !hasTransactions && styles.emptyAmount]}>
+              {hasTransactions && balance != null ? fmt.format(balance) : "Nog geen data"}
             </Text>
-            {hasTransactions ? (
-              <View style={styles.livePill}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveText}>Nu</Text>
-              </View>
-            ) : null}
-          </View>
-          <Text style={styles.heroSupport}>
-            {hasTransactions
-              ? "Actuele momentopname van je hoofdrekening."
-              : "Koppel of importeer transacties om direct overzicht te krijgen."}
-          </Text>
-        </View>
+            <View style={styles.heroMetaRow}>
+              <Text style={styles.heroMeta}>
+                {hasTransactions
+                  ? formatDeltaLabel(balanceDelta) || "Saldo is bijgewerkt"
+                  : "Importeer transacties om je stand te tonen"}
+              </Text>
+              {hasTransactions ? (
+                <View style={styles.livePill}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>Actueel</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.heroSupport}>
+              {hasTransactions
+                ? "Actuele momentopname van je hoofdrekening, met direct daaronder je ruimte en tempo."
+                : "Koppel of importeer transacties om direct overzicht en budgetsturing te krijgen."}
+            </Text>
 
-        <Pressable style={styles.primaryCard} onPress={() => router.push("/budget")}>
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.cardHeaderText}>
-              <Text style={styles.eyebrow}>Nog vrij te besteden</Text>
-              <Text style={styles.primaryValue}>
+            <Pressable
+              style={styles.heroBudgetCard}
+              onPress={() => router.push("/budget")}
+            >
+              <View style={styles.heroBudgetTop}>
+                <Text style={styles.heroBudgetEyebrow}>Vrij te besteden</Text>
+                <View style={styles.inlineCta}>
+                  <Text style={styles.inlineCtaText}>Bekijk budget</Text>
+                  <AppIcon
+                    name="chevron-right"
+                    size={16}
+                    color={FinColors.warningText}
+                  />
+                </View>
+              </View>
+              <Text style={styles.heroBudgetValue}>
                 {remainingBudget == null
                   ? "Nog geen data"
                   : fmt.format(Math.max(remainingBudget, 0))}
               </Text>
-            </View>
-            <View style={styles.inlineCta}>
-              <Text style={styles.inlineCtaText}>Bekijk budget</Text>
-              <AppIcon
-                name="chevron-right"
-                size={16}
-                color={FinColors.warningText}
-              />
-            </View>
-          </View>
-          <Text style={styles.primarySupport}>
-            {budgetPlan
-              ? getMonthVariableBudgetUsageText(monthBudgetSnapshot, fmt)
-              : budgetSchemaMissing
-                ? "Budgetschema is nog niet beschikbaar in deze omgeving."
-                : "Budgetgegevens laden..."}
-          </Text>
-          {budgetPlan ? (
-            <View style={styles.subStatsRow}>
-              <View style={styles.subStatCard}>
-                <Text style={styles.subStatLabel}>Variabel gebruikt</Text>
-                <Text style={styles.subStatValue}>
-                  {monthSpentInBudget == null
-                    ? "Onbekend"
-                    : fmt.format(monthSpentInBudget)}
-                </Text>
-              </View>
-              <View style={styles.subStatCard}>
-                <Text style={styles.subStatLabel}>Status</Text>
-                <Text
-                    style={[
-                      styles.subStatValue,
-                    monthRiskTone === "good" &&
-                      styles.positiveText,
-                    monthRiskTone === "watch" &&
-                      styles.warningText,
-                    monthRiskTone === "critical" &&
-                      styles.negativeText,
-                    ]}
-                  >
-                  {monthBudgetSnapshot.label}
-                </Text>
-              </View>
-            </View>
-          ) : null}
-        </Pressable>
-
-        <Pressable style={styles.secondaryCard} onPress={() => router.push("/budget")}>
-          <View style={styles.cardHeaderRow}>
-            <View style={styles.cardHeaderText}>
-              <Text style={styles.sectionTitle}>Deze week</Text>
-              <Text style={styles.sectionSubtle}>
-                {currentWeekPlan
-                  ? formatWeekRangeLabel(
-                      currentWeekPlan.startDate,
-                      currentWeekPlan.endDateExclusive,
-                    )
-                  : "Weekbudget volgt zodra je budget actief is"}
+              <Text style={styles.heroBudgetSupport}>
+                {budgetPlan
+                  ? getMonthVariableBudgetUsageText(monthBudgetSnapshot, fmt)
+                  : budgetSchemaMissing
+                    ? "Budgetschema is nog niet beschikbaar in deze omgeving."
+                    : "Budgetgegevens laden..."}
               </Text>
-            </View>
-            <View
-              style={[
-                styles.statusChip,
-                currentWeekRiskTone === "good" &&
-                  styles.statusChipGood,
-                currentWeekRiskTone === "watch" &&
-                  styles.statusChipWatch,
-                currentWeekRiskTone === "critical" &&
-                  styles.statusChipCritical,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusChipText,
-                  currentWeekRiskTone === "good" &&
-                    styles.statusChipTextGood,
-                  currentWeekRiskTone === "watch" &&
-                    styles.statusChipTextWatch,
-                  currentWeekRiskTone === "critical" &&
-                    styles.statusChipTextCritical,
-                ]}
-              >
-                {currentWeekSnapshot.label}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.weekSummaryRow}>
-            <Text style={styles.weekSummaryValue}>
-              {currentWeekPlan
-                ? `${fmt.format(currentWeekPlan.actual)} van ${fmt.format(currentWeekPlan.budget)}`
-                : "Nog geen weekbudget"}
-            </Text>
-            <Text style={styles.weekSummaryMeta}>
-              {currentWeekRemainingDays || "Deze week"}
-            </Text>
-          </View>
-          <RiskProgressBar
-            progress={currentWeekProgress}
-            tone={currentWeekRiskTone}
-            style={styles.progressTrack}
-          />
-          {weeklyTrendBars.length ? (
-            <View style={styles.sparklineRow}>
-              {weeklyTrendBars.map((bar) => (
-                <View key={bar.key} style={styles.sparklineItem}>
-                  <View style={styles.sparklineTrack}>
+              {budgetPlan ? (
+                <>
+                  <View style={styles.heroBudgetTrack}>
                     <View
                       style={[
-                        styles.sparklineFill,
+                        styles.heroBudgetTrackFill,
                         {
-                          height: `${Math.round(bar.utilization * 100)}%`,
+                          width: `${monthBudgetFill}%`,
                         },
-                        bar.isCurrentWeek && styles.sparklineFillCurrent,
                       ]}
                     />
                   </View>
-                  <Text
+                  <View style={styles.heroBudgetMetaRow}>
+                    <Text style={styles.heroBudgetMeta}>
+                      {monthSpentInBudget == null
+                        ? "Onbekend"
+                        : `${fmt.format(monthSpentInBudget)} gebruikt`}
+                    </Text>
+                    <Text style={styles.heroBudgetMeta}>
+                      {monthBudgetTotal == null
+                        ? "Onbekend"
+                        : `${fmt.format(monthBudgetTotal)} totaal`}
+                    </Text>
+                  </View>
+                </>
+              ) : null}
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.contentMax}>
+          <View style={styles.mainStack}>
+            <View style={[styles.gridRow, isWideLayout && styles.gridRowWide]}>
+              <Pressable
+                style={[styles.surfaceCard, styles.weekCard, isWideLayout && styles.weekCardWide]}
+                onPress={() => router.push("/budget")}
+              >
+                <View style={styles.cardHeaderRow}>
+                  <View style={styles.cardHeaderText}>
+                    <Text style={styles.sectionTitle}>Deze week</Text>
+                    <Text style={styles.sectionSubtle}>
+                      {currentWeekPlan
+                        ? formatWeekRangeLabel(
+                            currentWeekPlan.startDate,
+                            currentWeekPlan.endDateExclusive,
+                          )
+                        : "Weekbudget volgt zodra je budget actief is"}
+                    </Text>
+                  </View>
+                  <View
                     style={[
-                      styles.sparklineLabel,
-                      bar.isCurrentWeek && styles.sparklineLabelCurrent,
+                      styles.statusChip,
+                      currentWeekRiskTone === "good" &&
+                        styles.statusChipGood,
+                      currentWeekRiskTone === "watch" &&
+                        styles.statusChipWatch,
+                      currentWeekRiskTone === "critical" &&
+                        styles.statusChipCritical,
                     ]}
                   >
-                    {bar.label.replace("Week ", "W")}
+                    <Text
+                      style={[
+                        styles.statusChipText,
+                        currentWeekRiskTone === "good" &&
+                          styles.statusChipTextGood,
+                        currentWeekRiskTone === "watch" &&
+                          styles.statusChipTextWatch,
+                        currentWeekRiskTone === "critical" &&
+                          styles.statusChipTextCritical,
+                      ]}
+                    >
+                      {currentWeekSnapshot.label}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.weekSummaryRow}>
+                  <Text style={styles.weekSummaryValue}>
+                    {currentWeekPlan
+                      ? `${fmt.format(currentWeekPlan.actual)} van ${fmt.format(currentWeekPlan.budget)}`
+                      : "Nog geen weekbudget"}
+                  </Text>
+                  <Text style={styles.weekSummaryMeta}>
+                    {currentWeekRemainingDays || "Deze week"}
                   </Text>
                 </View>
-              ))}
-            </View>
-          ) : null}
-          <Text style={styles.weekTrendText}>
-            {getWeekTempoMessage(currentWeekPlan)}
-          </Text>
-        </Pressable>
-
-        <View style={styles.nudgeCard}>
-          <View style={styles.nudgeHeader}>
-            <Text style={styles.sectionTitle}>Positieve signalen</Text>
-            <AppIcon name="wb-sunny" size={16} color={FinColors.warningText} />
-          </View>
-          {positiveNudges.length ? (
-            positiveNudges.map((item) => (
-              <View key={item} style={styles.nudgeRow}>
-                <View style={styles.nudgeDot} />
-                <Text style={styles.nudgeText}>{item}</Text>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.nudgeFallback}>
-              Zodra er wat meer ritme in je transacties zit, laten we hier je
-              positieve voortgang zien.
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.actionButtonPrimary]}
-            onPress={() => router.push("/transactions")}
-          >
-            <Text style={styles.actionButtonPrimaryText}>Transacties bekijken</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push("/csv-import")}
-          >
-            <Text style={styles.actionButtonText}>Importeren</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Laatste transacties</Text>
-          <TouchableOpacity onPress={() => router.push("/transactions")}>
-            <Text style={styles.seeAll}>Open lijst</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.txCard}>
-          {recentTransactions.length === 0 ? (
-            <Text style={styles.emptyText}>Nog geen transacties</Text>
-          ) : (
-            recentTransactions.map((tx, index) => (
-              <React.Fragment key={tx.id}>
-                <TxRow tx={tx} categoryMap={categoryMap} />
-                {index < recentTransactions.length - 1 ? (
-                  <View style={styles.divider} />
+                <RiskProgressBar
+                  progress={currentWeekProgress}
+                  tone={currentWeekRiskTone}
+                  style={styles.progressTrack}
+                />
+                {weeklyTrendBars.length ? (
+                  <View style={styles.sparklineRow}>
+                    {weeklyTrendBars.map((bar) => (
+                      <View key={bar.key} style={styles.sparklineItem}>
+                        <View style={styles.sparklineTrack}>
+                          <View
+                            style={[
+                              styles.sparklineFill,
+                              {
+                                height: `${Math.round(bar.utilization * 100)}%`,
+                              },
+                              bar.isCurrentWeek && styles.sparklineFillCurrent,
+                            ]}
+                          />
+                        </View>
+                        <Text
+                          style={[
+                            styles.sparklineLabel,
+                            bar.isCurrentWeek && styles.sparklineLabelCurrent,
+                          ]}
+                        >
+                          {bar.label.replace("Week ", "W")}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
                 ) : null}
-              </React.Fragment>
-            ))
-          )}
+                <Text style={styles.weekTrendText}>
+                  {getWeekTempoMessage(currentWeekPlan)}
+                </Text>
+              </Pressable>
+
+              <View style={[styles.sideStack, isWideLayout && styles.sideStackWide]}>
+                <View style={[styles.surfaceCard, styles.monthStatusCard]}>
+                  <View style={styles.cardHeaderRow}>
+                    <View style={styles.cardHeaderText}>
+                      <Text style={styles.sectionTitle}>Maandstatus</Text>
+                      <Text style={styles.sectionSubtle}>Uitgaven van deze maand</Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.statusChip,
+                        monthRiskTone === "good" && styles.statusChipGood,
+                        monthRiskTone === "watch" && styles.statusChipWatch,
+                        monthRiskTone === "critical" && styles.statusChipCritical,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusChipText,
+                          monthRiskTone === "good" && styles.statusChipTextGood,
+                          monthRiskTone === "watch" && styles.statusChipTextWatch,
+                          monthRiskTone === "critical" && styles.statusChipTextCritical,
+                        ]}
+                      >
+                        {monthBudgetSnapshot.label}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.subStatsColumn}>
+                    <View style={styles.subStatCard}>
+                      <Text style={styles.subStatLabel}>Variabel gebruikt</Text>
+                      <Text style={styles.subStatValue}>
+                        {monthSpentInBudget == null
+                          ? "Onbekend"
+                          : fmt.format(monthSpentInBudget)}
+                      </Text>
+                    </View>
+                    <View style={styles.subStatCard}>
+                      <Text style={styles.subStatLabel}>Nog vrij</Text>
+                      <Text style={styles.subStatValue}>
+                        {remainingBudget == null
+                          ? "Onbekend"
+                          : fmt.format(Math.max(remainingBudget, 0))}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={[styles.accentCard, styles.nudgeCard]}>
+                  <View style={styles.nudgeHeader}>
+                    <Text style={styles.sectionTitle}>Positieve signalen</Text>
+                    <AppIcon name="wb-sunny" size={16} color={FinColors.warningText} />
+                  </View>
+                  {positiveNudges.length ? (
+                    positiveNudges.map((item) => (
+                      <View key={item} style={styles.nudgeRow}>
+                        <View style={styles.nudgeDot} />
+                        <Text style={styles.nudgeText}>{item}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.nudgeFallback}>
+                      Zodra er wat meer ritme in je transacties zit, laten we hier je positieve voortgang zien.
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.actionsRow}>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.actionButtonPrimary]}
+                onPress={() => router.push("/transactions")}
+              >
+                <Text style={styles.actionButtonPrimaryText}>Transacties bekijken</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => router.push("/csv-import")}
+              >
+                <Text style={styles.actionButtonText}>Importeren</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Laatste transacties</Text>
+              <TouchableOpacity onPress={() => router.push("/transactions")}>
+                <Text style={styles.seeAll}>Open lijst</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.txCard}>
+              {recentTransactions.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <View style={styles.emptyIconWrap}>
+                    <AppIcon
+                      name="history"
+                      size={28}
+                      color={FinColors.textMuted}
+                      variant="outlined"
+                    />
+                  </View>
+                  <Text style={styles.emptyTitle}>Nog geen transacties</Text>
+                  <Text style={styles.emptyText}>
+                    Zodra er transacties zijn, zie je hier een rustige momentopname van je laatste bewegingen.
+                  </Text>
+                </View>
+              ) : (
+                recentTransactions.map((tx, index) => (
+                  <React.Fragment key={tx.id}>
+                    <TxRow tx={tx} categoryMap={categoryMap} />
+                    {index < recentTransactions.length - 1 ? (
+                      <View style={styles.divider} />
+                    ) : null}
+                  </React.Fragment>
+                ))
+              )}
+            </View>
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -679,68 +761,102 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: FinColors.bgBase,
   },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: 16,
+  topBar: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    backgroundColor: "rgba(246,245,242,0.84)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(17,17,17,0.05)",
   },
-  headerLeft: {
+  topBarInner: {
+    width: "100%",
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  topBarLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
-  greeting: {
-    fontSize: 12,
-    color: FinColors.textSecondary,
-    marginBottom: 3,
-  },
-  headerTitle: {
+  topBarTitle: {
     fontSize: 20,
-    fontWeight: "700",
+    fontWeight: "800",
     color: FinColors.textPrimary,
     letterSpacing: -0.4,
   },
   headerBadge: {
     width: 40,
     height: 40,
-    borderRadius: 12,
-    backgroundColor: FinColors.bgCard,
+    borderRadius: 20,
+    backgroundColor: FinColors.bgElevated,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     justifyContent: "center",
     alignItems: "center",
   },
   scroll: {
-    paddingHorizontal: 20,
-    paddingBottom: 32,
-    gap: 16,
+    paddingBottom: 36,
   },
-  heroCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
+  heroShell: {
+    backgroundColor: FinColors.bgElevated,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(17,17,17,0.05)",
   },
-  eyebrow: {
-    fontSize: 12,
-    color: FinColors.textSecondary,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+  heroInner: {
+    width: "100%",
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingTop: 86,
+    paddingBottom: 30,
+  },
+  heroEyebrowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginBottom: 8,
   },
-  heroAmount: {
-    fontSize: 38,
+  heroEyebrowDot: {
+    width: 8,
+    height: 8,
+    backgroundColor: FinColors.warningText,
+  },
+  eyebrow: {
+    fontSize: 10,
+    lineHeight: 14,
+    color: FinColors.textMuted,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 2,
+  },
+  greeting: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
     fontWeight: "700",
+    marginTop: 4,
+  },
+  heroAmount: {
+    marginTop: 10,
+    fontSize: 52,
+    lineHeight: 54,
+    fontWeight: "900",
     color: FinColors.textPrimary,
-    letterSpacing: -1.1,
+    letterSpacing: -1.8,
   },
   emptyAmount: {
-    fontSize: 18,
+    fontSize: 20,
+    lineHeight: 26,
     color: FinColors.textMuted,
     letterSpacing: 0,
   },
@@ -754,6 +870,7 @@ const styles = StyleSheet.create({
   heroMeta: {
     flex: 1,
     fontSize: 14,
+    lineHeight: 20,
     color: FinColors.textSecondary,
     fontWeight: "600",
   },
@@ -780,17 +897,115 @@ const styles = StyleSheet.create({
     color: FinColors.warningText,
   },
   heroSupport: {
+    marginTop: 14,
+    maxWidth: 720,
+    fontSize: 18,
+    lineHeight: 26,
+    color: FinColors.textSecondary,
+  },
+  heroBudgetCard: {
+    marginTop: 24,
+    backgroundColor: "rgba(242,201,76,0.12)",
+    borderRadius: 32,
+    paddingHorizontal: 22,
+    paddingVertical: 22,
+    borderWidth: 1,
+    borderColor: FinColors.warningBorder,
+    gap: 14,
+  },
+  heroBudgetTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  heroBudgetEyebrow: {
+    fontSize: 10,
+    lineHeight: 14,
+    color: FinColors.textMuted,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1.8,
+  },
+  heroBudgetValue: {
+    fontSize: 34,
+    lineHeight: 38,
+    fontWeight: "900",
+    color: FinColors.textPrimary,
+    letterSpacing: -1,
+  },
+  heroBudgetSupport: {
     fontSize: 13,
     lineHeight: 20,
     color: FinColors.textSecondary,
-    marginTop: 12,
   },
-  primaryCard: {
+  heroBudgetTrack: {
+    width: "100%",
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(17,17,17,0.08)",
+    overflow: "hidden",
+  },
+  heroBudgetTrackFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: FinColors.warningText,
+  },
+  heroBudgetMetaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  heroBudgetMeta: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  contentMax: {
+    width: "100%",
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+  },
+  mainStack: {
+    paddingTop: 24,
+    gap: 18,
+  },
+  gridRow: {
+    gap: 18,
+  },
+  gridRowWide: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  surfaceCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 22,
-    padding: 18,
+    borderRadius: 30,
+    padding: 22,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
+  },
+  accentCard: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 30,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  weekCard: {
+    gap: 14,
+  },
+  weekCardWide: {
+    flex: 1.25,
+  },
+  sideStack: {
+    gap: 18,
+  },
+  sideStackWide: {
+    flex: 0.95,
+  },
+  monthStatusCard: {
     gap: 14,
   },
   cardHeaderRow: {
@@ -801,12 +1016,6 @@ const styles = StyleSheet.create({
   },
   cardHeaderText: {
     flex: 1,
-  },
-  primaryValue: {
-    fontSize: 30,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-    letterSpacing: -0.8,
   },
   inlineCta: {
     flexDirection: "row",
@@ -822,19 +1031,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: FinColors.warningText,
   },
-  primarySupport: {
-    fontSize: 13,
-    lineHeight: 20,
-    color: FinColors.textSecondary,
-  },
-  subStatsRow: {
-    flexDirection: "row",
+  subStatsColumn: {
     gap: 10,
   },
   subStatCard: {
-    flex: 1,
     backgroundColor: FinColors.bgElevated,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 14,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
@@ -850,34 +1052,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: FinColors.textPrimary,
   },
-  positiveText: {
-    color: FinColors.green,
-  },
-  warningText: {
-    color: FinColors.warningText,
-  },
-  negativeText: {
-    color: FinColors.red,
-  },
-  secondaryCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    gap: 14,
-  },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 8,
+    marginTop: 6,
     marginBottom: -2,
   },
   sectionTitle: {
-    fontSize: 17,
-    fontWeight: "700",
+    fontSize: 18,
+    fontWeight: "800",
     color: FinColors.textPrimary,
+    letterSpacing: -0.3,
   },
   sectionSubtle: {
     marginTop: 4,
@@ -923,10 +1109,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 12,
   },
   weekSummaryValue: {
+    flex: 1,
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "800",
     color: FinColors.textPrimary,
   },
   weekSummaryMeta: {
@@ -937,13 +1125,8 @@ const styles = StyleSheet.create({
   progressTrack: {
     height: 10,
     borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
+    backgroundColor: "rgba(17,17,17,0.08)",
     overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: FinColors.yellow,
   },
   weekTrendText: {
     fontSize: 13,
@@ -986,11 +1169,6 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
   },
   nudgeCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
     gap: 12,
   },
   nudgeHeader: {
@@ -1023,21 +1201,22 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
   },
   actionButton: {
     flex: 1,
-    minHeight: 52,
-    borderRadius: 16,
+    minHeight: 56,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     backgroundColor: FinColors.bgCard,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 18,
   },
   actionButtonPrimary: {
-    backgroundColor: FinColors.textPrimary,
-    borderColor: FinColors.textPrimary,
+    backgroundColor: FinColors.yellow,
+    borderColor: FinColors.yellow,
   },
   actionButtonText: {
     fontSize: 14,
@@ -1046,8 +1225,8 @@ const styles = StyleSheet.create({
   },
   actionButtonPrimaryText: {
     fontSize: 14,
-    fontWeight: "700",
-    color: FinColors.bgCard,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
   },
   seeAll: {
     fontSize: 13,
@@ -1056,15 +1235,16 @@ const styles = StyleSheet.create({
   },
   txCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 20,
-    padding: 8,
+    borderRadius: 30,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
   txRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 12,
   },
   txIconWrap: {
@@ -1072,37 +1252,23 @@ const styles = StyleSheet.create({
   },
   txMid: {
     flex: 1,
+    paddingRight: 10,
   },
   txName: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "800",
     color: FinColors.textPrimary,
-  },
-  txMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 3,
-    flexWrap: "wrap",
   },
   txSub: {
+    marginTop: 4,
     fontSize: 12,
-    color: FinColors.textMuted,
-  },
-  txCategory: {
-    fontSize: 11,
-    color: FinColors.textPrimary,
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    overflow: "hidden",
+    lineHeight: 16,
+    color: FinColors.textSecondary,
   },
   txAmount: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 16,
+    fontWeight: "800",
     color: FinColors.textPrimary,
   },
   txAmountPos: {
@@ -1113,10 +1279,32 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.borderSubtle,
     marginLeft: 68,
   },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 28,
+  },
+  emptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: FinColors.bgElevated,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
   emptyText: {
+    marginTop: 6,
     fontSize: 14,
-    color: FinColors.textMuted,
+    lineHeight: 20,
+    color: FinColors.textSecondary,
     textAlign: "center",
-    paddingVertical: 24,
   },
 });

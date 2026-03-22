@@ -4,6 +4,7 @@ import {
   authScreenStyles,
 } from "@/components/auth/auth-screen-shell";
 import type { Href } from "expo-router";
+import { Link } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
@@ -11,6 +12,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  View,
 } from "react-native";
 
 export default function LoginScreen() {
@@ -53,17 +55,16 @@ export default function LoginScreen() {
           prompt: "Nog geen account?",
           label: "Registreren",
         },
-        {
-          href: "/auth/forgot-password" as Href,
-          prompt: "Wachtwoord vergeten?",
-          label: "Reset aanvragen",
-        },
       ]}
     >
+      <Text style={styles.securityNote}>
+        Je sessie blijft veilig opgeslagen op dit apparaat.
+      </Text>
+      <Text style={authScreenStyles.fieldLabel}>E-mailadres</Text>
       <TextInput
         style={authScreenStyles.input}
-        placeholder="E-mail"
-        placeholderTextColor="#7E8A9A"
+        placeholder="naam@voorbeeld.nl"
+        placeholderTextColor="#8F8A83"
         autoCapitalize="none"
         autoComplete="email"
         keyboardType="email-address"
@@ -71,17 +72,28 @@ export default function LoginScreen() {
         onChangeText={setEmail}
         editable={!submitting}
       />
-      <TextInput
-        style={authScreenStyles.input}
-        placeholder="Wachtwoord"
-        placeholderTextColor="#7E8A9A"
-        autoCapitalize="none"
-        autoComplete="password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        editable={!submitting}
-      />
+      <View style={authScreenStyles.fieldGroup}>
+        <View style={authScreenStyles.fieldRow}>
+          <Text style={authScreenStyles.fieldLabel}>Wachtwoord</Text>
+          <Link
+            href={"/auth/forgot-password" as Href}
+            style={authScreenStyles.textLink}
+          >
+            Wachtwoord vergeten?
+          </Link>
+        </View>
+        <TextInput
+          style={authScreenStyles.input}
+          placeholder="Voer je wachtwoord in"
+          placeholderTextColor="#8F8A83"
+          autoCapitalize="none"
+          autoComplete="password"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+          editable={!submitting}
+        />
+      </View>
       {error ? <Text style={authScreenStyles.errorText}>{error}</Text> : null}
       <Pressable
         style={[
@@ -92,22 +104,35 @@ export default function LoginScreen() {
         disabled={disabled}
       >
         {submitting ? (
-          <ActivityIndicator color="#07130D" />
+          <ActivityIndicator color="#111111" />
         ) : (
           <Text style={authScreenStyles.buttonText}>Inloggen</Text>
         )}
       </Pressable>
       <Text style={styles.metaText}>
-        Sessies worden veilig opgeslagen op het device en automatisch hersteld.
+        Je accountgegevens blijven gekoppeld aan je eigen omgeving en worden
+        automatisch hersteld bij een volgende sessie.
       </Text>
     </AuthScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  metaText: {
-    color: "#7E8A9A",
+  securityNote: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.72)",
+    color: "#5F5A54",
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  metaText: {
+    color: "#8F8A83",
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "center",
+    paddingHorizontal: 8,
   },
 });

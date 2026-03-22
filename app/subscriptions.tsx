@@ -1,4 +1,3 @@
-import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import { normalizePattern } from "@/services/categorization-repository";
 import {
@@ -35,6 +34,7 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
+    useWindowDimensions,
     View,
 } from "react-native";
 
@@ -211,6 +211,22 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function getProfileSummary(profile: SubscriptionProfile): string {
+  const parts = [
+    BILLING_CYCLE_OPTIONS.find((option) => option.value === profile.billingCycle)
+      ?.label || "Maandelijks",
+    profile.expectedAmount != null
+      ? euroFormatter.format(profile.expectedAmount)
+      : null,
+    profile.expectedDayOfMonth != null
+      ? `rond dag ${profile.expectedDayOfMonth}`
+      : null,
+    profile.providerHint ? getProviderHintLabel(profile.providerHint) : null,
+  ].filter(Boolean);
+
+  return parts.join(" · ");
+}
+
 type RuleDraft = {
   pattern: string;
   patternType: SubscriptionProfileRuleType;
@@ -301,6 +317,7 @@ function buildInitialRulesFromQueueItem(
 }
 
 export default function SubscriptionsScreen() {
+  const { width } = useWindowDimensions();
   const params = useLocalSearchParams<{
     profileId?: string | string[];
     createFromTransactionId?: string | string[];
@@ -414,14 +431,23 @@ export default function SubscriptionsScreen() {
     () => profiles.filter((profile) => profile.isActive).length,
     [profiles],
   );
+  const inactiveProfilesCount = Math.max(
+    profiles.length - activeProfilesCount,
+    0,
+  );
   const suggestedQueueCount = React.useMemo(
     () => queueItems.filter((item) => item.suggestions.length > 0).length,
     [queueItems],
   );
-  const summaryHeadline =
-    activeProfilesCount > 0
-      ? `${activeProfilesCount} actief profiel${activeProfilesCount === 1 ? "" : "en"} houden je terugkerende betalingen centraal.`
-      : "Zet je terugkerende betalingen via PayPal, Klarna of Apple om naar beheerde abonnementen.";
+  const pendingQueueAmount = React.useMemo(
+    () =>
+      queueItems.reduce(
+        (total, item) => total + Math.abs(Number(item.amount || 0)),
+        0,
+      ),
+    [queueItems],
+  );
+  const isWideLayout = width >= 980;
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -950,14 +976,9 @@ export default function SubscriptionsScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.topBar}>
-        <Text style={styles.pageTitle}>Abonnementen</Text>
-        <HeaderDropdownMenu />
-      </View>
-
       {loading ? (
         <View style={styles.centered}>
-          <ActivityIndicator color={FinColors.green} size="large" />
+          <ActivityIndicator color={FinColors.warningText} size="large" />
         </View>
       ) : (
         <ScrollView
@@ -970,270 +991,597 @@ export default function SubscriptionsScreen() {
             </View>
           ) : null}
 
-          <View style={styles.heroCard}>
-            <Text style={styles.heroEyebrow}>Beheer</Text>
-            <Text style={styles.heroTitle}>{summaryHeadline}</Text>
-            <Text style={styles.heroCopy}>
-              Houd profielen, aliases en transactiekoppelingen op een plek, zodat
-              terugkerende betalingen via betaaldiensten sneller opvallen.
-            </Text>
-            <View style={styles.heroMetricsRow}>
-              <View style={styles.heroMetricCard}>
-                <Text style={styles.heroMetricLabel}>Actieve profielen</Text>
-                <Text style={styles.heroMetricValue}>{activeProfilesCount}</Text>
-              </View>
-              <View style={styles.heroMetricCard}>
-                <Text style={styles.heroMetricLabel}>Te koppelen betalingen</Text>
-                <Text style={styles.heroMetricValue}>{queueItems.length}</Text>
-              </View>
-              <View style={styles.heroMetricCard}>
-                <Text style={styles.heroMetricLabel}>Met suggestie</Text>
-                <Text style={styles.heroMetricValue}>{suggestedQueueCount}</Text>
-              </View>
-            </View>
-            {focusProfileId ? (
-              <Text style={styles.heroHint}>
-                Geopend vanuit een transactie. Controleer hier de koppeling of
-                maak direct een nieuw profiel.
-              </Text>
-            ) : null}
-          </View>
+          <View
+            style={[
+              styles.pageGrid,
+              isWideLayout && styles.pageGridWide,
+            ]}
+          >
+            <View
+              style={[
+                styles.column,
+                isWideLayout && styles.columnPrimary,
+              ]}
+            >
+              <View style={styles.heroCard}>
+                <View style={styles.heroOrnamentTop} />
+                <View style={styles.heroOrnamentBottom} />
+                <View style={styles.heroTopRow}>
+                  <View style={styles.heroLabelWrap}>
+                    <Text style={styles.heroEyebrow}>Abonnementen</Text>
+                    <Text style={styles.heroTitle}>
+                      Rustig overzicht voor terugkerende betalingen
+                    </Text>
+                  </View>
+                  <View style={styles.heroBrandMark}>
+                    <AppIcon
+                      name="subscriptions"
+                      size={22}
+                      color={FinColors.warningText}
+                      variant="outlined"
+                    />
+                  </View>
+                </View>
 
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Abonnementprofielen</Text>
-              <TouchableOpacity
-                style={styles.smallActionBtn}
-                onPress={() => openCreateProfileModal()}
-              >
-                <Text style={styles.smallActionBtnText}>Nieuw profiel</Text>
-              </TouchableOpacity>
-            </View>
+                <Text style={styles.heroCopy}>
+                  Houd profielen, herkenningsregels en openstaande koppelingen
+                  bij elkaar. Op mobiel blijft het compact, op web wordt het
+                  overzicht breder en scanbaarder.
+                </Text>
 
-            {profiles.length === 0 ? (
-              <Text style={styles.mutedText}>
-                Nog geen abonnementen ingesteld. Voeg een profiel toe om
-                terugkerende betalingen te koppelen.
-              </Text>
-            ) : (
-              profiles.map((profile) => {
-                return (
-                  <View key={profile.id} style={styles.profileCard}>
-                    <View style={styles.profileHeaderRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.profileName}>{profile.name}</Text>
-                        <Text style={styles.profileMeta}>
-                          {BILLING_CYCLE_OPTIONS.find(
-                            (option) => option.value === profile.billingCycle,
-                          )?.label || "Maandelijks"}
-                          {profile.expectedAmount != null
-                            ? ` · ${euroFormatter.format(profile.expectedAmount)}`
-                            : ""}
-                        </Text>
-                      </View>
-                      <Switch
-                        value={profile.isActive}
-                        onValueChange={(value) =>
-                          void handleToggleProfileActive(profile, value)
-                        }
-                        trackColor={{
-                          false: FinColors.bgElevated,
-                          true: FinColors.greenBorder,
-                        }}
-                        thumbColor={
-                          profile.isActive
-                            ? FinColors.green
-                            : FinColors.textMuted
-                        }
-                      />
+                <View style={styles.heroStatsRow}>
+                  <View style={styles.heroPrimaryStat}>
+                    <Text style={styles.heroPrimaryStatValue}>
+                      {activeProfilesCount}
+                    </Text>
+                    <Text style={styles.heroPrimaryStatLabel}>
+                      actieve profielen
+                    </Text>
+                  </View>
+                  <View style={styles.heroMiniStatsColumn}>
+                    <View style={styles.heroMiniStat}>
+                      <Text style={styles.heroMiniStatLabel}>open betalingen</Text>
+                      <Text style={styles.heroMiniStatValue}>
+                        {queueItems.length}
+                      </Text>
                     </View>
-
-                    <View style={styles.profileActionsRow}>
-                      <TouchableOpacity
-                        style={styles.ghostBtn}
-                        onPress={() => openEditProfileModal(profile)}
-                      >
-                        <Text style={styles.ghostBtnText}>Bewerk</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.ghostBtn, styles.ghostDangerBtn]}
-                        onPress={() => setProfilePendingDelete(profile)}
-                        disabled={deletingProfileId === profile.id}
-                      >
-                        {deletingProfileId === profile.id ? (
-                          <ActivityIndicator
-                            size="small"
-                            color={FinColors.red}
-                          />
-                        ) : (
-                          <>
-                            <AppIcon
-                              name="delete-outline"
-                              size={15}
-                              color={FinColors.red}
-                              variant="outlined"
-                            />
-                            <Text
-                              style={[
-                                styles.ghostBtnText,
-                                styles.ghostDangerBtnText,
-                              ]}
-                            >
-                              Verwijder
-                            </Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
+                    <View style={styles.heroMiniStat}>
+                      <Text style={styles.heroMiniStatLabel}>met suggestie</Text>
+                      <Text style={styles.heroMiniStatValue}>
+                        {suggestedQueueCount}
+                      </Text>
+                    </View>
+                    <View style={styles.heroMiniStat}>
+                      <Text style={styles.heroMiniStatLabel}>open bedrag</Text>
+                      <Text style={styles.heroMiniStatValue}>
+                        {euroFormatter.format(pendingQueueAmount)}
+                      </Text>
                     </View>
                   </View>
-                );
-              })
-            )}
-          </View>
+                </View>
 
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Nog te koppelen betalingen</Text>
-              <TouchableOpacity
-                style={styles.smallActionBtn}
-                onPress={() => void loadData()}
-              >
-                <Text style={styles.smallActionBtnText}>Vernieuwen</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>
-                Zet categorie op abonnementen
-              </Text>
-              <Switch
-                value={setCategoryOnLink}
-                onValueChange={setSetCategoryOnLink}
-                trackColor={{
-                  false: FinColors.bgElevated,
-                  true: FinColors.greenBorder,
-                }}
-                thumbColor={
-                  setCategoryOnLink ? FinColors.green : FinColors.textMuted
-                }
-              />
-            </View>
-
-            {queueItems.length === 0 ? (
-              <Text style={styles.mutedText}>
-                Geen openstaande betalingen via PayPal, Klarna, Apple of een
-                andere betaaldienst zonder abonnementskoppeling in deze maand.
-              </Text>
-            ) : (
-              queueItems.map((item) => {
-                const topSuggestion = item.suggestions[0] || null;
-                const isBusy = busyTransactionIds.includes(item.transactionId);
-                return (
-                  <View key={item.transactionId} style={styles.queueCard}>
-                    <View style={styles.queueHeaderRow}>
-                      <Text style={styles.queueDate}>
-                        {formatDateLabel(item.date)}
-                      </Text>
-                      <Text style={styles.queueAmount}>
-                        -{euroFormatter.format(Math.abs(item.amount))}
-                      </Text>
-                    </View>
-                    <Text style={styles.queueCounterparty} numberOfLines={1}>
-                      {item.counterparty || "Onbekende tegenpartij"}
+                <View style={styles.heroActionRow}>
+                  <TouchableOpacity
+                    style={styles.heroPrimaryBtn}
+                    onPress={() => openCreateProfileModal()}
+                  >
+                    <AppIcon
+                      name="add"
+                      size={16}
+                      color={FinColors.bgBase}
+                      variant="outlined"
+                    />
+                    <Text style={styles.heroPrimaryBtnText}>
+                      Nieuw profiel
                     </Text>
-                    <Text style={styles.queueSubject} numberOfLines={2}>
-                      {extractSubject(item.details)}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.heroSecondaryBtn}
+                    onPress={() => void loadData()}
+                  >
+                    <AppIcon
+                      name="autorenew"
+                      size={16}
+                      color={FinColors.textSecondary}
+                      variant="outlined"
+                    />
+                    <Text style={styles.heroSecondaryBtnText}>
+                      Vernieuwen
                     </Text>
+                  </TouchableOpacity>
+                </View>
 
-                    {topSuggestion ? (
-                      <View style={styles.suggestionBox}>
-                        <Text style={styles.suggestionTitle}>
-                          Top suggestie
-                        </Text>
-                        <Text style={styles.suggestionValue}>
-                          {topSuggestion.subscriptionName} ·{" "}
-                          {Math.round(topSuggestion.confidence * 100)}% (
-                          {topSuggestion.confidenceLabel})
-                        </Text>
-                        <Text style={styles.suggestionReason}>
-                          {topSuggestion.reason}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.mutedText}>
-                        Geen betrouwbare suggestie gevonden.
-                      </Text>
-                    )}
+                {focusProfileId ? (
+                  <View style={styles.heroHintBox}>
+                    <AppIcon
+                      name="link"
+                      size={16}
+                      color={FinColors.warningText}
+                      variant="outlined"
+                    />
+                    <Text style={styles.heroHint}>
+                      Geopend vanuit een transactie. Controleer hier de
+                      koppeling of maak direct een nieuw profiel.
+                    </Text>
+                  </View>
+                ) : null}
 
-                    <View style={styles.queueActionsWrap}>
-                      {topSuggestion ? (
-                        <TouchableOpacity
-                          style={styles.primaryBtn}
-                          onPress={() =>
-                            void handleLinkTransaction(
-                              item,
-                              topSuggestion.subscriptionProfileId,
-                              topSuggestion.confidence,
-                            )
-                          }
-                          disabled={isBusy}
-                        >
-                          <Text style={styles.primaryBtnText}>Koppel</Text>
-                        </TouchableOpacity>
-                      ) : null}
+                <Text style={styles.heroFinePrint}>
+                  {inactiveProfilesCount > 0
+                    ? `${inactiveProfilesCount} profiel${inactiveProfilesCount === 1 ? "" : "en"} staat${inactiveProfilesCount === 1 ? "" : "en"} gepauzeerd.`
+                    : "Alle profielen staan actief en klaar voor koppeling."}
+                </Text>
+              </View>
 
-                      <View style={styles.queueSecondaryActions}>
-                        <TouchableOpacity
-                          style={styles.ghostBtn}
-                          onPress={() => setChooseProfileTx(item)}
-                          disabled={isBusy}
-                        >
-                          <Text style={styles.ghostBtnText}>
-                            Kies abonnement
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.ghostBtn}
-                          onPress={() => openCreateProfileModal(item)}
-                          disabled={isBusy}
-                        >
-                          <Text style={styles.ghostBtnText}>
-                            Nieuw abonnement
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.ghostBtn}
-                          onPress={() => void handleMarkNotSubscription(item)}
-                          disabled={isBusy}
-                        >
-                          <Text
-                            style={[
-                              styles.ghostBtnText,
-                              { color: FinColors.red },
-                            ]}
-                          >
-                            Geen abonnement
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeaderRow}>
+                  <View style={styles.sectionTitleBlock}>
+                    <Text style={styles.sectionEyebrow}>Beheer</Text>
+                    <Text style={styles.sectionTitle}>Abonnementprofielen</Text>
+                    <Text style={styles.sectionSubtitle}>
+                      {profiles.length === 0
+                        ? "Nog geen profielen ingesteld"
+                        : `${profiles.length} profiel${
+                            profiles.length === 1 ? "" : "en"
+                          } in beheer`}
+                    </Text>
+                  </View>
+                  <View style={styles.sectionActionStack}>
+                    <Text style={styles.sectionActionLabel}>Snelle actie</Text>
                     <TouchableOpacity
-                      style={styles.detailLinkBtn}
-                      onPress={() =>
-                        router.push(
-                          `/transaction-detail?id=${item.transactionId}`,
-                        )
-                      }
+                      style={styles.smallActionBtn}
+                      onPress={() => openCreateProfileModal()}
                     >
-                      <Text style={styles.detailLinkText}>
-                        Open transactie →
+                      <Text style={styles.smallActionBtnText}>
+                        Nieuw profiel
                       </Text>
                     </TouchableOpacity>
                   </View>
-                );
-              })
-            )}
+                </View>
+
+                {profiles.length === 0 ? (
+                  <View style={styles.emptyCard}>
+                    <AppIcon
+                      name="subscriptions"
+                      size={22}
+                      color={FinColors.textMuted}
+                      variant="outlined"
+                    />
+                    <Text style={styles.emptyTitle}>
+                      Nog geen abonnementen ingesteld
+                    </Text>
+                    <Text style={styles.emptyCopy}>
+                      Voeg een profiel toe om terugkerende betalingen te
+                      koppelen en sneller te herkennen.
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.emptyPrimaryBtn}
+                      onPress={() => openCreateProfileModal()}
+                    >
+                      <Text style={styles.emptyPrimaryBtnText}>
+                        Eerste profiel maken
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  profiles.map((profile) => {
+                    return (
+                      <View key={profile.id} style={styles.profileCard}>
+                        <View style={styles.profileTopRow}>
+                          <View style={styles.profileIconWrap}>
+                            <AppIcon
+                              name="subscriptions"
+                              size={18}
+                              color={
+                                profile.isActive
+                                  ? FinColors.warningText
+                                  : FinColors.textMuted
+                              }
+                              variant="outlined"
+                            />
+                          </View>
+                          <View style={styles.profileTitleWrap}>
+                            <Text style={styles.profileName}>
+                              {profile.name}
+                            </Text>
+                            <Text style={styles.profileMeta}>
+                              {getProfileSummary(profile)}
+                            </Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.profileStatePill,
+                              profile.isActive
+                                ? styles.profileStatePillActive
+                                : styles.profileStatePillInactive,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.profileStatePillText,
+                                profile.isActive
+                                  ? styles.profileStatePillTextActive
+                                  : styles.profileStatePillTextInactive,
+                              ]}
+                            >
+                              {profile.isActive ? "Actief" : "Gepauzeerd"}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.profileMetaGrid}>
+                          <View style={styles.profileMetaTile}>
+                            <Text style={styles.profileMetaTileLabel}>
+                              Factuurcyclus
+                            </Text>
+                            <Text style={styles.profileMetaTileValue}>
+                              {BILLING_CYCLE_OPTIONS.find(
+                                (option) => option.value === profile.billingCycle,
+                              )?.label || "Maandelijks"}
+                            </Text>
+                          </View>
+                          <View style={styles.profileMetaTile}>
+                            <Text style={styles.profileMetaTileLabel}>
+                              Verwacht bedrag
+                            </Text>
+                            <Text style={styles.profileMetaTileValue}>
+                              {profile.expectedAmount != null
+                                ? euroFormatter.format(profile.expectedAmount)
+                                : "Nog niet ingesteld"}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.profileStatusRow}>
+                          <Text style={styles.profileStatusText}>
+                            {profile.isActive
+                              ? "Profiel staat actief in de herkende koppelingen."
+                              : "Profiel is gepauzeerd en wordt niet automatisch gekoppeld."}
+                          </Text>
+                          <Switch
+                            value={profile.isActive}
+                            onValueChange={(value) =>
+                              void handleToggleProfileActive(profile, value)
+                            }
+                            trackColor={{
+                              false: FinColors.bgElevated,
+                              true: FinColors.warningBorder,
+                            }}
+                            thumbColor={
+                              profile.isActive
+                                ? FinColors.warningText
+                                : FinColors.textMuted
+                            }
+                          />
+                        </View>
+
+                        <View style={styles.profileActionsRow}>
+                          <TouchableOpacity
+                            style={[styles.ghostBtn, styles.actionBtnFlex]}
+                            onPress={() => openEditProfileModal(profile)}
+                          >
+                            <Text style={styles.ghostBtnText}>Bewerk</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[
+                              styles.ghostBtn,
+                              styles.actionBtnFlex,
+                              styles.ghostDangerBtn,
+                            ]}
+                            onPress={() => setProfilePendingDelete(profile)}
+                            disabled={deletingProfileId === profile.id}
+                          >
+                            {deletingProfileId === profile.id ? (
+                              <ActivityIndicator
+                                size="small"
+                                color={FinColors.red}
+                              />
+                            ) : (
+                              <>
+                                <AppIcon
+                                  name="delete-outline"
+                                  size={15}
+                                  color={FinColors.red}
+                                  variant="outlined"
+                                />
+                                <Text
+                                  style={[
+                                    styles.ghostBtnText,
+                                    styles.ghostDangerBtnText,
+                                  ]}
+                                >
+                                  Verwijder
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+            </View>
+
+            <View
+              style={[
+                styles.column,
+                isWideLayout && styles.columnSecondary,
+              ]}
+            >
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeaderRow}>
+                  <View style={styles.sectionTitleBlock}>
+                    <Text style={styles.sectionEyebrow}>Controle</Text>
+                    <Text style={styles.sectionTitle}>
+                      Nog te koppelen betalingen
+                    </Text>
+                    <Text style={styles.sectionSubtitle}>
+                      {queueItems.length === 0
+                        ? "Geen openstaande PSP-betalingen"
+                        : `${queueItems.length} betaling${
+                            queueItems.length === 1 ? "" : "en"
+                          } vragen controle`}
+                    </Text>
+                  </View>
+                  <View style={styles.sectionActionStack}>
+                    <Text style={styles.sectionActionLabel}>Basisinstelling</Text>
+                    <TouchableOpacity
+                      style={styles.smallActionBtn}
+                      onPress={() => void loadData()}
+                    >
+                      <Text style={styles.smallActionBtnText}>
+                        Vernieuwen
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.toggleRow}>
+                  <View style={styles.toggleCopyWrap}>
+                    <Text style={styles.toggleLabel}>
+                      Zet categorie op abonnementen
+                    </Text>
+                    <Text style={styles.toggleSubtext}>
+                      Gebruik deze koppeling om betalingen direct in de juiste
+                      categorie te zetten.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={setCategoryOnLink}
+                    onValueChange={setSetCategoryOnLink}
+                    trackColor={{
+                      false: FinColors.bgElevated,
+                      true: FinColors.warningBorder,
+                    }}
+                    thumbColor={
+                      setCategoryOnLink
+                        ? FinColors.warningText
+                        : FinColors.textMuted
+                    }
+                  />
+                </View>
+
+                {queueItems.length === 0 ? (
+                  <View style={styles.emptyCard}>
+                    <AppIcon
+                      name="receipt-long"
+                      size={22}
+                      color={FinColors.textMuted}
+                      variant="outlined"
+                    />
+                    <Text style={styles.emptyTitle}>
+                      Geen openstaande betalingen
+                    </Text>
+                    <Text style={styles.emptyCopy}>
+                      Er staan deze maand geen betalingen klaar om aan een
+                      abonnement te koppelen.
+                    </Text>
+                  </View>
+                ) : (
+                  queueItems.map((item) => {
+                    const topSuggestion = item.suggestions[0] || null;
+                    const isBusy = busyTransactionIds.includes(item.transactionId);
+                    return (
+                      <View key={item.transactionId} style={styles.queueCard}>
+                        <View style={styles.queueHeaderRow}>
+                          <View style={styles.queueDateWrap}>
+                            <Text style={styles.queueDate}>
+                              {formatDateLabel(item.date)}
+                            </Text>
+                            {item.providerDetected ? (
+                              <View style={styles.queueProviderPill}>
+                                <Text style={styles.queueProviderPillText}>
+                                  {getProviderHintLabel(item.providerDetected)}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+                          <Text style={styles.queueAmount}>
+                            -{euroFormatter.format(Math.abs(item.amount))}
+                          </Text>
+                        </View>
+                        <Text style={styles.queueCounterparty} numberOfLines={1}>
+                          {item.counterparty || "Onbekende tegenpartij"}
+                        </Text>
+                        <Text style={styles.queueSubject} numberOfLines={2}>
+                          {extractSubject(item.details)}
+                        </Text>
+
+                        {topSuggestion ? (
+                          <View style={styles.suggestionBox}>
+                            <View style={styles.suggestionHeaderRow}>
+                              <Text style={styles.suggestionTitle}>
+                                Top suggestie
+                              </Text>
+                              <Text style={styles.suggestionConfidence}>
+                                {Math.round(topSuggestion.confidence * 100)}%
+                              </Text>
+                            </View>
+                            <Text style={styles.suggestionValue}>
+                              {topSuggestion.subscriptionName}
+                            </Text>
+                            <Text style={styles.suggestionReason}>
+                              {topSuggestion.confidenceLabel} ·{" "}
+                              {topSuggestion.reason}
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={styles.queueNoSuggestionBox}>
+                            <Text style={styles.mutedText}>
+                              Geen betrouwbare suggestie gevonden. Kies zelf een
+                              abonnement of maak direct een nieuw profiel.
+                            </Text>
+                          </View>
+                        )}
+
+                        <View style={styles.queueActionsWrap}>
+                          {topSuggestion ? (
+                            <TouchableOpacity
+                              style={styles.primaryBtn}
+                              onPress={() =>
+                                void handleLinkTransaction(
+                                  item,
+                                  topSuggestion.subscriptionProfileId,
+                                  topSuggestion.confidence,
+                                )
+                              }
+                              disabled={isBusy}
+                            >
+                              <Text style={styles.primaryBtnText}>
+                                Koppel direct
+                              </Text>
+                            </TouchableOpacity>
+                          ) : null}
+
+                          <View style={styles.queueSecondaryActions}>
+                            <TouchableOpacity
+                              style={[styles.ghostBtn, styles.actionBtnFlex]}
+                              onPress={() => setChooseProfileTx(item)}
+                              disabled={isBusy}
+                            >
+                              <Text style={styles.ghostBtnText}>
+                                Kies abonnement
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.ghostBtn, styles.actionBtnFlex]}
+                              onPress={() => openCreateProfileModal(item)}
+                              disabled={isBusy}
+                            >
+                              <Text style={styles.ghostBtnText}>
+                                Nieuw abonnement
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[
+                                styles.ghostBtn,
+                                styles.actionBtnFlex,
+                                styles.ghostDangerBtn,
+                              ]}
+                              onPress={() => void handleMarkNotSubscription(item)}
+                              disabled={isBusy}
+                            >
+                              <Text
+                                style={[
+                                  styles.ghostBtnText,
+                                  styles.ghostDangerBtnText,
+                                ]}
+                              >
+                                Geen abonnement
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+
+                        <TouchableOpacity
+                          style={styles.detailLinkBtn}
+                          onPress={() =>
+                            router.push(
+                              `/transaction-detail?id=${item.transactionId}`,
+                            )
+                          }
+                        >
+                          <Text style={styles.detailLinkText}>
+                            Open transactie
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.footerCard}>
+            <View style={styles.footerHeaderRow}>
+              <View style={styles.footerTitleWrap}>
+                <Text style={styles.footerEyebrow}>Snel erbij</Text>
+                <Text style={styles.footerTitle}>Snelle koppelingen</Text>
+              </View>
+              <Text style={styles.footerSubtext}>
+                Spring direct door naar de plekken waar je meestal verder werkt.
+              </Text>
+            </View>
+
+            <View style={styles.quickLinkGrid}>
+              <TouchableOpacity
+                style={[styles.quickLinkBtn, styles.quickLinkBtnPrimary]}
+                onPress={() => router.push("/transactions")}
+              >
+                <AppIcon
+                  name="receipt-long"
+                  size={18}
+                  color={FinColors.textPrimary}
+                  variant="outlined"
+                />
+                <Text style={styles.quickLinkTitle}>Transacties</Text>
+                <Text style={styles.quickLinkCopy}>Koppelen en corrigeren</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickLinkBtn}
+                onPress={() => router.push("/budget")}
+              >
+                <AppIcon
+                  name="account-balance-wallet"
+                  size={18}
+                  color={FinColors.warningText}
+                  variant="outlined"
+                />
+                <Text style={styles.quickLinkTitle}>Budget</Text>
+                <Text style={styles.quickLinkCopy}>Ruimte en tempo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickLinkBtn}
+                onPress={() => router.push("/insights")}
+              >
+                <AppIcon
+                  name="insights"
+                  size={18}
+                  color={FinColors.warningText}
+                  variant="outlined"
+                />
+                <Text style={styles.quickLinkTitle}>Insights</Text>
+                <Text style={styles.quickLinkCopy}>Trend en forecast</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickLinkBtn}
+                onPress={() => router.push("/csv-import")}
+              >
+                <AppIcon
+                  name="upload-file"
+                  size={18}
+                  color={FinColors.warningText}
+                  variant="outlined"
+                />
+                <Text style={styles.quickLinkTitle}>Importeren</Text>
+                <Text style={styles.quickLinkCopy}>Nieuwe bankdata</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
       )}
@@ -1515,10 +1863,12 @@ export default function SubscriptionsScreen() {
                   onValueChange={setProfileIsActive}
                   trackColor={{
                     false: FinColors.bgElevated,
-                    true: FinColors.greenBorder,
+                    true: FinColors.warningBorder,
                   }}
                   thumbColor={
-                    profileIsActive ? FinColors.green : FinColors.textMuted
+                    profileIsActive
+                      ? FinColors.warningText
+                      : FinColors.textMuted
                   }
                 />
               </View>
@@ -1547,7 +1897,10 @@ export default function SubscriptionsScreen() {
 
                   {validationLoading ? (
                     <View style={styles.validationLoadingRow}>
-                      <ActivityIndicator size="small" color={FinColors.green} />
+                      <ActivityIndicator
+                        size="small"
+                        color={FinColors.warningText}
+                      />
                       <Text style={styles.mutedText}>
                         Vorige transacties laden…
                       </Text>
@@ -1586,7 +1939,7 @@ export default function SubscriptionsScreen() {
                                 size={18}
                                 color={
                                   selected
-                                    ? FinColors.green
+                                    ? FinColors.warningText
                                     : FinColors.textMuted
                                 }
                               />
@@ -1824,22 +2177,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: FinColors.bgBase,
   },
-  topBar: {
-    paddingTop: 56,
-    paddingBottom: 14,
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor: FinColors.borderSubtle,
-  },
-  pageTitle: {
-    color: FinColors.textPrimary,
-    fontSize: 23,
-    fontWeight: "800",
-    letterSpacing: -0.4,
-  },
   centered: {
     flex: 1,
     justifyContent: "center",
@@ -1847,102 +2184,284 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    gap: 14,
+    paddingTop: 16,
+    paddingBottom: 32,
+    gap: 16,
+  },
+  pageGrid: {
+    gap: 16,
+  },
+  pageGridWide: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 16,
+  },
+  column: {
+    gap: 16,
+  },
+  columnPrimary: {
+    flex: 1.1,
+    minWidth: 0,
+  },
+  columnSecondary: {
+    flex: 0.9,
+    minWidth: 0,
   },
   heroCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 18,
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
+    borderColor: FinColors.border,
     padding: 18,
+    gap: 14,
+    overflow: "hidden",
+    position: "relative",
+  },
+  heroTopRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
     gap: 12,
+    zIndex: 1,
+  },
+  heroOrnamentTop: {
+    position: "absolute",
+    top: -42,
+    right: -38,
+    width: 132,
+    height: 132,
+    borderRadius: 999,
+    backgroundColor: FinColors.yellowSoft,
+    opacity: 0.9,
+  },
+  heroOrnamentBottom: {
+    position: "absolute",
+    bottom: -48,
+    left: -30,
+    width: 112,
+    height: 112,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgElevated,
+    opacity: 0.9,
+  },
+  heroLabelWrap: {
+    flex: 1,
+    gap: 8,
+    paddingRight: 12,
+  },
+  heroBrandMark: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: FinColors.yellowSoft,
+    borderWidth: 1,
+    borderColor: FinColors.warningBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroStatsRow: {
+    flexDirection: "row",
+    gap: 12,
+    flexWrap: "wrap",
+    zIndex: 1,
   },
   heroEyebrow: {
+    color: FinColors.warningText,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1.1,
+  },
+  heroTitle: {
+    color: FinColors.textPrimary,
+    fontSize: 25,
+    fontWeight: "800",
+    lineHeight: 31,
+    letterSpacing: -0.6,
+  },
+  heroCopy: {
+    color: FinColors.textSecondary,
+    fontSize: 14,
+    lineHeight: 21,
+    zIndex: 1,
+  },
+  heroPrimaryStat: {
+    flex: 1.2,
+    minWidth: 152,
+    borderRadius: 22,
+    backgroundColor: FinColors.bgBase,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 4,
+  },
+  heroPrimaryStatValue: {
+    color: FinColors.textPrimary,
+    fontSize: 30,
+    fontWeight: "800",
+    letterSpacing: -1,
+  },
+  heroPrimaryStatLabel: {
     color: FinColors.textSecondary,
     fontSize: 12,
+    fontWeight: "600",
+  },
+  heroMiniStatsColumn: {
+    flex: 1,
+    minWidth: 180,
+    gap: 8,
+  },
+  heroMiniStat: {
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.7)",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  heroMiniStatLabel: {
+    color: FinColors.textSecondary,
+    fontSize: 11,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.8,
   },
-  heroTitle: {
+  heroMiniStatValue: {
     color: FinColors.textPrimary,
-    fontSize: 20,
+    fontSize: 15,
     fontWeight: "800",
-    lineHeight: 26,
   },
-  heroCopy: {
-    color: FinColors.textSecondary,
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  heroMetricsRow: {
+  heroActionRow: {
     flexDirection: "row",
     gap: 10,
     flexWrap: "wrap",
+    zIndex: 1,
   },
-  heroMetricCard: {
-    minWidth: 112,
-    flexGrow: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    gap: 4,
+  heroPrimaryBtn: {
+    borderRadius: 999,
+    backgroundColor: FinColors.yellow,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
   },
-  heroMetricLabel: {
-    color: FinColors.textMuted,
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.7,
-  },
-  heroMetricValue: {
+  heroPrimaryBtnText: {
     color: FinColors.textPrimary,
-    fontSize: 20,
+    fontSize: 13,
     fontWeight: "800",
   },
+  heroSecondaryBtn: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgBase,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  heroSecondaryBtnText: {
+    color: FinColors.textSecondary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  heroFinePrint: {
+    color: FinColors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    zIndex: 1,
+  },
+  heroHintBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: FinColors.warningBorder,
+    backgroundColor: FinColors.yellowSoft,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   heroHint: {
-    color: FinColors.green,
+    flex: 1,
+    color: FinColors.warningText,
     fontSize: 12,
     lineHeight: 18,
     fontWeight: "600",
   },
   sectionCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: FinColors.border,
-    padding: 14,
-    gap: 12,
+    padding: 16,
+    gap: 14,
+    overflow: "hidden",
   },
   sectionHeaderRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 12,
+  },
+  sectionTitleBlock: {
+    flex: 1,
+    gap: 4,
+    paddingRight: 8,
+  },
+  sectionEyebrow: {
+    color: FinColors.warningText,
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
   sectionTitle: {
     color: FinColors.textPrimary,
+    fontSize: 19,
+    fontWeight: "800",
+    letterSpacing: -0.4,
+    textTransform: "none",
+    opacity: 1,
+  },
+  sectionSubtitle: {
+    color: FinColors.textSecondary,
     fontSize: 13,
+    lineHeight: 19,
+    maxWidth: 420,
+  },
+  sectionActionStack: {
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  sectionActionLabel: {
+    color: FinColors.textMuted,
+    fontSize: 10,
     fontWeight: "700",
     textTransform: "uppercase",
-    letterSpacing: 0.8,
-    opacity: 0.75,
+    letterSpacing: 0.9,
   },
   smallActionBtn: {
-    borderRadius: 8,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: FinColors.bgBase,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   smallActionBtnText: {
     color: FinColors.textSecondary,
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   mutedText: {
     color: FinColors.textMuted,
@@ -1950,35 +2469,121 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   profileCard: {
-    borderRadius: 12,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgElevated,
-    padding: 12,
+    backgroundColor: FinColors.bgBase,
+    padding: 14,
+    gap: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: FinColors.yellow,
+  },
+  profileTopRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: 10,
   },
-  profileHeaderRow: {
-    flexDirection: "row",
+  profileIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
+    justifyContent: "center",
+    backgroundColor: FinColors.yellowSoft,
+    borderWidth: 1,
+    borderColor: FinColors.warningBorder,
+  },
+  profileTitleWrap: {
+    gap: 4,
+    flex: 1,
   },
   profileName: {
     color: FinColors.textPrimary,
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 17,
+    fontWeight: "800",
   },
   profileMeta: {
     color: FinColors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  profileMetaGrid: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  profileMetaTile: {
+    flex: 1,
+    minWidth: 140,
+    borderRadius: 16,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    gap: 4,
+  },
+  profileMetaTileLabel: {
+    color: FinColors.textMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  profileMetaTileValue: {
+    color: FinColors.textPrimary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  profileStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  profileStatusText: {
+    flex: 1,
+    color: FinColors.textSecondary,
     fontSize: 12,
-    marginTop: 2,
+    lineHeight: 17,
+  },
+  profileStatePill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+  },
+  profileStatePillActive: {
+    backgroundColor: FinColors.yellowSoft,
+    borderColor: FinColors.warningBorder,
+  },
+  profileStatePillInactive: {
+    backgroundColor: FinColors.bgElevated,
+    borderColor: FinColors.borderSubtle,
+  },
+  profileStatePillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  profileStatePillTextActive: {
+    color: FinColors.warningText,
+  },
+  profileStatePillTextInactive: {
+    color: FinColors.textSecondary,
   },
   profileActionsRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
+  actionBtnFlex: {
+    flexGrow: 1,
+    flexBasis: 140,
+  },
   ghostDangerBtn: {
-    borderColor: FinColors.redBorder,
+    borderColor: FinColors.redBg,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -2042,7 +2647,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   ruleTypePill: {
-    color: FinColors.green,
+    color: FinColors.warningText,
     fontSize: 11,
     fontWeight: "700",
     textTransform: "uppercase",
@@ -2062,8 +2667,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   ruleTypeBtnActive: {
-    borderColor: FinColors.greenBorder,
-    backgroundColor: FinColors.greenBg,
+    borderColor: FinColors.warningBorder,
+    backgroundColor: FinColors.yellowSoft,
   },
   ruleTypeBtnText: {
     color: FinColors.textSecondary,
@@ -2071,7 +2676,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   ruleTypeBtnTextActive: {
-    color: FinColors.green,
+    color: FinColors.warningText,
   },
   ruleDraftRow: {
     flexDirection: "row",
@@ -2091,7 +2696,7 @@ const styles = StyleSheet.create({
   },
   primaryBtnSmall: {
     borderRadius: 8,
-    backgroundColor: FinColors.green,
+    backgroundColor: FinColors.yellow,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
@@ -2105,38 +2710,74 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-  },
-  toggleLabel: {
-    color: FinColors.textSecondary,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  queueCard: {
-    borderRadius: 12,
+    borderRadius: 18,
+    backgroundColor: FinColors.bgBase,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgElevated,
-    padding: 12,
-    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  toggleCopyWrap: {
+    flex: 1,
+    gap: 4,
+  },
+  toggleLabel: {
+    color: FinColors.textPrimary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  toggleSubtext: {
+    color: FinColors.textMuted,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  queueCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    borderLeftWidth: 4,
+    borderLeftColor: FinColors.yellow,
+    backgroundColor: FinColors.bgBase,
+    padding: 14,
+    gap: 10,
   },
   queueHeaderRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  queueDateWrap: {
+    flex: 1,
+    gap: 6,
   },
   queueDate: {
     color: FinColors.textMuted,
     fontSize: 12,
+    fontWeight: "600",
+  },
+  queueProviderPill: {
+    borderRadius: 999,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  queueProviderPillText: {
+    color: FinColors.textSecondary,
+    fontSize: 11,
+    fontWeight: "600",
   },
   queueAmount: {
+    marginLeft: "auto",
     color: FinColors.red,
     fontSize: 14,
     fontWeight: "700",
   },
   queueCounterparty: {
     color: FinColors.textPrimary,
-    fontSize: 14,
-    fontWeight: "700",
+    fontSize: 15,
+    fontWeight: "800",
   },
   queueSubject: {
     color: FinColors.textSecondary,
@@ -2144,12 +2785,18 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   suggestionBox: {
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: FinColors.greenBorder,
-    backgroundColor: FinColors.greenBg,
-    padding: 8,
-    gap: 4,
+    borderColor: FinColors.warningBorder,
+    backgroundColor: FinColors.yellowSoft,
+    padding: 10,
+    gap: 5,
+  },
+  suggestionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
   },
   suggestionTitle: {
     color: FinColors.textSecondary,
@@ -2158,9 +2805,14 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
+  suggestionConfidence: {
+    color: FinColors.warningText,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   suggestionValue: {
     color: FinColors.textPrimary,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
   },
   suggestionReason: {
@@ -2168,17 +2820,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+  queueNoSuggestionBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
   queueActionsWrap: {
     marginTop: 2,
     gap: 8,
   },
   queueSecondaryActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   primaryBtn: {
-    borderRadius: 10,
-    backgroundColor: FinColors.green,
-    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: FinColors.yellow,
+    paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
@@ -2189,9 +2851,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   ghostBtn: {
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
     paddingVertical: 10,
     paddingHorizontal: 12,
     alignItems: "center",
@@ -2203,18 +2866,115 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   detailLinkBtn: {
-    marginTop: 2,
+    marginTop: 4,
     alignSelf: "flex-start",
   },
   detailLinkText: {
-    color: FinColors.green,
+    color: FinColors.warningText,
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
+  },
+  emptyCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    borderStyle: "dashed",
+    backgroundColor: FinColors.bgBase,
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  emptyTitle: {
+    color: FinColors.textPrimary,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  emptyCopy: {
+    color: FinColors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+    maxWidth: 440,
+  },
+  emptyPrimaryBtn: {
+    marginTop: 4,
+    borderRadius: 999,
+    backgroundColor: FinColors.yellow,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  emptyPrimaryBtnText: {
+    color: FinColors.textPrimary,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  footerCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: FinColors.border,
+    backgroundColor: FinColors.bgCard,
+    padding: 16,
+    gap: 14,
+  },
+  footerHeaderRow: {
+    gap: 6,
+  },
+  footerTitleWrap: {
+    gap: 4,
+  },
+  footerEyebrow: {
+    color: FinColors.warningText,
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  footerTitle: {
+    color: FinColors.textPrimary,
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+  },
+  footerSubtext: {
+    color: FinColors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  quickLinkGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  quickLinkBtn: {
+    flexGrow: 1,
+    flexBasis: 150,
+    minHeight: 96,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgBase,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 6,
+  },
+  quickLinkBtnPrimary: {
+    backgroundColor: FinColors.warningBg,
+    borderColor: FinColors.warningBorder,
+  },
+  quickLinkTitle: {
+    color: FinColors.textPrimary,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  quickLinkCopy: {
+    color: FinColors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
   },
   errorCard: {
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: FinColors.red,
+    borderColor: FinColors.redBg,
     backgroundColor: FinColors.redBg,
     padding: 10,
   },
@@ -2290,8 +3050,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   modalChipActive: {
-    borderColor: FinColors.greenBorder,
-    backgroundColor: FinColors.greenBg,
+    borderColor: FinColors.warningBorder,
+    backgroundColor: FinColors.yellowSoft,
   },
   modalChipText: {
     color: FinColors.textSecondary,
@@ -2299,7 +3059,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   modalChipTextActive: {
-    color: FinColors.green,
+    color: FinColors.warningText,
   },
   inlineInputRow: {
     flexDirection: "row",
@@ -2335,8 +3095,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   validationItemSelected: {
-    borderColor: FinColors.greenBorder,
-    backgroundColor: FinColors.greenBg,
+    borderColor: FinColors.warningBorder,
+    backgroundColor: FinColors.yellowSoft,
   },
   validationItemHeaderRow: {
     flexDirection: "row",
@@ -2396,7 +3156,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: FinColors.redBg,
     borderWidth: 1,
-    borderColor: FinColors.redBorder,
+    borderColor: FinColors.redBg,
   },
   confirmModalTitle: {
     color: FinColors.textPrimary,
@@ -2416,7 +3176,7 @@ const styles = StyleSheet.create({
   confirmDeleteBtn: {
     minWidth: 120,
     borderRadius: 10,
-    backgroundColor: FinColors.red,
+    backgroundColor: FinColors.textPrimary,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 11,

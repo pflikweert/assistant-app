@@ -2,7 +2,6 @@ import { TransactionCategoryIcon } from "@/components/category-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { MonthPickerSheet } from "@/components/month-picker-sheet";
 import { FinColors } from "@/constants/theme";
-import { getBudgetGroupLabel } from "@/services/category-budget-groups";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
 import {
@@ -11,7 +10,6 @@ import {
   getEffectiveCategoryId,
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
-import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import {
@@ -27,12 +25,12 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -50,10 +48,10 @@ const ALL_MONTHS_PICKER_OPTION = {
 } as const;
 
 const PRIMARY_FILTERS = [
-  { key: "all", label: "Alles" },
-  { key: "expenses", label: "Uitgaven" },
-  { key: "income", label: "Inkomsten" },
-  { key: "review", label: "Review" },
+  { key: "all", label: "Alle transacties", icon: "filter-list" },
+  { key: "expenses", label: "Uitgaven", icon: "category" },
+  { key: "income", label: "Inkomsten", icon: "payments" },
+  { key: "review", label: "Review", icon: "task-alt" },
 ] as const;
 
 type PrimaryFilterKey = (typeof PRIMARY_FILTERS)[number]["key"];
@@ -84,23 +82,6 @@ function normalizeSearch(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-}
-
-function formatSectionDateLabel(value: string) {
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-
-  if (value === today) return "Vandaag";
-  if (value === yesterday) return "Gisteren";
-
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleDateString("nl-NL", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
 }
 
 function getStatusMeta(tx: Tx) {
@@ -134,18 +115,6 @@ function TxRow({
   categoryMap: Map<string, CategoryRecord>;
 }) {
   const isPositive = item.amount >= 0;
-  const effectiveCategoryId = getEffectiveCategoryId(item);
-  const budgetGroupLabel = getBudgetGroupLabel(
-    effectiveCategoryId ? categoryMap.get(effectiveCategoryId)?.budget_group : null,
-  );
-  const incomeSemantics = isPositive
-    ? resolveIncomeSemanticsForTransaction(item, categoryMap)
-    : null;
-  const incomeSemanticLabel =
-    incomeSemantics?.shortLabel &&
-    incomeSemantics.shortLabel !== "Variabel inkomen"
-      ? incomeSemantics.shortLabel
-      : null;
 
   return (
     <TouchableOpacity
@@ -159,9 +128,17 @@ function TxRow({
 
       <View style={styles.txBody}>
         <View style={styles.txTopLine}>
-          <Text style={styles.txName} numberOfLines={1}>
-            {item.subscriptionProfileName || item.counterparty || "Onbekend"}
-          </Text>
+          <View style={styles.txCopyBlock}>
+            <Text style={styles.txName} numberOfLines={2}>
+              {item.subscriptionProfileName || item.counterparty || "Onbekend"}
+            </Text>
+            <Text style={styles.txSubline} numberOfLines={1}>
+              {item.details || "Geen extra omschrijving"}
+            </Text>
+            <Text style={styles.txMetaLineText} numberOfLines={1}>
+              {item.categoryLabel} • {item.date}
+            </Text>
+          </View>
           <View style={styles.amountWrap}>
             <Text style={[styles.txAmount, isPositive && styles.txAmountPositive]}>
               {isPositive ? "+" : ""}
@@ -174,56 +151,22 @@ function TxRow({
             ) : null}
           </View>
         </View>
-
-        <View style={styles.txMetaLine}>
-          <Text style={styles.txDate}>{item.date}</Text>
-          <Text style={styles.dotSeparator}>•</Text>
-          <Text style={styles.txDetail} numberOfLines={1}>
-            {item.details || "Geen extra omschrijving"}
-          </Text>
-        </View>
-
-        <View style={styles.txBottomLine}>
-          <Text style={styles.categoryBadge}>{item.categoryLabel}</Text>
-          {budgetGroupLabel ? (
-            <Text style={styles.budgetGroupBadge}>{budgetGroupLabel}</Text>
-          ) : null}
-          {incomeSemanticLabel ? (
-            <Text
-              style={[
-                styles.incomeSemanticBadge,
-                incomeSemantics?.kind === "expense_refund" &&
-                  styles.incomeSemanticBadgeRefund,
-              ]}
-            >
-              {incomeSemanticLabel}
-            </Text>
-          ) : null}
-          <Text
-            style={[
-              styles.statusBadge,
-              item.statusTone === "warning" && styles.statusBadgeWarning,
-              item.statusTone === "manual" && styles.statusBadgeManual,
-            ]}
-          >
-            {item.statusLabel}
-          </Text>
-        </View>
       </View>
     </TouchableOpacity>
   );
 }
 
-function SectionHeader({ title }: { title: string }) {
+function AvatarBadge() {
   return (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{formatSectionDateLabel(title)}</Text>
+    <View style={styles.avatarBadge}>
+      <Text style={styles.avatarBadgeText}>PF</Text>
     </View>
   );
 }
 
 export default function TransactionsTab() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const { counterparty: rawCounterparty } = useLocalSearchParams<{
     counterparty?: string | string[];
   }>();
@@ -275,15 +218,6 @@ export default function TransactionsTab() {
   const selectedMonthLabel = isAllMonthsSelected
     ? "Alle maanden"
     : selectedMonth.label;
-  const selectedMonthIndex = React.useMemo(
-    () => monthOptions.findIndex((option) => option.key === selectedMonth?.key),
-    [monthOptions, selectedMonth?.key],
-  );
-  const canGoToOlderMonth =
-    !isAllMonthsSelected &&
-    selectedMonthIndex >= 0 && selectedMonthIndex < monthOptions.length - 1;
-  const canGoToNewerMonth = !isAllMonthsSelected && selectedMonthIndex > 0;
-
   const searchTokens = React.useMemo(
     () => normalizeSearch(searchQuery).split(" ").filter(Boolean),
     [searchQuery],
@@ -296,6 +230,7 @@ export default function TransactionsTab() {
   ].filter(Boolean).length;
 
   const hasActiveFilters = activeFilterCount > 0;
+  const isWideLayout = width >= 980;
 
   const loadCategories = React.useCallback(async () => {
     try {
@@ -531,182 +466,185 @@ export default function TransactionsTab() {
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
             <HeaderDropdownMenu />
-            <View style={styles.headerCopy}>
-              <Text style={styles.pageTitle}>Transacties</Text>
-              <Text style={styles.pageSubtitle}>
-                Snel scannen, filteren en openen.
-              </Text>
-            </View>
+            <Text style={styles.pageTitle}>Mijn Financiën</Text>
           </View>
+          <AvatarBadge />
         </View>
-
-        <View style={styles.monthRow}>
-          <Pressable
-            style={[
-              styles.monthNavButton,
-              !canGoToOlderMonth && styles.monthNavButtonDisabled,
-            ]}
-            onPress={() => {
-              if (!canGoToOlderMonth) return;
-              const nextOption = monthOptions[selectedMonthIndex + 1];
-              if (nextOption) setSelectedMonthKey(nextOption.key);
-            }}
-            disabled={!canGoToOlderMonth}
-          >
-            <Text style={styles.monthNavButtonText}>‹</Text>
-          </Pressable>
-          <Pressable
-            style={styles.monthBadge}
-            onPress={() => setMonthPickerOpen(true)}
-          >
-            <Text style={styles.monthBadgeText}>{selectedMonthLabel}</Text>
-            <AppIcon
-              name="expand-more"
-              size={18}
-              color={FinColors.textSecondary}
-              variant="outlined"
-              style={styles.monthBadgeIcon}
-            />
-          </Pressable>
-          <Pressable
-            style={[
-              styles.monthNavButton,
-              !canGoToNewerMonth && styles.monthNavButtonDisabled,
-            ]}
-            onPress={() => {
-              if (!canGoToNewerMonth) return;
-              const nextOption = monthOptions[selectedMonthIndex - 1];
-              if (nextOption) setSelectedMonthKey(nextOption.key);
-            }}
-            disabled={!canGoToNewerMonth}
-          >
-            <Text style={styles.monthNavButtonText}>›</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.searchWrap}>
-          <AppIcon
-            name="search"
-            size={18}
-            color={FinColors.textMuted}
-            style={styles.searchIcon}
-          />
-          <TextInput
-            value={searchInput}
-            onChangeText={setSearchInput}
-            placeholder="Zoek op winkel, omschrijving of categorie"
-            placeholderTextColor={FinColors.textMuted}
-            style={styles.searchInput}
-            autoCapitalize="none"
-            autoCorrect={false}
-            clearButtonMode="while-editing"
-          />
-        </View>
-
-        <View style={styles.primaryFilterRow}>
-          {PRIMARY_FILTERS.map((item) => (
-            <TouchableOpacity
-              key={item.key}
-              style={[
-                styles.primaryFilterChip,
-                primaryFilter === item.key && styles.primaryFilterChipActive,
-              ]}
-              onPress={() => setPrimaryFilter(item.key)}
-            >
-              <Text
-                style={[
-                  styles.primaryFilterText,
-                  primaryFilter === item.key && styles.primaryFilterTextActive,
-                ]}
-              >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {(counterparty || hasActiveFilters) && (
-          <View style={styles.activeChipsRow}>
-            {counterparty ? (
-              <View style={styles.activeChip}>
-                <Text style={styles.activeChipText}>{counterparty}</Text>
-              </View>
-            ) : null}
-            {hasActiveFilters ? (
-              <TouchableOpacity
-                style={styles.resetChip}
-                onPress={handleResetFilters}
-              >
-                <Text style={styles.resetChipText}>Wis filters</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        )}
       </View>
-
-      {loading ? (
-        <ActivityIndicator
-          color={FinColors.textSecondary}
-          style={styles.loadingIndicator}
-        />
-      ) : null}
 
       <ScrollView
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={styles.listScroller}
         showsVerticalScrollIndicator={false}
       >
-        {!loading && sections.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>Geen transacties gevonden</Text>
-            <Text style={styles.emptyCopy}>
-              Probeer een andere zoekterm of haal een filter weg.
-            </Text>
-          </View>
-        ) : null}
-
-        {sections.map((section) => (
-          <View key={section.title}>
-            <SectionHeader title={section.title} />
-            <View style={styles.sectionCard}>
-              {section.data.map((item, index) => (
-                <React.Fragment key={item.id}>
-                  <TxRow
-                    item={item}
-                    categoryMap={categoryMap}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/transaction-detail",
-                        params: { id: item.id },
-                      })
-                    }
-                  />
-                  {index < section.data.length - 1 ? (
-                    <View style={styles.divider} />
-                  ) : null}
-                </React.Fragment>
-              ))}
+        <View
+          style={[
+            styles.contentShell,
+            isWideLayout && styles.contentShellWide,
+          ]}
+        >
+          <View style={styles.heroCard}>
+            <View style={styles.heroLabelRow}>
+              <View style={styles.heroLabelDot} />
+              <Text style={styles.heroEyebrowText}>Transactie overzicht</Text>
+            </View>
+            <Text style={styles.heroTitle}>Transacties</Text>
+            <View style={styles.heroCopyWrap}>
+              <Text style={styles.heroSupport}>
+                Recent overzicht van al je uitgaven en inkomsten, georganiseerd
+                op tijd en categorie.
+              </Text>
             </View>
           </View>
-        ))}
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.primaryFilterRow}
+          >
+            {PRIMARY_FILTERS.map((item) => {
+              const active = primaryFilter === item.key;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.primaryFilterChip,
+                    active && styles.primaryFilterChipActive,
+                  ]}
+                  onPress={() => setPrimaryFilter(item.key)}
+                >
+                  <AppIcon
+                    name={item.icon as never}
+                    size={16}
+                    color={active ? FinColors.warningText : FinColors.textSecondary}
+                    variant="outlined"
+                    style={styles.primaryFilterChipIcon}
+                  />
+                  <Text
+                    style={[
+                      styles.primaryFilterText,
+                      active && styles.primaryFilterTextActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.searchWrap}>
+            <AppIcon
+              name="search"
+              size={18}
+              color={FinColors.textMuted}
+              style={styles.searchIcon}
+            />
+            <TextInput
+              value={searchInput}
+              onChangeText={setSearchInput}
+              placeholder="Zoek op winkel, omschrijving of categorie"
+              placeholderTextColor={FinColors.textMuted}
+              style={styles.searchInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+            />
+          </View>
+
+          {(counterparty || hasActiveFilters) && (
+            <View style={styles.activeChipsRow}>
+              {counterparty ? (
+                <View style={styles.activeChip}>
+                  <Text style={styles.activeChipText}>{counterparty}</Text>
+                </View>
+              ) : null}
+              {hasActiveFilters ? (
+                <TouchableOpacity
+                  style={styles.resetChip}
+                  onPress={handleResetFilters}
+                >
+                  <Text style={styles.resetChipText}>Wis filters</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          )}
+
+          {loading ? (
+            <ActivityIndicator
+              color={FinColors.textSecondary}
+              style={styles.loadingIndicator}
+            />
+          ) : null}
+
+          <View style={styles.monthSectionHeader}>
+            <Text style={styles.monthSectionLabel}>Deze maand</Text>
+            <Text style={styles.monthSectionTitle}>
+              {selectedMonthLabel.toUpperCase()}
+            </Text>
+          </View>
+
+          {!loading && sections.length === 0 ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconWrap}>
+                <AppIcon
+                  name="history"
+                  size={28}
+                  color={FinColors.textMuted}
+                  variant="outlined"
+                />
+              </View>
+              <Text style={styles.emptyTitle}>Geen transacties gevonden</Text>
+              <Text style={styles.emptyCopy}>
+                Probeer een andere zoekterm of haal een filter weg.
+              </Text>
+            </View>
+          ) : null}
+
+          {sections.map((section) => (
+            <View key={section.title} style={styles.sectionList}>
+              {section.data.map((item) => (
+                <TxRow
+                  key={item.id}
+                  item={item}
+                  categoryMap={categoryMap}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/transaction-detail",
+                      params: { id: item.id },
+                    })
+                  }
+                />
+              ))}
+            </View>
+          ))}
+
+          <View style={styles.pager}>
+            <TouchableOpacity
+              style={[styles.pageButton, page === 0 && styles.pageButtonDisabled]}
+              onPress={() => setPage((current) => Math.max(0, current - 1))}
+              disabled={page === 0 || loading}
+            >
+              <Text style={styles.pageButtonText}>Vorige</Text>
+            </TouchableOpacity>
+            <Text style={styles.pageLabel}>Pagina {page + 1}</Text>
+            <TouchableOpacity
+              style={[styles.pageButton, !hasMore && styles.pageButtonDisabled]}
+              onPress={() => setPage((current) => current + 1)}
+              disabled={!hasMore || loading}
+            >
+              <Text style={styles.pageButtonText}>Volgende</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </ScrollView>
 
-      <View style={styles.pager}>
-        <TouchableOpacity
-          style={[styles.pageButton, page === 0 && styles.pageButtonDisabled]}
-          onPress={() => setPage((current) => Math.max(0, current - 1))}
-          disabled={page === 0 || loading}
-        >
-          <Text style={styles.pageButtonText}>Vorige</Text>
-        </TouchableOpacity>
-        <Text style={styles.pageLabel}>Pagina {page + 1}</Text>
-        <TouchableOpacity
-          style={[styles.pageButton, !hasMore && styles.pageButtonDisabled]}
-          onPress={() => setPage((current) => current + 1)}
-          disabled={!hasMore || loading}
-        >
-          <Text style={styles.pageButtonText}>Volgende</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        style={styles.fabButton}
+        onPress={() => router.push("/csv-import")}
+        activeOpacity={0.85}
+      >
+        <AppIcon name="add" size={26} color={FinColors.bgCard} variant="outlined" />
+      </TouchableOpacity>
 
       <MonthPickerSheet
         visible={monthPickerOpen}
@@ -728,10 +666,17 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgBase,
   },
   topBar: {
-    paddingTop: 56,
+    paddingTop: 54,
     paddingHorizontal: 20,
     paddingBottom: 14,
-    backgroundColor: FinColors.bgBase,
+    backgroundColor: FinColors.bgCard,
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 1,
   },
   headerRow: {
     flexDirection: "row",
@@ -744,180 +689,216 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flex: 1,
   },
-  headerCopy: {
-    flex: 1,
+  pageTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+    letterSpacing: -0.45,
     marginLeft: 12,
   },
-  pageTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-    letterSpacing: -0.5,
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 13,
-    color: FinColors.textSecondary,
-  },
-  monthRow: {
-    marginTop: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  monthBadge: {
-    flex: 1,
-    minHeight: 40,
-    marginHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: FinColors.bgCard,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-  },
-  monthBadgeText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-    textTransform: "capitalize",
-  },
-  monthBadgeIcon: {
-    marginLeft: 4,
-  },
-  monthNavButton: {
+  avatarBadge: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: FinColors.bgCard,
+    backgroundColor: FinColors.bgElevated,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     alignItems: "center",
     justifyContent: "center",
   },
-  monthNavButtonDisabled: {
-    opacity: 0.45,
+  avatarBadgeText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: FinColors.warningText,
   },
-  monthNavButtonText: {
-    fontSize: 22,
-    lineHeight: 22,
+  heroLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  heroLabelDot: {
+    width: 9,
+    height: 9,
+    backgroundColor: FinColors.warningText,
+  },
+  heroCopyWrap: {
+    borderLeftWidth: 2,
+    borderLeftColor: FinColors.border,
+    paddingLeft: 14,
+  },
+  heroEyebrowText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: FinColors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.9,
+  },
+  heroCard: {
+    backgroundColor: FinColors.bgBase,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+    paddingHorizontal: 0,
+    paddingTop: 34,
+    paddingBottom: 28,
+    gap: 16,
+    overflow: "hidden",
+  },
+  heroTitle: {
     color: FinColors.textPrimary,
+    fontSize: 52,
+    lineHeight: 54,
+    fontWeight: "900",
+    letterSpacing: -1.8,
   },
-  searchWrap: {
-    marginTop: 14,
-    minHeight: 50,
-    borderRadius: 16,
+  heroSupport: {
+    color: FinColors.textSecondary,
+    fontSize: 18,
+    lineHeight: 26,
+  },
+  primaryFilterRow: {
+    flexDirection: "row",
+    gap: 12,
+    paddingTop: 18,
+    paddingBottom: 10,
+    paddingRight: 4,
+  },
+  primaryFilterChip: {
+    minHeight: 46,
+    paddingHorizontal: 18,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
     backgroundColor: FinColors.bgCard,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  primaryFilterChipActive: {
+    backgroundColor: FinColors.yellow,
+    borderColor: FinColors.yellow,
+  },
+  primaryFilterChipIcon: {
+    marginTop: -1,
+  },
+  primaryFilterText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+  },
+  primaryFilterTextActive: {
+    color: FinColors.textPrimary,
+  },
+  searchWrap: {
+    marginTop: 16,
+    minHeight: 60,
+    borderRadius: 999,
+    backgroundColor: "#d6dadd",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.04)",
     justifyContent: "center",
   },
   searchIcon: {
     position: "absolute",
-    left: 14,
-    top: 15,
+    left: 18,
+    top: 20,
   },
   searchInput: {
-    paddingLeft: 42,
-    paddingRight: 14,
-    paddingVertical: 14,
+    paddingLeft: 52,
+    paddingRight: 18,
+    paddingVertical: 18,
     color: FinColors.textPrimary,
     fontSize: 14,
-  },
-  primaryFilterRow: {
-    flexDirection: "row",
-    marginTop: 14,
-  },
-  primaryFilterChip: {
-    marginRight: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
-  },
-  primaryFilterChipActive: {
-    backgroundColor: FinColors.textPrimary,
-    borderColor: FinColors.textPrimary,
-  },
-  primaryFilterText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: FinColors.textSecondary,
-  },
-  primaryFilterTextActive: {
-    color: FinColors.bgCard,
   },
   activeChipsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     marginTop: 14,
+    alignItems: "center",
   },
   activeChip: {
     marginRight: 8,
     marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
+    backgroundColor: "#f8efc6",
+    borderWidth: 1,
+    borderColor: "#e2cc7e",
   },
   activeChipText: {
     fontSize: 12,
     fontWeight: "600",
-    color: FinColors.textSecondary,
+    color: "#6f5c00",
   },
   resetChip: {
     marginRight: 8,
     marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: FinColors.warningBg,
+    paddingHorizontal: 4,
+    paddingVertical: 0,
   },
   resetChipText: {
     fontSize: 12,
     fontWeight: "700",
-    color: FinColors.warningText,
+    color: FinColors.textSecondary,
+    textDecorationLine: "underline",
+    textDecorationColor: FinColors.textSecondary,
   },
   loadingIndicator: {
-    marginVertical: 8,
+    marginVertical: 10,
   },
-  listContent: {
+  listScroller: {
+    paddingBottom: 96,
+    backgroundColor: FinColors.bgBase,
+  },
+  contentShell: {
     paddingHorizontal: 20,
-    paddingBottom: 32,
-    backgroundColor: FinColors.bgBase,
-  },
-  sectionHeader: {
     paddingTop: 18,
-    paddingBottom: 10,
-    backgroundColor: FinColors.bgBase,
+    paddingBottom: 24,
+    gap: 0,
   },
-  sectionCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
+  contentShellWide: {
+    width: "100%",
+    maxWidth: 1120,
+    alignSelf: "center",
   },
-  sectionTitle: {
+  monthSectionHeader: {
+    paddingTop: 18,
+    paddingBottom: 16,
+  },
+  monthSectionLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 2.4,
+  },
+  monthSectionTitle: {
+    marginTop: 4,
     fontSize: 13,
     fontWeight: "700",
     color: FinColors.textMuted,
     textTransform: "uppercase",
-    letterSpacing: 0.8,
+    letterSpacing: 1.2,
+  },
+  sectionList: {
+    gap: 2,
   },
   txRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    paddingVertical: 14,
+    alignItems: "center",
+    paddingVertical: 18,
+    paddingHorizontal: 0,
   },
   iconWrap: {
-    marginTop: 2,
-    marginRight: 12,
+    marginRight: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: FinColors.bgElevated,
+    alignItems: "center",
+    justifyContent: "center",
   },
   txBody: {
     flex: 1,
@@ -925,136 +906,61 @@ const styles = StyleSheet.create({
   txTopLine: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 12,
   },
-  txName: {
+  txCopyBlock: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
+    paddingRight: 10,
+  },
+  txName: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "800",
     color: FinColors.textPrimary,
   },
+  txSubline: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
+    color: FinColors.textSecondary,
+  },
+  txMetaLineText: {
+    marginTop: 3,
+    fontSize: 11,
+    lineHeight: 15,
+    color: FinColors.textMuted,
+  },
   txAmount: {
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 17,
+    fontWeight: "800",
     color: FinColors.textPrimary,
   },
   amountWrap: {
     alignItems: "flex-end",
-    marginLeft: 12,
+    minWidth: 100,
   },
   txAmountPositive: {
     color: FinColors.green,
-  },
-  txMetaLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 6,
-  },
-  txDate: {
-    fontSize: 12,
-    color: FinColors.textMuted,
-  },
-  dotSeparator: {
-    marginHorizontal: 6,
-    fontSize: 12,
-    color: FinColors.textMuted,
-  },
-  txDetail: {
-    flex: 1,
-    fontSize: 12,
-    color: FinColors.textSecondary,
-  },
-  txBottomLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    marginTop: 8,
   },
   balanceMeta: {
     marginTop: 2,
     fontSize: 11,
     color: FinColors.textMuted,
   },
-  categoryBadge: {
-    marginRight: 8,
-    marginBottom: 6,
-    fontSize: 11,
-    fontWeight: "600",
-    color: FinColors.textPrimary,
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  budgetGroupBadge: {
-    marginRight: 8,
-    marginBottom: 6,
-    fontSize: 11,
-    fontWeight: "700",
-    color: FinColors.warningText,
-    backgroundColor: FinColors.warningBg,
-    borderWidth: 1,
-    borderColor: FinColors.warningBorder,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  incomeSemanticBadge: {
-    marginRight: 8,
-    marginBottom: 6,
-    fontSize: 11,
-    fontWeight: "700",
-    color: FinColors.green,
-    backgroundColor: FinColors.greenBg,
-    borderWidth: 1,
-    borderColor: FinColors.greenBorder,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  incomeSemanticBadgeRefund: {
-    color: FinColors.warningText,
-    backgroundColor: FinColors.warningBg,
-    borderColor: FinColors.warningBorder,
-  },
-  statusBadge: {
-    marginRight: 8,
-    marginBottom: 6,
-    fontSize: 11,
-    fontWeight: "700",
-    color: FinColors.textMuted,
-    backgroundColor: FinColors.bgCard,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  statusBadgeWarning: {
-    color: FinColors.warningText,
-    backgroundColor: FinColors.warningBg,
-    borderColor: FinColors.warningBorder,
-  },
-  statusBadgeManual: {
-    color: FinColors.green,
-    backgroundColor: FinColors.greenBg,
-    borderColor: FinColors.greenBorder,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: FinColors.borderSubtle,
-    marginLeft: 58,
-  },
   emptyState: {
     alignItems: "center",
-    paddingTop: 72,
+    paddingVertical: 44,
+    paddingHorizontal: 16,
+  },
+  emptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    marginBottom: 12,
+    backgroundColor: FinColors.bgElevated,
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyTitle: {
     fontSize: 16,
@@ -1072,10 +978,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgBase,
+    paddingVertical: 18,
+    marginTop: 10,
   },
   pageButton: {
     minWidth: 88,
@@ -1103,5 +1007,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: FinColors.textSecondary,
+  },
+  fabButton: {
+    position: "absolute",
+    right: 22,
+    bottom: 96,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: FinColors.warningText,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
 });

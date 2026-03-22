@@ -1,54 +1,60 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
-import { ThemedText } from "@/components/themed-text";
+import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
 import { requireCurrentUserId } from "@/services/current-user";
 import {
-  buildCategoryNameMap,
-  getCategoryLabel,
+  buildCategoryRecordMap,
+  getCategoryPathLabel,
 } from "@/services/category-display";
 import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
+import {
+  getCurrentMonthKey,
+  getMonthOptionByKey,
+  listTransactionMonthOptions,
+  type TransactionMonthOption,
+} from "@/services/transaction-month-options";
 import type { CategoryRecord } from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
-import { router } from "expo-router";
+import { useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
+  ScrollView,
   SectionList,
   StyleSheet,
+  Text,
+  TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 
 const PAGE_SIZE = 20;
+const CONTENT_MAX_WIDTH = 1040;
 const euroFormatter = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
 });
+const ALL_MONTHS_KEY = "all-months";
 
-type Tx = {
-  id: string;
-  description: string;
-  counterparty: string;
-  subscriptionProfileName?: string | null;
-  omschrijving1: string;
-  date: string;
-  amount: number;
-  seq: number;
-  runningBalance: number | null;
-  categoryAutoId: string | null;
-  categoryUserId: string | null;
-  categoryConfidence: number | null;
-  categorySource: string | null;
-};
+function normalizeSearch(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
 
 function parseSaldo(value: unknown): number | null {
   if (value == null) return null;
-  const normalized = String(value).replace(/\./g, "").replace(",", ".").trim();
+  const normalized = String(value).replace(/\./g, "").replace(/,/g, ".").trim();
   const parsed = Number.parseFloat(normalized);
   return Number.isNaN(parsed) ? null : parsed;
 }
@@ -70,6 +76,118 @@ function formatSectionDateLabel(value: string) {
   });
 }
 
+function formatMonthHeading(date = new Date()) {
+  return date.toLocaleDateString("nl-NL", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+type Tx = {
+  id: string;
+  description: string;
+  counterparty: string;
+  subscriptionProfileName?: string | null;
+  omschrijving1: string;
+  date: string;
+  amount: number;
+  seq: number;
+  runningBalance: number | null;
+  categoryAutoId: string | null;
+  categoryUserId: string | null;
+  categoryConfidence: number | null;
+  categorySource: string | null;
+};
+
+type TxRowItem = Tx & { categoryLabel: string };
+
+type TxSection = {
+  title: string;
+  data: TxRowItem[];
+};
+
+function TopAvatar() {
+  return (
+    <View style={styles.avatar}>
+      <Text style={styles.avatarText}>PF</Text>
+    </View>
+  );
+}
+
+function BottomNav({ active }: { active: "dashboard" | "budget" | "transactions" | "insights"; }) {
+  const router = useRouter();
+
+  return (
+    <View style={styles.bottomNavShell}>
+      <View style={styles.bottomNav}>
+        <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push("/")}>
+          <AppIcon
+            name="space-dashboard"
+            size={22}
+            color={active === "dashboard" ? FinColors.warningText : FinColors.textSecondary}
+            variant="outlined"
+          />
+          <Text
+            style={[
+              styles.bottomNavLabel,
+              active === "dashboard" && styles.bottomNavLabelActive,
+            ]}
+          >
+            Dashboard
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push("/budget")}>
+          <AppIcon
+            name="account-balance-wallet"
+            size={22}
+            color={active === "budget" ? FinColors.warningText : FinColors.textSecondary}
+            variant="outlined"
+          />
+          <Text
+            style={[
+              styles.bottomNavLabel,
+              active === "budget" && styles.bottomNavLabelActive,
+            ]}
+          >
+            Budget
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.bottomNavItem, styles.bottomNavItemActive]} onPress={() => router.push("/transactions")}>
+          <AppIcon
+            name="receipt-long"
+            size={22}
+            color={FinColors.warningText}
+            variant="outlined"
+          />
+          <Text style={[styles.bottomNavLabel, styles.bottomNavLabelActive]}>
+            Transacties
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.bottomNavItem} onPress={() => router.push("/insights")}>
+          <AppIcon
+            name="query-stats"
+            size={22}
+            color={active === "insights" ? FinColors.warningText : FinColors.textSecondary}
+            variant="outlined"
+          />
+          <Text
+            style={[
+              styles.bottomNavLabel,
+              active === "insights" && styles.bottomNavLabelActive,
+            ]}
+          >
+            Inzichten
+          </Text>
+        </TouchableOpacity>
+
+      </View>
+    </View>
+  );
+}
+
 export default function TransactionsScreen({
   counterpartyFilter,
   analysisCategoryFilter,
@@ -83,23 +201,52 @@ export default function TransactionsScreen({
   monthEndExclusiveFilter?: string;
   categoryKeyFilter?: string;
 } = {}) {
+  const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isWideLayout = width >= 980;
+  const isFocused = useIsFocused();
+  const backgroundStatus = useCategorizationStatus();
+  const listRef = React.useRef<SectionList<TxRowItem>>(null);
+
   const [transactions, setTransactions] = React.useState<Tx[]>([]);
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [page, setPage] = React.useState(0);
   const [hasMore, setHasMore] = React.useState(true);
-  const isFocused = useIsFocused();
-  const backgroundStatus = useCategorizationStatus();
-
-  const categoryById = React.useMemo(
-    () => buildCategoryNameMap(categories),
-    [categories],
+  const [totalCount, setTotalCount] = React.useState(0);
+  const [searchInput, setSearchInput] = React.useState("");
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [filterModalOpen, setFilterModalOpen] = React.useState(false);
+  const fallbackMonthOption = React.useMemo(
+    () => getMonthOptionByKey(getCurrentMonthKey())!,
+    [],
   );
+  const [monthOptions, setMonthOptions] = React.useState<TransactionMonthOption[]>([
+    fallbackMonthOption,
+  ]);
+
+  const categoryById = React.useMemo(() => buildCategoryRecordMap(categories), [categories]);
+  const activeMonthKey = React.useMemo(() => {
+    if (monthStartFilter && /^\d{4}-\d{2}/.test(monthStartFilter)) {
+      return monthStartFilter.slice(0, 7);
+    }
+    return ALL_MONTHS_KEY;
+  }, [monthStartFilter]);
+  const resolvedMonthOptions = React.useMemo(
+    () => (monthOptions.length ? monthOptions : [fallbackMonthOption]),
+    [fallbackMonthOption, monthOptions],
+  );
+  const selectedMonthOption = React.useMemo(() => {
+    if (activeMonthKey === ALL_MONTHS_KEY) return null;
+    return (
+      resolvedMonthOptions.find((option) => option.key === activeMonthKey) ||
+      getMonthOptionByKey(activeMonthKey) ||
+      fallbackMonthOption
+    );
+  }, [activeMonthKey, fallbackMonthOption, resolvedMonthOptions]);
 
   const categoryFilterIds = React.useMemo(() => {
-    const normalizedFilter = String(categoryKeyFilter || "")
-      .trim()
-      .toLowerCase();
+    const normalizedFilter = String(categoryKeyFilter || "").trim().toLowerCase();
     if (!normalizedFilter) return [] as string[];
 
     const direct = categories
@@ -108,16 +255,11 @@ export default function TransactionsScreen({
     if (direct.length) return direct;
 
     return categories
-      .filter((category) =>
-        category.key.toLowerCase().startsWith(`${normalizedFilter}_`),
-      )
+      .filter((category) => category.key.toLowerCase().startsWith(`${normalizedFilter}_`))
       .map((category) => category.id);
   }, [categories, categoryKeyFilter]);
 
-  const categoryFilterIdCsv = React.useMemo(
-    () => categoryFilterIds.join(","),
-    [categoryFilterIds],
-  );
+  const categoryFilterIdCsv = React.useMemo(() => categoryFilterIds.join(","), [categoryFilterIds]);
 
   const loadCategories = React.useCallback(async () => {
     try {
@@ -128,123 +270,112 @@ export default function TransactionsScreen({
     }
   }, []);
 
-  const loadPage = React.useCallback(
-    async (pageNumber: number) => {
-      setLoading(true);
-      try {
-        const userId = await requireCurrentUserId();
-        if (categoryKeyFilter && categoryFilterIds.length === 0) {
-          setTransactions([]);
-          setHasMore(false);
-          return;
-        }
+  const loadMonthOptions = React.useCallback(async () => {
+    try {
+      const options = await listTransactionMonthOptions({
+        counterparty: counterpartyFilter || null,
+      });
+      setMonthOptions(options.length ? options : [fallbackMonthOption]);
+    } catch (error) {
+      console.warn("loadMonthOptions error", error);
+      setMonthOptions([fallbackMonthOption]);
+    }
+  }, [counterpartyFilter, fallbackMonthOption]);
 
-        const start = pageNumber * PAGE_SIZE;
-        const end = start + PAGE_SIZE - 1;
-        let query = supabase
-          .from("transactions")
-          .select(
-            "id,details,counterparty,date,amount,metadata,category_id_auto,category_id_user,category_confidence,category_source",
-          )
-          .eq("user_id", userId);
-
-        if (counterpartyFilter) {
-          query = query.eq("counterparty", counterpartyFilter);
-        }
-        if (analysisCategoryFilter) {
-          query = query.eq("analysis_category", analysisCategoryFilter);
-        }
-        if (monthStartFilter) {
-          query = query.gte("date", monthStartFilter);
-        }
-        if (monthEndExclusiveFilter) {
-          query = query.lt("date", monthEndExclusiveFilter);
-        }
-        if (categoryFilterIdCsv) {
-          query = query.or(
-            `category_id_user.in.(${categoryFilterIdCsv}),category_id_auto.in.(${categoryFilterIdCsv})`,
-          );
-        }
-
-        const response = await query
-          .order("date", { ascending: false })
-          .order("metadata->>Volgnr", { ascending: false })
-          .range(start, end);
-
-        const { data, error } = response as { data: any[] | null; error: any };
-        if (error) {
-          console.warn("loadPage error", error);
-        } else {
-          const rows = (data || []).map((r) => {
-            const md = r.metadata || {};
-            const rawSeq = String(md["Volgnr"] || "").replace(/^0+/, "");
-            const details = String(r.details || "");
-            const omschrijving1 = details.split("|")[0]?.trim() || details;
-            return {
-              id: r.id,
-              description: details,
-              counterparty: String(r.counterparty || "").trim(),
-              omschrijving1,
-              date: r.date,
-              amount: r.amount,
-              seq: Number.parseInt(rawSeq || "0", 10) || 0,
-              runningBalance: parseSaldo(md["Saldo na trn"]),
-              categoryAutoId: r.category_id_auto || null,
-              categoryUserId: r.category_id_user || null,
-              categoryConfidence:
-                r.category_confidence == null
-                  ? null
-                  : Number(r.category_confidence),
-              categorySource: r.category_source || null,
-            } as Tx;
-          });
-
-          rows.sort((a, b) => {
-            if (a.date === b.date) return b.seq - a.seq;
-            return a.date < b.date ? 1 : -1;
-          });
-
-          const subscriptionNames = await listTransactionSubscriptionProfileNames(
-            rows.map((row) => row.id),
-          );
-          rows.forEach((row) => {
-            row.subscriptionProfileName = subscriptionNames[row.id] || null;
-          });
-
-          setTransactions(rows);
-          setHasMore(rows.length === PAGE_SIZE);
-        }
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setLoading(false);
+  const loadPage = React.useCallback(async (pageNumber: number) => {
+    setLoading(true);
+    try {
+      const userId = await requireCurrentUserId();
+      if (categoryKeyFilter && categoryFilterIds.length === 0) {
+        setTransactions([]);
+        setHasMore(false);
+        setTotalCount(0);
+        return;
       }
-    },
-    [
-      analysisCategoryFilter,
-      categoryFilterIdCsv,
-      categoryFilterIds.length,
-      categoryKeyFilter,
-      counterpartyFilter,
-      monthEndExclusiveFilter,
-      monthStartFilter,
-    ],
-  );
+
+      const start = pageNumber * PAGE_SIZE;
+      const end = start + PAGE_SIZE - 1;
+      let query = supabase
+        .from("transactions")
+        .select("id,details,counterparty,date,amount,metadata,category_id_auto,category_id_user,category_confidence,category_source", { count: "exact" })
+        .eq("user_id", userId);
+
+      if (counterpartyFilter) query = query.eq("counterparty", counterpartyFilter);
+      if (analysisCategoryFilter) query = query.eq("analysis_category", analysisCategoryFilter);
+      if (monthStartFilter) query = query.gte("date", monthStartFilter);
+      if (monthEndExclusiveFilter) query = query.lt("date", monthEndExclusiveFilter);
+      if (categoryFilterIdCsv) {
+        query = query.or(`category_id_user.in.(${categoryFilterIdCsv}),category_id_auto.in.(${categoryFilterIdCsv})`);
+      }
+
+      const response = await query
+        .order("date", { ascending: false })
+        .order("metadata->>Volgnr", { ascending: false })
+        .range(start, end);
+
+      const { data, error, count } = response as { data: any[] | null; error: any; count: number | null };
+      if (error) {
+        console.warn("loadPage error", error);
+      } else {
+        const rows = (data || []).map((row) => {
+          const metadata = row.metadata || {};
+          const rawSeq = String(metadata["Volgnr"] || "").replace(/^0+/, "");
+          const details = String(row.details || "");
+          const omschrijving1 = details.split("|")[0]?.trim() || details;
+
+          return {
+            id: row.id,
+            description: details,
+            counterparty: String(row.counterparty || "").trim(),
+            omschrijving1,
+            date: row.date,
+            amount: row.amount,
+            seq: Number.parseInt(rawSeq || "0", 10) || 0,
+            runningBalance: parseSaldo(metadata["Saldo na trn"]),
+            categoryAutoId: row.category_id_auto || null,
+            categoryUserId: row.category_id_user || null,
+            categoryConfidence:
+              row.category_confidence == null ? null : Number(row.category_confidence),
+            categorySource: row.category_source || null,
+          } as Tx;
+        });
+
+        rows.sort((a, b) => {
+          if (a.date === b.date) return b.seq - a.seq;
+          return a.date < b.date ? 1 : -1;
+        });
+
+        const subscriptionNames = await listTransactionSubscriptionProfileNames(rows.map((row) => row.id));
+        rows.forEach((row) => {
+          row.subscriptionProfileName = subscriptionNames[row.id] || null;
+        });
+
+        setTransactions(rows);
+        const resolvedCount = Math.max(count ?? rows.length, 0);
+        setTotalCount(resolvedCount);
+        setHasMore(end + 1 < resolvedCount);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [analysisCategoryFilter, categoryFilterIdCsv, categoryFilterIds.length, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter]);
 
   React.useEffect(() => {
     setPage(0);
-  }, [
-    analysisCategoryFilter,
-    categoryKeyFilter,
-    counterpartyFilter,
-    monthEndExclusiveFilter,
-    monthStartFilter,
-  ]);
+  }, [analysisCategoryFilter, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter]);
+
+  React.useEffect(() => {
+    const handle = setTimeout(() => setSearchQuery(searchInput.trim()), 180);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
 
   React.useEffect(() => {
     if (!isFocused) return;
     void loadCategories();
-  }, [isFocused, loadCategories]);
+    void loadMonthOptions();
+  }, [isFocused, loadCategories, loadMonthOptions]);
 
   React.useEffect(() => {
     if (!isFocused) return;
@@ -254,93 +385,249 @@ export default function TransactionsScreen({
   React.useEffect(() => {
     if (!isFocused || !backgroundStatus.lastCompletedAt) return;
     void loadCategories();
+    void loadMonthOptions();
     void loadPage(page);
-  }, [
-    backgroundStatus.lastCompletedAt,
-    isFocused,
-    loadCategories,
-    loadPage,
-    page,
-  ]);
+  }, [backgroundStatus.lastCompletedAt, isFocused, loadCategories, loadMonthOptions, loadPage, page]);
 
-  const sections = React.useMemo(() => {
-    const grouped: Record<string, Tx[]> = {};
-    transactions.forEach((tx) => {
-      if (!grouped[tx.date]) grouped[tx.date] = [];
-      grouped[tx.date].push(tx);
-    });
-    return Object.entries(grouped).map(([date, data]) => ({
-      title: date,
-      data,
-    }));
-  }, [transactions]);
-
-  const getEffectiveCategory = React.useCallback(
-    (tx: Tx) =>
-      getCategoryLabel(
+  const displayTransactions = React.useMemo<TxRowItem[]>(() => {
+    return transactions.map((tx) => ({
+      ...tx,
+      categoryLabel: getCategoryPathLabel(
         {
           category_id_auto: tx.categoryAutoId,
           category_id_user: tx.categoryUserId,
         },
         categoryById,
       ),
-    [categoryById],
+    }));
+  }, [transactions, categoryById]);
+
+  const searchTokens = React.useMemo(
+    () => normalizeSearch(searchQuery).split(" ").filter(Boolean),
+    [searchQuery],
   );
 
-  const activeFilterCount = [
-    Boolean(counterpartyFilter),
-    Boolean(analysisCategoryFilter),
-    Boolean(categoryKeyFilter),
-    Boolean(monthStartFilter),
-  ].filter(Boolean).length;
+  const filteredTransactions = React.useMemo(() => {
+    if (!searchTokens.length) return displayTransactions;
 
-  return (
-    <View style={styles.root}>
-      <View style={styles.headerCard}>
-        <ThemedText type="subtitle" style={styles.eyebrow}>
-          Transacties
-        </ThemedText>
-        <ThemedText type="title" style={styles.heading}>
-          Alle transacties
-        </ThemedText>
-        <ThemedText style={styles.helperText}>
-          Snel scannen, openen en waar nodig direct corrigeren.
-        </ThemedText>
+    return displayTransactions.filter((tx) => {
+      const haystack = normalizeSearch(
+        [tx.subscriptionProfileName, tx.counterparty, tx.description, tx.omschrijving1, tx.categoryLabel].filter(Boolean).join(" "),
+      );
+      return searchTokens.every((token) => haystack.includes(token));
+    });
+  }, [displayTransactions, searchTokens]);
+
+  const sections = React.useMemo<TxSection[]>(() => {
+    const grouped: Record<string, TxRowItem[]> = {};
+    filteredTransactions.forEach((tx) => {
+      if (!grouped[tx.date]) grouped[tx.date] = [];
+      grouped[tx.date].push(tx);
+    });
+
+    return Object.entries(grouped).map(([title, data]) => ({ title, data }));
+  }, [filteredTransactions]);
+
+  const activeFilterChips = React.useMemo(() => {
+    const chips: string[] = [];
+    if (counterpartyFilter) chips.push(counterpartyFilter);
+    if (analysisCategoryFilter) chips.push(analysisCategoryFilter);
+    if (categoryKeyFilter) chips.push(categoryKeyFilter.replace(/_/g, " "));
+    if (monthStartFilter) chips.push(formatMonthHeading(new Date(`${monthStartFilter}T00:00:00.000Z`)));
+    return chips;
+  }, [analysisCategoryFilter, categoryKeyFilter, counterpartyFilter, monthStartFilter]);
+
+  const activeFilterCount = activeFilterChips.length + (searchQuery ? 1 : 0);
+
+  const monthHeading = React.useMemo(() => {
+    if (selectedMonthOption) return selectedMonthOption.label;
+    return "Alle maanden";
+  }, [selectedMonthOption]);
+  const totalPages = React.useMemo(
+    () => Math.max(1, Math.ceil(totalCount / PAGE_SIZE)),
+    [totalCount],
+  );
+  const currentRangeStart = React.useMemo(
+    () => (totalCount === 0 ? 0 : page * PAGE_SIZE + 1),
+    [page, totalCount],
+  );
+  const currentRangeEnd = React.useMemo(
+    () => Math.min((page + 1) * PAGE_SIZE, totalCount),
+    [page, totalCount],
+  );
+
+  const handleResetFilters = React.useCallback(() => {
+    setSearchInput("");
+    setSearchQuery("");
+    setPage(0);
+    router.replace("/transactions");
+  }, [router]);
+
+  const handlePageChange = React.useCallback((nextPage: number) => {
+    const boundedPage = Math.max(0, Math.min(nextPage, Math.max(totalPages - 1, 0)));
+    if (boundedPage === page) return;
+    const listApi = listRef.current as
+      | (SectionList<TxRowItem> & {
+          scrollToLocation?: (params: {
+            animated?: boolean;
+            sectionIndex: number;
+            itemIndex: number;
+            viewOffset?: number;
+          }) => void;
+          scrollToOffset?: (params: { animated?: boolean; offset: number }) => void;
+        })
+      | null;
+
+    if (typeof listApi?.scrollToLocation === "function") {
+      listApi.scrollToLocation({
+        sectionIndex: 0,
+        itemIndex: 0,
+        viewOffset: 0,
+        animated: false,
+      });
+    } else if (typeof listApi?.scrollToOffset === "function") {
+      listApi.scrollToOffset({ offset: 0, animated: false });
+    }
+    setPage(boundedPage);
+  }, [page, totalPages]);
+
+  const handleApplyMonthFilter = React.useCallback((monthKey: string) => {
+    setPage(0);
+    setFilterModalOpen(false);
+
+    const nextParams: Record<string, string> = {};
+    if (counterpartyFilter) nextParams.counterparty = counterpartyFilter;
+    if (analysisCategoryFilter) nextParams.analysisCategory = analysisCategoryFilter;
+    if (categoryKeyFilter) nextParams.categoryKey = categoryKeyFilter;
+
+    if (monthKey !== ALL_MONTHS_KEY) {
+      const option =
+        resolvedMonthOptions.find((item) => item.key === monthKey) ||
+        getMonthOptionByKey(monthKey);
+      if (option) {
+        nextParams.monthStart = option.startIso;
+        nextParams.monthEndExclusive = option.endIso;
+      }
+    }
+
+    router.replace({ pathname: "/transactions", params: nextParams });
+  }, [
+    analysisCategoryFilter,
+    categoryKeyFilter,
+    counterpartyFilter,
+    resolvedMonthOptions,
+    router,
+  ]);
+
+  const header = (
+    <View style={styles.headerBlock}>
+      <View style={styles.heroShell}>
+        <View style={styles.heroInner}>
+          <View style={styles.hero}>
+            <View style={styles.heroEyebrowRow}>
+              <View style={styles.heroEyebrowDot} />
+              <Text style={styles.heroEyebrow}>Transactie overzicht</Text>
+            </View>
+            <Text style={styles.heroTitle}>Transacties</Text>
+            <View style={styles.heroCopyWrap}>
+              <Text style={styles.heroCopy}>
+                Recent overzicht van al je uitgaven en inkomsten, georganiseerd op tijd en categorie.
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.contentMax}>
+        <View style={styles.filterRow}>
+          <TouchableOpacity
+            style={styles.filterLauncher}
+            onPress={() => setFilterModalOpen(true)}
+            activeOpacity={0.9}
+          >
+            <View style={styles.filterLauncherMain}>
+              <AppIcon name="tune" size={18} color={FinColors.textPrimary} variant="outlined" />
+              <Text style={styles.filterLauncherText}>Filter</Text>
+            </View>
+            <Text style={styles.filterLauncherMeta} numberOfLines={1}>
+              {monthHeading}
+            </Text>
+            {activeFilterCount > 0 ? (
+              <View style={styles.filterLauncherBadge}>
+                <Text style={styles.filterLauncherBadgeText}>{activeFilterCount}</Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchWrap}>
+          <AppIcon name="search" size={18} color={FinColors.textMuted} style={styles.searchIcon} />
+          <TextInput
+            value={searchInput}
+            onChangeText={setSearchInput}
+            placeholder="Zoek op winkel, categorie of bedrag..."
+            placeholderTextColor={FinColors.textMuted}
+            style={styles.searchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+          />
+        </View>
+
         {activeFilterCount > 0 ? (
-          <View style={styles.filterChip}>
-            <ThemedText style={styles.filterChipText}>
-              {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"} actief
-            </ThemedText>
+          <View style={styles.activeFiltersRow}>
+            {activeFilterChips.map((chip) => (
+              <View key={chip} style={styles.activeChip}>
+                <Text style={styles.activeChipText}>{chip}</Text>
+              </View>
+            ))}
+            <TouchableOpacity style={styles.clearLink} onPress={handleResetFilters}>
+              <Text style={styles.clearLinkText}>Wis alles</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
+
+        <View style={styles.sectionLead}>
+          <Text style={styles.sectionLeadLabel}>
+            {activeMonthKey === ALL_MONTHS_KEY ? "Laatste transacties" : `Deze maand — ${monthHeading}`}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={[styles.root, isWideLayout && styles.rootWide]}>
+      <View style={styles.topBar}>
+        <View style={styles.topBarLeft}>
+          <HeaderDropdownMenu />
+          <Text style={styles.topBarTitle}>Mijn Financiën</Text>
+        </View>
+        <TopAvatar />
       </View>
 
       <SectionList
+        ref={listRef}
+        style={styles.list}
         sections={sections}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         stickySectionHeadersEnabled={false}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={header}
         renderSectionHeader={({ section: { title } }) => (
           <View style={styles.sectionHeader}>
-            <ThemedText type="subtitle" style={styles.sectionHeaderText}>
-              {formatSectionDateLabel(title)}
-            </ThemedText>
+            <View style={styles.contentMax}>
+              <Text style={styles.sectionHeaderText}>{formatSectionDateLabel(title)}</Text>
+            </View>
           </View>
         )}
-        renderItem={({ item, index, section }) => {
-          const isFirst = index === 0;
-          const isLast = index === section.data.length - 1;
+        renderItem={({ item }) => {
           const isPositive = item.amount >= 0;
 
           return (
             <TouchableOpacity
-              style={StyleSheet.flatten([
-                styles.row,
-                isFirst && styles.rowFirst,
-                isLast && styles.rowLast,
-                !isLast && styles.rowDivider,
-              ])}
+              style={styles.row}
               activeOpacity={0.78}
               onPress={() =>
                 router.push({
@@ -349,7 +636,7 @@ export default function TransactionsScreen({
                 })
               }
             >
-              <View style={styles.iconWrap}>
+              <View style={styles.rowIconWrap}>
                 <TransactionCategoryIcon
                   row={{
                     category_id_auto: item.categoryAutoId,
@@ -361,120 +648,250 @@ export default function TransactionsScreen({
                 />
               </View>
 
-              <View style={styles.rowText}>
-                <ThemedText style={styles.desc}>
-                  {item.subscriptionProfileName ||
-                    item.counterparty ||
-                    "Onbekende tegenpartij"}
-                </ThemedText>
-                <ThemedText style={styles.subDesc}>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowTitle} numberOfLines={2}>
+                  {item.subscriptionProfileName || item.counterparty || "Onbekende tegenpartij"}
+                </Text>
+                <Text style={styles.rowSubtitle} numberOfLines={2}>
                   {item.omschrijving1 || item.description}
-                </ThemedText>
-
-                <View style={styles.categoryRow}>
-                  <ThemedText style={styles.categoryBadge}>
-                    {getEffectiveCategory(item)}
-                  </ThemedText>
-                {item.categoryUserId ? (
-                  <ThemedText style={styles.categoryMeta}>Handmatig</ThemedText>
-                ) : item.categoryConfidence != null ? (
-                  <ThemedText style={styles.categoryMeta}>
-                    {`${Math.round(item.categoryConfidence * 100)}% ${item.categorySource || "automatisch"}`}
-                  </ThemedText>
-                ) : null}
-              </View>
+                </Text>
+                <Text style={styles.rowMeta} numberOfLines={1}>
+                  {item.categoryLabel}
+                </Text>
               </View>
 
               <View style={styles.amountColumn}>
-                <ThemedText
-                  style={[
-                    styles.amount,
-                    isPositive ? styles.amountPositive : styles.amountNegative,
-                  ]}
-                >
+                <Text style={[styles.amount, isPositive ? styles.amountPositive : styles.amountNegative]}>
                   {`${isPositive ? "+" : "-"}${euroFormatter.format(Math.abs(item.amount))}`}
-                </ThemedText>
-                <ThemedText style={styles.running}>
-                  {item.runningBalance == null
-                    ? "Saldo onbekend"
-                    : `Saldo ${euroFormatter.format(item.runningBalance)}`}
-                </ThemedText>
+                </Text>
+                <Text style={styles.running}>
+                  {item.runningBalance == null ? "Saldo onbekend" : `Saldo ${euroFormatter.format(item.runningBalance)}`}
+                </Text>
               </View>
             </TouchableOpacity>
           );
         }}
-        ListHeaderComponent={
-          loading ? (
-            <ActivityIndicator
-              color={FinColors.textSecondary}
-              style={styles.loadingIndicator}
-            />
-          ) : null
-        }
         ListEmptyComponent={() =>
           !loading ? (
             <View style={styles.emptyCard}>
-              <ThemedText style={styles.emptyTitle}>
-                Geen transacties gevonden
-              </ThemedText>
-              <ThemedText style={styles.emptyText}>
-                Pas je filters aan of kies een andere periode.
-              </ThemedText>
+              <View style={styles.emptyIconWrap}>
+                <AppIcon name="history" size={28} color={FinColors.textMuted} variant="outlined" />
+              </View>
+              <Text style={styles.emptyTitle}>Geen transacties gevonden</Text>
+              <Text style={styles.emptyText}>Pas je filters aan of kies een andere periode.</Text>
+              <View style={styles.emptyActions}>
+                <TouchableOpacity style={[styles.emptyActionButton, styles.emptyActionPrimary]} onPress={handleResetFilters}>
+                  <Text style={styles.emptyActionPrimaryText}>Filters wissen</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.emptyActionButton} onPress={() => router.push("/csv-import")}>
+                  <Text style={styles.emptyActionText}>Importeren</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : null
         }
+        ListFooterComponent={
+          <>
+            {loading ? (
+              <ActivityIndicator color={FinColors.textSecondary} style={styles.loadingIndicator} />
+            ) : null}
+            {totalCount > 0 ? (
+              <View style={styles.pager}>
+                <View style={styles.pageStatus}>
+                  <Text style={styles.pageNumber}>
+                    {currentRangeStart}-{currentRangeEnd} van {totalCount}
+                  </Text>
+                  <Text style={styles.pageMeta}>Pagina {page + 1} van {totalPages}</Text>
+                </View>
+                <View style={styles.pagerNavGroup}>
+                  <TouchableOpacity
+                    style={[styles.pagerIconButton, page === 0 && styles.pagerButtonDisabled]}
+                    onPress={() => handlePageChange(0)}
+                    disabled={page === 0 || loading}
+                    accessibilityLabel="Ga naar eerste pagina"
+                  >
+                    <AppIcon name="first-page" size={20} color={FinColors.textPrimary} variant="outlined" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.pagerIconButton, page === 0 && styles.pagerButtonDisabled]}
+                    onPress={() => handlePageChange(page - 1)}
+                    disabled={page === 0 || loading}
+                    accessibilityLabel="Vorige pagina"
+                  >
+                    <AppIcon name="chevron-left" size={20} color={FinColors.textPrimary} variant="outlined" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.pagerIconButton, styles.pagerIconButtonPrimary, (!hasMore || loading) && styles.pagerButtonDisabled]}
+                    onPress={() => handlePageChange(page + 1)}
+                    disabled={!hasMore || loading}
+                    accessibilityLabel="Volgende pagina"
+                  >
+                    <AppIcon name="chevron-right" size={20} color={FinColors.textPrimary} variant="outlined" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+          </>
+        }
       />
 
-      <View style={styles.pager}>
-        <Pressable
-          style={[styles.pagerButton, page === 0 && styles.pagerButtonDisabled]}
-          onPress={() => setPage((current) => Math.max(0, current - 1))}
-          disabled={page === 0 || loading}
-        >
-          <AppIcon
-            name="chevron-left"
-            size={18}
-            color={page === 0 ? FinColors.textMuted : FinColors.textPrimary}
-            variant="outlined"
-          />
-          <ThemedText
-            style={[
-              styles.pagerButtonText,
-              page === 0 && styles.pagerButtonTextDisabled,
-            ]}
-          >
-            Vorige
-          </ThemedText>
-        </Pressable>
+      <TouchableOpacity style={styles.fabButton} onPress={() => router.push("/csv-import")} activeOpacity={0.88}>
+        <AppIcon name="add" size={28} color={FinColors.bgCard} variant="outlined" />
+      </TouchableOpacity>
 
-        <ThemedText style={styles.pageNumber}>Pagina {page + 1}</ThemedText>
+      <BottomNav active="transactions" />
 
-        <Pressable
-          style={[
-            styles.pagerButton,
-            (!hasMore || loading) && styles.pagerButtonDisabled,
-          ]}
-          onPress={() => setPage((current) => current + 1)}
-          disabled={!hasMore || loading}
-        >
-          <ThemedText
-            style={[
-              styles.pagerButtonText,
-              (!hasMore || loading) && styles.pagerButtonTextDisabled,
-            ]}
-          >
-            Volgende
-          </ThemedText>
-          <AppIcon
-            name="chevron-right"
-            size={18}
-            color={
-              !hasMore || loading ? FinColors.textMuted : FinColors.textPrimary
-            }
-            variant="outlined"
+      <Modal
+        visible={filterModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFilterModalOpen(false)}
+      >
+        <View style={styles.filterModalOverlay}>
+          <Pressable
+            style={styles.filterModalBackdrop}
+            onPress={() => setFilterModalOpen(false)}
           />
-        </Pressable>
-      </View>
+          <View style={styles.filterModalCard}>
+            <View style={styles.filterModalHandle} />
+            <View style={styles.filterModalHeaderRow}>
+              <View style={styles.filterModalHeaderMain}>
+                <Text style={styles.filterModalTitle}>Filters</Text>
+                <Text style={styles.filterModalSub}>
+                  Kies een periode of bekijk welke filters nu actief zijn.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.filterModalCloseButton}
+                onPress={() => setFilterModalOpen(false)}
+              >
+                <AppIcon name="close" size={18} color={FinColors.textSecondary} variant="outlined" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.filterModalScroll}
+              contentContainerStyle={styles.filterModalScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.filterModalSection}>
+                <Text style={styles.filterModalLabel}>Periode</Text>
+                <View style={styles.filterModalField}>
+                  <View>
+                    <Text style={styles.filterModalFieldLabel}>Selectie</Text>
+                    <Text style={styles.filterModalFieldValue}>{monthHeading}</Text>
+                  </View>
+                  <AppIcon
+                    name="calendar-today"
+                    size={18}
+                    color={FinColors.warningText}
+                    variant="outlined"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.filterModalSection}>
+                <Text style={styles.filterModalLabel}>Snelle periodes</Text>
+                <View style={styles.filterModalChipWrap}>
+                  <TouchableOpacity
+                    style={[
+                      styles.filterModalChip,
+                      activeMonthKey === ALL_MONTHS_KEY && styles.filterModalChipActive,
+                    ]}
+                    onPress={() => handleApplyMonthFilter(ALL_MONTHS_KEY)}
+                  >
+                    <Text
+                      style={[
+                        styles.filterModalChipText,
+                        activeMonthKey === ALL_MONTHS_KEY && styles.filterModalChipTextActive,
+                      ]}
+                    >
+                      Alle maanden
+                    </Text>
+                  </TouchableOpacity>
+                  {resolvedMonthOptions.slice(0, 8).map((option) => {
+                    const selected = option.key === activeMonthKey;
+                    return (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[
+                          styles.filterModalChip,
+                          selected && styles.filterModalChipActive,
+                        ]}
+                        onPress={() => handleApplyMonthFilter(option.key)}
+                      >
+                        <Text
+                          style={[
+                            styles.filterModalChipText,
+                            selected && styles.filterModalChipTextActive,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {(activeFilterChips.length || searchQuery) ? (
+                <View style={styles.filterModalSection}>
+                  <Text style={styles.filterModalLabel}>Actieve filters</Text>
+                  <View style={styles.filterModalActiveWrap}>
+                    {activeFilterChips.map((chip) => (
+                      <View key={chip} style={styles.filterModalActiveChip}>
+                        <Text style={styles.filterModalActiveChipText}>{chip}</Text>
+                      </View>
+                    ))}
+                    {searchQuery ? (
+                      <View style={styles.filterModalActiveChip}>
+                        <Text style={styles.filterModalActiveChipText}>Zoek: {searchQuery}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={styles.filterModalSection}>
+                <Text style={styles.filterModalLabel}>Meer</Text>
+                <TouchableOpacity
+                  style={styles.filterModalLinkCard}
+                  onPress={() => {
+                    setFilterModalOpen(false);
+                    router.push("/category-budget-groups");
+                  }}
+                >
+                  <View>
+                    <Text style={styles.filterModalLinkTitle}>Categorie-indeling</Text>
+                    <Text style={styles.filterModalLinkText}>
+                      Beheer hoe categorieen zijn opgebouwd en gegroepeerd.
+                    </Text>
+                  </View>
+                  <AppIcon name="chevron-right" size={20} color={FinColors.textSecondary} variant="outlined" />
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+
+            <View style={styles.filterModalActions}>
+              <TouchableOpacity
+                style={styles.filterModalSecondaryButton}
+                onPress={() => {
+                  setFilterModalOpen(false);
+                  handleResetFilters();
+                }}
+              >
+                <Text style={styles.filterModalSecondaryText}>Wis alles</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.filterModalPrimaryButton}
+                onPress={() => setFilterModalOpen(false)}
+              >
+                <Text style={styles.filterModalPrimaryText}>Sluiten</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -483,171 +900,337 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: FinColors.bgBase,
-    padding: 16,
   },
-  headerCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 24,
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    marginBottom: 16,
+  rootWide: {
+    alignItems: "center",
   },
-  eyebrow: {
-    fontSize: 15,
-    lineHeight: 20,
-    color: FinColors.textSecondary,
+  list: {
+    width: "100%",
+    alignSelf: "stretch",
   },
-  heading: {
-    fontSize: 28,
-    lineHeight: 32,
-    fontWeight: "700",
+  headerBlock: {
+    marginHorizontal: -16,
+    paddingHorizontal: 16,
+    paddingTop: 0,
+    paddingBottom: 14,
+  },
+  topBar: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 60,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+    backgroundColor: "rgba(246,245,242,0.84)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(17,17,17,0.05)",
+  },
+  topBarLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  topBarTitle: {
+    fontSize: 20,
+    fontWeight: "800",
     color: FinColors.textPrimary,
-    marginTop: 4,
+    letterSpacing: -0.4,
   },
-  helperText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: FinColors.textSecondary,
-    marginTop: 8,
-  },
-  filterChip: {
-    alignSelf: "flex-start",
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: FinColors.bgElevated,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  filterChipText: {
-    fontSize: 12,
-    lineHeight: 16,
+  avatarText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: FinColors.warningText,
+  },
+  heroShell: {
+    marginHorizontal: -16,
+    backgroundColor: FinColors.bgElevated,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(17,17,17,0.05)",
+  },
+  heroInner: {
+    width: "100%",
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+  },
+  hero: {
+    backgroundColor: FinColors.bgElevated,
+    paddingTop: 102,
+    paddingBottom: 32,
+    gap: 18,
+  },
+  contentMax: {
+    width: "100%",
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+  },
+  heroEyebrowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  heroEyebrowDot: {
+    width: 9,
+    height: 9,
+    backgroundColor: FinColors.warningText,
+  },
+  heroEyebrow: {
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 2.5,
+    textTransform: "uppercase",
+    fontWeight: "800",
+    color: FinColors.textMuted,
+  },
+  heroTitle: {
+    fontSize: 52,
+    lineHeight: 54,
+    letterSpacing: -1.8,
+    fontWeight: "900",
+    color: FinColors.textPrimary,
+  },
+  heroCopyWrap: {
+    borderLeftWidth: 2,
+    borderLeftColor: FinColors.border,
+    paddingLeft: 14,
+  },
+  heroCopy: {
+    fontSize: 18,
+    lineHeight: 26,
     color: FinColors.textSecondary,
-    fontWeight: "600",
+  },
+  filterRow: {
+    flexDirection: "row",
+    paddingTop: 18,
+  },
+  filterLauncher: {
+    minHeight: 54,
+    width: "100%",
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  filterLauncherMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 1,
+  },
+  filterLauncherText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  filterLauncherMeta: {
+    flex: 1,
+    textAlign: "right",
+    fontSize: 12,
+    color: FinColors.textMuted,
+  },
+  filterLauncherBadge: {
+    minWidth: 24,
+    height: 24,
+    paddingHorizontal: 7,
+    borderRadius: 12,
+    backgroundColor: FinColors.yellow,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterLauncherBadgeText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  searchWrap: {
+    marginTop: 16,
+    minHeight: 60,
+    borderRadius: 999,
+    backgroundColor: "#d6dadd",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.04)",
+    justifyContent: "center",
+  },
+  searchIcon: {
+    position: "absolute",
+    left: 18,
+    top: 20,
+  },
+  searchInput: {
+    paddingLeft: 52,
+    paddingRight: 18,
+    paddingVertical: 18,
+    color: FinColors.textPrimary,
+    fontSize: 14,
+  },
+  activeFiltersRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    marginTop: 14,
+    gap: 8,
+  },
+  activeChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: "#f8efc6",
+    borderWidth: 1,
+    borderColor: "#e2cc7e",
+  },
+  activeChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6f5c00",
+  },
+  clearLink: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  clearLinkText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+    textDecorationLine: "underline",
+  },
+  sectionLead: {
+    paddingTop: 18,
+    paddingBottom: 12,
+  },
+  sectionLeadLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 2.4,
   },
   listContent: {
-    paddingBottom: 16,
-  },
-  loadingIndicator: {
-    marginVertical: 18,
+    paddingHorizontal: 16,
+    paddingBottom: 120,
+    backgroundColor: FinColors.bgBase,
   },
   sectionHeader: {
-    marginBottom: 10,
-    paddingTop: 8,
+    paddingTop: 10,
+    paddingBottom: 14,
   },
   sectionHeaderText: {
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 13,
     fontWeight: "700",
-    color: FinColors.textPrimary,
-    textTransform: "capitalize",
+    color: FinColors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
   },
   row: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: FinColors.bgCard,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 0,
+    width: "100%",
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
   },
-  rowFirst: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  rowIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: FinColors.bgElevated,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
   },
-  rowLast: {
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    marginBottom: 8,
-  },
-  rowDivider: {
-    borderBottomWidth: 0,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-  },
-  iconWrap: {
-    marginRight: 12,
-    paddingTop: 2,
-  },
-  rowText: {
+  rowBody: {
     flex: 1,
     paddingRight: 10,
   },
-  desc: {
-    fontSize: 15,
+  rowTitle: {
+    fontSize: 16,
     lineHeight: 21,
+    fontWeight: "800",
     color: FinColors.textPrimary,
-    fontWeight: "600",
   },
-  subDesc: {
-    marginTop: 4,
-    fontSize: 13,
-    lineHeight: 18,
-    color: FinColors.textSecondary,
-  },
-  categoryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    marginTop: 7,
-  },
-  categoryBadge: {
+  rowSubtitle: {
+    marginTop: 2,
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: "600",
-    color: FinColors.green,
-    backgroundColor: FinColors.greenBg,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    overflow: "hidden",
+    color: FinColors.textSecondary,
   },
-  categoryMeta: {
+  rowMeta: {
+    marginTop: 3,
     fontSize: 11,
-    lineHeight: 16,
+    lineHeight: 14,
     color: FinColors.textMuted,
-    marginLeft: 8,
   },
   amountColumn: {
-    minWidth: 116,
+    minWidth: 92,
     alignItems: "flex-end",
-    marginLeft: 8,
   },
   amount: {
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: "700",
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "800",
     textAlign: "right",
   },
   amountPositive: {
     color: FinColors.green,
   },
   amountNegative: {
-    color: FinColors.red,
+    color: FinColors.textPrimary,
   },
   running: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: FinColors.textMuted,
     marginTop: 4,
+    fontSize: 10,
+    lineHeight: 13,
+    color: FinColors.textMuted,
     textAlign: "right",
   },
   emptyCard: {
-    marginTop: 32,
+    marginTop: 20,
     backgroundColor: FinColors.bgCard,
-    borderRadius: 20,
+    borderRadius: 24,
     paddingHorizontal: 18,
-    paddingVertical: 20,
+    paddingVertical: 22,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    width: "100%",
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
+  },
+  emptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: FinColors.bgElevated,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
   },
   emptyTitle: {
     fontSize: 16,
     lineHeight: 22,
-    fontWeight: "700",
+    fontWeight: "800",
     color: FinColors.textPrimary,
   },
   emptyText: {
@@ -655,40 +1238,365 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: FinColors.textSecondary,
+    textAlign: "center",
+  },
+  emptyActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 18,
+    justifyContent: "center",
+  },
+  emptyActionButton: {
+    minHeight: 48,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgBase,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyActionPrimary: {
+    backgroundColor: FinColors.textPrimary,
+    borderColor: FinColors.textPrimary,
+  },
+  emptyActionText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  emptyActionPrimaryText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.bgCard,
+  },
+  loadingIndicator: {
+    marginVertical: 10,
   },
   pager: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 8,
+    paddingVertical: 18,
+    gap: 12,
+    width: "100%",
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
   },
-  pagerButton: {
+  pagerNavGroup: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
+    gap: 8,
+    flexShrink: 0,
+  },
+  pagerIconButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  pagerIconButtonPrimary: {
+    backgroundColor: FinColors.yellow,
+    borderColor: FinColors.yellow,
+  },
+  pagerButtonDisabled: {
+    opacity: 0.45,
+  },
+  pageStatus: {
+    flex: 1,
+    alignItems: "flex-start",
+    justifyContent: "center",
+    minWidth: 120,
+  },
+  pageNumber: {
+    textAlign: "left",
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  pageMeta: {
+    marginTop: 2,
+    textAlign: "left",
+    fontSize: 11,
+    lineHeight: 14,
+    color: FinColors.textMuted,
+  },
+  fabButton: {
+    position: "absolute",
+    right: 22,
+    bottom: 84,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: FinColors.warningText,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  bottomNavShell: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+  },
+  bottomNav: {
+    backgroundColor: "rgba(255,255,255,0.94)",
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 8,
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+  },
+  bottomNavItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 10,
     borderRadius: 999,
+  },
+  bottomNavItemActive: {
+    backgroundColor: FinColors.yellow,
+  },
+  bottomNavLabel: {
+    marginTop: 4,
+    fontSize: 8,
+    lineHeight: 10,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+  },
+  filterModalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  filterModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(17,17,17,0.22)",
+  },
+  filterModalCard: {
+    maxHeight: "86%",
+    backgroundColor: FinColors.bgBase,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderColor: "rgba(17,17,17,0.05)",
+  },
+  filterModalHandle: {
+    alignSelf: "center",
+    width: 44,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: FinColors.border,
+    marginBottom: 16,
+  },
+  filterModalHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  filterModalHeaderMain: {
+    flex: 1,
+  },
+  filterModalTitle: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  filterModalSub: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
+  },
+  filterModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: FinColors.bgCard,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  pagerButtonDisabled: {
-    backgroundColor: FinColors.bgElevated,
+  filterModalScroll: {
+    marginTop: 18,
   },
-  pagerButtonText: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: FinColors.textPrimary,
-    fontWeight: "600",
-    marginHorizontal: 4,
+  filterModalScrollContent: {
+    paddingBottom: 20,
+    gap: 18,
   },
-  pagerButtonTextDisabled: {
+  filterModalSection: {
+    gap: 12,
+  },
+  filterModalLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    fontWeight: "800",
     color: FinColors.textMuted,
   },
-  pageNumber: {
+  filterModalField: {
+    minHeight: 64,
+    borderRadius: 22,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  filterModalFieldLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: FinColors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+    fontWeight: "700",
+  },
+  filterModalFieldValue: {
+    marginTop: 4,
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  filterModalChipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  filterModalChip: {
+    minHeight: 42,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterModalChipActive: {
+    backgroundColor: FinColors.yellow,
+    borderColor: FinColors.yellow,
+  },
+  filterModalChipText: {
     fontSize: 13,
-    lineHeight: 18,
+    fontWeight: "700",
     color: FinColors.textSecondary,
-    fontWeight: "600",
+  },
+  filterModalChipTextActive: {
+    color: FinColors.textPrimary,
+  },
+  filterModalActiveWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  filterModalActiveChip: {
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: FinColors.warningBg,
+    borderWidth: 1,
+    borderColor: FinColors.warningBorder,
+  },
+  filterModalActiveChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.warningText,
+  },
+  filterModalLinkCard: {
+    minHeight: 72,
+    borderRadius: 22,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  filterModalLinkTitle: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  filterModalLinkText: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 17,
+    color: FinColors.textSecondary,
+  },
+  filterModalActions: {
+    flexDirection: "row",
+    gap: 10,
+    paddingTop: 6,
+  },
+  filterModalSecondaryButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterModalPrimaryButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 999,
+    backgroundColor: FinColors.yellow,
+    borderWidth: 1,
+    borderColor: FinColors.yellow,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterModalSecondaryText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  filterModalPrimaryText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  bottomNavLabelActive: {
+    color: FinColors.textPrimary,
   },
 });
