@@ -1,20 +1,7 @@
-import Constants from "expo-constants";
 import { supabase } from "./supabase";
+import { getApiBaseUrl } from "./api-base";
 
 const OPENAI_PROXY_PATH = "/api/openai/chat-completions";
-
-function getBaseUrl() {
-  if (typeof window !== "undefined" && window.location?.origin) {
-    return window.location.origin;
-  }
-
-  const extra =
-    Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
-  const configuredBaseUrl =
-    extra?.APP_BASE_URL || process.env.APP_BASE_URL || process.env.SITE_URL;
-
-  return configuredBaseUrl?.trim() || null;
-}
 
 export async function postOpenAIChatCompletion(body: unknown) {
   const { data } = await supabase.auth.getSession();
@@ -23,7 +10,7 @@ export async function postOpenAIChatCompletion(body: unknown) {
     throw new Error("Je sessie is verlopen. Log opnieuw in om AI-functies te gebruiken.");
   }
 
-  const baseUrl = getBaseUrl();
+  const baseUrl = getApiBaseUrl();
   if (!baseUrl) {
     throw new Error("Kan de API-locatie niet bepalen voor OpenAI-aanroepen.");
   }

@@ -17,6 +17,7 @@ import {
   authScreenStyles,
 } from "@/components/auth/auth-screen-shell";
 import AuthErrorMessage from "@/components/auth/AuthErrorMessage";
+import { getApiBaseUrl } from "@/services/api-base";
 import { supabase } from "@/services/supabase";
 
 export default function ResetPasswordScreen() {
@@ -104,7 +105,14 @@ export default function ResetPasswordScreen() {
       });
       if (updateError) throw updateError;
 
-      const response = await fetch("/api/auth/reset-password-log", {
+      const baseUrl = getApiBaseUrl();
+      if (!baseUrl) {
+        throw new Error("Kan de API-locatie niet bepalen voor reset logging.");
+      }
+
+      const response = await fetch(
+        new URL("/api/auth/reset-password-log", baseUrl).toString(),
+        {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -116,7 +124,8 @@ export default function ResetPasswordScreen() {
             platform: Platform.OS,
           },
         }),
-      });
+      },
+      );
 
       if (!response.ok) {
         const text = await response.text();
