@@ -1,11 +1,17 @@
-import "dotenv/config";
-
 import { createClient } from "@supabase/supabase-js";
 
 import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
+
+// Try to load a local .env file when running in environments that support it.
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("dotenv").config();
+} catch {
+  // Ignore if dotenv is unavailable or if the runtime cannot load it.
+}
 
 // Prefer Expo `extra` when set, but always fall back to process.env for local runs.
 const extraEnv =
