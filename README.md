@@ -16,6 +16,16 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+   For the full local setup, including the API handlers in `api/`, run:
+
+   ```bash
+   npm run dev
+   ```
+
+   This starts Expo web and a small local API server on `http://localhost:3001`.
+   Set `APP_BASE_URL=http://localhost:3001` in your local `.env` so the app
+   points at that server.
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)

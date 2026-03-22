@@ -4,8 +4,9 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "dev": "supabase db push && expo start --web",
-    "dev:web": "expo start --web --non-interactive",
+    "dev": "supabase db push && node ./scripts/dev.mjs",
+    "dev:api": "node --experimental-strip-types ./scripts/dev-api-server.mjs",
+    "dev:web": "node ./scripts/dev-web.mjs",
     "build": "expo export --platform web",
     "test:unit": "vitest run",
     "backfill:tenant-owner": "node ./scripts/backfill-multi-tenant-owner.js",

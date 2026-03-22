@@ -111,6 +111,18 @@ const openAIRateLimitState: OpenAIRateLimitState = {
   nextAllowedAt: 0,
 };
 
+function createCategorizationStoppedError(): OpenAIRequestError {
+  const err = new Error("Categorisatie gestopt.") as OpenAIRequestError;
+  err.code = "stopped";
+  return err;
+}
+
+function throwIfCategorizationStopped() {
+  if (stopRequested) {
+    throw createCategorizationStoppedError();
+  }
+}
+
 function clampConfidence(value: number): number {
   if (!Number.isFinite(value)) return 0;
   if (value < 0) return 0;
@@ -154,6 +166,7 @@ async function waitWithStatus(
   let remainingMs = totalMs;
 
   while (remainingMs > 0) {
+    throwIfCategorizationStopped();
     updateCategorizationStatus((current) =>
       current.phase === "running"
         ? {
@@ -165,6 +178,7 @@ async function waitWithStatus(
 
     const sleepMs = Math.min(1000, remainingMs);
     await wait(sleepMs);
+    throwIfCategorizationStopped();
     remainingMs -= sleepMs;
   }
 }
@@ -643,6 +657,7 @@ function getOpenAIRateLimitDelayMs(estimatedTokens: number) {
 
 async function waitForOpenAIRateLimitWindow(estimatedTokens: number) {
   while (true) {
+    throwIfCategorizationStopped();
     const delayMs = getOpenAIRateLimitDelayMs(estimatedTokens);
     if (delayMs <= 0) return;
 
@@ -768,6 +783,7 @@ async function requestOpenAICategories(
   categories: CategoryRecord[],
   transactions: TransactionCategorizationRecord[],
 ): Promise<OpenAIResult[]> {
+  throwIfCategorizationStopped();
   if (!transactions.length) return [];
 
   const maxTokens = getOpenAIMaxTokens(transactions.length);
@@ -890,9 +906,11 @@ async function requestOpenAICategoriesWithRetry(
   let attempt = 0;
 
   while (true) {
+    throwIfCategorizationStopped();
     try {
       return await requestOpenAICategories(model, categories, transactions);
     } catch (error) {
+      if (stopRequested) throw createCategorizationStoppedError();
       const typedErr = error as OpenAIRequestError;
       const isRateLimit = typedErr.status === 429;
       const isTransient = !typedErr.status || typedErr.status >= 500;
@@ -907,6 +925,7 @@ async function requestOpenAICategoriesWithRetry(
           delay / 1000,
         )}s before retry ${attempt}/${OPENAI_RETRY_ATTEMPTS}.`,
       );
+      throwIfCategorizationStopped();
       await waitWithStatus(
         delay,
         (remainingMs) =>
@@ -923,11 +942,15 @@ async function requestOpenAICategoriesForBatch(
   categories: CategoryRecord[],
   transactions: TransactionCategorizationRecord[],
 ): Promise<OpenAIResult[]> {
+  throwIfCategorizationStopped();
   if (!transactions.length) return [];
 
   try {
     return await requestOpenAICategoriesWithRetry(model, categories, transactions);
   } catch (error) {
+    if (stopRequested || (error as OpenAIRequestError)?.code === "stopped") {
+      throw createCategorizationStoppedError();
+    }
     if (transactions.length <= 1 || !isOpenAIResponseMalformed(error)) {
       throw error;
     }
@@ -1099,6 +1122,7 @@ export async function categorizeTransactions(
 
     if (representatives.length) {
       for (let i = 0; i < representatives.length; i += OPENAI_BATCH_SIZE) {
+        throwIfCategorizationStopped();
         if (i > 0) {
           await waitWithStatus(
             OPENAI_INTER_BATCH_DELAY_MS,
@@ -1116,6 +1140,9 @@ export async function categorizeTransactions(
             batch,
           );
         } catch (error) {
+          if (stopRequested || (error as OpenAIRequestError)?.code === "stopped") {
+            throw createCategorizationStoppedError();
+          }
           console.warn("categorization openai error", formatError(error));
           continue;
         }
@@ -1364,6 +1391,30 @@ async function flushQueuedCategorization() {
       }));
     }
   } catch (error) {
+    if (stopRequested || (error as OpenAIRequestError)?.code === "stopped") {
+      const removedFromQueue = queuedTransactionIds.size;
+      queuedTransactionIds.clear();
+      updateCategorizationStatus((current) => ({
+        ...current,
+        phase: "completed",
+        queuedCount: 0,
+        processedCount,
+        updatedCount,
+        ruleCount,
+        openAiCount,
+        skippedCount,
+        message:
+          removedFromQueue > 0
+            ? `Achtergrondcategorisatie gestopt. Wachtrij is leeggemaakt (${removedFromQueue}).`
+            : "Achtergrondcategorisatie gestopt.",
+        lastCompletedAt: new Date().toISOString(),
+        lastError: null,
+        lastRunMode: current.mode,
+        isPauseRequested: false,
+        isStopRequested: false,
+      }));
+      return;
+    }
     updateCategorizationStatus((current) => ({
       ...current,
       phase: "error",
@@ -1577,6 +1628,28 @@ export function stopBackgroundCategorization() {
       removedFromQueue > 0
         ? `Stoppen aangevraagd. Wachtrij geleegd (${removedFromQueue}). Huidige batch wordt afgerond.`
         : "Stoppen aangevraagd. Huidige batch wordt afgerond.",
+  }));
+}
+
+export function clearQueuedCategorizationQueue() {
+  if (!queuedTransactionIds.size) return;
+
+  const removedFromQueue = queuedTransactionIds.size;
+  queuedTransactionIds.clear();
+  forceQueuedRecategorization = false;
+  stopRequested = false;
+  pauseRequested = false;
+
+  updateCategorizationStatus((current) => ({
+    ...current,
+    phase: isBackgroundFlushRunning ? current.phase : "idle",
+    queuedCount: 0,
+    isStopRequested: false,
+    isPauseRequested: false,
+    message: isBackgroundFlushRunning
+      ? `Wachtrij leeggemaakt (${removedFromQueue}). Huidige batch loopt door.`
+      : `Wachtrij leeggemaakt (${removedFromQueue}).`,
+    lastError: null,
   }));
 }
 

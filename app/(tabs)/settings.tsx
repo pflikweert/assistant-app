@@ -1,9 +1,12 @@
 import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
+import { FinanceTopBar } from "@/components/ui/finance-top-bar";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { useSession } from "@/app/_layout";
 import {
     clearAllTransactionData,
+    clearQueuedCategorizationQueue,
     pauseBackgroundCategorization,
     resumeBackgroundCategorization,
     runRecategorizationForAllInBackground,
@@ -364,10 +367,15 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.topBar}>
-        <Text style={styles.pageTitle}>Instellingen</Text>
-        <HeaderDropdownMenu />
-      </View>
+      <FinanceScreenBackdrop tone="warm" />
+      <FinanceTopBar
+        shellStyle={styles.topBar}
+        innerStyle={styles.topBarInner}
+        title="Instellingen"
+        titleStyle={styles.pageTitle}
+        showMenu={false}
+        rightSlot={<HeaderDropdownMenu />}
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -552,6 +560,18 @@ export default function SettingsScreen() {
               <Text style={styles.controlButtonText}>Stop</Text>
             </TouchableOpacity>
           </View>
+          <TouchableOpacity
+            style={[
+              styles.secondaryControlButton,
+              !backgroundStatus.queuedCount && styles.controlButtonDisabled,
+            ]}
+            onPress={clearQueuedCategorizationQueue}
+            disabled={!backgroundStatus.queuedCount}
+          >
+            <Text style={styles.secondaryControlButtonText}>
+              Wachtrij leegmaken
+            </Text>
+          </TouchableOpacity>
           <View style={styles.statusMetaRow}>
             <Text style={styles.statusMetaText}>
               Verwerkt: {backgroundStatus.processedCount}
@@ -639,15 +659,14 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: FinColors.bgBase },
   topBar: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 16,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     backgroundColor: "rgba(246,245,242,0.8)",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(17,17,17,0.06)",
+  },
+  topBarInner: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 16,
   },
   pageTitle: {
     fontSize: 30,
@@ -828,6 +847,20 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   controlButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  secondaryControlButton: {
+    marginTop: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderRadius: 999,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  secondaryControlButtonText: {
     fontSize: 12,
     fontWeight: "700",
     color: FinColors.textPrimary,

@@ -2,7 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 
 function getAdminClient() {
   const url = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
 
   if (!url || !serviceRoleKey) {
     throw new Error(
