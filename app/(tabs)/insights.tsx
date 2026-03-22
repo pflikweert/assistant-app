@@ -172,6 +172,7 @@ type InsightTx = {
   recurring: boolean;
   recurring_type: "monthly" | "quarterly" | "yearly" | "irregular" | null;
   spending_pattern: "frequent_small_expense" | null;
+  budget_excluded: boolean;
 };
 
 type CashflowForecast = {
@@ -1026,6 +1027,10 @@ export default function InsightsScreen() {
       })),
     [transactions, categoryMap],
   );
+  const budgetIncludedDisplayTransactions = React.useMemo(
+    () => displayTransactions.filter((tx) => !tx.budget_excluded),
+    [displayTransactions],
+  );
 
   const coverage = React.useMemo(
     () => getCategorizationCoverage(transactions),
@@ -1034,7 +1039,7 @@ export default function InsightsScreen() {
 
   const incomeTransactions = React.useMemo<InsightIncomeTx[]>(
     () =>
-      displayTransactions
+      budgetIncludedDisplayTransactions
         .filter((tx) => tx.amount > 0)
         .map((tx) => {
           const semantics = resolveIncomeSemanticsForTransaction(tx, categoryMap);
@@ -1050,7 +1055,7 @@ export default function InsightsScreen() {
           if (left.date !== right.date) return right.date.localeCompare(left.date);
           return right.amount - left.amount;
         }),
-    [categoryMap, displayTransactions],
+    [budgetIncludedDisplayTransactions, categoryMap],
   );
 
   const incomeSummary = React.useMemo(() => {
@@ -1175,7 +1180,7 @@ export default function InsightsScreen() {
       savingsTransfers: 0,
     };
 
-    for (const tx of transactions) {
+    for (const tx of budgetIncludedDisplayTransactions) {
       if (tx.amount > 0) {
         const semantics = resolveIncomeSemanticsForTransaction(tx, categoryMap);
         if (semantics.kind === "expense_refund" && semantics.expenseOffsetBucket) {
@@ -1212,10 +1217,16 @@ export default function InsightsScreen() {
       costRefunds: incomeSummary.costRefunds,
       net: incomeSummary.totalIncome - expenses,
     };
-  }, [categoryMap, incomeSummary.costRefunds, incomeSummary.totalIncome, incomeSummary.windfalls, transactions]);
+  }, [
+    budgetIncludedDisplayTransactions,
+    categoryMap,
+    incomeSummary.costRefunds,
+    incomeSummary.totalIncome,
+    incomeSummary.windfalls,
+  ]);
 
   const spendingByCategory = React.useMemo<CategoryBarRow[]>(() => {
-    const expenseRows = displayTransactions.filter((tx) => {
+    const expenseRows = budgetIncludedDisplayTransactions.filter((tx) => {
       if (tx.amount >= 0) return false;
       return resolveExpenseBucket(tx, categoryMap) !== "savings_transfer";
     });
@@ -1234,7 +1245,7 @@ export default function InsightsScreen() {
         amount,
         color: CAT_COLORS[index % CAT_COLORS.length],
       }));
-  }, [categoryMap, displayTransactions]);
+  }, [budgetIncludedDisplayTransactions, categoryMap]);
 
   const reviewQueue = React.useMemo(
     () =>
@@ -1649,7 +1660,7 @@ export default function InsightsScreen() {
     try {
       const userId = await requireCurrentUserId();
       const baseSelect =
-        "id,amount,details,counterparty,date,category_id_auto,category_id_user,category_confidence,category_source";
+        "id,amount,details,counterparty,date,category_id_auto,category_id_user,category_confidence,category_source,budget_excluded";
       const analysisSelect =
         "analysis_main_group,analysis_category,recurring,recurring_type,spending_pattern";
       const transactionsQuery = supabase.from("transactions");
@@ -1735,6 +1746,7 @@ export default function InsightsScreen() {
           row.spending_pattern === "frequent_small_expense"
             ? row.spending_pattern
             : null,
+        budget_excluded: Boolean(row.budget_excluded),
       }));
 
       const subscriptionNames = await listTransactionSubscriptionProfileNames(
