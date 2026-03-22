@@ -19,6 +19,7 @@ describe("buildForecastMonthMath", () => {
       expectedFixedCostsBaseline: 800,
       expectedSubscriptionsBaseline: 130,
       expectedVariableCostsBaseline: 350,
+      projectedVariableCostsTotal: null,
       expectedSavingsOutflowBaseline: 180,
       remainingCommittedFixedCosts: 200,
       remainingCommittedSubscriptions: 30,
@@ -51,6 +52,7 @@ describe("buildForecastMonthMath", () => {
       expectedFixedCostsBaseline: 400,
       expectedSubscriptionsBaseline: 30,
       expectedVariableCostsBaseline: 220,
+      projectedVariableCostsTotal: null,
       expectedSavingsOutflowBaseline: 150,
       remainingCommittedFixedCosts: 0,
       remainingCommittedSubscriptions: 0,
@@ -78,6 +80,7 @@ describe("buildForecastMonthMath", () => {
       expectedFixedCostsBaseline: 600,
       expectedSubscriptionsBaseline: 100,
       expectedVariableCostsBaseline: 180,
+      projectedVariableCostsTotal: null,
       expectedSavingsOutflowBaseline: 75,
       remainingCommittedFixedCosts: 300,
       remainingCommittedSubscriptions: 0,
@@ -106,6 +109,7 @@ describe("buildForecastMonthMath", () => {
       expectedFixedCostsBaseline: 0,
       expectedSubscriptionsBaseline: 0,
       expectedVariableCostsBaseline: 150,
+      projectedVariableCostsTotal: null,
       expectedSavingsOutflowBaseline: 20,
       remainingCommittedFixedCosts: 0,
       remainingCommittedSubscriptions: 0,
@@ -118,5 +122,32 @@ describe("buildForecastMonthMath", () => {
     expect(result.remainingExpectedSavingsOutflowTotal).toBe(0);
     expect(result.expectedEndOfMonthBalance).toBe(-20);
     expect(result.riskFlag).toBe("deficit_warning");
+  });
+
+  it("uses projected variable costs when current-month actual plus remaining budget exceeds baseline", () => {
+    const result = buildForecastMonthMath({
+      startingBalance: 300,
+      currentBalanceAnchor: 300,
+      bookedIncomeTotal: 0,
+      bookedForecastEligibleIncomeTotal: 0,
+      bookedExpenseTotal: 280,
+      bookedSavingsOutflowTotal: 0,
+      bookedFixedCosts: 0,
+      bookedSubscriptions: 0,
+      bookedVariableCosts: 280,
+      expectedIncomeBaseline: 0,
+      remainingCommittedIncomeTotal: 0,
+      expectedFixedCostsBaseline: 0,
+      expectedSubscriptionsBaseline: 0,
+      expectedVariableCostsBaseline: 150,
+      projectedVariableCostsTotal: 420,
+      expectedSavingsOutflowBaseline: 0,
+      remainingCommittedFixedCosts: 0,
+      remainingCommittedSubscriptions: 0,
+      remainingCommittedSavingsOutflowTotal: 0,
+    });
+
+    expect(result.expectedVariableCosts).toBe(420);
+    expect(result.remainingExpectedExpenseTotal).toBe(140);
   });
 });

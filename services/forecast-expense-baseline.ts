@@ -15,6 +15,7 @@ type ForecastExpenseBaselines = {
   fixedCosts: number;
   subscriptions: number;
   variableCosts: number;
+  projectedVariableCostsTotal: number | null;
   savingsTransfers: number;
   source: BudgetForecastExpenseSource;
 };
@@ -28,6 +29,24 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function resolveProjectedVariableCostsTotal(
+  budgetPlan: BudgetPlanComputation | null,
+  monthToDateExpenses: BudgetExpenseBreakdown | null,
+) {
+  if (!budgetPlan || !monthToDateExpenses) return null;
+
+  const remainingVariableForecast = round2(
+    (budgetPlan.weeklyVariablePlan || [])
+      .filter((row) => !row.isPastWeek)
+      .reduce((sum, row) => sum + Math.max(asNumber(row.remaining, 0), 0), 0),
+  );
+
+  return round2(
+    Math.max(asNumber(monthToDateExpenses.variableCosts, 0), 0) +
+      remainingVariableForecast,
+  );
+}
+
 export function resolveForecastExpenseBaselines(params: {
   historyForecast: HistoryExpenseForecast;
   budgetPlan: BudgetPlanComputation | null;
@@ -37,6 +56,10 @@ export function resolveForecastExpenseBaselines(params: {
 
   const preferredSource = budgetPlan?.settings.forecastExpenseSource || "trend";
   const trendExpenses = budgetPlan?.trend?.expenses || null;
+  const projectedVariableCostsTotal =
+    preferredSource === "budget_settings"
+      ? resolveProjectedVariableCostsTotal(budgetPlan, monthToDateExpenses)
+      : null;
 
   if (preferredSource === "budget_settings" && budgetPlan) {
     return {
@@ -58,6 +81,7 @@ export function resolveForecastExpenseBaselines(params: {
           asNumber(monthToDateExpenses?.variableCosts, 0),
         ),
       ),
+      projectedVariableCostsTotal,
       savingsTransfers: round2(
         Math.max(
           asNumber(budgetPlan.flowSummary.appliedSavingsTarget, 0),
@@ -83,16 +107,17 @@ export function resolveForecastExpenseBaselines(params: {
         asNumber(monthToDateExpenses?.subscriptions, 0),
       ),
     ),
-    variableCosts: round2(
-      Math.max(
-        historyForecast.variableCosts,
-        asNumber(trendExpenses?.variableCosts, 0),
-        asNumber(monthToDateExpenses?.variableCosts, 0),
+      variableCosts: round2(
+        Math.max(
+          historyForecast.variableCosts,
+          asNumber(trendExpenses?.variableCosts, 0),
+          asNumber(monthToDateExpenses?.variableCosts, 0),
+        ),
       ),
-    ),
-    savingsTransfers: round2(
-      Math.max(
-        historyForecast.savingsTransfers,
+      projectedVariableCostsTotal,
+      savingsTransfers: round2(
+        Math.max(
+          historyForecast.savingsTransfers,
         asNumber(trendExpenses?.savingsTransfer, 0),
         asNumber(monthToDateExpenses?.savingsTransfer, 0),
       ),

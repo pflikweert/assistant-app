@@ -21,6 +21,14 @@ De focus is nu niet meer "opnieuw bouwen", maar:
 
 ### Hoogste prioriteit
 
+- Handmatige en inhoudelijke validatie op forecastbedragen:
+  - maandrapportbedragen kloppen nog niet overal exact
+  - reconciliatie nodig tussen `actueel + resterende budgetforecast` en wat in
+    `Insights > Maandrapport` getoond wordt
+  - extra controle nodig op huidige maand voor:
+    - variabel inkomen
+    - variabele kosten
+    - netto resultaat na herberekening
 - Handmatige QA op forecastbron:
   - `Trend` versus `Budgetplan` in `Budget > Beheer`
   - zichtbaarheid van de actieve bron in `Insights > Voorspelling`
@@ -115,6 +123,8 @@ Afgerond:
 - forecastmodel uitgebreid met `booked`, `remaining`, `expected_cash_out_total`,
   `savings_outflow` en `forecast_reference_date`
 - forecast-refreshlaag toegevoegd met user-specifieke dirty/stale-aansturing
+- handmatige refreshknop toegevoegd in `Settings` om forecast opnieuw te
+  berekenen
 - dirty-marking doorgetrokken naar categorisatie-, budget-, budgetgroep- en
   abonnementprofielwijzigingen
 - forecast-uitgavenbron instelbaar gemaakt:
@@ -136,6 +146,8 @@ Afgerond:
 
 Nog open binnen deze fase:
 
+- bedragen in `Insights > Maandrapport` nog volledig reconciliëren met het
+  centrale forecastmodel, vooral in de huidige maand
 - handmatige QA op forecastbron
 - handmatige QA op overlapweken
 - handmatige QA op forecast-refreshstatus en refreshflows

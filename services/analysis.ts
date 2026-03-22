@@ -2,17 +2,18 @@ import {
   applyEffectiveBudgetGroupsToCategories,
   listCategoryBudgetGroupOverrides,
 } from "@/services/category-budget-groups";
+import { resolveForecastIncomeBucketFromValue } from "@/services/forecast-income-utils";
 import { resolveIncomeSemantics } from "@/services/income-semantics";
 import { supabase } from "@/services/supabase";
 import { requireCurrentUserId } from "@/services/current-user";
 import type {
-    AnalysisCategory,
-    AnalysisMainGroup,
-    CategoryRecord,
-    ExpenseAnalysisCategory,
-    ForecastIncomeSource,
-    RecurringType,
-    TransactionAnalysisUpdate,
+  AnalysisCategory,
+  AnalysisMainGroup,
+  CategoryRecord,
+  ExpenseAnalysisCategory,
+  ForecastIncomeSource,
+  RecurringType,
+  TransactionAnalysisUpdate,
 } from "@/types/categorization";
 import { normalizePattern } from "./categorization-repository";
 
@@ -133,6 +134,13 @@ const VARIABLE_EXPENSE_KEYWORDS = [
 function asNumber(value: unknown, fallback = 0): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  const code = String((error as { code?: string })?.code || "");
+  const message = String((error as { message?: string })?.message || "").toLowerCase();
+  if (code === "42703") return true;
+  return message.includes("column") && message.includes("does not exist");
 }
 
 function toDate(isoDate: string): Date {
@@ -587,6 +595,7 @@ function mergeIncomeSources(
       sourceKey: descriptor,
       sourceLabel,
       expectedIncome: nextValue,
+      incomeBucket: resolveForecastIncomeBucketFromValue(semantics.budgetBucket),
       incomeFrequency: nextFrequency,
       incomeDayOfMonth: date.getUTCDate(),
       lastDetectedAt: detectedAtIso,
@@ -604,6 +613,9 @@ function mergeIncomeSources(
     ...existing,
     sourceLabel,
     expectedIncome,
+    incomeBucket:
+      resolveForecastIncomeBucketFromValue(semantics.budgetBucket) ??
+      existing.incomeBucket,
     incomeFrequency,
     incomeDayOfMonth: date.getUTCDate(),
     lastDetectedAt:
@@ -647,15 +659,25 @@ async function upsertIncomeSources(
     source_key: source.sourceKey,
     source_label: source.sourceLabel,
     expected_income: source.expectedIncome,
+    income_bucket: source.incomeBucket,
     income_frequency: source.incomeFrequency,
     income_day_of_month: source.incomeDayOfMonth,
     last_detected_at: source.lastDetectedAt,
     updated_at: new Date().toISOString(),
   }));
 
-  const { error } = await supabase
+  let { error } = await supabase
     .from("forecast_income_sources")
     .upsert(payload, { onConflict: "user_id,source_key" });
+
+  if (error && isMissingColumnError(error)) {
+    const fallbackPayload = payload.map(({ income_bucket: _incomeBucket, ...row }) => row);
+    error = (
+      await supabase
+        .from("forecast_income_sources")
+        .upsert(fallbackPayload, { onConflict: "user_id,source_key" })
+    ).error;
+  }
 
   if (error) throw error;
 }

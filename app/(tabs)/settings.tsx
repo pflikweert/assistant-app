@@ -13,6 +13,11 @@ import {
     formatCategorizationStatus,
     useCategorizationStatus,
 } from "@/services/categorization-status";
+import {
+  ensureForecastFresh,
+  getForecastRefreshStatus,
+} from "@/services/forecast-refresh";
+import type { ForecastRefreshStatus } from "@/types/categorization";
 import type { Href } from "expo-router";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -236,6 +241,9 @@ export default function SettingsScreen() {
   const [showSuccessModal, setShowSuccessModal] = React.useState(false);
   const [showErrorModal, setShowErrorModal] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [isRefreshingForecast, setIsRefreshingForecast] = React.useState(false);
+  const [forecastRefreshStatus, setForecastRefreshStatus] =
+    React.useState<ForecastRefreshStatus | null>(null);
   const backgroundStatus = useCategorizationStatus();
 
   const isBusy =
@@ -262,6 +270,35 @@ export default function SettingsScreen() {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() || "")
     .join("");
+  const forecastSummary = React.useMemo(() => {
+    if (isRefreshingForecast) return "Forecast wordt opnieuw berekend";
+    if (!forecastRefreshStatus) return "Refreshstatus wordt geladen";
+    if (forecastRefreshStatus.lastError) {
+      return "Laatste refresh had een fout";
+    }
+    if (forecastRefreshStatus.isDirty) {
+      return "Forecast wacht op herberekening";
+    }
+    if (forecastRefreshStatus.lastComputedAt) {
+      return `Laatst berekend op ${new Date(
+        forecastRefreshStatus.lastComputedAt,
+      ).toLocaleString("nl-NL")}`;
+    }
+    return "Nog niet berekend";
+  }, [forecastRefreshStatus, isRefreshingForecast]);
+
+  const loadForecastStatus = React.useCallback(async () => {
+    try {
+      const status = await getForecastRefreshStatus();
+      setForecastRefreshStatus(status);
+    } catch (error) {
+      console.warn("[settings] forecast refresh status load failed", error);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadForecastStatus();
+  }, [loadForecastStatus]);
 
   const handleResetPress = () => {
     setShowConfirmModal(true);
@@ -299,6 +336,29 @@ export default function SettingsScreen() {
       setShowErrorModal(true);
     } finally {
       setIsSigningOut(false);
+    }
+  };
+
+  const handleRefreshForecast = async () => {
+    if (isRefreshingForecast) return;
+    setIsRefreshingForecast(true);
+    try {
+      const status = await ensureForecastFresh({
+        reason: "manual_refresh",
+        referenceDate: new Date(),
+        force: true,
+      });
+      setForecastRefreshStatus(status);
+    } catch (refreshError) {
+      const refreshMessage =
+        refreshError instanceof Error
+          ? refreshError.message
+          : "Forecast opnieuw berekenen mislukt";
+      setErrorMessage(refreshMessage);
+      setShowErrorModal(true);
+      await loadForecastStatus();
+    } finally {
+      setIsRefreshingForecast(false);
     }
   };
 
@@ -388,6 +448,31 @@ export default function SettingsScreen() {
             subtitle="Beheer profielen, PSP-koppelingen en regels"
             onPress={() => router.push("/subscriptions")}
           />
+        </View>
+
+        <SectionHeader title="Forecast" />
+        <View style={styles.card}>
+          <SettingsRow
+            iconName="autorenew"
+            label="Forecast opnieuw berekenen"
+            subtitle={forecastSummary}
+            onPress={handleRefreshForecast}
+            rightElement={
+              isRefreshingForecast ? (
+                <ActivityIndicator size="small" color={FinColors.green} />
+              ) : undefined
+            }
+          />
+          {forecastRefreshStatus?.lastError ? (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.inlineNote}>
+                <Text style={styles.inlineNoteError}>
+                  Laatste fout: {forecastRefreshStatus.lastError}
+                </Text>
+              </View>
+            </>
+          ) : null}
         </View>
 
         <SectionHeader title="Data" />
@@ -677,6 +762,15 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: FinColors.borderSubtle,
     marginLeft: 20,
+  },
+  inlineNote: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  inlineNoteError: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.red,
   },
 
   statusCard: {

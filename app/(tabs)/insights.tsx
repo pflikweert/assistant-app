@@ -8,7 +8,7 @@ import {
   getMonthVariableBudgetSnapshot,
   getMonthVariableBudgetUsageText,
 } from "@/services/budget-risk";
-import { computeBudgetPlan } from "@/services/budget-plan";
+import { computeBudgetPlan, resolveIncludedIncomePreview } from "@/services/budget-plan";
 import {
   getTransactionCategories,
   setTransactionManualCategory,
@@ -39,6 +39,7 @@ import {
   type RareSubscriptionItem,
   type RareSubscriptionTransaction,
 } from "@/services/rare-subscriptions";
+import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import {
   getCurrentMonthKey,
@@ -69,6 +70,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Icon from "@expo/vector-icons/MaterialCommunityIcons";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -151,6 +153,7 @@ type InsightTx = {
   id: string;
   details: string;
   counterparty: string;
+  subscriptionProfileName?: string | null;
   date: string;
   amount: number;
   category_id_auto: string | null;
@@ -183,6 +186,8 @@ type CashflowForecast = {
   remaining_expected_expense_total: number;
   remaining_expected_savings_outflow_total: number;
   expected_income_total: number;
+  expected_income_structural_total: number | null;
+  expected_income_variable_total: number | null;
   expected_expense_total: number;
   expected_savings_outflow_total: number;
   expected_cash_out_total: number;
@@ -311,15 +316,21 @@ function getForecastRefreshHelper(status: ForecastRefreshStatus | null) {
 function formatIncludedIncomeLabel(plan: BudgetPlanComputation | null) {
   if (!plan) return "Budget-instellingen";
 
+  const includeIncome = plan.settings.includeIncome ?? {
+    salary: true,
+    childBudget: true,
+    structuralOther: false,
+    variable: false,
+  };
   const labels: string[] = [];
-  if (plan.settings.includeIncome.salary) labels.push("salaris");
-  if (plan.settings.includeIncome.childBudget) {
+  if (includeIncome.salary) labels.push("salaris");
+  if (includeIncome.childBudget) {
     labels.push("kindgebonden budget");
   }
-  if (plan.settings.includeIncome.structuralOther) {
+  if (includeIncome.structuralOther) {
     labels.push("overige structurele inkomsten");
   }
-  if (plan.settings.includeIncome.variable) {
+  if (includeIncome.variable) {
     labels.push("variabele inkomsten");
   }
 
@@ -332,20 +343,26 @@ function getBudgetIncludedIncomeAmount(
   scope: "expected" | "booked",
 ) {
   if (!plan) return null;
+  const includeIncome = plan.settings.includeIncome ?? {
+    salary: true,
+    childBudget: true,
+    structuralOther: false,
+    variable: false,
+  };
 
   if (scope === "expected") {
     return Math.max(plan.flowSummary.expectedIncomeMonthly || 0, 0);
   }
 
   let total = 0;
-  if (plan.settings.includeIncome.salary) total += plan.monthToDateIncome.salary;
-  if (plan.settings.includeIncome.childBudget) {
+  if (includeIncome.salary) total += plan.monthToDateIncome.salary;
+  if (includeIncome.childBudget) {
     total += plan.monthToDateIncome.childBudget;
   }
-  if (plan.settings.includeIncome.structuralOther) {
+  if (includeIncome.structuralOther) {
     total += plan.monthToDateIncome.structuralOther;
   }
-  if (plan.settings.includeIncome.variable) {
+  if (includeIncome.variable) {
     total += plan.monthToDateIncome.variable;
   }
 
@@ -735,7 +752,7 @@ function ReviewItem({
       </View>
       <View style={styles.reviewMain}>
         <Text style={styles.reviewName} numberOfLines={1}>
-          {tx.counterparty || "Onbekende tegenpartij"}
+          {tx.subscriptionProfileName || tx.counterparty || "Onbekende tegenpartij"}
         </Text>
         <Text style={styles.reviewSub} numberOfLines={1}>
           {tx.details || tx.date}
@@ -1346,6 +1363,56 @@ export default function InsightsScreen() {
     () => getBudgetIncludedIncomeAmount(budgetPlan, "booked"),
     [budgetPlan],
   );
+  const budgetForecastPreview = React.useMemo(() => {
+    if (!budgetPlan) return null;
+
+    const includeIncome = budgetPlan.settings.includeIncome ?? {
+      salary: true,
+      childBudget: true,
+      structuralOther: false,
+      variable: false,
+    };
+    const incomePreview = resolveIncludedIncomePreview(
+      budgetPlan.trend.income,
+      {
+        ...budgetPlan.settings,
+        includeIncome,
+      },
+    );
+    const expectedFixedCosts = Math.max(
+      budgetPlan.flowSummary.fixedCostsBudget || 0,
+      0,
+    );
+    const expectedSubscriptions = Math.max(
+      budgetPlan.flowSummary.subscriptionsBudget || 0,
+      0,
+    );
+    const expectedVariableCosts = Math.max(
+      budgetPlan.flowSummary.variableBudget || 0,
+      0,
+    );
+    const expectedSavingsOutflowTotal = Math.max(
+      budgetPlan.flowSummary.appliedSavingsTarget || 0,
+      0,
+    );
+    const expectedExpenseTotal =
+      expectedFixedCosts + expectedSubscriptions + expectedVariableCosts;
+    const expectedCashOutTotal =
+      expectedExpenseTotal + expectedSavingsOutflowTotal;
+
+    return {
+      income: incomePreview,
+      expectedIncomeTotal: incomePreview.total,
+      expectedFixedCosts,
+      expectedSubscriptions,
+      expectedVariableCosts,
+      expectedSavingsOutflowTotal,
+      expectedExpenseTotal,
+      expectedCashOutTotal,
+      expectedMonthDelta:
+        Math.round((incomePreview.total - expectedCashOutTotal) * 100) / 100,
+    };
+  }, [budgetPlan]);
   const forecastCashInTotal = forecast?.expected_income_total ?? 0;
   const forecastBookedCashIn = forecast?.booked_income_total ?? 0;
   const forecastRemainingCashIn = forecast?.remaining_expected_income_total ?? 0;
@@ -1359,6 +1426,37 @@ export default function InsightsScreen() {
   const forecastExpectedMonthDelta = forecast
     ? Math.round((forecastCashInTotal - forecastCashOutTotal) * 100) / 100
     : null;
+  const forecastDisplayIncomeTotal =
+    forecast?.expected_income_total ?? budgetForecastPreview?.expectedIncomeTotal ?? null;
+  const forecastDisplayIncomeStructural =
+    forecast != null
+      ? forecast.expected_income_structural_total
+      : budgetForecastPreview?.income.structural ?? null;
+  const forecastDisplayIncomeVariable =
+    forecast != null
+      ? forecast.expected_income_variable_total
+      : budgetForecastPreview?.income.variable ?? null;
+  const forecastDisplayExpenseTotal =
+    forecast?.expected_expense_total ?? budgetForecastPreview?.expectedExpenseTotal ?? null;
+  const forecastDisplayFixedCosts =
+    forecast?.expected_fixed_costs ?? budgetForecastPreview?.expectedFixedCosts ?? null;
+  const forecastDisplaySubscriptions =
+    forecast?.expected_subscriptions ?? budgetForecastPreview?.expectedSubscriptions ?? null;
+  const forecastDisplayVariableCosts =
+    forecast?.expected_variable_costs ?? budgetForecastPreview?.expectedVariableCosts ?? null;
+  const forecastDisplaySavingsOutflow =
+    forecast?.expected_savings_outflow_total ??
+    budgetForecastPreview?.expectedSavingsOutflowTotal ??
+    null;
+  const forecastDisplayMonthDelta =
+    forecast != null
+      ? forecastExpectedMonthDelta
+      : budgetForecastPreview?.expectedMonthDelta ?? null;
+  const showForecastColumn = Boolean(forecast || budgetForecastPreview);
+  const showStructuralIncomeRow =
+    incomeSummary.structural > 0 || (forecastDisplayIncomeStructural ?? 0) > 0;
+  const showVariableIncomeRow =
+    incomeSummary.variableIncome > 0 || (forecastDisplayIncomeVariable ?? 0) > 0;
   const forecastBudgetBasisExpectedIncome = budgetExpectedIncomeTotal ?? 0;
   const forecastBudgetBasisBookedIncome = budgetBookedIncomeTotal ?? 0;
   const forecastBudgetBasisRemainingIncome = Math.max(
@@ -1639,6 +1737,13 @@ export default function InsightsScreen() {
             : null,
       }));
 
+      const subscriptionNames = await listTransactionSubscriptionProfileNames(
+        rows.map((row) => row.id),
+      );
+      rows.forEach((row) => {
+        row.subscriptionProfileName = subscriptionNames[row.id] || null;
+      });
+
       setTransactions(rows);
       setTxCount(rows.length);
     } catch (error) {
@@ -1661,6 +1766,8 @@ export default function InsightsScreen() {
 
     try {
       const userId = await requireCurrentUserId();
+      const latestForecastSelect =
+        "month_start,forecast_reference_date,current_balance_anchor,current_balance_anchor_date,booked_income_total,booked_expense_total,booked_savings_outflow_total,remaining_expected_income_total,remaining_expected_expense_total,remaining_expected_savings_outflow_total,expected_income_total,expected_income_structural_total,expected_income_variable_total,expected_expense_total,expected_savings_outflow_total,expected_cash_out_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,upcoming_committed_income_total,upcoming_committed_expense_total,upcoming_committed_savings_outflow_total,lowest_expected_balance,lowest_expected_balance_date,next_expected_event_date,next_expected_event_label,cash_risk_flag,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3";
       const enhancedForecastSelect =
         "month_start,forecast_reference_date,current_balance_anchor,current_balance_anchor_date,booked_income_total,booked_expense_total,booked_savings_outflow_total,remaining_expected_income_total,remaining_expected_expense_total,remaining_expected_savings_outflow_total,expected_income_total,expected_expense_total,expected_savings_outflow_total,expected_cash_out_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,upcoming_committed_income_total,upcoming_committed_expense_total,upcoming_committed_savings_outflow_total,lowest_expected_balance,lowest_expected_balance_date,next_expected_event_date,next_expected_event_label,cash_risk_flag,expected_end_of_month_balance,risk_flag,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3";
       const legacyForecastSelect =
@@ -1673,10 +1780,16 @@ export default function InsightsScreen() {
         ]),
       );
       const fetchForecastRows = async (
-        useLegacy = false,
+        shape: "latest" | "enhanced" | "legacy",
       ): Promise<GenericRowsResult> =>
         (await forecastQuery
-          .select(useLegacy ? legacyForecastSelect : enhancedForecastSelect)
+          .select(
+            shape === "latest"
+              ? latestForecastSelect
+              : shape === "enhanced"
+                ? enhancedForecastSelect
+                : legacyForecastSelect,
+          )
           .eq("user_id", userId)
           .in("month_start", requestedMonthStarts)) as GenericRowsResult;
 
@@ -1708,13 +1821,19 @@ export default function InsightsScreen() {
         setForecastRefreshStatus(refreshStatus);
       }
 
-      let usedLegacyForecastShape = false;
-      let { data, error } = await fetchForecastRows();
+      let forecastShape: "latest" | "enhanced" | "legacy" = "latest";
+      let { data, error } = await fetchForecastRows(forecastShape);
       if (error && isMissingColumnError(error)) {
-        usedLegacyForecastShape = true;
-        const legacyResult = await fetchForecastRows(true);
-        data = legacyResult.data;
-        error = legacyResult.error;
+        forecastShape = "enhanced";
+        let fallbackResult = await fetchForecastRows(forecastShape);
+        data = fallbackResult.data;
+        error = fallbackResult.error;
+        if (error && isMissingColumnError(error)) {
+          forecastShape = "legacy";
+          fallbackResult = await fetchForecastRows(forecastShape);
+          data = fallbackResult.data;
+          error = fallbackResult.error;
+        }
       }
       if (!data || !data.length) {
         const backfillStatus = await ensureForecastFresh({
@@ -1728,10 +1847,19 @@ export default function InsightsScreen() {
         if (backfillStatus) {
           setForecastRefreshStatus(backfillStatus);
         }
-        let retry = await fetchForecastRows(usedLegacyForecastShape);
+        let retry = await fetchForecastRows(forecastShape);
         if (retry.error && isMissingColumnError(retry.error)) {
-          usedLegacyForecastShape = true;
-          retry = await fetchForecastRows(true);
+          forecastShape =
+            forecastShape === "latest"
+              ? "enhanced"
+              : forecastShape === "enhanced"
+                ? "legacy"
+                : "legacy";
+          retry = await fetchForecastRows(forecastShape);
+          if (retry.error && isMissingColumnError(retry.error) && forecastShape !== "legacy") {
+            forecastShape = "legacy";
+            retry = await fetchForecastRows(forecastShape);
+          }
         }
         data = retry.data;
         error = retry.error;
@@ -1752,9 +1880,9 @@ export default function InsightsScreen() {
         return;
       }
 
-      const rowsByMonth = ((data || []) as Record<string, unknown>[]).reduce<
-        Record<string, CashflowForecast>
-      >((acc, row) => {
+      const usedLegacyForecastShape = forecastShape === "legacy";
+      const supportsCentralIncomeBreakdown = forecastShape === "latest";
+      const rowsByMonth = ((data || []) as Record<string, unknown>[]).reduce((acc, row) => {
         const mapped: CashflowForecast = {
           month_start: String(row.month_start || ""),
           forecast_reference_date:
@@ -1793,6 +1921,12 @@ export default function InsightsScreen() {
               : row.remaining_expected_savings_outflow_total || 0,
           ),
           expected_income_total: Number(row.expected_income_total || 0),
+          expected_income_structural_total: supportsCentralIncomeBreakdown
+            ? Number(row.expected_income_structural_total || 0)
+            : null,
+          expected_income_variable_total: supportsCentralIncomeBreakdown
+            ? Number(row.expected_income_variable_total || 0)
+            : null,
           expected_expense_total: Number(row.expected_expense_total || 0),
           expected_savings_outflow_total: Number(
             usedLegacyForecastShape ? 0 : row.expected_savings_outflow_total || 0,
@@ -1853,7 +1987,7 @@ export default function InsightsScreen() {
         };
         acc[mapped.month_start] = mapped;
         return acc;
-      }, {});
+      }, {} as Record<string, CashflowForecast>);
 
       setForecastByMonth(rowsByMonth);
       setForecast(rowsByMonth[selectedMonth.startIso] || null);
@@ -2120,9 +2254,142 @@ export default function InsightsScreen() {
   const forecastSourceHelperText =
     activeForecastExpenseSource === "budget_settings"
       ? selectedMonth.isCurrentMonth
-        ? "Deze maand combineert echte boekingen en extra inkomsten met je budgetplan. Volgende maanden volgen je budgetinstellingen."
-        : "Deze maand volgt je budgetinstellingen voor inkomsten, vaste lasten, variabele ruimte en sparen."
-      : "Deze voorspelling volgt je recente maandritme en actuele boekingen.";
+      ? "Deze maand combineert echte boekingen en extra inkomsten met je budgetplan. Volgende maanden volgen je budgetinstellingen."
+      : "Deze maand volgt je budgetinstellingen voor inkomsten, vaste lasten, variabele ruimte en sparen."
+    : "Deze voorspelling volgt je recente maandritme en actuele boekingen.";
+  type ReportTone = "income" | "expense" | "neutral";
+  const renderReportAmountCell = (
+    value: number | null | undefined,
+    options: {
+      tone: ReportTone;
+      column: "actual" | "forecast";
+      showPlus?: boolean;
+      placeholder?: string;
+    },
+  ) => {
+    const { tone, column, showPlus = false, placeholder = "—" } = options;
+    const isForecast = column === "forecast";
+    const pillValue =
+      value == null
+        ? placeholder
+        : `${showPlus && value >= 0 ? "+" : ""}${fmt.format(value)}`;
+    const pillTextStyle =
+      value == null
+        ? styles.reportAmountPlaceholderText
+        : isForecast
+          ? styles.reportAmountForecastText
+          : tone === "income"
+            ? styles.reportAmountIncomeText
+            : tone === "expense"
+              ? styles.reportAmountExpenseText
+              : styles.reportAmountNeutralText;
+
+    return (
+      <View style={styles.reportAmountCell}>
+        <Text
+          style={[
+            styles.reportAmountPill,
+            isForecast ? styles.reportAmountForecastPill : styles.reportAmountActualPill,
+            tone === "income" && !isForecast && styles.reportAmountIncomePill,
+            tone === "expense" && !isForecast && styles.reportAmountExpensePill,
+            tone === "income" && isForecast && styles.reportAmountForecastIncomePill,
+            tone === "expense" && isForecast && styles.reportAmountForecastExpensePill,
+            value == null && styles.reportAmountPlaceholderPill,
+            pillTextStyle,
+          ]}
+          numberOfLines={1}
+        >
+          {pillValue}
+        </Text>
+      </View>
+    );
+  };
+  const renderReportRow = (options: {
+    key: string;
+    label: string;
+    actual: number;
+    forecastValue?: number | null;
+    icon: string;
+    iconColor: string;
+    iconBg: string;
+    tone: ReportTone;
+    onPress?: () => void;
+    level?: "group" | "child";
+    showPlus?: boolean;
+    forecastShowPlus?: boolean;
+    forecastPlaceholder?: string;
+    helper?: string;
+  }) => (
+    <Pressable
+      key={options.key}
+      disabled={!options.onPress}
+      onPress={options.onPress}
+      style={({ pressed }) => [
+        styles.reportMetricRow,
+        options.level === "group" ? styles.reportGroupRow : styles.reportChildRow,
+        options.tone === "income"
+          ? styles.reportIncomeRow
+          : options.tone === "expense"
+            ? styles.reportExpenseRow
+            : styles.reportNeutralRow,
+        options.onPress ? styles.reportRowInteractive : styles.reportRowStatic,
+        pressed && options.onPress ? styles.reportRowPressed : null,
+      ]}
+    >
+      <View style={styles.reportLabelCell}>
+        <View
+          style={[
+            styles.reportIconSlot,
+            options.level === "group"
+              ? styles.reportIconSlotGroup
+              : styles.reportIconSlotChild,
+          ]}
+        >
+          <Icon
+            name={options.icon as any}
+            size={options.level === "group" ? 18 : 15}
+            color={options.iconColor}
+          />
+        </View>
+        <View style={styles.reportLabelTextWrap}>
+          <Text
+            style={[
+              styles.reportLabelText,
+              options.level === "group"
+                ? styles.reportLabelTextStrong
+                : styles.reportLabelTextSub,
+            ]}
+            numberOfLines={1}
+          >
+            {options.label}
+          </Text>
+          {options.helper ? (
+            <Text style={styles.reportLabelMeta} numberOfLines={1}>
+              {options.helper}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      {renderReportAmountCell(options.actual, {
+        tone: options.tone,
+        column: "actual",
+        showPlus: options.showPlus,
+      })}
+      {showForecastColumn ? (
+        renderReportAmountCell(options.forecastValue ?? null, {
+          tone: options.tone,
+          column: "forecast",
+          showPlus: options.forecastShowPlus ?? options.showPlus,
+          placeholder: options.forecastPlaceholder ?? "—",
+        })
+      ) : null}
+      <View style={styles.reportActionCell}>
+        {options.onPress ? (
+          <Icon name="chevron-right" size={18} color={FinColors.green} />
+        ) : null}
+      </View>
+    </Pressable>
+  );
 
   return (
     <View style={styles.root}>
@@ -2275,99 +2542,213 @@ export default function InsightsScreen() {
                   <Text style={styles.sectionTitle}>Maandrapport</Text>
                   <Text style={styles.sectionHelper}>Waar je maand uit bestaat</Text>
                 </View>
-                <Pressable
-                  style={styles.reportRowButton}
-                  onPress={() => setIncomeDetailsOpen(true)}
-                >
-                  <Text style={styles.reportLabel}>Inkomsten totaal</Text>
-                  <View style={styles.reportRight}>
-                    <Text style={[styles.reportValue, styles.positiveText]}>
-                      +{fmt.format(monthReport.income)}
+                <View style={styles.reportTable}>
+                  <View style={styles.reportTableHeader}>
+                    <Text style={[styles.reportTableHeaderCell, styles.reportTableHeaderLabelCell]}>
+                      Onderdeel
                     </Text>
-                    <Text style={styles.reportHint}>Details</Text>
+                    <View style={styles.reportTableHeaderAmountCell}>
+                      <View
+                        style={[
+                          styles.reportColumnChip,
+                          styles.reportColumnChipActual,
+                        ]}
+                      >
+                        <Text style={styles.reportColumnChipTextActual}>Actueel</Text>
+                      </View>
+                    </View>
+                    {showForecastColumn && (
+                      <View style={styles.reportTableHeaderAmountCell}>
+                        <View
+                          style={[
+                            styles.reportColumnChip,
+                            styles.reportColumnChipForecast,
+                          ]}
+                        >
+                          <Text style={styles.reportColumnChipTextForecast}>Prognose</Text>
+                          <View style={styles.infoIcon}>
+                            <Icon name="information-outline" size={14} color={FinColors.warningText} />
+                          </View>
+                        </View>
+                      </View>
+                    )}
+                    <View style={styles.reportTableHeaderActionCell} />
                   </View>
-                </Pressable>
-                {incomeSummary.structural > 0 ? (
-                  <View style={styles.reportRow}>
-                    <Text style={styles.reportLabel}>Structureel inkomen</Text>
-                    <Text style={[styles.reportValue, styles.positiveText]}>
-                      +{fmt.format(incomeSummary.structural)}
-                    </Text>
+                  <View style={[styles.reportGroupBlock, styles.reportIncomeGroup]}>
+                    {renderReportRow({
+                      key: "income-total",
+                      label: "Inkomsten totaal",
+                      actual: monthReport.income,
+                      forecastValue: forecastDisplayIncomeTotal,
+                      icon: "cash-plus",
+                      iconColor: FinColors.green,
+                      iconBg: FinColors.greenBg,
+                      tone: "income",
+                      level: "group",
+                      onPress: () => setIncomeDetailsOpen(true),
+                      showPlus: true,
+                      forecastShowPlus: true,
+                    })}
+                    <View style={styles.reportSubgroup}>
+                      {showStructuralIncomeRow
+                        ? renderReportRow({
+                            key: "income-structural",
+                            label: "Structureel inkomen",
+                            actual: incomeSummary.structural,
+                            forecastValue: forecastDisplayIncomeStructural,
+                            icon: "calendar-star",
+                            iconColor: FinColors.green,
+                            iconBg: FinColors.greenBg,
+                            tone: "income",
+                            level: "child",
+                            showPlus: true,
+                            forecastPlaceholder: "—",
+                          })
+                        : null}
+                      {showVariableIncomeRow
+                        ? renderReportRow({
+                            key: "income-variable",
+                            label: "Variabel inkomen",
+                            actual: incomeSummary.variableIncome,
+                            forecastValue: forecastDisplayIncomeVariable,
+                            icon: "swap-horizontal",
+                            iconColor: FinColors.green,
+                            iconBg: FinColors.greenBg,
+                            tone: "income",
+                            level: "child",
+                            showPlus: true,
+                            forecastPlaceholder: "—",
+                          })
+                        : null}
+                      {monthReport.windfalls > 0
+                        ? renderReportRow({
+                            key: "income-windfalls",
+                            label: "Incidentele meevallers",
+                            actual: monthReport.windfalls,
+                            forecastValue: null,
+                            icon: "gift-outline",
+                            iconColor: FinColors.warningText,
+                            iconBg: FinColors.warningBg,
+                            tone: "income",
+                            level: "child",
+                            showPlus: true,
+                            forecastPlaceholder: "—",
+                          })
+                        : null}
+                      {monthReport.costRefunds > 0
+                        ? renderReportRow({
+                            key: "income-refunds",
+                            label: "Kostencompensaties",
+                            actual: monthReport.costRefunds,
+                            forecastValue: null,
+                            icon: "receipt-text",
+                            iconColor: FinColors.warningText,
+                            iconBg: FinColors.warningBg,
+                            tone: "income",
+                            level: "child",
+                            showPlus: true,
+                            forecastPlaceholder: "—",
+                          })
+                        : null}
+                    </View>
                   </View>
-                ) : null}
-                {incomeSummary.variableIncome > 0 ? (
-                  <View style={styles.reportRow}>
-                    <Text style={styles.reportLabel}>Variabel inkomen</Text>
-                    <Text style={[styles.reportValue, styles.positiveText]}>
-                      +{fmt.format(incomeSummary.variableIncome)}
-                    </Text>
+                  <View style={[styles.reportGroupBlock, styles.reportExpenseGroup]}>
+                    {renderReportRow({
+                      key: "expense-total",
+                      label: "Uitgaven totaal",
+                      actual: monthReport.expenses,
+                      forecastValue: forecastDisplayExpenseTotal,
+                      icon: "cash-minus",
+                      iconColor: FinColors.red,
+                      iconBg: FinColors.redBg,
+                      tone: "expense",
+                      level: "group",
+                    })}
+                    <View style={styles.reportSubgroup}>
+                      {renderReportRow({
+                        key: "expense-fixed",
+                        label: "Vaste lasten",
+                        actual: monthReport.fixed,
+                        forecastValue: forecastDisplayFixedCosts,
+                        icon: "home-outline",
+                        iconColor: FinColors.red,
+                        iconBg: FinColors.redBg,
+                        tone: "expense",
+                        level: "child",
+                        onPress: () => openAnalysisDetail("fixed_costs"),
+                      })}
+                      {renderReportRow({
+                        key: "expense-subscriptions",
+                        label: "Abonnementen",
+                        actual: monthReport.subscriptions,
+                        forecastValue: forecastDisplaySubscriptions,
+                        icon: "repeat",
+                        iconColor: FinColors.red,
+                        iconBg: FinColors.redBg,
+                        tone: "expense",
+                        level: "child",
+                        onPress: () => openAnalysisDetail("subscriptions"),
+                      })}
+                      {renderReportRow({
+                        key: "expense-variable",
+                        label: "Variabele kosten",
+                        actual: monthReport.variable,
+                        forecastValue: forecastDisplayVariableCosts,
+                        icon: "cart-outline",
+                        iconColor: FinColors.red,
+                        iconBg: FinColors.redBg,
+                        tone: "expense",
+                        level: "child",
+                        onPress: () => openAnalysisDetail("variable_costs"),
+                      })}
+                      {renderReportRow({
+                        key: "expense-savings",
+                        label: "Overboeken naar sparen",
+                        actual: monthReport.savingsTransfers,
+                        forecastValue: forecastDisplaySavingsOutflow,
+                        icon: "piggy-bank",
+                        iconColor: FinColors.textSecondary,
+                        iconBg: FinColors.bgElevated,
+                        tone: "expense",
+                        level: "child",
+                      })}
+                    </View>
                   </View>
-                ) : null}
-                {monthReport.windfalls > 0 ? (
-                  <View style={styles.reportRow}>
-                    <Text style={styles.reportLabel}>Incidentele meevallers</Text>
-                    <Text style={[styles.reportValue, styles.positiveText]}>
-                      +{fmt.format(monthReport.windfalls)}
-                    </Text>
+                  <View style={styles.reportNetBlock}>
+                    <View style={[styles.reportMetricRow, styles.reportNetRow]}>
+                      <View style={styles.reportLabelCell}>
+                        <View style={styles.reportIconSlotGroup}>
+                          <Icon name="scale-balance" size={18} color={FinColors.warningText} />
+                        </View>
+                        <View style={styles.reportLabelTextWrap}>
+                          <Text style={[styles.reportLabelText, styles.reportLabelTextStrong]}>
+                            Netto resultaat
+                          </Text>
+                          <Text style={styles.reportLabelMeta}>Wat je overhoudt</Text>
+                        </View>
+                      </View>
+                      {renderReportAmountCell(monthReport.net, {
+                        tone: monthReport.net >= 0 ? "income" : "expense",
+                        column: "actual",
+                        showPlus: true,
+                      })}
+                      {showForecastColumn ? (
+                        renderReportAmountCell(forecastDisplayMonthDelta, {
+                          tone:
+                            forecastDisplayMonthDelta != null &&
+                            forecastDisplayMonthDelta >= 0
+                              ? "income"
+                              : forecastDisplayMonthDelta != null &&
+                                  forecastDisplayMonthDelta < 0
+                                ? "expense"
+                                : "neutral",
+                          column: "forecast",
+                          showPlus: true,
+                        })
+                      ) : null}
+                      <View style={styles.reportActionCell} />
+                    </View>
                   </View>
-                ) : null}
-                {monthReport.costRefunds > 0 ? (
-                  <View style={styles.reportRow}>
-                    <Text style={styles.reportLabel}>Kostencompensaties</Text>
-                    <Text style={[styles.reportValue, styles.positiveText]}>
-                      +{fmt.format(monthReport.costRefunds)}
-                    </Text>
-                  </View>
-                ) : null}
-                <View style={styles.reportRow}>
-                  <Text style={styles.reportLabel}>Uitgaven totaal</Text>
-                  <Text style={styles.reportValue}>
-                    {fmt.format(monthReport.expenses)}
-                  </Text>
-                </View>
-                <Pressable
-                  style={styles.reportRowButton}
-                  onPress={() => openAnalysisDetail("fixed_costs")}
-                >
-                  <Text style={styles.reportLabel}>Vaste lasten</Text>
-                  <Text style={styles.reportValue}>{fmt.format(monthReport.fixed)}</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.reportRowButton}
-                  onPress={() => openAnalysisDetail("subscriptions")}
-                >
-                  <Text style={styles.reportLabel}>Abonnementen</Text>
-                  <Text style={styles.reportValue}>
-                    {fmt.format(monthReport.subscriptions)}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={styles.reportRowButton}
-                  onPress={() => openAnalysisDetail("variable_costs")}
-                >
-                  <Text style={styles.reportLabel}>Variabele kosten</Text>
-                  <Text style={styles.reportValue}>
-                    {fmt.format(monthReport.variable)}
-                  </Text>
-                </Pressable>
-                <View style={styles.reportRow}>
-                  <Text style={styles.reportLabel}>Overboeken naar sparen</Text>
-                  <Text style={styles.reportValue}>
-                    {fmt.format(monthReport.savingsTransfers)}
-                  </Text>
-                </View>
-                <View style={styles.reportDivider} />
-                <View style={styles.reportRow}>
-                  <Text style={styles.reportLabelStrong}>Netto resultaat</Text>
-                  <Text
-                    style={[
-                      styles.reportValueStrong,
-                      monthReport.net >= 0 ? styles.positiveText : styles.negativeText,
-                    ]}
-                  >
-                    {monthReport.net >= 0 ? "+" : ""}
-                    {fmt.format(monthReport.net)}
-                  </Text>
                 </View>
                 {monthReport.windfalls > 0 || monthReport.costRefunds > 0 ? (
                   <Text style={styles.helperText}>
@@ -2379,7 +2760,7 @@ export default function InsightsScreen() {
 
               <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
-                <Text style={styles.sectionTitle}>Uitgaven per categorie</Text>
+                  <Text style={styles.sectionTitle}>Uitgaven per categorie</Text>
                   <Text style={styles.sectionHelper}>Top 5 deze maand</Text>
                 </View>
                 {spendingByCategory.length ? (
@@ -2445,7 +2826,7 @@ export default function InsightsScreen() {
                         ]}
                       >
                         {forecast.expected_end_of_month_balance == null
-                          ? "Onbekend"
+                          ? "..."
                           : `${forecast.expected_end_of_month_balance >= 0 ? "+" : ""}${fmt.format(forecast.expected_end_of_month_balance)}`}
                       </Text>
                     </View>
@@ -2461,7 +2842,7 @@ export default function InsightsScreen() {
                         ]}
                       >
                         {forecast.lowest_expected_balance == null
-                          ? "Onbekend"
+                          ? "..."
                           : fmt.format(forecast.lowest_expected_balance)}
                       </Text>
                     </View>
@@ -2665,7 +3046,7 @@ export default function InsightsScreen() {
                           ]}
                         >
                           {forecast.expected_end_of_month_balance == null
-                            ? "Onbekend"
+                            ? "..."
                             : `${forecast.expected_end_of_month_balance >= 0 ? "+" : ""}${fmt.format(forecast.expected_end_of_month_balance)}`}
                         </Text>
                       </View>
@@ -2849,7 +3230,7 @@ export default function InsightsScreen() {
                           ]}
                         >
                           {forecast.lowest_expected_balance == null
-                            ? "Onbekend"
+                            ? "..."
                             : fmt.format(forecast.lowest_expected_balance)}
                         </Text>
                         {forecast.lowest_expected_balance_date ? (
@@ -3278,7 +3659,7 @@ export default function InsightsScreen() {
               <View style={styles.modalNoteCard}>
                 <Text style={styles.modalNoteText}>
                   Meevallers horen wel bij deze maand, maar niet bij je vaste
-                  inkomensbasis. Kostencompensaties verlagen je kosten.
+                  inkomstenbasis. Kostencompensaties verlagen je kosten.
                 </Text>
               </View>
             ) : null}
@@ -3334,7 +3715,9 @@ export default function InsightsScreen() {
                     </View>
                     <View style={styles.incomeTxMain}>
                       <Text style={styles.incomeTxCounterparty} numberOfLines={1}>
-                        {tx.counterparty || "Onbekende bron"}
+                        {tx.subscriptionProfileName ||
+                          tx.counterparty ||
+                          "Onbekende bron"}
                       </Text>
                       <Text style={styles.incomeTxSub} numberOfLines={1}>
                         {tx.details || tx.date}
@@ -3481,6 +3864,256 @@ export default function InsightsScreen() {
 }
 
 const styles = StyleSheet.create({
+  reportTable: {
+    marginTop: 8,
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+  },
+  reportTableHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "transparent",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  reportTableHeaderCell: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+    textAlign: "right",
+  },
+  reportTableHeaderLabelCell: {
+    textAlign: "left",
+    color: FinColors.textMuted,
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
+  },
+  reportTableHeaderAmountCell: {
+    width: 100,
+    alignItems: "flex-end",
+  },
+  reportTableHeaderActionCell: {
+    width: 14,
+  },
+  reportColumnChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+  },
+  reportColumnChipActual: {
+    borderColor: FinColors.greenBorder,
+  },
+  reportColumnChipForecast: {
+    borderColor: FinColors.warningBorder,
+  },
+  reportColumnChipTextActual: {
+    color: FinColors.green,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  reportColumnChipTextForecast: {
+    color: FinColors.warningText,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  infoIcon: {
+    marginLeft: 2,
+  },
+  reportGroupBlock: {
+    gap: 4,
+  },
+  reportIncomeGroup: {
+    gap: 4,
+  },
+  reportExpenseGroup: {
+    gap: 4,
+  },
+  reportSubgroup: {
+    gap: 4,
+    marginLeft: 10,
+    paddingLeft: 10,
+    borderLeftWidth: 1,
+    borderLeftColor: FinColors.borderSubtle,
+  },
+  reportMetricRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+  },
+  reportGroupRow: {
+    backgroundColor: "transparent",
+  },
+  reportChildRow: {
+    backgroundColor: "transparent",
+    paddingVertical: 7,
+  },
+  reportIncomeRow: {
+    borderLeftWidth: 3,
+    borderLeftColor: FinColors.greenBorder,
+  },
+  reportExpenseRow: {
+    borderLeftWidth: 3,
+    borderLeftColor: "rgba(197,93,76,0.18)",
+  },
+  reportNeutralRow: {
+    backgroundColor: "transparent",
+  },
+  reportRowInteractive: {
+    cursor: "pointer",
+  },
+  reportRowStatic: {},
+  reportRowPressed: {
+    opacity: 0.88,
+  },
+  reportLabelCell: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+  },
+  reportIconSlot: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reportIconSlotGroup: {
+    width: 18,
+    height: 18,
+  },
+  reportIconSlotChild: {
+    width: 15,
+    height: 15,
+  },
+  reportLabelTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  reportLabelText: {
+    fontSize: 13,
+    color: FinColors.textSecondary,
+  },
+  reportLabelTextStrong: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  reportLabelTextSub: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+  },
+  reportLabelMeta: {
+    marginTop: 1,
+    fontSize: 10,
+    color: FinColors.textMuted,
+  },
+  reportAmountCell: {
+    width: 100,
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  reportAmountPill: {
+    minWidth: 78,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  reportAmountActualPill: {
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: "transparent",
+  },
+  reportAmountForecastPill: {
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: "transparent",
+  },
+  reportAmountIncomePill: {
+    borderColor: FinColors.greenBorder,
+    backgroundColor: "transparent",
+  },
+  reportAmountExpensePill: {
+    borderColor: "rgba(197,93,76,0.18)",
+    backgroundColor: "transparent",
+  },
+  reportAmountForecastIncomePill: {
+    borderColor: FinColors.greenBorder,
+    backgroundColor: "transparent",
+  },
+  reportAmountForecastExpensePill: {
+    borderColor: "rgba(197,93,76,0.16)",
+    backgroundColor: "transparent",
+  },
+  reportAmountNeutralText: {
+    color: FinColors.textPrimary,
+  },
+  reportAmountForecastText: {
+    color: FinColors.textSecondary,
+  },
+  reportAmountIncomeText: {
+    color: FinColors.green,
+  },
+  reportAmountExpenseText: {
+    color: FinColors.red,
+  },
+  reportAmountPlaceholderPill: {
+    borderStyle: "dashed",
+  },
+  reportAmountPlaceholderText: {
+    color: FinColors.textMuted,
+  },
+  reportActionCell: {
+    width: 14,
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  reportNetBlock: {
+    marginTop: 2,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: FinColors.borderSubtle,
+  },
+  reportNetRow: {
+    borderLeftWidth: 3,
+    borderLeftColor: FinColors.warningText,
+    borderColor: FinColors.warningBorder,
+  },
+  reportValueCell: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    justifyContent: "flex-end",
+  },
+  reportValuePill: {
+    borderRadius: 999,
+    backgroundColor: "transparent",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    fontSize: 11,
+    fontWeight: "700",
+    minWidth: 62,
+    textAlign: "center",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  detailIcon: {
+    marginLeft: 2,
+  },
   root: {
     flex: 1,
     backgroundColor: FinColors.bgBase,

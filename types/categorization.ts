@@ -156,10 +156,17 @@ export type TransactionAnalysisUpdate = {
   spendingPattern: SpendingPattern | null;
 };
 
+export type ForecastIncomeBucket =
+  | "salary"
+  | "childBudget"
+  | "structuralOther"
+  | "variable";
+
 export type ForecastIncomeSource = {
   sourceKey: string;
   sourceLabel: string;
   expectedIncome: number;
+  incomeBucket: ForecastIncomeBucket | null;
   incomeFrequency: RecurringType;
   incomeDayOfMonth: number | null;
   lastDetectedAt: string;
@@ -199,6 +206,8 @@ export type MonthlyCashflowForecast = {
   remainingExpectedExpenseTotal: number;
   remainingExpectedSavingsOutflowTotal: number;
   expectedIncomeTotal: number;
+  expectedIncomeStructuralTotal: number;
+  expectedIncomeVariableTotal: number;
   expectedExpenseTotal: number;
   expectedSavingsOutflowTotal: number;
   expectedCashOutTotal: number;

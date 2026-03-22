@@ -17,6 +17,7 @@ export type ForecastMonthMathInput = {
   expectedFixedCostsBaseline: number;
   expectedSubscriptionsBaseline: number;
   expectedVariableCostsBaseline: number;
+  projectedVariableCostsTotal?: number | null;
   expectedSavingsOutflowBaseline: number;
   remainingCommittedFixedCosts: number;
   remainingCommittedSubscriptions: number;
@@ -67,7 +68,12 @@ export function buildForecastMonthMath(
     ),
   );
   const expectedVariableCosts = round2(
-    Math.max(input.expectedVariableCostsBaseline, input.bookedVariableCosts, 0),
+    Math.max(
+      input.projectedVariableCostsTotal ?? 0,
+      input.expectedVariableCostsBaseline,
+      input.bookedVariableCosts,
+      0,
+    ),
   );
   const expectedSavingsOutflowTotal = round2(
     Math.max(

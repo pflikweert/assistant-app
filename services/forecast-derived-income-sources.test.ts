@@ -83,16 +83,19 @@ describe("deriveIncomeSourcesFromTransactions", () => {
         expect.objectContaining({
           source_key: "werkgever bv",
           expected_income: 2400,
+          income_bucket: "salary",
           income_frequency: "monthly",
         }),
         expect.objectContaining({
           source_key: "belastingdienst",
           expected_income: 405,
+          income_bucket: "childBudget",
           income_frequency: "monthly",
         }),
         expect.objectContaining({
           source_key: "marktplaats",
           expected_income: 2508.65,
+          income_bucket: "variable",
           income_frequency: "irregular",
         }),
       ]),
@@ -108,6 +111,7 @@ describe("mergeForecastIncomeSources", () => {
           source_key: "belastingdienst",
           source_label: "Belastingdienst",
           expected_income: 405,
+          income_bucket: "childBudget",
           income_frequency: "monthly",
           income_day_of_month: 20,
           last_detected_at: "2026-02-20T12:00:00.000Z",
@@ -118,6 +122,7 @@ describe("mergeForecastIncomeSources", () => {
           source_key: "werkgever bv",
           source_label: "Werkgever BV",
           expected_income: 2400,
+          income_bucket: "salary",
           income_frequency: "monthly",
           income_day_of_month: 25,
           last_detected_at: "2026-02-25T12:00:00.000Z",
@@ -130,10 +135,12 @@ describe("mergeForecastIncomeSources", () => {
         expect.objectContaining({
           source_key: "werkgever bv",
           expected_income: 2400,
+          income_bucket: "salary",
         }),
         expect.objectContaining({
           source_key: "belastingdienst",
           expected_income: 405,
+          income_bucket: "childBudget",
         }),
       ]),
     );

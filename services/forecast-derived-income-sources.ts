@@ -1,6 +1,13 @@
 import { resolveExpectedDayOfMonth } from "./forecast-timeline";
-import { resolveIncomeSemanticsForTransaction } from "./income-semantics";
-import type { CategoryRecord, RecurringType } from "../types/categorization";
+import {
+  resolveForecastIncomeBucketForTransaction,
+  resolveForecastIncomeBucketFromValue,
+} from "./forecast-income-utils";
+import type {
+  CategoryRecord,
+  ForecastIncomeBucket,
+  RecurringType,
+} from "../types/categorization";
 
 type ForecastLikeTx = {
   date: string;
@@ -25,6 +32,7 @@ export type ForecastDerivedIncomeSource = {
   source_key: string;
   source_label: string;
   expected_income: number;
+  income_bucket: ForecastIncomeBucket | null;
   income_frequency: RecurringType;
   income_day_of_month: number | null;
   last_detected_at: string;
@@ -105,9 +113,8 @@ export function deriveIncomeSourcesFromTransactions(
   for (const tx of transactions) {
     if (tx.amount <= 0) continue;
     if (tx.budget_excluded) continue;
-
-    const semantics = resolveIncomeSemanticsForTransaction(tx, categoryMap);
-    if (!semantics.forecastEligible) continue;
+    const incomeBucket = resolveForecastIncomeBucketForTransaction(tx, categoryMap);
+    if (!incomeBucket) continue;
 
     const key = descriptor(tx);
     if (!key) continue;
@@ -148,6 +155,10 @@ export function deriveIncomeSourcesFromTransactions(
         source_label: labelForTransaction(latest),
         expected_income: weightedRecentAverage(
           sortedDesc.slice(0, 3).map((row) => Math.abs(row.amount)),
+        ),
+        income_bucket: resolveForecastIncomeBucketForTransaction(
+          latest,
+          categoryMap,
         ),
         income_frequency: recurringType,
         income_day_of_month:
@@ -190,6 +201,9 @@ export function mergeForecastIncomeSources(
       expected_income: round2(
         Math.max(existing.expected_income || 0, source.expected_income || 0),
       ),
+      income_bucket:
+        source.income_bucket ??
+        resolveForecastIncomeBucketFromValue(existing.income_bucket),
       income_frequency:
         source.income_frequency !== "irregular"
           ? source.income_frequency

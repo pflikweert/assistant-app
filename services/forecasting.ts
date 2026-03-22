@@ -7,8 +7,13 @@ import {
 } from "@/services/forecast-derived-income-sources";
 import { resolveForecastExpenseBaselines } from "@/services/forecast-expense-baseline";
 import { estimateRecentExpenseForecastFromHistory } from "@/services/forecast-expense-utils";
-import { resolveExpectedCashflowIncomeBaseline } from "@/services/forecast-income-baseline";
-import { isForecastEligibleIncomeTransaction } from "@/services/forecast-income-utils";
+import { resolveExpectedCashflowIncomeBaselineBreakdown } from "@/services/forecast-income-baseline";
+import {
+  isForecastEligibleIncomeTransaction,
+  isIncludedForecastIncomeBucket,
+  resolveForecastIncomeBucketForTransaction,
+  resolveForecastIncomeBucketFromValue,
+} from "@/services/forecast-income-utils";
 import { buildForecastMonthMath } from "@/services/forecast-month-math";
 import {
   buildForecastTimelineProjection,
@@ -22,6 +27,7 @@ import { detectRareSubscriptionItems } from "@/services/rare-subscriptions";
 import { supabase } from "@/services/supabase";
 import type {
   CategoryRecord,
+  ForecastIncomeBucket,
   RecurringType,
   SubscriptionProfile,
 } from "@/types/categorization";
@@ -54,6 +60,7 @@ type IncomeSourceRow = {
   source_key: string;
   source_label: string;
   expected_income: number;
+  income_bucket: ForecastIncomeBucket | null;
   income_frequency: RecurringType;
   income_day_of_month: number | null;
   last_detected_at: string;
@@ -66,7 +73,9 @@ type BalanceAnchor = {
 
 type BookedMonthTotals = {
   incomeTotal: number;
-  forecastEligibleIncomeTotal: number;
+  includedForecastEligibleIncomeTotal: number;
+  structuralIncomeTotal: number;
+  variableIncomeTotal: number;
   expenseTotal: number;
   savingsOutflowTotal: number;
   fixedCosts: number;
@@ -87,6 +96,8 @@ type StoredForecastSummary = {
   remainingExpectedExpenseTotal: number;
   remainingExpectedSavingsOutflowTotal: number;
   expectedIncomeTotal: number;
+  expectedIncomeStructuralTotal: number;
+  expectedIncomeVariableTotal: number;
   expectedExpenseTotal: number;
   expectedSavingsOutflowTotal: number;
   expectedCashOutTotal: number;
@@ -151,6 +162,13 @@ function addMonths(date: Date, months: number) {
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  const code = String((error as { code?: string })?.code || "");
+  const message = String((error as { message?: string })?.message || "").toLowerCase();
+  if (code === "42703") return true;
+  return message.includes("column") && message.includes("does not exist");
 }
 
 function parseSaldoValue(metadata: Record<string, unknown>) {
@@ -220,7 +238,9 @@ function labelForTransaction(tx: Pick<ForecastTx, "counterparty" | "details">) {
 function emptyBookedMonthTotals(): BookedMonthTotals {
   return {
     incomeTotal: 0,
-    forecastEligibleIncomeTotal: 0,
+    includedForecastEligibleIncomeTotal: 0,
+    structuralIncomeTotal: 0,
+    variableIncomeTotal: 0,
     expenseTotal: 0,
     savingsOutflowTotal: 0,
     fixedCosts: 0,
@@ -305,12 +325,23 @@ async function fetchCategoryMap() {
 }
 
 async function fetchIncomeSources(userId: string): Promise<IncomeSourceRow[]> {
-  const { data, error } = await supabase
+  const enhancedSelect =
+    "source_key,source_label,expected_income,income_bucket,income_frequency,income_day_of_month,last_detected_at";
+  const legacySelect =
+    "source_key,source_label,expected_income,income_frequency,income_day_of_month,last_detected_at";
+  let { data, error } = await supabase
     .from("forecast_income_sources")
-    .select(
-      "source_key,source_label,expected_income,income_frequency,income_day_of_month,last_detected_at",
-    )
+    .select(enhancedSelect)
     .eq("user_id", userId);
+
+  if (error && isMissingColumnError(error)) {
+    const legacyResult = await supabase
+      .from("forecast_income_sources")
+      .select(legacySelect)
+      .eq("user_id", userId);
+    data = legacyResult.data;
+    error = legacyResult.error;
+  }
 
   if (error) throw error;
 
@@ -318,6 +349,7 @@ async function fetchIncomeSources(userId: string): Promise<IncomeSourceRow[]> {
     source_key: String(row.source_key || ""),
     source_label: String(row.source_label || row.source_key || ""),
     expected_income: asNumber(row.expected_income, 0),
+    income_bucket: resolveForecastIncomeBucketFromValue(row.income_bucket as string | null),
     income_frequency: (row.income_frequency || "irregular") as RecurringType,
     income_day_of_month:
       row.income_day_of_month == null ? null : Number(row.income_day_of_month),
@@ -410,6 +442,19 @@ function sumEventAmounts(
   for (const event of events) {
     if (event.kind !== kind) continue;
     total += Math.abs(event.amount);
+  }
+  return round2(total);
+}
+
+function sumIncomeEventAmounts(
+  events: Iterable<ForecastTimelineEvent>,
+  predicate?: (event: ForecastTimelineEvent) => boolean,
+) {
+  let total = 0;
+  for (const event of events) {
+    if (event.kind !== "income" || event.amount <= 0) continue;
+    if (predicate && !predicate(event)) continue;
+    total += event.amount;
   }
   return round2(total);
 }
@@ -535,6 +580,10 @@ function buildRecurringHistoryEvents(params: {
             : latest.analysis_category === "subscriptions"
               ? "subscription"
               : "fixed_cost",
+      incomeBucket:
+        direction === "income"
+          ? resolveForecastIncomeBucketForTransaction(latest, categoryMap)
+          : undefined,
       source: "recurring_history",
       confidence: similarRows.length >= 3 ? "high" : "medium",
     });
@@ -604,6 +653,7 @@ function mergeIncomeSourceEvents(params: {
       label: source.source_label || source.source_key,
       amount: source.expected_income,
       kind: "income",
+      incomeBucket: source.income_bucket,
       source: "income_source",
       confidence: source.income_day_of_month != null ? "high" : "medium",
     });
@@ -714,12 +764,28 @@ function mergeRareSubscriptionEvents(params: {
 function summarizeBookedMonthTransactions(params: {
   transactions: ForecastTx[];
   categoryMap: Map<string, CategoryRecord>;
+  forecastSettings:
+    | {
+        includeIncome?: {
+          salary: boolean;
+          childBudget: boolean;
+          structuralOther: boolean;
+          variable: boolean;
+        };
+      }
+    | null;
   monthStartIso: string;
   monthEndIso: string;
   referenceIso: string;
 }) {
-  const { transactions, categoryMap, monthStartIso, monthEndIso, referenceIso } =
-    params;
+  const {
+    transactions,
+    categoryMap,
+    forecastSettings,
+    monthStartIso,
+    monthEndIso,
+    referenceIso,
+  } = params;
   const totals = emptyBookedMonthTotals();
 
   for (const tx of transactions) {
@@ -730,9 +796,18 @@ function summarizeBookedMonthTransactions(params: {
     if (tx.amount > 0) {
       const semantics = resolveIncomeSemanticsForTransaction(tx, categoryMap);
       if (!semantics.countsAsIncome) continue;
+      const incomeBucket = resolveForecastIncomeBucketForTransaction(tx, categoryMap);
       totals.incomeTotal += tx.amount;
-      if (semantics.forecastEligible) {
-        totals.forecastEligibleIncomeTotal += tx.amount;
+      if (incomeBucket === "variable") {
+        totals.variableIncomeTotal += tx.amount;
+      } else if (incomeBucket) {
+        totals.structuralIncomeTotal += tx.amount;
+      }
+      if (
+        semantics.forecastEligible &&
+        isIncludedForecastIncomeBucket(incomeBucket, forecastSettings)
+      ) {
+        totals.includedForecastEligibleIncomeTotal += tx.amount;
       }
       continue;
     }
@@ -765,7 +840,11 @@ function summarizeBookedMonthTransactions(params: {
 
   return {
     incomeTotal: round2(totals.incomeTotal),
-    forecastEligibleIncomeTotal: round2(totals.forecastEligibleIncomeTotal),
+    includedForecastEligibleIncomeTotal: round2(
+      totals.includedForecastEligibleIncomeTotal,
+    ),
+    structuralIncomeTotal: round2(totals.structuralIncomeTotal),
+    variableIncomeTotal: round2(totals.variableIncomeTotal),
     expenseTotal: round2(totals.expenseTotal),
     savingsOutflowTotal: round2(totals.savingsOutflowTotal),
     fixedCosts: round2(totals.fixedCosts),
@@ -841,6 +920,8 @@ function toStoredForecastRow(row: StoredForecastSummary, userId: string) {
     remaining_expected_savings_outflow_total:
       row.remainingExpectedSavingsOutflowTotal,
     expected_income_total: row.expectedIncomeTotal,
+    expected_income_structural_total: row.expectedIncomeStructuralTotal,
+    expected_income_variable_total: row.expectedIncomeVariableTotal,
     expected_expense_total: row.expectedExpenseTotal,
     expected_savings_outflow_total: row.expectedSavingsOutflowTotal,
     expected_cash_out_total: row.expectedCashOutTotal,
@@ -970,6 +1051,7 @@ export async function recomputeCurrentMonthCashflowForecast(
     const booked = summarizeBookedMonthTransactions({
       transactions,
       categoryMap,
+      forecastSettings: budgetPlanForMonth?.settings || null,
       monthStartIso,
       monthEndIso,
       referenceIso,
@@ -1026,10 +1108,21 @@ export async function recomputeCurrentMonthCashflowForecast(
       referenceDate,
     });
 
-    const remainingCommittedIncomeTotal = round2(
-      [...incomeEvents.values()]
-        .filter((event) => event.amount > 0)
-        .reduce((sum, event) => sum + event.amount, 0),
+    const includedIncomeEvents = [...incomeEvents.values()].filter((event) =>
+      isIncludedForecastIncomeBucket(
+        event.incomeBucket,
+        budgetPlanForMonth?.settings || null,
+      ),
+    );
+    const remainingCommittedIncomeTotal = sumIncomeEventAmounts(includedIncomeEvents);
+    const remainingIncomeStructuralTotal = sumIncomeEventAmounts(
+      includedIncomeEvents,
+      (event) =>
+        event.incomeBucket != null && event.incomeBucket !== "variable",
+    );
+    const remainingIncomeVariableTotal = sumIncomeEventAmounts(
+      includedIncomeEvents,
+      (event) => event.incomeBucket === "variable",
     );
     const remainingCommittedFixedCosts = sumEventAmounts(
       expenseEvents.values(),
@@ -1047,11 +1140,12 @@ export async function recomputeCurrentMonthCashflowForecast(
     const monthToDateExpenses = monthDiff === 0
       ? budgetPlanForMonth?.monthToDateExpenses || null
       : null;
-    const expectedIncomeBaseline = resolveExpectedCashflowIncomeBaseline({
+    const incomeBaselines = resolveExpectedCashflowIncomeBaselineBreakdown({
       monthStart,
       budgetPlan: budgetPlanForMonth,
       incomeSources: resolvedIncomeSources,
     });
+    const expectedIncomeBaseline = incomeBaselines.total;
     const expenseBaselines = resolveForecastExpenseBaselines({
       historyForecast: expenseHistoryForecast,
       budgetPlan: budgetPlanForMonth,
@@ -1073,7 +1167,7 @@ export async function recomputeCurrentMonthCashflowForecast(
       startingBalance,
       currentBalanceAnchor: knownBalance.balance,
       bookedIncomeTotal: booked.incomeTotal,
-      bookedForecastEligibleIncomeTotal: booked.forecastEligibleIncomeTotal,
+      bookedForecastEligibleIncomeTotal: booked.includedForecastEligibleIncomeTotal,
       bookedExpenseTotal: booked.expenseTotal,
       bookedSavingsOutflowTotal: booked.savingsOutflowTotal,
       bookedFixedCosts: booked.fixedCosts,
@@ -1084,6 +1178,7 @@ export async function recomputeCurrentMonthCashflowForecast(
       expectedFixedCostsBaseline: expenseBaselines.fixedCosts,
       expectedSubscriptionsBaseline: expenseBaselines.subscriptions,
       expectedVariableCostsBaseline: expenseBaselines.variableCosts,
+      projectedVariableCostsTotal: expenseBaselines.projectedVariableCostsTotal,
       expectedSavingsOutflowBaseline: expenseBaselines.savingsTransfers,
       remainingCommittedFixedCosts,
       remainingCommittedSubscriptions,
@@ -1097,9 +1192,24 @@ export async function recomputeCurrentMonthCashflowForecast(
       events: [
         ...expenseEvents.values(),
         ...recurringSavingsEvents.values(),
-        ...incomeEvents.values(),
+        ...includedIncomeEvents,
       ] as ForecastTimelineEvent[],
     });
+
+    const expectedIncomeStructuralTotal = round2(
+      Math.max(
+        booked.structuralIncomeTotal + remainingIncomeStructuralTotal,
+        incomeBaselines.structural,
+        booked.structuralIncomeTotal,
+      ),
+    );
+    const expectedIncomeVariableTotal = round2(
+      Math.max(
+        booked.variableIncomeTotal + remainingIncomeVariableTotal,
+        incomeBaselines.variable,
+        booked.variableIncomeTotal,
+      ),
+    );
 
     const topCostBuckets = buildTopCostBuckets({
       expectedFixedCosts: math.expectedFixedCosts,
@@ -1122,6 +1232,8 @@ export async function recomputeCurrentMonthCashflowForecast(
       remainingExpectedSavingsOutflowTotal:
         math.remainingExpectedSavingsOutflowTotal,
       expectedIncomeTotal: math.expectedIncomeTotal,
+      expectedIncomeStructuralTotal,
+      expectedIncomeVariableTotal,
       expectedExpenseTotal: math.expectedExpenseTotal,
       expectedSavingsOutflowTotal: math.expectedSavingsOutflowTotal,
       expectedCashOutTotal: math.expectedCashOutTotal,
@@ -1152,10 +1264,25 @@ export async function recomputeCurrentMonthCashflowForecast(
     chainedStartingBalance = row.expectedEndOfMonthBalance;
   }
 
-  const { error } = await supabase.from("monthly_cashflow_forecasts").upsert(
-    forecastRows.map((row) => toStoredForecastRow(row, userId)),
-    { onConflict: "user_id,month_start" },
-  );
+  const upsertRows = forecastRows.map((row) => toStoredForecastRow(row, userId));
+  let { error } = await supabase
+    .from("monthly_cashflow_forecasts")
+    .upsert(upsertRows, { onConflict: "user_id,month_start" });
+
+  if (error && isMissingColumnError(error)) {
+    const fallbackRows = upsertRows.map(
+      ({
+        expected_income_structural_total: _expectedIncomeStructuralTotal,
+        expected_income_variable_total: _expectedIncomeVariableTotal,
+        ...row
+      }) => row,
+    );
+    error = (
+      await supabase
+        .from("monthly_cashflow_forecasts")
+        .upsert(fallbackRows, { onConflict: "user_id,month_start" })
+    ).error;
+  }
 
   if (error) throw error;
 
@@ -1164,6 +1291,8 @@ export async function recomputeCurrentMonthCashflowForecast(
     forecastRows[0] || {
       monthStart: targetMonthStartIso,
       expectedIncomeTotal: 0,
+      expectedIncomeStructuralTotal: 0,
+      expectedIncomeVariableTotal: 0,
       expectedExpenseTotal: 0,
       expectedEndOfMonthBalance: null,
       riskFlag: "none" as const,

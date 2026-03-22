@@ -1,10 +1,11 @@
-import type { RecurringType } from "@/types/categorization";
+import type { ForecastIncomeBucket, RecurringType } from "@/types/categorization";
 
 export type ForecastTimelineEvent = {
   date: string;
   label: string;
   amount: number;
   kind: "income" | "fixed_cost" | "subscription" | "savings_transfer";
+  incomeBucket?: ForecastIncomeBucket | null;
   source:
     | "income_source"
     | "recurring_history"
