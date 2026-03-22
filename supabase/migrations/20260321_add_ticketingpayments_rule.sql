@@ -1,7 +1,6 @@
 -- Migration: classify TicketingPayments as tickets/events
 
 begin;
-
 with target_category as (
   select id
   from public.categories
@@ -32,7 +31,6 @@ on conflict (pattern_normalized, pattern_type) do update
       updated_at = now()
 where public.category_rules.is_system = true
    or public.category_rules.hit_count = 0;
-
 with target_category as (
   select id
   from public.categories
@@ -51,5 +49,4 @@ where tx.category_id_user is null
     lower(coalesce(tx.counterparty, '')) = 'ticketingpayments'
     or lower(coalesce(tx.details, '')) like '%ticketingpayments%'
   );
-
 commit;

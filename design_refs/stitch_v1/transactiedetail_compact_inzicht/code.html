@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+
+<html class="light" lang="nl"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Manrope:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-primary-container": "#594a00",
+              "primary": "#6d5a00",
+              "on-primary": "#fff2ce",
+              "surface-container": "#e6e8ea",
+              "outline": "#757778",
+              "tertiary-container": "#e3fd74",
+              "primary-fixed-dim": "#edc600",
+              "on-secondary-container": "#4c5355",
+              "error-dim": "#b92902",
+              "error": "#b02500",
+              "inverse-surface": "#0c0f10",
+              "surface-bright": "#f5f6f7",
+              "on-tertiary-container": "#516000",
+              "secondary-dim": "#4a5153",
+              "on-secondary": "#edf4f6",
+              "on-surface": "#2c2f30",
+              "secondary-fixed": "#dde4e6",
+              "background": "#f5f6f7",
+              "surface-dim": "#d1d5d7",
+              "secondary-container": "#dde4e6",
+              "primary-fixed": "#fdd404",
+              "on-tertiary": "#e5ff76",
+              "inverse-primary": "#fdd404",
+              "on-tertiary-fixed-variant": "#5b6b00",
+              "surface-variant": "#dadddf",
+              "error-container": "#f95630",
+              "on-secondary-fixed": "#394043",
+              "secondary": "#565d5f",
+              "surface-tint": "#6d5a00",
+              "secondary-fixed-dim": "#cfd6d8",
+              "surface-container-low": "#eff1f2",
+              "on-tertiary-fixed": "#414d00",
+              "on-secondary-fixed-variant": "#565d5f",
+              "primary-container": "#fdd404",
+              "surface": "#f5f6f7",
+              "tertiary": "#536200",
+              "outline-variant": "#abadae",
+              "surface-container-lowest": "#ffffff",
+              "tertiary-fixed-dim": "#d5ee68",
+              "surface-container-highest": "#dadddf",
+              "on-primary-fixed": "#433700",
+              "on-background": "#2c2f30",
+              "on-primary-fixed-variant": "#645300",
+              "on-error": "#ffefec",
+              "surface-container-high": "#e0e3e4",
+              "on-surface-variant": "#595c5d",
+              "on-error-container": "#520c00",
+              "primary-dim": "#5f4e00",
+              "inverse-on-surface": "#9b9d9e",
+              "tertiary-dim": "#485500",
+              "tertiary-fixed": "#e3fd74"
+            },
+            fontFamily: {
+              "headline": ["Plus Jakarta Sans"],
+              "body": ["Manrope"],
+              "label": ["Manrope"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .soft-press:active { transform: scale(0.96); transition: transform 0.1s ease-out; }
+        body {
+            min-height: max(884px, 100dvh);
+        }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface selection:bg-primary-container">
+<!-- Top Navigation Shell -->
+<header class="fixed top-0 w-full z-50 bg-surface">
+<div class="flex items-center justify-between px-6 h-16 w-full">
+<button class="text-on-surface-variant hover:bg-surface-variant/50 active:scale-95 duration-200 ease-out p-2 rounded-full">
+<span class="material-symbols-outlined" data-icon="arrow_back">arrow_back</span>
+</button>
+<h1 class="font-headline font-bold text-lg tracking-tight text-on-surface">Transactie</h1>
+<button class="text-on-surface-variant hover:bg-surface-variant/50 active:scale-95 duration-200 ease-out p-2 rounded-full">
+<span class="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+</header>
+<main class="pt-16 pb-32">
+<!-- Hero Section: More compact -->
+<section class="bg-surface pt-6 pb-10 px-8 text-center flex flex-col items-center">
+<div class="w-16 h-16 bg-surface-container-lowest rounded-full shadow-[0_8px_30px_rgba(12,15,16,0.03)] flex items-center justify-center mb-4">
+<span class="material-symbols-outlined text-3xl text-primary" data-icon="shopping_cart">shopping_cart</span>
+</div>
+<h2 class="font-headline font-extrabold text-xl tracking-tight mb-0.5">Albert Heijn</h2>
+<div class="font-headline font-black text-3xl tracking-tighter text-on-surface mb-3">- €42,85</div>
+<div class="flex flex-col gap-1 items-center">
+<span class="text-on-surface-variant font-medium text-xs">Vandaag, 14:22</span>
+<div class="flex items-center gap-1.5 px-3 py-1 bg-surface-container-low rounded-full">
+<span class="material-symbols-outlined text-[12px] text-on-surface-variant" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="text-on-surface-variant font-bold text-[10px] tracking-wide">SALDO: €1.240,15</span>
+</div>
+</div>
+</section>
+<!-- Detail Section: Rounded White Content -->
+<section class="bg-surface-container-lowest w-full px-6 py-10 relative z-10 rounded-t-[3rem] shadow-[0_-12px_40px_rgba(0,0,0,0.02)]">
+<!-- Description -->
+<div class="mb-10">
+<label class="font-label font-bold text-[11px] uppercase tracking-[0.1em] text-on-surface-variant mb-3 block">Omschrijving</label>
+<p class="text-on-surface font-medium text-lg leading-relaxed">Wekelijkse boodschappen voor het gezin</p>
+</div>
+<!-- Category & Recategorize -->
+<div class="mb-10 flex items-center justify-between">
+<div>
+<label class="font-label font-bold text-[11px] uppercase tracking-[0.1em] text-on-surface-variant mb-1 block">Categorie</label>
+<div class="flex items-center gap-2">
+<span class="text-on-surface font-bold text-lg">Boodschappen</span>
+<span class="material-symbols-outlined text-sm text-outline-variant" data-icon="chevron_right">chevron_right</span>
+<span class="text-on-surface font-bold text-lg">Supermarkt</span>
+</div>
+</div>
+<button class="w-12 h-12 flex items-center justify-center rounded-full bg-surface-container-low text-primary shadow-sm active:scale-95 transition-all">
+<span class="material-symbols-outlined" data-icon="edit">edit</span>
+</button>
+</div>
+<!-- Unified Budget Status & Toggle -->
+<div class="mb-6 p-5 bg-surface-container-low rounded-3xl flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container-lowest text-primary">
+<span class="material-symbols-outlined" data-icon="check_circle">check_circle</span>
+</div>
+<div>
+<span class="block font-bold text-on-surface text-sm">Status: Binnen budget opgenomen</span>
+<span class="text-xs text-on-surface-variant">Markeer als uitzondering</span>
+</div>
+</div>
+<!-- Exception Toggle -->
+<button class="w-14 h-8 bg-surface-variant/40 rounded-full p-1 flex items-center justify-start transition-colors">
+<div class="w-6 h-6 bg-surface-container-lowest rounded-full shadow-sm"></div>
+</button>
+</div>
+<!-- Insight Card (Inzicht kaartje) -->
+<div class="mb-10 p-5 bg-yellow-50/80 border border-yellow-100/50 rounded-3xl flex gap-4">
+<div class="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-yellow-100 text-yellow-700">
+<span class="material-symbols-outlined" data-icon="lightbulb" style="font-variation-settings: 'FILL' 1;">lightbulb</span>
+</div>
+<p class="text-sm text-yellow-900/80 leading-snug">
+                Je hebt deze maand al <span class="font-bold">4 keer</span> bij Albert Heijn afgerekend. Dit is <span class="font-bold">12% minder</span> dan vorige maand rond deze tijd. Goed bezig!
+            </p>
+</div>
+<!-- Action Buttons Grid -->
+<div class="grid grid-cols-3 gap-3 mb-12">
+<button class="flex flex-col items-center justify-center gap-2 p-4 bg-surface-container-low rounded-3xl active:scale-95 transition-all group">
+<span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform" data-icon="category">category</span>
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Aanpassen</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-2 p-4 bg-surface-container-low rounded-3xl active:scale-95 transition-all group">
+<span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform" data-icon="call_split">call_split</span>
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Splits</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-2 p-4 bg-surface-container-low rounded-3xl active:scale-95 transition-all group">
+<span class="material-symbols-outlined text-primary group-hover:scale-110 transition-transform" data-icon="event_repeat">event_repeat</span>
+<span class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Terugkerend</span>
+</button>
+</div>
+<!-- Subscription Section -->
+<div class="bg-primary-container/20 p-6 rounded-3xl mb-12 relative overflow-hidden ring-1 ring-primary-container/30">
+<div class="flex items-center gap-4 mb-5">
+<div class="w-12 h-12 bg-primary-container flex items-center justify-center rounded-full shadow-sm">
+<span class="material-symbols-outlined text-on-primary-container" data-icon="auto_awesome" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+<div>
+<h3 class="font-headline font-bold text-on-primary-container">Mogelijk abonnement</h3>
+<p class="text-sm text-on-primary-container/80 leading-tight">We hebben dit herkend als een vaste last.</p>
+</div>
+</div>
+<button class="w-full bg-primary text-on-primary font-bold py-4 px-6 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-[0.98] transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="link" style="font-variation-settings: 'FILL' 1;">link</span>
+                Koppel aan abonnement
+            </button>
+</div>
+<!-- Secondary Metadata Section -->
+<div class="flex flex-col gap-8 mb-12">
+<div class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline-variant" data-icon="payments">payments</span>
+<div>
+<span class="block font-bold text-sm text-on-surface">Betaalmethode</span>
+<span class="text-on-surface-variant text-sm">ING Betaalpas (**** 4821)</span>
+</div>
+</div>
+<div class="flex items-start gap-4">
+<span class="material-symbols-outlined text-outline-variant" data-icon="location_on">location_on</span>
+<div class="flex-1">
+<span class="block font-bold text-sm text-on-surface">Locatie</span>
+<span class="text-on-surface-variant text-sm">Gedempte Gracht, Zaandam</span>
+<div class="mt-4 w-full h-40 bg-surface-container rounded-3xl overflow-hidden grayscale contrast-125 opacity-90">
+<img class="w-full h-full object-cover" data-alt="Minimalistische plattegrond van Zaandam" data-location="Zaandam" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBluVeDo6kypXFX35s7AOChPUEFCeUINO5jiQ4F8vZCUlo0B9jgGGJNYVawP8sQ5pxmvx0TyDTUVcZQf3Y4atfamZooHIiR9MAFDW4M9gYloyBeJWDvYAT0jSO5BVSZeK4vuISg8G05-qoXZGUMZqY-1o_fPi5E_sI4Wa1uJanAdu2KqOQh7pTaBQVzie5b31d7w-KzK-FbzsyJC1FugNUCHeVThMmo5KgFuyMlI1x2hir5aMKWd5XDgwerh-5i5qt7RXfw8EhoQTI"/>
+</div>
+</div>
+</div>
+</div>
+<!-- Transaction History -->
+<div class="pt-10 border-t border-surface-variant/20">
+<div class="flex items-center justify-between mb-6">
+<h3 class="font-headline font-bold text-lg">Historie</h3>
+<button class="text-primary font-bold text-sm">Bekijk alles</button>
+</div>
+<div class="space-y-3">
+<!-- History Item 1 -->
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-3xl">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 bg-surface-container-lowest rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="shopping_cart">shopping_cart</span>
+</div>
+<div>
+<span class="block font-bold text-on-surface text-sm">Albert Heijn</span>
+<span class="text-xs text-on-surface-variant">12 Jan 2024</span>
+</div>
+</div>
+<div class="text-right">
+<span class="block font-bold text-on-surface text-sm">- €31,20</span>
+<span class="text-[10px] text-outline-variant font-bold">€1.420,00</span>
+</div>
+</div>
+<!-- History Item 2 -->
+<div class="flex items-center justify-between p-4 bg-surface-container-low rounded-3xl">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 bg-surface-container-lowest rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-xl" data-icon="shopping_cart">shopping_cart</span>
+</div>
+<div>
+<span class="block font-bold text-on-surface text-sm">Albert Heijn</span>
+<span class="text-xs text-on-surface-variant">05 Jan 2024</span>
+</div>
+</div>
+<div class="text-right">
+<span class="block font-bold text-on-surface text-sm">- €48,50</span>
+<span class="text-[10px] text-outline-variant font-bold">€1.451,20</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation Shell -->
+<nav class="fixed bottom-0 left-0 w-full h-24 bg-surface/90 backdrop-blur-3xl flex justify-around items-center px-8 pb-4 z-50">
+<div class="flex flex-col items-center justify-center text-on-surface-variant px-5 py-2 hover:text-primary transition-all soft-press">
+<span class="material-symbols-outlined mb-1" data-icon="grid_view">grid_view</span>
+<span class="font-headline font-medium text-[10px] tracking-wide uppercase">Overzicht</span>
+</div>
+<div class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-5 py-2 scale-105 shadow-sm transition-all soft-press">
+<span class="material-symbols-outlined mb-1" data-icon="receipt_long" style="font-variation-settings: 'FILL' 1;">receipt_long</span>
+<span class="font-headline font-medium text-[10px] tracking-wide uppercase">Transacties</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant px-5 py-2 hover:text-primary transition-all soft-press">
+<span class="material-symbols-outlined mb-1" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-headline font-medium text-[10px] tracking-wide uppercase">Sparen</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant px-5 py-2 hover:text-primary transition-all soft-press">
+<span class="material-symbols-outlined mb-1" data-icon="person">person</span>
+<span class="font-headline font-medium text-[10px] tracking-wide uppercase">Profiel</span>
+</div>
+</nav>
+</body></html>

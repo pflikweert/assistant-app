@@ -1,8 +1,6 @@
 begin;
-
 alter table public.transactions
   drop constraint if exists transactions_analysis_category_check;
-
 alter table public.transactions
   add constraint transactions_analysis_category_check
   check (
@@ -16,7 +14,6 @@ alter table public.transactions
     )
     or analysis_category is null
   );
-
 with savings_categories as (
   select id
   from public.categories
@@ -41,5 +38,4 @@ where
     )
   )
   and coalesce(t.analysis_category, '') <> 'savings_transfer';
-
 commit;

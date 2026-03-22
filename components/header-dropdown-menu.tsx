@@ -136,7 +136,6 @@ const styles = StyleSheet.create({
     borderColor: FinColors.borderSubtle,
     backgroundColor: FinColors.bgCard,
     padding: 14,
-    gap: 4,
   },
   panelTitle: {
     fontSize: 11,
@@ -150,7 +149,6 @@ const styles = StyleSheet.create({
   item: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "transparent",
@@ -173,5 +171,6 @@ const styles = StyleSheet.create({
   itemIconWrap: {
     width: 24,
     alignItems: "center",
+    marginRight: 10,
   },
 });

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+
+<html class="light" lang="nl"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Mijn Financiën - Grip op je geld</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&amp;family=Manrope:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "background": "#f5f6f7",
+              "primary-fixed": "#fdd404",
+              "surface-container-high": "#e0e3e4",
+              "on-secondary-fixed-variant": "#565d5f",
+              "tertiary": "#536200",
+              "primary": "#6d5a00",
+              "on-tertiary-fixed-variant": "#5b6b00",
+              "error-dim": "#b92902",
+              "tertiary-dim": "#485500",
+              "tertiary-fixed": "#e3fd74",
+              "primary-fixed-dim": "#edc600",
+              "tertiary-container": "#e3fd74",
+              "on-primary": "#fff2ce",
+              "surface-dim": "#d1d5d7",
+              "on-secondary-fixed": "#394043",
+              "surface-variant": "#dadddf",
+              "on-tertiary-container": "#516000",
+              "secondary-container": "#dde4e6",
+              "surface-tint": "#6d5a00",
+              "on-error-container": "#520c00",
+              "on-tertiary": "#e5ff76",
+              "on-primary-container": "#594a00",
+              "on-primary-fixed-variant": "#645300",
+              "on-background": "#2c2f30",
+              "tertiary-fixed-dim": "#d5ee68",
+              "primary-container": "#fdd404",
+              "surface-container-highest": "#dadddf",
+              "surface-container-lowest": "#ffffff",
+              "secondary-dim": "#4a5153",
+              "on-surface-variant": "#595c5d",
+              "error": "#b02500",
+              "on-secondary-container": "#4c5355",
+              "secondary": "#565d5f",
+              "surface-bright": "#f5f6f7",
+              "surface-container": "#e6e8ea",
+              "surface": "#f5f6f7",
+              "primary-dim": "#5f4e00",
+              "inverse-on-surface": "#9b9d9e",
+              "on-tertiary-fixed": "#414d00",
+              "outline": "#757778",
+              "surface-container-low": "#eff1f2",
+              "error-container": "#f95630",
+              "on-secondary": "#edf4f6",
+              "on-error": "#ffefec",
+              "on-surface": "#2c2f30",
+              "secondary-fixed": "#dde4e6",
+              "outline-variant": "#abadae",
+              "on-primary-fixed": "#433700",
+              "inverse-primary": "#fdd404",
+              "secondary-fixed-dim": "#cfd6d8",
+              "inverse-surface": "#0c0f10"
+            },
+            fontFamily: {
+              "headline": ["Plus Jakarta Sans"],
+              "body": ["Manrope"],
+              "label": ["Manrope"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-header {
+            background: rgba(245, 246, 247, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .hero-gradient {
+            background: linear-gradient(135deg, #f5f6f7 0%, #eff1f2 100%);
+        }
+        .cta-gradient {
+            background: linear-gradient(135deg, #6d5a00 0%, #5f4e00 100%);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background font-body selection:bg-primary-container selection:text-on-primary-container overflow-x-hidden">
+<!-- TopAppBar Shell (suppressed for landing/onboarding as per policy, but kept as a minimal brand anchor if needed. Here we use a clean header) -->
+<nav class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-5 glass-header">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary text-xl" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+<span class="font-headline font-bold tracking-tight text-xl text-on-background">Mijn Financiën</span>
+</div>
+<a class="text-sm font-semibold text-primary hover:opacity-80 transition-opacity font-label uppercase tracking-wider" href="#">Login</a>
+</nav>
+<main class="relative pt-24 pb-32">
+<!-- Hero Section -->
+<section class="px-6 md:px-12 max-w-5xl mx-auto">
+<div class="flex flex-col items-start gap-8">
+<!-- Visual Anchor -->
+<div class="w-full h-[353px] md:h-[442px] rounded-xl overflow-hidden relative surface-container-low mb-4">
+<img alt="Abstract financial flow" class="w-full h-full object-cover mix-blend-multiply opacity-60" data-alt="Abstract minimal composition of soft flowing waves in white and grey" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD9U3wK5SFQwyflN_3m1s0ox6goWM3JkunMV0-L5XyjK9be7n-SM5Jcdctzyzt-l3OPY9iTioRFNI8oWYe5MOzrWg2lFkogxqHchvxnSCU7TlfjMDjzHb0DpnIQQuDVGgMZvjLDws8m9NoHkJnpwb3QuMj0wCl1l-nOwTOOIvsgfFmax87JtdmulBNA1EFJQ79ikoJHVVz3p9iK3TMfW00qblHxJXLx59XKKgzn5KYMsfJgvQlUYTiUeW91s6YvnVz7g69s4QzotbA"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent"></div>
+<!-- Floating Data Pill (Tactile Premium) -->
+<div class="absolute bottom-6 left-6 right-6 p-6 rounded-lg bg-surface-container-lowest/80 backdrop-blur-md shadow-lg flex items-center justify-between">
+<div class="flex flex-col">
+<span class="text-[10px] font-label font-bold uppercase tracking-widest text-on-surface-variant">Huidig Saldo</span>
+<span class="text-2xl font-headline font-extrabold tracking-tighter text-on-surface">€ 4.280,50</span>
+</div>
+<div class="w-12 h-12 rounded-full bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-container" data-icon="trending_up">trending_up</span>
+</div>
+</div>
+</div>
+<div class="max-w-2xl">
+<h1 class="text-5xl md:text-7xl font-headline font-extrabold tracking-tight leading-[1.1] text-on-background mb-6">
+                        Krijg grip op je geld met <span class="text-primary">rust</span> en overzicht.
+                    </h1>
+<p class="text-lg md:text-xl text-on-surface-variant leading-relaxed font-medium">
+                        Een slimme, minimalistische manier om je persoonlijke financiën te beheren zonder de drukte. Focus op wat echt telt.
+                    </p>
+</div>
+<div class="flex flex-col sm:flex-row items-center gap-6 w-full sm:w-auto">
+<button class="w-full sm:w-auto px-10 py-5 bg-primary-container text-on-primary-container rounded-full font-headline font-bold text-lg shadow-sm hover:scale-[1.02] active:scale-95 transition-all duration-300">
+                        Aan de slag
+                    </button>
+<a class="font-label font-bold text-on-surface-variant hover:text-primary transition-colors flex items-center gap-2" href="#">
+                        Al een account? Log in
+                        <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>
+</a>
+</div>
+</div>
+</section>
+<!-- Bento Grid Features (Tactile Premium Layers) -->
+<section class="mt-24 px-6 md:px-12 max-w-5xl mx-auto">
+<div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+<!-- Large Feature Card -->
+<div class="md:col-span-8 p-8 md:p-12 rounded-xl bg-surface-container-low flex flex-col justify-between min-h-[400px]">
+<div>
+<span class="inline-block px-4 py-1.5 rounded-full bg-surface-container-highest text-[10px] font-label font-extrabold uppercase tracking-widest text-on-surface-variant mb-6">Automatisering</span>
+<h3 class="text-3xl font-headline font-bold tracking-tight text-on-surface mb-4">Slim sparen zonder erbij na te denken.</h3>
+<p class="text-on-surface-variant max-w-md">Onze algoritmes vinden onopgemerkte kansen om te besparen op basis van jouw uitgavenpatroon.</p>
+</div>
+<div class="mt-8">
+<div class="h-2 w-full bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full w-[65%] bg-gradient-to-r from-primary to-primary-fixed rounded-full"></div>
+</div>
+<div class="flex justify-between mt-3">
+<span class="text-xs font-label font-bold text-on-surface-variant">Spaardoel: Vakantie 2024</span>
+<span class="text-xs font-label font-bold text-primary">65% voltooid</span>
+</div>
+</div>
+</div>
+<!-- Small Feature Card 1 -->
+<div class="md:col-span-4 p-8 rounded-xl bg-surface-container-lowest shadow-[0_12px_40px_rgba(12,15,16,0.03)] flex flex-col gap-6">
+<div class="w-14 h-14 rounded-full bg-surface-container-low flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-3xl" data-icon="security">security</span>
+</div>
+<div>
+<h4 class="text-xl font-headline font-bold text-on-surface mb-2">Veiligheid eerst</h4>
+<p class="text-sm text-on-surface-variant leading-relaxed">Bank-grade encryptie voor al je transacties en persoonlijke data.</p>
+</div>
+</div>
+<!-- Small Feature Card 2 -->
+<div class="md:col-span-4 p-8 rounded-xl bg-surface-container-low flex flex-col gap-6">
+<div class="w-14 h-14 rounded-full bg-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-container text-3xl" data-icon="bolt">bolt</span>
+</div>
+<div>
+<h4 class="text-xl font-headline font-bold text-on-surface mb-2">Direct inzicht</h4>
+<p class="text-sm text-on-surface-variant leading-relaxed">Koppel je bank in seconden en zie direct waar je geld naartoe gaat.</p>
+</div>
+</div>
+<!-- Medium Feature Card -->
+<div class="md:col-span-8 p-8 md:p-12 rounded-xl bg-surface-container-highest flex flex-col md:flex-row items-center gap-8 overflow-hidden">
+<div class="flex-1">
+<h3 class="text-2xl font-headline font-bold text-on-surface mb-4">Minder ruis, meer focus.</h3>
+<p class="text-sm text-on-surface-variant mb-6">Geen ingewikkelde grafieken. Alleen wat je moet weten om vandaag betere keuzes te maken.</p>
+<button class="px-6 py-3 bg-on-surface text-surface rounded-full text-sm font-bold font-label hover:opacity-90 transition-opacity">Bekijk Demo</button>
+</div>
+<div class="relative w-full md:w-1/2 h-48 md:h-full">
+<img alt="Interface detail" class="absolute top-0 left-0 w-full h-full object-cover rounded-lg rotate-2 shadow-xl scale-110" data-alt="Close up of a clean mobile UI displaying financial data" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDWm_u-vmE_BFXmwZeUrpA4UO61iQqLi6NZTFsE4bt4kJpAU035a896QzhIXcoG8WRzc9NrjBhNsci0ododLD2apF5VuMiPavyEtyb0vm4u88RJ3RTHsjGzguxblVq0mWJWt6Ao4O8QbEIvY4ZxT6tyN8hx6O9TkIrMilBT6at4WSuyUHkCPlh9Jnd90nGNMXrCogjZ43lywVspoCU7ZOo2nIwGxhxgfMzmFqrh2xOOMMMTgDrkmvdTk2KXe-7_X1KmIqb6qoEmVO4"/>
+</div>
+</div>
+</div>
+</section>
+<!-- Final CTA Section -->
+<section class="mt-32 px-6 md:px-12 text-center max-w-3xl mx-auto">
+<h2 class="text-4xl font-headline font-extrabold tracking-tight text-on-background mb-6">Klaar voor financiële rust?</h2>
+<p class="text-on-surface-variant mb-10 text-lg">Sluit je aan bij duizenden gebruikers die hun financiële toekomst al hebben getransformeerd.</p>
+<div class="flex flex-col items-center gap-4">
+<button class="px-12 py-6 bg-primary text-on-primary rounded-full font-headline font-bold text-xl shadow-lg hover:shadow-xl transition-all active:scale-95">
+                    Begin nu gratis
+                </button>
+<p class="text-xs font-label text-on-surface-variant uppercase tracking-widest">Geen creditcard vereist • 14 dagen trial</p>
+</div>
+</section>
+</main>
+<!-- Navigation suppressed per rule: " suppress the navigation to prioritize the content canvas " for landing focus -->
+<!-- But if required by JSON implementation as a shell, it would be here. Given this is a landing/onboarding journey, we prioritize the canvas. -->
+<footer class="bg-surface-dim pt-20 pb-12 px-6">
+<div class="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-12 border-t border-outline-variant/20 pt-12">
+<div class="col-span-2">
+<div class="flex items-center gap-2 mb-6">
+<div class="w-6 h-6 bg-primary rounded flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary text-xs" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+<span class="font-headline font-bold text-lg text-on-background">Mijn Financiën</span>
+</div>
+<p class="text-sm text-on-surface-variant max-w-xs leading-relaxed">
+                    Wij geloven dat financiële vrijheid begint bij eenvoud. Geen gedoe, gewoon overzicht.
+                </p>
+</div>
+<div class="flex flex-col gap-4">
+<span class="text-[10px] font-label font-extrabold uppercase tracking-widest text-on-surface">Product</span>
+<a class="text-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Functies</a>
+<a class="text-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Veiligheid</a>
+<a class="text-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Prijzen</a>
+</div>
+<div class="flex flex-col gap-4">
+<span class="text-[10px] font-label font-extrabold uppercase tracking-widest text-on-surface">Bedrijf</span>
+<a class="text-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Over Ons</a>
+<a class="text-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Contact</a>
+<a class="text-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy</a>
+</div>
+</div>
+<div class="max-w-5xl mx-auto mt-20 pt-8 border-t border-outline-variant/10 flex flex-col md:flex-row justify-between items-center gap-6">
+<p class="text-xs text-on-surface-variant/60 font-label">© 2024 Mijn Financiën. Alle rechten voorbehouden.</p>
+<div class="flex gap-6">
+<span class="material-symbols-outlined text-on-surface-variant/60 hover:text-primary cursor-pointer transition-colors" data-icon="public">public</span>
+<span class="material-symbols-outlined text-on-surface-variant/60 hover:text-primary cursor-pointer transition-colors" data-icon="share">share</span>
+</div>
+</div>
+</footer>
+</body></html>

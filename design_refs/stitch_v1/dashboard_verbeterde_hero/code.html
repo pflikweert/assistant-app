@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+
+<html lang="nl"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Mijn Financiën - Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "error-dim": "#b92902",
+              "tertiary-container": "#e3fd74",
+              "tertiary-fixed": "#e3fd74",
+              "tertiary": "#536200",
+              "tertiary-fixed-dim": "#d5ee68",
+              "secondary-fixed-dim": "#cfd6d8",
+              "primary-fixed": "#fdd404",
+              "outline": "#757778",
+              "surface-container-low": "#eff1f2",
+              "secondary-container": "#dde4e6",
+              "secondary-fixed": "#dde4e6",
+              "surface-tint": "#6d5a00",
+              "surface-variant": "#dadddf",
+              "surface-bright": "#f5f6f7",
+              "inverse-surface": "#0c0f10",
+              "primary-dim": "#5f4e00",
+              "outline-variant": "#abadae",
+              "on-primary-container": "#594a00",
+              "secondary": "#565d5f",
+              "inverse-on-surface": "#9b9d9e",
+              "surface-container-high": "#e0e3e4",
+              "primary-container": "#fdd404",
+              "on-background": "#2c2f30",
+              "on-tertiary-container": "#516000",
+              "on-secondary-fixed": "#394043",
+              "secondary-dim": "#4a5153",
+              "error-container": "#f95630",
+              "surface-container-lowest": "#ffffff",
+              "on-secondary-container": "#4c5355",
+              "on-secondary": "#edf4f6",
+              "primary": "#6d5a00",
+              "on-surface-variant": "#595c5d",
+              "background": "#f5f6f7",
+              "on-primary-fixed-variant": "#645300",
+              "on-error-container": "#520c00",
+              "on-tertiary": "#e5ff76",
+              "inverse-primary": "#fdd404",
+              "surface-container": "#e6e8ea",
+              "surface-dim": "#d1d5d7",
+              "on-secondary-fixed-variant": "#565d5f",
+              "on-error": "#ffefec",
+              "tertiary-dim": "#485500",
+              "on-surface": "#2c2f30",
+              "surface": "#ffffff",
+              "on-primary-fixed": "#433700",
+              "error": "#b02500",
+              "on-tertiary-fixed": "#414d00",
+              "on-tertiary-fixed-variant": "#5b6b00",
+              "surface-container-highest": "#dadddf",
+              "primary-fixed-dim": "#edc600",
+              "on-primary": "#fff2ce"
+            },
+            fontFamily: {
+              "headline": ["Plus Jakarta Sans"],
+              "body": ["Manrope"],
+              "label": ["Manrope"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      body {
+        font-family: 'Manrope', sans-serif;
+        background-color: #ffffff;
+        color: #2c2f30;
+      }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      body {
+        min-height: max(884px, 100dvh);
+      }
+    </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen pb-32">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-white/80 dark:bg-stone-900/80 backdrop-blur-xl border-b border-outline-variant/5">
+<div class="flex justify-between items-center w-full px-6 h-16 max-w-7xl mx-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full overflow-hidden bg-surface-container-highest">
+<img alt="Profielfoto gebruiker" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDFE_gcSHSpTwahuigIlDav71YJRi1BZHXEgeiXVuoOWbWkVFSPolFL0V12sjGZD_hDTfRQ7iG5ce2UMpwD30jOZLUwUwyQMRSUTx1zz2Ac2ZBzyOIekZyOmIRJQtmpohZWk1rjfVHRfLl4XHIcLBusdTCrOoAiWSJkfiqiTHujzXTbzXMiZRB4HGR2Pavjsnp8IDlu8HWD6rAzbv4WTxnt4u-QLYfkiAYRUf_1Ka5uJasgOt_HBW5I2aDWhRCJntZcWorEGcWom44"/>
+</div>
+<span class="font-manrope text-stone-900 dark:text-stone-100 font-bold tracking-tight">Mijn Financiën</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 rounded-full hover:bg-stone-200/50 dark:hover:bg-stone-800/50 transition-colors duration-300">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="notifications">notifications</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Hero Section with subtle grey background -->
+<section class="bg-[#f8f9fa] pt-24 pb-12 border-b border-outline-variant/5">
+<div class="px-6 max-w-2xl mx-auto space-y-4">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 bg-primary"></div>
+<span class="font-body text-[10px] uppercase tracking-[1.5px] font-bold text-on-surface-variant">Totaal Saldo</span>
+</div>
+<div class="flex flex-col gap-6">
+<h1 class="text-6xl font-extrabold tracking-tighter text-on-surface font-body">
+                    € 14.280,45
+                </h1>
+<div class="space-y-4">
+<div class="flex items-center gap-2 px-3 py-1 bg-primary-container/20 w-fit rounded-lg">
+<span class="material-symbols-outlined text-[14px] text-primary" data-icon="trending_up">trending_up</span>
+<span class="font-body text-xs font-bold text-primary">+2,4% deze maand</span>
+</div>
+<!-- Secondary Balance Indicator -->
+<div class="bg-primary-container/10 rounded-[2.5rem] p-8 border border-primary-container/30 shadow-sm">
+<p class="font-body text-[10px] uppercase tracking-[1.5px] font-bold text-on-surface-variant mb-4">Vrij te besteden</p>
+<p class="text-3xl font-extrabold text-on-surface mb-2 font-body">€ 1.840,00</p>
+<div class="w-full bg-surface-container-highest/50 h-1.5 rounded-full mb-3">
+<div class="bg-primary h-1.5 rounded-full" style="width: 65%;"></div>
+</div>
+<p class="font-body text-xs font-medium text-on-surface-variant">65% van maandlimiet verbruikt</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Main Content -->
+<main class="px-6 max-w-2xl mx-auto">
+<!-- Status Grid -->
+<div class="grid grid-cols-1 gap-6 mt-12">
+<!-- Budget Status Card -->
+<div class="bg-surface-container-lowest rounded-[2.5rem] p-8 transition-transform duration-500 ease-out hover:scale-[1.01] shadow-sm border border-outline-variant/5">
+<div class="flex justify-between items-start mb-6">
+<div>
+<h3 class="font-body font-bold text-xl text-on-surface">Variabel budget</h3>
+<p class="text-on-surface-variant text-sm font-medium">Uitgaven van deze maand</p>
+</div>
+<div class="px-3 py-1 bg-tertiary-container rounded-full flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+<span class="text-[11px] font-bold text-on-tertiary-container uppercase tracking-wider">Op schema</span>
+</div>
+</div>
+<div class="space-y-3">
+<div class="flex justify-between text-xs font-bold text-on-surface-variant tracking-tight">
+<span>€ 580 gebruikt</span>
+<span>Totaal € 1.200</span>
+</div>
+<div class="w-full bg-surface-container-highest h-3 rounded-full overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary to-primary-dim rounded-full" style="width: 48%;"></div>
+</div>
+</div>
+</div>
+<!-- Contextual Action -->
+<div class="relative overflow-hidden bg-surface-container-low/50 rounded-[2.5rem] p-6 group shadow-sm border border-outline-variant/5">
+<div class="relative z-10 flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-white flex items-center justify-center text-primary shadow-sm">
+<span class="material-symbols-outlined" data-icon="savings">savings</span>
+</div>
+<div>
+<p class="text-on-surface font-bold">Spaardoel: Vakantie 2024</p>
+<p class="text-on-surface-variant text-sm">Nog € 450 te gaan</p>
+</div>
+</div>
+<button class="bg-primary text-on-primary-fixed px-6 py-2.5 rounded-full font-bold text-sm hover:opacity-90 transition-opacity">
+                        Inleggen
+                    </button>
+</div>
+<div class="absolute -right-4 -top-4 w-32 h-32 bg-primary-container/10 rounded-full blur-3xl group-hover:bg-primary-container/20 transition-colors"></div>
+</div>
+</div>
+<!-- Recent Snapshot Section -->
+<section class="mt-16 space-y-6">
+<div class="flex justify-between items-end">
+<h2 class="font-body font-bold text-2xl text-on-surface">Recente transacties</h2>
+<a class="text-primary font-bold text-sm" href="#">Bekijk alles</a>
+</div>
+<div class="space-y-1">
+<!-- Transaction Item -->
+<div class="flex items-center justify-between p-4 hover:bg-surface-container-low rounded-xl transition-colors duration-300">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary" data-icon="shopping_bag">shopping_bag</span>
+</div>
+<div>
+<p class="font-bold text-on-surface">Albert Heijn</p>
+<p class="text-on-surface-variant text-xs font-medium">Vandaag, 14:20</p>
+</div>
+</div>
+<span class="font-bold text-on-surface">- € 42,15</span>
+</div>
+<!-- Transaction Item -->
+<div class="flex items-center justify-between p-4 hover:bg-surface-container-low rounded-xl transition-colors duration-300">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary" data-icon="coffee">coffee</span>
+</div>
+<div>
+<p class="font-bold text-on-surface">Lot61 Coffee</p>
+<p class="text-on-surface-variant text-xs font-medium">Gisteren, 09:15</p>
+</div>
+</div>
+<span class="font-bold text-on-surface">- € 4,50</span>
+</div>
+<!-- Transaction Item (Income) -->
+<div class="flex items-center justify-between p-4 hover:bg-surface-container-low rounded-xl transition-colors duration-300">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-tertiary-container/30 flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary" data-icon="payments">payments</span>
+</div>
+<div>
+<p class="font-bold text-on-surface">Salaris</p>
+<p class="text-on-surface-variant text-xs font-medium">25 Okt</p>
+</div>
+</div>
+<span class="font-bold text-tertiary">+ € 2.850,00</span>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-2 bg-white/80 dark:bg-stone-900/80 backdrop-blur-xl shadow-[0_-4px_40px_rgba(0,0,0,0.04)]">
+<!-- Overzicht (Active) -->
+<a class="flex flex-col items-center justify-center bg-white dark:bg-stone-800 text-primary rounded-xl px-4 py-1 scale-105 transition-all duration-300 shadow-sm" href="#">
+<span class="material-symbols-outlined" data-icon="grid_view" style="font-variation-settings: 'FILL' 1;">grid_view</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-bold mt-1">Overzicht</span>
+</a>
+<!-- Sparen -->
+<a class="flex flex-col items-center justify-center text-stone-500 dark:text-stone-400 px-4 py-1 hover:text-stone-900 dark:hover:text-stone-100 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-medium mt-1">Sparen</span>
+</a>
+<!-- Transacties -->
+<a class="flex flex-col items-center justify-center text-stone-500 dark:text-stone-400 px-4 py-1 hover:text-stone-900 dark:hover:text-stone-100 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-medium mt-1">Transacties</span>
+</a>
+<!-- Instellingen -->
+<a class="flex flex-col items-center justify-center text-stone-500 dark:text-stone-400 px-4 py-1 hover:text-stone-900 dark:hover:text-stone-100 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-manrope text-[10px] uppercase tracking-widest font-medium mt-1">Instellingen</span>
+</a>
+</nav>
+</body></html>

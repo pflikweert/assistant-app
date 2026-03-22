@@ -2,7 +2,6 @@
 -- for personal care, tickets/events, and payment platforms.
 
 begin;
-
 with desired_categories(key, name, parent_key, budget_group, sort_order) as (
   values
     ('care_personal_care', 'Persoonlijke verzorging', 'care', 'variable', 36),
@@ -20,7 +19,6 @@ on conflict (key) do update
       budget_group = excluded.budget_group,
       sort_order = excluded.sort_order,
       updated_at = now();
-
 with desired_rules(pattern, pattern_normalized, category_key, confidence) as (
   values
     ('Kapsalon', 'kapsalon', 'care_personal_care', 0.92),
@@ -59,5 +57,4 @@ on conflict (pattern_normalized, pattern_type) do update
       updated_at = now()
 where public.category_rules.is_system = true
    or public.category_rules.hit_count = 0;
-
 commit;

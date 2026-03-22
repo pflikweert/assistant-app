@@ -1,5 +1,4 @@
 begin;
-
 create table if not exists public.budget_plan_settings (
   plan_key text primary key,
   mode text not null default 'active_savings',
@@ -11,7 +10,6 @@ create table if not exists public.budget_plan_settings (
   constraint budget_plan_settings_adjustment_factor_check
     check (adjustment_factor > 0 and adjustment_factor <= 1.5)
 );
-
 create table if not exists public.budget_category_overrides (
   id uuid default gen_random_uuid() primary key,
   plan_key text not null,
@@ -44,7 +42,6 @@ create table if not exists public.budget_category_overrides (
   constraint budget_category_overrides_plan_category_unique
     unique (plan_key, category_key)
 );
-
 create table if not exists public.monthly_budget_values (
   id uuid default gen_random_uuid() primary key,
   plan_key text not null,
@@ -78,7 +75,6 @@ create table if not exists public.monthly_budget_values (
   constraint monthly_budget_values_plan_month_category_unique
     unique (plan_key, month_start, category_key)
 );
-
 create index if not exists budget_category_overrides_plan_key_idx
   on public.budget_category_overrides(plan_key);
 create index if not exists budget_category_overrides_category_key_idx
@@ -91,9 +87,7 @@ create index if not exists monthly_budget_values_category_key_idx
   on public.monthly_budget_values(category_key);
 create index if not exists monthly_budget_values_plan_month_idx
   on public.monthly_budget_values(plan_key, month_start);
-
 insert into public.budget_plan_settings (plan_key, mode, adjustment_factor)
 values ('default', 'active_savings', 0.9)
 on conflict (plan_key) do nothing;
-
 commit;

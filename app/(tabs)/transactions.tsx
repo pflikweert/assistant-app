@@ -12,6 +12,7 @@ import {
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
 import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
+import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import {
   getCurrentMonthKey,
@@ -41,6 +42,12 @@ const fmt = new Intl.NumberFormat("nl-NL", {
 });
 
 const PAGE_SIZE = 30;
+const ALL_MONTHS_KEY = "all-months";
+const ALL_MONTHS_PICKER_OPTION = {
+  key: ALL_MONTHS_KEY,
+  label: "Alle maanden",
+  meta: "Zoek en bekijk over je hele historie",
+} as const;
 
 const PRIMARY_FILTERS = [
   { key: "all", label: "Alles" },
@@ -54,6 +61,7 @@ type PrimaryFilterKey = (typeof PRIMARY_FILTERS)[number]["key"];
 type Tx = {
   id: string;
   counterparty: string;
+  subscriptionProfileName?: string | null;
   details: string;
   date: string;
   amount: number;
@@ -152,7 +160,7 @@ function TxRow({
       <View style={styles.txBody}>
         <View style={styles.txTopLine}>
           <Text style={styles.txName} numberOfLines={1}>
-            {item.counterparty || "Onbekend"}
+            {item.subscriptionProfileName || item.counterparty || "Onbekend"}
           </Text>
           <View style={styles.amountWrap}>
             <Text style={[styles.txAmount, isPositive && styles.txAmountPositive]}>
@@ -251,6 +259,8 @@ export default function TransactionsTab() {
     [categories],
   );
 
+  const isAllMonthsSelected = selectedMonthKey === ALL_MONTHS_KEY;
+
   const selectedMonth = React.useMemo(
     () => {
       return (
@@ -262,13 +272,17 @@ export default function TransactionsTab() {
     },
     [fallbackMonthOption, monthOptions, selectedMonthKey],
   );
+  const selectedMonthLabel = isAllMonthsSelected
+    ? "Alle maanden"
+    : selectedMonth.label;
   const selectedMonthIndex = React.useMemo(
     () => monthOptions.findIndex((option) => option.key === selectedMonth?.key),
     [monthOptions, selectedMonth?.key],
   );
   const canGoToOlderMonth =
+    !isAllMonthsSelected &&
     selectedMonthIndex >= 0 && selectedMonthIndex < monthOptions.length - 1;
-  const canGoToNewerMonth = selectedMonthIndex > 0;
+  const canGoToNewerMonth = !isAllMonthsSelected && selectedMonthIndex > 0;
 
   const searchTokens = React.useMemo(
     () => normalizeSearch(searchQuery).split(" ").filter(Boolean),
@@ -323,9 +337,11 @@ export default function TransactionsTab() {
           query = query.eq("counterparty", counterparty);
         }
 
-        query = query
-          .gte("date", selectedMonth.startIso)
-          .lt("date", selectedMonth.endIso);
+        if (!isAllMonthsSelected) {
+          query = query
+            .gte("date", selectedMonth.startIso)
+            .lt("date", selectedMonth.endIso);
+        }
 
         if (searchTokens.length) {
           const orFilters = searchTokens
@@ -375,6 +391,13 @@ export default function TransactionsTab() {
               : -1,
         );
 
+        const subscriptionNames = await listTransactionSubscriptionProfileNames(
+          rows.map((row) => row.id),
+        );
+        rows.forEach((row) => {
+          row.subscriptionProfileName = subscriptionNames[row.id] || null;
+        });
+
         setTransactions(rows);
         setHasMore(rows.length === PAGE_SIZE);
       } catch (error) {
@@ -383,7 +406,13 @@ export default function TransactionsTab() {
         setLoading(false);
       }
     },
-    [counterparty, searchTokens, selectedMonth.endIso, selectedMonth.startIso],
+    [
+      counterparty,
+      isAllMonthsSelected,
+      searchTokens,
+      selectedMonth.endIso,
+      selectedMonth.startIso,
+    ],
   );
 
   React.useEffect(() => {
@@ -399,6 +428,7 @@ export default function TransactionsTab() {
   }, [counterparty, primaryFilter, searchQuery, selectedMonthKey]);
 
   React.useEffect(() => {
+    if (selectedMonthKey === ALL_MONTHS_KEY) return;
     if (monthOptions.some((option) => option.key === selectedMonthKey)) return;
     const currentMonthOption = monthOptions.find((option) => option.isCurrentMonth);
     setSelectedMonthKey(
@@ -529,7 +559,7 @@ export default function TransactionsTab() {
             style={styles.monthBadge}
             onPress={() => setMonthPickerOpen(true)}
           >
-            <Text style={styles.monthBadgeText}>{selectedMonth.label}</Text>
+            <Text style={styles.monthBadgeText}>{selectedMonthLabel}</Text>
             <AppIcon
               name="expand-more"
               size={18}
@@ -681,9 +711,10 @@ export default function TransactionsTab() {
       <MonthPickerSheet
         visible={monthPickerOpen}
         title="Kies maand"
-        helper="Alleen maanden met transacties"
+        helper="Kies alle maanden of 1 maand met transacties"
+        pinnedOptions={[ALL_MONTHS_PICKER_OPTION]}
         options={monthOptions}
-        selectedKey={selectedMonth.key}
+        selectedKey={selectedMonthKey}
         onClose={() => setMonthPickerOpen(false)}
         onSelect={setSelectedMonthKey}
       />

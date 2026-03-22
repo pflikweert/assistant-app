@@ -2,10 +2,11 @@ import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinColors } from "@/constants/theme";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import {
-    buildCategoryRecordMap,
-    getCategoryPathLabel,
+  buildCategoryRecordMap,
+  getCategoryPathLabel,
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
+import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import type {
     AnalysisCategory,
@@ -34,6 +35,7 @@ type DetailTx = {
   date: string;
   amount: number;
   counterparty: string;
+  subscriptionProfileName?: string | null;
   details: string;
   category_id_auto: string | null;
   category_id_user: string | null;
@@ -731,6 +733,13 @@ export default function AnalysisDetailScreen() {
             (row) => resolveExpenseGroupForDetail(row, nextCategoryMap) === validGroup,
           );
 
+        const subscriptionNames = await listTransactionSubscriptionProfileNames(
+          nextTransactions.map((row) => row.id),
+        );
+        nextTransactions.forEach((row) => {
+          row.subscriptionProfileName = subscriptionNames[row.id] || null;
+        });
+
         setTransactions(nextTransactions);
       } catch (error) {
         console.error("[analysis-detail] load error", error);
@@ -845,10 +854,12 @@ export default function AnalysisDetailScreen() {
                             categoryById={categoryMap}
                           />
                         </View>
-                        <View style={styles.txLeft}>
-                          <Text style={styles.txCounterparty} numberOfLines={1}>
-                            {tx.counterparty || "Onbekende tegenpartij"}
-                          </Text>
+                          <View style={styles.txLeft}>
+                            <Text style={styles.txCounterparty} numberOfLines={1}>
+                              {tx.subscriptionProfileName ||
+                                tx.counterparty ||
+                                "Onbekende tegenpartij"}
+                            </Text>
                           <Text style={styles.txSub} numberOfLines={1}>
                             {firstDetailSegment(tx.details) ||
                               tx.descriptorLabel}

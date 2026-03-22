@@ -4,7 +4,7 @@ import {
   type IconSymbolName,
 } from '@/components/ui/icon-symbol-map';
 import { SymbolWeight } from 'expo-symbols';
-import { StyleProp, TextStyle } from 'react-native';
+import { StyleProp, StyleSheet, TextStyle } from 'react-native';
 
 export function IconSymbol({
   name,
@@ -25,7 +25,7 @@ export function IconSymbol({
       size={size}
       color={color}
       variant="outlined"
-      style={style}
+      style={StyleSheet.flatten(style)}
     />
   );
 }

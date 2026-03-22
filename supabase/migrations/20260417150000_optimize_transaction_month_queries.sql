@@ -1,20 +1,16 @@
 begin;
-
 create index if not exists transactions_user_date_desc_idx
   on public.transactions(user_id, date desc)
   where user_id is not null;
-
 create index if not exists transactions_user_counterparty_date_desc_idx
   on public.transactions(user_id, counterparty, date desc)
   where user_id is not null and counterparty is not null;
-
 create index if not exists transactions_user_month_start_idx
   on public.transactions(
     user_id,
     ((date_trunc('month', date::timestamp without time zone))::date) desc
   )
   where user_id is not null;
-
 create index if not exists transactions_user_counterparty_month_start_idx
   on public.transactions(
     user_id,
@@ -22,9 +18,7 @@ create index if not exists transactions_user_counterparty_month_start_idx
     ((date_trunc('month', date::timestamp without time zone))::date) desc
   )
   where user_id is not null and counterparty is not null;
-
 drop function if exists public.list_transaction_months(text);
-
 create or replace function public.list_transaction_months(
   p_counterparty text default null
 )
@@ -45,7 +39,5 @@ as $$
   group by 1
   order by 1 desc
 $$;
-
 grant execute on function public.list_transaction_months(text) to authenticated;
-
 commit;

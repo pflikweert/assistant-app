@@ -2,7 +2,6 @@
 -- details-specific rules for child budget (KIT/KGB) and road tax references.
 
 begin;
-
 with desired_rules(pattern, pattern_normalized, pattern_type, category_key, confidence) as (
   values
     ('VOORSCHOT KIT/Kgb', 'voorschot kit kgb', 'details_contains', 'income_child_budget', 0.99),
@@ -32,7 +31,6 @@ on conflict (pattern_normalized, pattern_type) do update
       updated_at = now()
 where public.category_rules.is_system = true
    or public.category_rules.hit_count = 0;
-
 with child_budget as (
   select id
   from public.categories
@@ -52,7 +50,6 @@ where tx.category_id_user is null
     or lower(coalesce(tx.details, '')) like '%voorschot kit kgb%'
     or lower(coalesce(tx.details, '')) like '%kindgebonden budget%'
   );
-
 with road_tax as (
   select id
   from public.categories
@@ -68,5 +65,4 @@ set category_id_auto = rt.id,
 from road_tax rt
 where tx.category_id_user is null
   and lower(coalesce(tx.details, '')) like '%r-115-jl%';
-
 commit;

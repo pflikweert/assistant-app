@@ -13,11 +13,9 @@ create table if not exists public.category_rules (
   updated_at timestamp with time zone not null default now(),
   unique(pattern_normalized, pattern_type)
 );
-
 create index if not exists category_rules_category_idx on public.category_rules(category_id);
 create index if not exists category_rules_pattern_idx on public.category_rules(pattern_normalized);
 create index if not exists category_rules_active_idx on public.category_rules(is_active);
-
 create table if not exists public.categorization_audit (
   id uuid default gen_random_uuid() primary key,
   transaction_id uuid not null references public.transactions(id) on delete cascade,
@@ -29,6 +27,5 @@ create table if not exists public.categorization_audit (
   reason text,
   created_at timestamp with time zone not null default now()
 );
-
 create index if not exists categorization_audit_transaction_idx on public.categorization_audit(transaction_id);
 create index if not exists categorization_audit_created_idx on public.categorization_audit(created_at);

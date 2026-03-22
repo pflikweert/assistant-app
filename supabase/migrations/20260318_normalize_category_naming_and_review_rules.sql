@@ -5,68 +5,57 @@
 -- 3) Add high-impact system rules for frequently recurring open-review merchants.
 
 begin;
-
 -- 1) Normalize non-generic category keys/names to generic taxonomy terms.
 update public.categories
 set key = 'housing_energy',
     name = 'Energie',
     updated_at = now()
 where key = 'housing_energy_zonneplan';
-
 update public.categories
 set key = 'housing_water',
     name = 'Water',
     updated_at = now()
 where key = 'housing_water_vitens';
-
 update public.categories
 set key = 'housing_municipal_taxes',
     name = 'Gemeentelijke belastingen',
     updated_at = now()
 where key = 'housing_municipal_taxes_gblt';
-
 update public.categories
 set key = 'care_therapy',
     name = 'Therapie',
     updated_at = now()
 where key = 'care_therapy_esther';
-
 update public.categories
 set key = 'care_psychotherapy',
     name = 'Psychotherapie',
     updated_at = now()
 where key = 'care_psychotherapy_de_bree';
-
 update public.categories
 set key = 'subscriptions_online_video_streaming',
     name = 'Video streaming',
     updated_at = now()
 where key = 'subscriptions_online_netflix';
-
 update public.categories
 set key = 'subscriptions_online_music_streaming',
     name = 'Muziek streaming',
     updated_at = now()
 where key = 'subscriptions_online_spotify';
-
 update public.categories
 set key = 'subscriptions_online_digital_services',
     name = 'Digitale diensten',
     updated_at = now()
 where key = 'subscriptions_online_google_services';
-
 update public.categories
 set key = 'subscriptions_online_gaming',
     name = 'Gaming',
     updated_at = now()
 where key = 'subscriptions_online_playstation_sony';
-
 update public.categories
 set key = 'savings_investing_crypto',
     name = 'Crypto',
     updated_at = now()
 where key = 'savings_investing_crypto_blox';
-
 -- 2) Add missing generic subcategories observed in review queue.
 with desired_categories(key, name, parent_key, budget_group, sort_order) as (
   values
@@ -87,7 +76,6 @@ on conflict (key) do update
       budget_group = excluded.budget_group,
       sort_order = excluded.sort_order,
       updated_at = now();
-
 -- 3) Add/refresh high-impact merchant rules from open review transactions.
 with desired_rules(pattern, pattern_normalized, category_key, confidence) as (
   values
@@ -124,5 +112,4 @@ on conflict (pattern_normalized, pattern_type) do update
       updated_at = now()
 where public.category_rules.is_system = true
    or public.category_rules.hit_count = 0;
-
 commit;

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+
+<html lang="nl"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Manrope:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-container": "#e6e8ea",
+              "surface-container-high": "#e0e3e4",
+              "on-tertiary-fixed": "#414d00",
+              "tertiary-container": "#e3fd74",
+              "inverse-on-surface": "#9b9d9e",
+              "tertiary-dim": "#485500",
+              "secondary-dim": "#4a5153",
+              "on-secondary-container": "#4c5355",
+              "inverse-surface": "#0c0f10",
+              "on-surface": "#2c2f30",
+              "surface-bright": "#f5f6f7",
+              "surface-container-lowest": "#ffffff",
+              "surface": "#f5f6f7",
+              "tertiary-fixed": "#e3fd74",
+              "on-primary-fixed": "#433700",
+              "outline-variant": "#abadae",
+              "on-error-container": "#520c00",
+              "on-secondary-fixed-variant": "#565d5f",
+              "surface-container-highest": "#dadddf",
+              "inverse-primary": "#fdd404",
+              "background": "#f5f6f7",
+              "tertiary": "#536200",
+              "surface-dim": "#d1d5d7",
+              "on-secondary-fixed": "#394043",
+              "on-tertiary": "#e5ff76",
+              "secondary-fixed-dim": "#cfd6d8",
+              "primary-fixed-dim": "#edc600",
+              "surface-container-low": "#eff1f2",
+              "error-container": "#f95630",
+              "on-surface-variant": "#595c5d",
+              "error-dim": "#b92902",
+              "secondary": "#565d5f",
+              "on-error": "#ffefec",
+              "primary-dim": "#5f4e00",
+              "primary": "#6d5a00",
+              "surface-variant": "#dadddf",
+              "error": "#b02500",
+              "on-background": "#2c2f30",
+              "on-primary": "#fff2ce",
+              "tertiary-fixed-dim": "#d5ee68",
+              "on-tertiary-fixed-variant": "#5b6b00",
+              "surface-tint": "#6d5a00",
+              "secondary-fixed": "#dde4e6",
+              "secondary-container": "#dde4e6",
+              "primary-container": "#fdd404",
+              "on-tertiary-container": "#516000",
+              "on-secondary": "#edf4f6",
+              "outline": "#757778",
+              "on-primary-fixed-variant": "#645300",
+              "primary-fixed": "#fdd404",
+              "on-primary-container": "#594a00"
+            },
+            fontFamily: {
+              "headline": ["Plus Jakarta Sans"],
+              "body": ["Manrope"],
+              "label": ["Manrope"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Manrope', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-surface text-on-surface antialiased min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<nav class="fixed top-0 w-full z-50 bg-[#f5f6f7]/80 backdrop-blur-xl shadow-[0_12px_40px_rgba(12,15,16,0.04)] flex items-center justify-between px-6 h-16">
+<div class="flex items-center gap-4">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-[#eff1f2] active:scale-95 duration-200 ease-out">
+<span class="material-symbols-outlined text-on-surface" data-icon="menu">menu</span>
+</button>
+<h1 class="font-headline text-lg font-bold tracking-tight text-on-surface">Transacties</h1>
+</div>
+<div class="flex items-center gap-3">
+<div class="hidden md:flex items-center space-x-8 mr-8">
+<a class="font-body text-sm font-semibold text-[#595c5d] hover:text-primary transition-colors" href="#">Dashboard</a>
+<a class="font-body text-sm font-semibold text-[#595c5d] hover:text-primary transition-colors" href="#">Budget</a>
+<a class="font-body text-sm font-bold text-[#6d5a00]" href="#">Transacties</a>
+<a class="font-body text-sm font-semibold text-[#595c5d] hover:text-primary transition-colors" href="#">Inzichten</a>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden border-2 border-white">
+<img alt="User profile" class="w-full h-full object-cover" data-alt="Close up of a professional male user profile photo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAlMyljQWsCRZ69spWUimv8SM0a2DgADPmc_ZKn8MCkt6V_TvasQlwvoGfPcs1mpMRJwvH5VFEp7cdGGwgt6M26mqCU4Ue-nWfNkpHrilx-B23GSMcUykuSq4aOkmVKHrw8vpXm3KvN4rZWXHx5HNZNO9nXm-MKE2CXpVsW93N2xdVESSzgJBIC-LiVmenSggFu5WD8lkRJjNJeCXfPATaeUzFKsrfVZfx2orEVArB_cjv1kLZg4r49bMAxFs8RDUHkt3fDeiW8EhQ"/>
+</div>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-grow pt-16 pb-24 md:pb-0 flex flex-col">
+<!-- Swiss Hero Section -->
+<header class="bg-surface-container-low px-6 py-16 md:py-24 flex flex-col items-center text-center">
+<div class="max-w-3xl w-full">
+<div class="inline-flex items-center justify-center bg-white/50 backdrop-blur-sm px-4 py-2 rounded-full mb-8">
+<span class="font-label text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status Overzicht</span>
+</div>
+<h2 class="font-headline text-4xl md:text-6xl font-extrabold tracking-tighter text-inverse-surface leading-tight mb-6">
+                    Behoud je <span class="text-primary italic">focus</span> op groei.
+                </h2>
+<p class="font-body text-lg text-on-surface-variant max-w-xl mx-auto leading-relaxed">
+                    Eenvoud is de ultieme verfijning. Begin vandaag met een helder overzicht van je financiële stromen.
+                </p>
+</div>
+</header>
+<!-- Empty State Section -->
+<section class="flex-grow flex items-center justify-center px-6 py-12">
+<div class="max-w-md w-full flex flex-col items-center text-center">
+<!-- Minimalist Representation -->
+<div class="relative w-64 h-64 mb-12 flex items-center justify-center">
+<div class="absolute inset-0 bg-primary/5 rounded-full blur-3xl"></div>
+<div class="relative bg-surface-container-lowest shadow-[0_20px_60px_rgba(12,15,16,0.06)] w-48 h-48 rounded-xl flex items-center justify-center">
+<span class="material-symbols-outlined text-8xl text-surface-container-highest" data-icon="receipt_long" style="font-variation-settings: 'wght' 100;">receipt_long</span>
+<div class="absolute -bottom-4 -right-4 bg-primary-container text-on-primary-container w-16 h-16 rounded-full flex items-center justify-center shadow-lg">
+<span class="material-symbols-outlined text-3xl" data-icon="add">add</span>
+</div>
+</div>
+</div>
+<!-- Copy -->
+<h3 class="font-headline text-2xl font-bold text-inverse-surface mb-4">Nog geen transacties</h3>
+<p class="font-body text-on-surface-variant leading-relaxed mb-10">
+                    Zodra je je bank koppelt of handmatig uitgaven toevoegt, verschijnen ze hier.
+                </p>
+<!-- Actions -->
+<div class="flex flex-col sm:flex-row gap-4 w-full">
+<button class="flex-1 bg-gradient-to-br from-primary to-primary-dim text-on-primary font-body font-bold py-4 px-8 rounded-full shadow-lg hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-xl" data-icon="account_balance">account_balance</span>
+                        Bank koppelen
+                    </button>
+<button class="flex-1 bg-surface-container-highest text-on-surface font-body font-bold py-4 px-8 rounded-full hover:bg-surface-variant active:scale-95 transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-xl" data-icon="edit_square">edit_square</span>
+                        Handmatig toevoegen
+                    </button>
+</div>
+</div>
+</section>
+<!-- Additional Minimal Info (Swiss Detail) -->
+<aside class="px-6 py-24 bg-surface"><div class="max-w-7xl mx-auto px-6">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Card 1: Veilig & Vertrouwd -->
+<div class="group bg-surface-container-low/50 hover:bg-white hover:shadow-2xl hover:shadow-primary/5 transition-all duration-500 rounded-3xl p-10 flex flex-col items-center text-center border border-transparent hover:border-primary/10">
+<div class="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500">
+<span class="material-symbols-outlined text-primary text-4xl" data-icon="security">security</span>
+</div>
+<h4 class="font-headline text-lg font-bold tracking-tight text-inverse-surface mb-4">Veilig &amp; Vertrouwd</h4>
+<p class="font-body text-sm text-on-surface-variant leading-relaxed">
+                We gebruiken bank-grade encryptie om je financiële data te beschermen met de hoogste standaarden.
+            </p>
+</div>
+<!-- Card 2: Slim Categoriseren -->
+<div class="group bg-surface-container-low/50 hover:bg-white hover:shadow-2xl hover:shadow-primary/5 transition-all duration-500 rounded-3xl p-10 flex flex-col items-center text-center border border-transparent hover:border-primary/10">
+<div class="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500">
+<span class="material-symbols-outlined text-primary text-4xl" data-icon="auto_awesome">auto_awesome</span>
+</div>
+<h4 class="font-headline text-lg font-bold tracking-tight text-inverse-surface mb-4">Slim Categoriseren</h4>
+<p class="font-body text-sm text-on-surface-variant leading-relaxed">
+                Onze algoritmes sorteren je uitgaven automatisch voor optimaal inzicht zonder enige moeite.
+            </p>
+</div>
+<!-- Card 3: Real-time Updates -->
+<div class="group bg-surface-container-low/50 hover:bg-white hover:shadow-2xl hover:shadow-primary/5 transition-all duration-500 rounded-3xl p-10 flex flex-col items-center text-center border border-transparent hover:border-primary/10">
+<div class="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500">
+<span class="material-symbols-outlined text-primary text-4xl" data-icon="query_stats">query_stats</span>
+</div>
+<h4 class="font-headline text-lg font-bold tracking-tight text-inverse-surface mb-4">Real-time Updates</h4>
+<p class="font-body text-sm text-on-surface-variant leading-relaxed">
+                Koppel je bank en zie transacties direct verschijnen in je dashboard voor volledige controle.
+            </p>
+</div>
+</div>
+</div></aside>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 bg-[#f5f6f7]/70 backdrop-blur-3xl shadow-[0_-12px_40px_rgba(12,15,16,0.04)] flex justify-around items-center px-4 h-24 rounded-t-xl">
+<button class="flex flex-col items-center justify-center text-[#595c5d] px-5 py-2 hover:opacity-80 active:scale-90 duration-300">
+<span class="material-symbols-outlined mb-1" data-icon="dashboard">dashboard</span>
+<span class="font-label text-[10px] font-semibold uppercase tracking-widest">Dashboard</span>
+</button>
+<button class="flex flex-col items-center justify-center text-[#595c5d] px-5 py-2 hover:opacity-80 active:scale-90 duration-300">
+<span class="material-symbols-outlined mb-1" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-label text-[10px] font-semibold uppercase tracking-widest">Budget</span>
+</button>
+<button class="flex flex-col items-center justify-center bg-[#fdd404] text-[#6d5a00] rounded-full px-5 py-3 transition-all active:scale-90 duration-300">
+<span class="material-symbols-outlined mb-1" data-icon="receipt_long">receipt_long</span>
+<span class="font-label text-[10px] font-semibold uppercase tracking-widest">Transacties</span>
+</button>
+<button class="flex flex-col items-center justify-center text-[#595c5d] px-5 py-2 hover:opacity-80 active:scale-90 duration-300">
+<span class="material-symbols-outlined mb-1" data-icon="insights">insights</span>
+<span class="font-label text-[10px] font-semibold uppercase tracking-widest">Inzichten</span>
+</button>
+<button class="flex flex-col items-center justify-center text-[#595c5d] px-5 py-2 hover:opacity-80 active:scale-90 duration-300">
+<span class="material-symbols-outlined mb-1" data-icon="subscriptions">subscriptions</span>
+<span class="font-label text-[10px] font-semibold uppercase tracking-widest">Abonnementen</span>
+</button>
+</nav>
+</body></html>

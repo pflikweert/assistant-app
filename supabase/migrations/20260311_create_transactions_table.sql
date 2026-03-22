@@ -16,6 +16,5 @@ create table if not exists public.transactions (
   type text,
   created_at timestamp with time zone default now()
 );
-
 create unique index if not exists transactions_unique
   on public.transactions (date, description, amount);

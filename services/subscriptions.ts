@@ -131,6 +131,23 @@ export type MonthlyValidationCandidatesInput = {
   maxCandidates?: number;
 };
 
+export type SubscriptionRuleValidationCandidatesInput = {
+  profileId?: string | null;
+  sourceTransactionId?: string | null;
+  sourceDate?: string | null;
+  name: string;
+  billingCycle: SubscriptionBillingCycle;
+  expectedAmount: number | null;
+  amountTolerance: number;
+  expectedDayOfMonth: number | null;
+  providerHint?: SubscriptionProviderHint | null;
+  rules: {
+    pattern: string;
+    patternType: SubscriptionProfileRuleType;
+  }[];
+  maxCandidates?: number;
+};
+
 function asNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -823,7 +840,7 @@ export async function upsertSubscriptionProfileRule(
 
   const onConflict = input.id
     ? "id"
-    : "user_id,subscription_profile_id,pattern_normalized,pattern_type";
+    : "subscription_profile_id,pattern_normalized,pattern_type";
 
   const { data, error } = await supabase
     .from("subscription_profile_rules")
@@ -865,7 +882,7 @@ export async function upsertTransactionSubscriptionMatch(
 
   const { data, error } = await supabase
     .from("transaction_subscription_matches")
-    .upsert(payload, { onConflict: "user_id,transaction_id" })
+    .upsert(payload, { onConflict: "transaction_id" })
     .select(
       "transaction_id,subscription_profile_id,match_source,confidence,notes,created_at,updated_at",
     )
@@ -1111,6 +1128,131 @@ export async function listMonthlySubscriptionValidationCandidates(
     .map((row) => toValidationCandidate(row.tx, row.providerDetected));
 }
 
+export async function listSubscriptionRuleValidationCandidates(
+  input: SubscriptionRuleValidationCandidatesInput,
+): Promise<SubscriptionValidationCandidate[]> {
+  const userId = await requireCurrentUserId();
+  const sourceTransactionId = String(input.sourceTransactionId || "").trim();
+  const sourceDate = String(input.sourceDate || "").slice(0, 10);
+  const expectedAmount = normalizeExpectedAmount(input.expectedAmount);
+  const amountTolerance = normalizeAmountTolerance(input.amountTolerance);
+  const expectedDayOfMonth = normalizeExpectedDayOfMonth(
+    input.expectedDayOfMonth,
+  );
+  const maxCandidates = clamp(Math.round(input.maxCandidates || 6), 1, 20);
+  const normalizedName = normalizePattern(String(input.name || "").trim());
+
+  const normalizedRules = (input.rules || [])
+    .map((rule, index) => {
+      const pattern = String(rule.pattern || "").trim();
+      const patternNormalized = normalizePattern(pattern);
+      if (!pattern || !patternNormalized) return null;
+      return {
+        id: `draft-${index}`,
+        subscriptionProfileId: String(input.profileId || "draft"),
+        pattern,
+        patternNormalized,
+        patternType: normalizeRuleType(rule.patternType),
+        weight: 50,
+        isActive: true,
+        createdAt: null,
+        updatedAt: null,
+      } satisfies SubscriptionProfileRule;
+    })
+    .filter((rule): rule is SubscriptionProfileRule => Boolean(rule));
+
+  if (!normalizedName && normalizedRules.length === 0 && expectedAmount == null) {
+    return [];
+  }
+
+  let query = supabase
+    .from("transactions")
+    .select(
+      "id,date,counterparty,details,amount,analysis_category,category_id_auto,category_id_user",
+    )
+    .eq("user_id", userId)
+    .lt("amount", 0)
+    .order("date", { ascending: false })
+    .limit(400);
+
+  if (sourceDate) {
+    query = query.lt("date", sourceDate);
+  }
+
+  if (expectedAmount != null) {
+    const minAmount = Math.max(0, expectedAmount - amountTolerance);
+    const maxAmount = expectedAmount + amountTolerance;
+    query = query.gte("amount", -maxAmount).lte("amount", -minAmount);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const rows = ((data || []) as RowRecord[])
+    .map(normalizeQueueTransaction)
+    .filter((tx) => tx.id && tx.id !== sourceTransactionId);
+
+  if (!rows.length) return [];
+
+  const { data: matchRows, error: matchError } = await supabase
+    .from("transaction_subscription_matches")
+    .select("transaction_id")
+    .eq("user_id", userId)
+    .in(
+      "transaction_id",
+      rows.map((row) => row.id),
+    );
+
+  if (matchError) {
+    if (!isMissingSubscriptionRelationError(matchError)) {
+      throw matchError;
+    }
+  }
+
+  const alreadyMatchedIds = new Set(
+    ((matchRows || []) as RowRecord[]).map((row) =>
+      String(row.transaction_id || ""),
+    ),
+  );
+
+  const historyByProfileId = input.profileId
+    ? await getProfileHistoryByMatchedTransactions([input.profileId], userId)
+    : {};
+  const history = input.profileId ? historyByProfileId[input.profileId] || [] : [];
+
+  const draftProfile: SubscriptionProfile = {
+    id: String(input.profileId || "draft"),
+    planKey: DEFAULT_PLAN_KEY,
+    name: String(input.name || "").trim(),
+    normalizedName,
+    billingCycle: normalizeBillingCycle(input.billingCycle),
+    expectedAmount,
+    amountTolerance,
+    expectedDayOfMonth,
+    providerHint: normalizeProviderHint(input.providerHint),
+    isActive: true,
+    createdAt: null,
+    updatedAt: null,
+  };
+
+  return rows
+    .filter((tx) => !alreadyMatchedIds.has(tx.id))
+    .map((tx) => ({
+      tx,
+      providerDetected: detectProvider(tx.counterparty, tx.details),
+      score: scoreSubscriptionSuggestion(tx, draftProfile, normalizedRules, history),
+    }))
+    .filter((row) => row.score.confidenceLabel != null)
+    .sort((left, right) => {
+      if (right.score.confidence !== left.score.confidence) {
+        return right.score.confidence - left.score.confidence;
+      }
+      return String(right.tx.date).localeCompare(String(left.tx.date));
+    })
+    .slice(0, maxCandidates)
+    .map((row) => toValidationCandidate(row.tx, row.providerDetected));
+}
+
 async function buildSubscriptionQueue(
   monthStartIso: string,
   monthEndIso: string,
@@ -1147,7 +1289,9 @@ async function buildSubscriptionQueue(
         subscriptionCategoryIds,
       ),
     }))
-    .filter((row) => row.providerDetected != null || row.isKnownSubscription);
+    .filter(
+      (row) => row.providerDetected != null && !row.isKnownSubscription,
+    );
 
   const candidateIds = allCandidates.map((row) => row.tx.id);
   if (!candidateIds.length) return [];
@@ -1313,6 +1457,78 @@ export async function getTransactionSubscriptionMatch(
     match: mapped,
     profile: profileRow ? mapProfileRow(profileRow as RowRecord) : null,
   };
+}
+
+export async function listTransactionSubscriptionProfileNames(
+  transactionIds: string[],
+): Promise<Record<string, string>> {
+  const userId = await requireCurrentUserId();
+  const uniqueTransactionIds = Array.from(
+    new Set(
+      (transactionIds || [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+  if (!uniqueTransactionIds.length) return {};
+
+  const matchRows: { transactionId: string; subscriptionProfileId: string }[] =
+    [];
+
+  for (const chunk of chunkArray(uniqueTransactionIds, 200)) {
+    const { data, error } = await supabase
+      .from("transaction_subscription_matches")
+      .select("transaction_id,subscription_profile_id")
+      .eq("user_id", userId)
+      .in("transaction_id", chunk);
+
+    if (error) {
+      if (isMissingSubscriptionRelationError(error)) return {};
+      throw error;
+    }
+
+    for (const row of (data || []) as RowRecord[]) {
+      const transactionId = String(row.transaction_id || "");
+      const subscriptionProfileId = String(row.subscription_profile_id || "");
+      if (!transactionId || !subscriptionProfileId) continue;
+      matchRows.push({ transactionId, subscriptionProfileId });
+    }
+  }
+
+  if (!matchRows.length) return {};
+
+  const profileIds = Array.from(
+    new Set(matchRows.map((row) => row.subscriptionProfileId)),
+  );
+  const profileNamesById: Record<string, string> = {};
+
+  for (const chunk of chunkArray(profileIds, 200)) {
+    const { data, error } = await supabase
+      .from("subscription_profiles")
+      .select("id,name")
+      .eq("user_id", userId)
+      .in("id", chunk);
+
+    if (error) {
+      if (isMissingSubscriptionRelationError(error)) return {};
+      throw error;
+    }
+
+    for (const row of (data || []) as RowRecord[]) {
+      const id = String(row.id || "");
+      const name = String(row.name || "").trim();
+      if (!id || !name) continue;
+      profileNamesById[id] = name;
+    }
+  }
+
+  return matchRows.reduce<Record<string, string>>((acc, row) => {
+    const profileName = profileNamesById[row.subscriptionProfileId];
+    if (!profileName) return acc;
+    acc[row.transactionId] = profileName;
+    return acc;
+  }, {});
 }
 
 async function findSubscriptionCategoryId(): Promise<string | null> {

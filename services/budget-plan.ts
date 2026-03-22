@@ -237,6 +237,13 @@ function roundEuro(value: number) {
   return Math.round(value);
 }
 
+const DEFAULT_INCLUDE_INCOME: BudgetIncomeInclusionSettings = {
+  salary: true,
+  childBudget: true,
+  structuralOther: false,
+  variable: false,
+};
+
 function snapToEuroStep(value: number, step = SAVINGS_TARGET_STEP) {
   if (step <= 0) return roundEuro(Math.max(value, 0));
   return Math.max(0, Math.round(value / step) * step);
@@ -557,12 +564,38 @@ function resolveIncludedIncomeTotal(
   income: BudgetIncomeBreakdown,
   settings: BudgetPlanSettings,
 ): number {
+  const includeIncome = settings.includeIncome ?? DEFAULT_INCLUDE_INCOME;
   let total = 0;
-  if (settings.includeIncome.salary) total += income.salary;
-  if (settings.includeIncome.childBudget) total += income.childBudget;
-  if (settings.includeIncome.structuralOther) total += income.structuralOther;
-  if (settings.includeIncome.variable) total += income.variable;
+  if (includeIncome.salary) total += income.salary;
+  if (includeIncome.childBudget) total += income.childBudget;
+  if (includeIncome.structuralOther) total += income.structuralOther;
+  if (includeIncome.variable) total += income.variable;
   return round2(total);
+}
+
+export type IncludedIncomePreview = {
+  total: number;
+  structural: number;
+  variable: number;
+};
+
+export function resolveIncludedIncomePreview(
+  income: BudgetIncomeBreakdown,
+  settings: BudgetPlanSettings,
+): IncludedIncomePreview {
+  const includeIncome = settings.includeIncome ?? DEFAULT_INCLUDE_INCOME;
+  const structural = round2(
+    (includeIncome.salary ? income.salary : 0) +
+      (includeIncome.childBudget ? income.childBudget : 0) +
+      (includeIncome.structuralOther ? income.structuralOther : 0),
+  );
+  const variable = includeIncome.variable ? round2(income.variable) : 0;
+
+  return {
+    total: resolveIncludedIncomeTotal(income, settings),
+    structural,
+    variable,
+  };
 }
 
 function applyIncomeInclusion(

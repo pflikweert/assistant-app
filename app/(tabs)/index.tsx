@@ -16,6 +16,7 @@ import {
   getCategoryPathLabel,
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
+import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import type {
   BudgetPlanComputation,
@@ -43,6 +44,7 @@ const fmt = new Intl.NumberFormat("nl-NL", {
 type DashboardTx = {
   id: string;
   counterparty: string;
+  subscriptionProfileName?: string | null;
   date: string;
   amount: number;
   seq: number;
@@ -163,7 +165,7 @@ function TxRow({
       </View>
       <View style={styles.txMid}>
         <Text style={styles.txName} numberOfLines={1}>
-          {tx.counterparty || "Onbekend"}
+          {tx.subscriptionProfileName || tx.counterparty || "Onbekend"}
         </Text>
         <View style={styles.txMetaRow}>
           <Text style={styles.txSub} numberOfLines={1}>
@@ -338,6 +340,16 @@ export default function DashboardScreen() {
             : -1,
       );
 
+      const recentRows = rows.slice(0, 3);
+      if (recentRows.length) {
+        const subscriptionNames = await listTransactionSubscriptionProfileNames(
+          recentRows.map((row) => row.id),
+        );
+        recentRows.forEach((row) => {
+          row.subscriptionProfileName = subscriptionNames[row.id] || null;
+        });
+      }
+
       if (!rows.length) {
         setTransactions([]);
         setBalance(null);
@@ -345,7 +357,7 @@ export default function DashboardScreen() {
         return;
       }
 
-      setTransactions(rows.slice(0, 3));
+      setTransactions(recentRows);
 
       const balanceRows = rows.filter((row) => row.runningBalance != null);
       const latestBalance = balanceRows[0]?.runningBalance ?? null;

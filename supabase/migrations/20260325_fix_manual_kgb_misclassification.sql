@@ -1,7 +1,6 @@
 -- Migration: fix historical manual misclassifications for KIT/KGB advances.
 
 begin;
-
 with child_budget as (
   select id
   from public.categories
@@ -18,5 +17,4 @@ from child_budget cb
 where lower(coalesce(tx.details, '')) like '%voorschot kit/kgb%'
   and tx.category_id_user is not null
   and tx.category_id_user <> cb.id;
-
 commit;

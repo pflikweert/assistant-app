@@ -65,6 +65,7 @@ let resolveBudgetPlanningTimeline: typeof import("./budget-plan").resolveBudgetP
 let resolveExpenseBaselinesFromCompletedMonths: typeof import("./budget-plan").resolveExpenseBaselinesFromCompletedMonths;
 let resolveExpectedIncomeMonthlyFromCompletedMonths: typeof import("./budget-plan").resolveExpectedIncomeMonthlyFromCompletedMonths;
 let resolveFutureMonthOverlapCarryover: typeof import("./budget-plan").resolveFutureMonthOverlapCarryover;
+let resolveIncludedIncomePreview: typeof import("./budget-plan").resolveIncludedIncomePreview;
 
 const DEFAULT_SETTINGS: BudgetPlanSettings = {
   planKey: "default",
@@ -92,6 +93,7 @@ beforeAll(async () => {
     budgetPlan.resolveExpectedIncomeMonthlyFromCompletedMonths;
   resolveFutureMonthOverlapCarryover =
     budgetPlan.resolveFutureMonthOverlapCarryover;
+  resolveIncludedIncomePreview = budgetPlan.resolveIncludedIncomePreview;
 });
 
 function expenseTx(params: {
@@ -171,6 +173,55 @@ describe("resolveBudgetPlanningTimeline", () => {
 });
 
 describe("future budget baselines", () => {
+  it("uses the included-income budget settings for the forecast income preview", () => {
+    const preview = resolveIncludedIncomePreview(
+      {
+        salary: 2400,
+        childBudget: 429,
+        structuralOther: 0,
+        variable: 650,
+        windfalls: 50,
+        costRefunds: 25,
+        total: 3554,
+      },
+      {
+        ...DEFAULT_SETTINGS,
+        includeIncome: {
+          salary: true,
+          childBudget: true,
+          structuralOther: false,
+          variable: false,
+        },
+      },
+    );
+
+    expect(preview.total).toBe(2829);
+    expect(preview.structural).toBe(2829);
+    expect(preview.variable).toBe(0);
+  });
+
+  it("falls back to the default include-income settings when they are missing", () => {
+    const preview = resolveIncludedIncomePreview(
+      {
+        salary: 2400,
+        childBudget: 429,
+        structuralOther: 0,
+        variable: 650,
+        windfalls: 50,
+        costRefunds: 25,
+        total: 3554,
+      },
+      {
+        ...DEFAULT_SETTINGS,
+        includeIncome: undefined as any,
+      } as any,
+    );
+
+    expect(preview.total).toBe(2829);
+    expect(preview.structural).toBe(2829);
+    expect(preview.variable).toBe(0);
+  });
+
   it("uses only completed months for fixed, subscriptions and variable baselines", () => {
     const rows = [
       expenseTx({

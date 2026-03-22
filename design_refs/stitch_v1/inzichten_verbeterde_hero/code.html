@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+
+<html class="light" lang="nl"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Manrope:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-error": "#ffefec",
+              "secondary": "#565d5f",
+              "surface-variant": "#dadddf",
+              "error": "#b02500",
+              "primary-dim": "#5f4e00",
+              "primary": "#6d5a00",
+              "primary-fixed-dim": "#edc600",
+              "secondary-fixed-dim": "#cfd6d8",
+              "on-surface-variant": "#595c5d",
+              "error-dim": "#b92902",
+              "error-container": "#f95630",
+              "surface-container-low": "#eff1f2",
+              "outline": "#757778",
+              "on-tertiary-container": "#516000",
+              "on-secondary": "#edf4f6",
+              "primary-container": "#fdd404",
+              "secondary-fixed": "#dde4e6",
+              "secondary-container": "#dde4e6",
+              "surface-tint": "#6d5a00",
+              "on-primary-container": "#594a00",
+              "primary-fixed": "#fdd404",
+              "on-primary-fixed-variant": "#645300",
+              "on-background": "#2c2f30",
+              "on-tertiary-fixed-variant": "#5b6b00",
+              "tertiary-fixed-dim": "#d5ee68",
+              "on-primary": "#fff2ce",
+              "inverse-surface": "#0c0f10",
+              "on-secondary-container": "#4c5355",
+              "tertiary-dim": "#485500",
+              "secondary-dim": "#4a5153",
+              "tertiary-container": "#e3fd74",
+              "inverse-on-surface": "#9b9d9e",
+              "surface": "#f5f6f7",
+              "surface-container-lowest": "#ffffff",
+              "surface-bright": "#f5f6f7",
+              "on-surface": "#2c2f30",
+              "surface-container": "#e6e8ea",
+              "surface-container-high": "#e0e3e4",
+              "on-tertiary-fixed": "#414d00",
+              "tertiary": "#536200",
+              "inverse-primary": "#fdd404",
+              "background": "#f5f6f7",
+              "on-tertiary": "#e5ff76",
+              "surface-dim": "#d1d5d7",
+              "on-secondary-fixed": "#394043",
+              "on-error-container": "#520c00",
+              "outline-variant": "#abadae",
+              "tertiary-fixed": "#e3fd74",
+              "on-primary-fixed": "#433700",
+              "surface-container-highest": "#dadddf",
+              "on-secondary-fixed-variant": "#565d5f"
+            },
+            fontFamily: {
+              "headline": ["Plus Jakarta Sans"],
+              "body": ["Manrope"],
+              "label": ["Manrope"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #f5f6f7;
+            font-family: 'Manrope', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        .editorial-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 1.5rem;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px) saturate(180%);
+        }
+        .custom-gradient-text {
+            background: linear-gradient(135deg, #6d5a00 0%, #5f4e00 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .swiss-border {
+            border-top: 1px solid #e0e3e4;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="text-on-background pb-32 pt-16">
+<!-- Top Navigation Anchor -->
+<nav class="fixed top-0 w-full z-50 bg-[#f5f6f7]/80 dark:bg-slate-900/80 backdrop-blur-xl flex justify-between items-center px-6 py-4 w-full border-b border-surface-container">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-[#6d5a00] dark:text-[#fdd404]">menu</span>
+<h1 class="font-['Plus_Jakarta_Sans'] font-bold text-lg tracking-tight text-[#0c0f10] dark:text-white uppercase tracking-[0.1em]">Mijn Financiën</h1>
+</div>
+<div class="flex items-center gap-6">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden border-2 border-surface-container-lowest">
+<img alt="Avatar" class="w-full h-full object-cover" data-alt="Profielfoto van de gebruiker" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD7LiA7lXTutVmVnPjywsCMVjX3B_axn6PpdHOOSwEpJbTigSqIsfvsvN77TZIV7XFd_5ayXPh5LCQnLqEMrctQm_y42Ev9W8XZI1EGkPo8ZRiRc6D70baTX2tD5ZEZkNh2axGrvdoMw5eqHjldmf4mWFXHuIr0paIwRxtoo8-W7DvmzA32b4yEo8739WXFEtF0p_yvoC_0AhO4glHunpG5SO1ySJgEVWY1jv-Mp1Vf8_WBF_sENsDLlyST4YN58gdQueD2uT28kt0"/>
+</div>
+</div>
+</nav>
+<!-- Wrapped Hero in a div for visual separation background -->
+<div class="bg-surface-container-low border-b border-surface-container -mt-4 mb-12">
+<main class="max-w-7xl mx-auto px-6 pt-12 pb-16">
+<!-- Swiss-Inspired Hero Header -->
+<header>
+<div class="mb-8">
+<span class="inline-block px-3 py-0.5 rounded-sm bg-primary-container text-on-primary-container text-[10px] font-extrabold uppercase tracking-widest mb-4">Voorspelling Mei</span>
+<h2 class="font-headline text-5xl md:text-7xl font-extrabold tracking-tighter text-inverse-surface leading-[0.9] uppercase">
+                        Uw rust aan het <br/>einde van de maand.
+                    </h2>
+<p class="mt-8 text-body-lg text-on-surface-variant leading-relaxed max-w-xl border-l-2 border-primary pl-6">
+                        Op basis van uw huidige uitgavenpatroon en vaste lasten verwachten we dat u de maand positief zult afsluiten.
+                    </p>
+</div>
+<!-- Architecturally Bold Summary Card -->
+<div class="bg-surface-container-lowest border border-surface-container rounded-sm p-8 md:p-12 shadow-sm">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+<div>
+<p class="font-label text-xs uppercase font-extrabold tracking-[0.2em] text-on-surface-variant mb-4">Verwacht Saldo</p>
+<div class="font-headline text-7xl md:text-8xl font-black text-inverse-surface tracking-tighter leading-none">
+                                € 2.450,<span class="text-3xl align-top pt-2">12</span>
+</div>
+</div>
+<div class="md:border-l border-surface-container md:pl-12 flex flex-col justify-center">
+<div class="flex items-center gap-3 text-primary mb-2">
+<span class="material-symbols-outlined text-2xl font-bold">trending_up</span>
+<span class="text-xl font-black tracking-tight">+ € 420,00</span>
+</div>
+<p class="text-sm font-bold text-on-surface-variant uppercase tracking-widest">t.o.v. vorige maand</p>
+<div class="mt-6 flex gap-2">
+<div class="h-1 flex-1 bg-primary rounded-full"></div>
+<div class="h-1 flex-1 bg-surface-container-highest rounded-full"></div>
+<div class="h-1 flex-1 bg-surface-container-highest rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+</header>
+</main>
+</div>
+<main class="max-w-7xl mx-auto px-6">
+<!-- Bento Insights Grid -->
+<div class="editorial-grid">
+<!-- Main Flow Visualization (Zen style preserved) -->
+<div class="col-span-12 lg:col-span-8 bg-surface-container-low rounded-xl p-8 relative overflow-hidden group">
+<div class="relative z-10">
+<div class="flex justify-between items-center mb-10">
+<h3 class="font-headline text-2xl font-extrabold uppercase tracking-tight">Cashflow Trend</h3>
+<span class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Live Data</span>
+</div>
+<div class="h-64 w-full flex items-end gap-3 px-4">
+<!-- Zen Visual Bars -->
+<div class="flex-1 bg-surface-container-highest rounded-t-lg h-[40%] group-hover:h-[45%] transition-all duration-500"></div>
+<div class="flex-1 bg-surface-container-highest rounded-t-lg h-[55%] group-hover:h-[60%] transition-all duration-500"></div>
+<div class="flex-1 bg-surface-container-highest rounded-t-lg h-[45%] group-hover:h-[50%] transition-all duration-500"></div>
+<div class="flex-1 bg-surface-container-highest rounded-t-lg h-[70%] group-hover:h-[75%] transition-all duration-500"></div>
+<div class="flex-1 bg-primary-container rounded-t-lg h-[85%] relative">
+<div class="absolute -top-10 left-1/2 -translate-x-1/2 bg-inverse-surface text-surface text-[10px] py-1 px-2 rounded-sm font-bold">Nu</div>
+</div>
+<div class="flex-1 bg-primary-container/30 rounded-t-lg h-[75%] border-t-2 border-dashed border-primary"></div>
+<div class="flex-1 bg-primary-container/20 rounded-t-lg h-[80%] border-t-2 border-dashed border-primary/50"></div>
+</div>
+<div class="flex justify-between mt-6 text-[10px] font-black text-on-surface-variant uppercase tracking-[0.15em]">
+<span>Januari</span>
+<span>Februari</span>
+<span>Maart</span>
+<span>April</span>
+<span class="text-primary">Mei</span>
+<span class="opacity-50 text-primary">Juni (Forecast)</span>
+<span class="opacity-30 text-primary">Juli (Forecast)</span>
+</div>
+</div>
+<div class="absolute bottom-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -mr-20 -mb-20"></div>
+</div>
+<!-- Risk/Insight Card -->
+<div class="col-span-12 lg:col-span-4 bg-inverse-surface text-surface-container-lowest rounded-xl p-8 flex flex-col justify-between border-t-8 border-primary">
+<div>
+<div class="w-12 h-12 rounded-full bg-primary-container flex items-center justify-center mb-6">
+<span class="material-symbols-outlined text-primary text-2xl" data-weight="fill">lightbulb</span>
+</div>
+<h3 class="font-headline text-2xl font-bold mb-4 uppercase tracking-tight">Slimme Tip</h3>
+<p class="font-body text-surface-variant leading-relaxed">
+                        We zien dat u deze maand 15% minder uitgeeft aan abonnementen. Als u dit verschil automatisch opzij zet, bereikt u uw spaardoel 2 maanden eerder.
+                    </p>
+</div>
+<button class="mt-10 bg-primary hover:bg-primary-dim text-on-primary font-bold py-4 px-8 rounded-sm transition-all flex items-center justify-between group uppercase tracking-widest text-xs">
+<span>Instellen</span>
+<span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</button>
+</div>
+<!-- Detailed Metrics -->
+<div class="col-span-12 md:col-span-6 lg:col-span-4 bg-surface-container-lowest rounded-xl p-8 shadow-sm border border-surface-container">
+<div class="flex items-center gap-4 mb-8">
+<span class="material-symbols-outlined text-secondary text-2xl">timer</span>
+<h4 class="font-headline font-extrabold uppercase tracking-tight">Vaste Lasten</h4>
+</div>
+<div class="space-y-8">
+<div>
+<div class="flex justify-between items-baseline mb-2">
+<span class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Huishouding</span>
+<span class="font-black text-xl tracking-tighter">€ 1.100,00</span>
+</div>
+<div class="h-2 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary rounded-full w-[65%]"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between items-baseline mb-2">
+<span class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Vrije tijd</span>
+<span class="font-black text-xl tracking-tighter">€ 450,00</span>
+</div>
+<div class="h-2 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary-container rounded-full w-[30%]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Growth Progressor -->
+<div class="col-span-12 md:col-span-6 lg:col-span-4 bg-surface-container-lowest rounded-xl p-8 border-2 border-primary shadow-lg relative overflow-hidden">
+<div class="flex items-center gap-4 mb-6">
+<span class="material-symbols-outlined text-primary text-2xl">auto_graph</span>
+<h4 class="font-headline font-extrabold uppercase tracking-tight">Spaardoel</h4>
+</div>
+<p class="text-[10px] font-black uppercase tracking-[0.2em] text-on-surface-variant mb-1">Vakantie 2024</p>
+<div class="flex items-baseline gap-2 mb-4">
+<span class="text-4xl font-black text-inverse-surface tracking-tighter">€ 3.200</span>
+<span class="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest">van € 5.000</span>
+</div>
+<div class="h-4 w-full bg-surface-container-highest rounded-full overflow-hidden mb-4">
+<div class="h-full bg-primary rounded-full w-[64%]"></div>
+</div>
+<p class="text-[10px] font-bold text-primary uppercase tracking-widest italic">Nog 3 maanden te gaan bij huidig tempo.</p>
+</div>
+<!-- Simplified Risk Assessment -->
+<div class="col-span-12 lg:col-span-4 bg-surface-container-high rounded-xl p-8 border border-surface-container">
+<h4 class="font-headline font-extrabold mb-8 uppercase tracking-tight">Gezondheid</h4>
+<div class="flex items-center gap-6 py-4">
+<div class="relative w-24 h-24">
+<svg class="w-full h-full -rotate-90" viewbox="0 0 36 36">
+<path class="text-surface-container-highest" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="100, 100" stroke-width="4"></path>
+<path class="text-primary" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="85, 100" stroke-linecap="butt" stroke-width="4"></path>
+</svg>
+<div class="absolute inset-0 flex items-center justify-center font-black text-2xl tracking-tighter">85%</div>
+</div>
+<div>
+<p class="font-black text-on-surface uppercase tracking-tight text-xl">Uitstekend</p>
+<p class="text-xs font-bold text-on-surface-variant mt-1 leading-relaxed">U bent 10% stabieler dan de gemiddelde gebruiker.</p>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation Shell -->
+<nav class="fixed bottom-0 left-0 w-full bg-[#f5f6f7]/90 dark:bg-slate-900/90 backdrop-blur-xl flex justify-around items-center px-4 pb-8 pt-4 border-t border-surface-container z-50">
+<a class="flex flex-col items-center justify-center text-[#595c5d] px-4 py-2 opacity-60" href="#">
+<span class="material-symbols-outlined mb-1">dashboard</span>
+<span class="font-['Manrope'] text-[9px] font-extrabold uppercase tracking-widest">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#595c5d] px-4 py-2 opacity-60" href="#">
+<span class="material-symbols-outlined mb-1">account_balance_wallet</span>
+<span class="font-['Manrope'] text-[9px] font-extrabold uppercase tracking-widest">Budget</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#595c5d] px-4 py-2 opacity-60" href="#">
+<span class="material-symbols-outlined mb-1">receipt_long</span>
+<span class="font-['Manrope'] text-[9px] font-extrabold uppercase tracking-widest">Transacties</span>
+</a>
+<a class="flex flex-col items-center justify-center text-primary px-4 py-2 border-b-2 border-primary" href="#">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">query_stats</span>
+<span class="font-['Manrope'] text-[9px] font-extrabold uppercase tracking-widest">Inzichten</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#595c5d] px-4 py-2 opacity-60" href="#">
+<span class="material-symbols-outlined mb-1">subscriptions</span>
+<span class="font-['Manrope'] text-[9px] font-extrabold uppercase tracking-widest">Apps</span>
+</a>
+</nav>
+<!-- Floating Action Button Contextual -->
+<button class="fixed bottom-28 right-8 w-16 h-16 bg-inverse-surface text-surface rounded-sm flex items-center justify-center shadow-2xl hover:bg-primary transition-all z-40">
+<span class="material-symbols-outlined text-3xl font-bold">add</span>
+</button>
+</body></html>

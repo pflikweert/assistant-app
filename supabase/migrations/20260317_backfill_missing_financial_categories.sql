@@ -3,7 +3,6 @@
 
 alter table public.category_rules
   add column if not exists is_system boolean not null default false;
-
 with desired_categories(key, name, parent_key, budget_group, sort_order) as (
   values
     ('income', 'Inkomen', null, 'income', 10),
@@ -84,7 +83,6 @@ on conflict (key) do update
       budget_group = excluded.budget_group,
       sort_order = excluded.sort_order,
       updated_at = now();
-
 with desired_categories(key, name, parent_key, budget_group, sort_order) as (
   values
     ('income_salary', 'Salaris', 'income', 'income', 11),
@@ -143,7 +141,6 @@ on conflict (key) do update
       budget_group = excluded.budget_group,
       sort_order = excluded.sort_order,
       updated_at = now();
-
 with desired_rules(pattern, pattern_normalized, category_key, confidence) as (
   values
     ('Jumbo', 'jumbo', 'groceries_household_supermarket', 0.98),

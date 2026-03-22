@@ -1,5 +1,4 @@
 begin;
-
 alter table public.monthly_cashflow_forecasts
   add column if not exists forecast_reference_date date,
   add column if not exists booked_income_total numeric not null default 0,
@@ -11,7 +10,6 @@ alter table public.monthly_cashflow_forecasts
   add column if not exists expected_savings_outflow_total numeric not null default 0,
   add column if not exists expected_cash_out_total numeric not null default 0,
   add column if not exists upcoming_committed_savings_outflow_total numeric not null default 0;
-
 update public.monthly_cashflow_forecasts
 set
   forecast_reference_date = coalesce(
@@ -44,5 +42,4 @@ set
     upcoming_committed_savings_outflow_total,
     0
   );
-
 commit;

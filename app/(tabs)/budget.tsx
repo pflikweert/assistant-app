@@ -9,7 +9,10 @@ import {
   resolveLockedVariableMainCategories,
   shouldPersistCategoryOnBudgetSave,
 } from "@/services/budget-lock-utils";
-import { computeBudgetPlan } from "@/services/budget-plan";
+import {
+  computeBudgetPlan,
+  resolveIncludedIncomePreview,
+} from "@/services/budget-plan";
 import {
   buildWeekAttentionRows,
   getBudgetCategoryDisplayLabel,
@@ -37,6 +40,7 @@ import {
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
 import { markForecastDirty } from "@/services/forecast-refresh";
+import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import {
   getCurrentMonthKey,
@@ -135,6 +139,7 @@ type InlineWeekTransaction = {
   date: string;
   title: string;
   counterparty: string | null;
+  subscriptionProfileName?: string | null;
   amount: number;
   budgetExcluded: boolean;
   category_id_auto: string | null;
@@ -174,7 +179,9 @@ function BudgetInlineTransactionRow({
             bubbleSize={34}
           />
           <View style={styles.inlineTransactionContent}>
-            <Text style={styles.inlineTransactionTitle}>{tx.title}</Text>
+            <Text style={styles.inlineTransactionTitle}>
+              {tx.subscriptionProfileName || tx.title}
+            </Text>
             <View style={styles.inlineTransactionCategoryRow}>
               <Text style={styles.inlineTransactionCategory}>{categoryLabel}</Text>
               {overlapLabel ? (
@@ -428,14 +435,12 @@ function getIncludedIncomePreview(
   includeIncome: BudgetIncomeInclusionSettings,
 ) {
   if (!plan) return 0;
-
-  const income = plan.trend.income;
-  let total = 0;
-  if (includeIncome.salary) total += income.salary;
-  if (includeIncome.childBudget) total += income.childBudget;
-  if (includeIncome.structuralOther) total += income.structuralOther;
-  if (includeIncome.variable) total += income.variable;
-  return normalizeBudgetAmount(total);
+  return normalizeBudgetAmount(
+    resolveIncludedIncomePreview(plan.trend.income, {
+      ...plan.settings.includeIncome,
+      ...includeIncome,
+    }).total,
+  );
 }
 
 function getRiskStyle(tone: BudgetRiskTone) {
@@ -2025,6 +2030,10 @@ export default function BudgetScreen() {
               );
             })();
 
+        const subscriptionNames = await listTransactionSubscriptionProfileNames(
+          filteredRows.map((row) => row.id),
+        );
+
         setInlineTransactionsBySubcategory((current) => ({
           ...current,
           [cacheKey]: filteredRows.map((row) => ({
@@ -2032,6 +2041,7 @@ export default function BudgetScreen() {
             date: row.date,
             title: extractTransactionTitle(row.details),
             counterparty: row.counterparty,
+            subscriptionProfileName: subscriptionNames[row.id] || null,
             amount: row.amount,
             budgetExcluded: row.budget_excluded,
             category_id_auto: row.category_id_auto,
@@ -2177,9 +2187,16 @@ export default function BudgetScreen() {
             : null,
         }));
 
+        const subscriptionNames = await listTransactionSubscriptionProfileNames(
+          rows.map((row) => row.id),
+        );
+
         setOutsideBudgetTransactionsByItem((current) => ({
           ...current,
-          [cacheKey]: rows,
+          [cacheKey]: rows.map((row) => ({
+            ...row,
+            subscriptionProfileName: subscriptionNames[row.id] || null,
+          })),
         }));
       } catch (error) {
         console.warn("[budget] buiten-budget transacties laden mislukt", error);
@@ -2319,9 +2336,16 @@ export default function BudgetScreen() {
             );
           });
 
+        const subscriptionNames = await listTransactionSubscriptionProfileNames(
+          rows.map((row) => row.id),
+        );
+
         setCategoryDetailTransactionsByKey((current) => ({
           ...current,
-          [categoryKey]: rows,
+          [categoryKey]: rows.map((row) => ({
+            ...row,
+            subscriptionProfileName: subscriptionNames[row.id] || null,
+          })),
         }));
       } catch (error) {
         console.warn("[budget] categorie-detail transacties laden mislukt", error);

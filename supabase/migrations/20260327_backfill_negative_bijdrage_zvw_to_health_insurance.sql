@@ -2,7 +2,6 @@
 -- health insurance costs.
 
 begin;
-
 with health_insurance as (
   select id
   from public.categories
@@ -24,5 +23,4 @@ where tx.category_id_user is null
   and tx.amount < 0
   and lower(coalesce(tx.counterparty, '')) like '%belastingdienst%'
   and lower(coalesce(tx.details, '')) like '%bijdrage zvw%';
-
 commit;

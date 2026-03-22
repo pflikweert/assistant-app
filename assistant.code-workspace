@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"chat.tools.terminal.autoApprove": {
+			"tabs": true,
+			"/index.tsx": true,
+			"git remote": true
+		},
+		"chatgpt.openOnStartup": true
+	}
+}

@@ -1,29 +1,27 @@
+import { TransactionCategoryIcon } from "@/components/category-icon";
 import { ThemedText } from "@/components/themed-text";
-import { IconSymbol } from "@/components/ui/icon-symbol";
-import { useThemeColor } from "@/hooks/use-theme-color";
-import {
-    getTransactionCategories,
-    setTransactionManualCategory,
-} from "@/services/categorization-repository";
+import { AppIcon } from "@/components/ui/app-icon";
+import { FinColors } from "@/constants/theme";
+import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
 import { requireCurrentUserId } from "@/services/current-user";
 import {
-    buildCategoryNameMap,
-    getCategoryLabel,
+  buildCategoryNameMap,
+  getCategoryLabel,
 } from "@/services/category-display";
+import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import type { CategoryRecord } from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
-import { Link } from "expo-router";
+import { router } from "expo-router";
 import React from "react";
 import {
-    ActivityIndicator,
-    Button,
-    Pressable,
-    SectionList,
-    StyleSheet,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Pressable,
+  SectionList,
+  StyleSheet,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const PAGE_SIZE = 20;
@@ -32,11 +30,11 @@ const euroFormatter = new Intl.NumberFormat("nl-NL", {
   currency: "EUR",
 });
 
-// runningBalance will be added after fetching
 type Tx = {
   id: string;
   description: string;
   counterparty: string;
+  subscriptionProfileName?: string | null;
   omschrijving1: string;
   date: string;
   amount: number;
@@ -55,6 +53,23 @@ function parseSaldo(value: unknown): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function formatSectionDateLabel(value: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+  if (value === today) return "Vandaag";
+  if (value === yesterday) return "Gisteren";
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("nl-NL", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+}
+
 export default function TransactionsScreen({
   counterpartyFilter,
   analysisCategoryFilter,
@@ -71,24 +86,13 @@ export default function TransactionsScreen({
   const [transactions, setTransactions] = React.useState<Tx[]>([]);
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const [savingCategory, setSavingCategory] = React.useState(false);
   const [page, setPage] = React.useState(0);
   const [hasMore, setHasMore] = React.useState(true);
   const isFocused = useIsFocused();
   const backgroundStatus = useCategorizationStatus();
 
-  const borderColor = useThemeColor({ light: "#ccc", dark: "#555" }, "text");
-
   const categoryById = React.useMemo(
     () => buildCategoryNameMap(categories),
-    [categories],
-  );
-
-  const otherCategoryId = React.useMemo(
-    () =>
-      categories.find((c) => c.key === "other_unknown")?.id ||
-      categories.find((c) => c.key === "other")?.id ||
-      null,
     [categories],
   );
 
@@ -195,17 +199,23 @@ export default function TransactionsScreen({
             } as Tx;
           });
 
-          // Keep a deterministic newest-first order when date is equal.
           rows.sort((a, b) => {
             if (a.date === b.date) return b.seq - a.seq;
             return a.date < b.date ? 1 : -1;
           });
 
+          const subscriptionNames = await listTransactionSubscriptionProfileNames(
+            rows.map((row) => row.id),
+          );
+          rows.forEach((row) => {
+            row.subscriptionProfileName = subscriptionNames[row.id] || null;
+          });
+
           setTransactions(rows);
           setHasMore(rows.length === PAGE_SIZE);
         }
-      } catch (e) {
-        console.error(e);
+      } catch (error) {
+        console.error(error);
       } finally {
         setLoading(false);
       }
@@ -253,16 +263,16 @@ export default function TransactionsScreen({
     page,
   ]);
 
-  const iconColor = useThemeColor({}, "icon");
-
-  // group by date for section list
   const sections = React.useMemo(() => {
-    const map: Record<string, Tx[]> = {};
+    const grouped: Record<string, Tx[]> = {};
     transactions.forEach((tx) => {
-      if (!map[tx.date]) map[tx.date] = [];
-      map[tx.date].push(tx);
+      if (!grouped[tx.date]) grouped[tx.date] = [];
+      grouped[tx.date].push(tx);
     });
-    return Object.entries(map).map(([date, data]) => ({ title: date, data }));
+    return Object.entries(grouped).map(([date, data]) => ({
+      title: date,
+      data,
+    }));
   }, [transactions]);
 
   const getEffectiveCategory = React.useCallback(
@@ -277,246 +287,408 @@ export default function TransactionsScreen({
     [categoryById],
   );
 
-  const setCategory = React.useCallback(
-    async (tx: Tx, categoryId: string, reason: string) => {
-      setSavingCategory(true);
-      try {
-        await setTransactionManualCategory(tx.id, categoryId, {
-          reason,
-          learnFromCounterparty: false,
-        });
-        await loadPage(page);
-      } catch (error) {
-        console.warn("setCategory error", error);
-      } finally {
-        setSavingCategory(false);
-      }
-    },
-    [loadPage, page],
-  );
+  const activeFilterCount = [
+    Boolean(counterpartyFilter),
+    Boolean(analysisCategoryFilter),
+    Boolean(categoryKeyFilter),
+    Boolean(monthStartFilter),
+  ].filter(Boolean).length;
 
   return (
-    <View style={{ flex: 1, padding: 16 }}>
-      <ThemedText type="title" style={styles.heading}>
-        Alle transacties
-      </ThemedText>
-
-      {loading && <ActivityIndicator style={{ marginVertical: 20 }} />}
+    <View style={styles.root}>
+      <View style={styles.headerCard}>
+        <ThemedText type="subtitle" style={styles.eyebrow}>
+          Transacties
+        </ThemedText>
+        <ThemedText type="title" style={styles.heading}>
+          Alle transacties
+        </ThemedText>
+        <ThemedText style={styles.helperText}>
+          Snel scannen, openen en waar nodig direct corrigeren.
+        </ThemedText>
+        {activeFilterCount > 0 ? (
+          <View style={styles.filterChip}>
+            <ThemedText style={styles.filterChipText}>
+              {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"} actief
+            </ThemedText>
+          </View>
+        ) : null}
+      </View>
 
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        stickySectionHeadersEnabled={false}
+        showsVerticalScrollIndicator={false}
         renderSectionHeader={({ section: { title } }) => (
-          <ThemedText type="subtitle" style={styles.sectionHeader}>
-            {title}
-          </ThemedText>
+          <View style={styles.sectionHeader}>
+            <ThemedText type="subtitle" style={styles.sectionHeaderText}>
+              {formatSectionDateLabel(title)}
+            </ThemedText>
+          </View>
         )}
-        renderItem={({ item }) => (
-          <Link
-            href={{ pathname: "/transaction-detail", params: { id: item.id } }}
-            asChild
-          >
+        renderItem={({ item, index, section }) => {
+          const isFirst = index === 0;
+          const isLast = index === section.data.length - 1;
+          const isPositive = item.amount >= 0;
+
+          return (
             <TouchableOpacity
-              style={[styles.row, { borderBottomColor: borderColor }]}
-              activeOpacity={0.7}
+              style={StyleSheet.flatten([
+                styles.row,
+                isFirst && styles.rowFirst,
+                isLast && styles.rowLast,
+                !isLast && styles.rowDivider,
+              ])}
+              activeOpacity={0.78}
+              onPress={() =>
+                router.push({
+                  pathname: "/transaction-detail",
+                  params: { id: item.id },
+                })
+              }
             >
-              <IconSymbol
-                name="chevron.right"
-                size={20}
-                color={iconColor}
-                style={styles.icon}
-              />
+              <View style={styles.iconWrap}>
+                <TransactionCategoryIcon
+                  row={{
+                    category_id_auto: item.categoryAutoId,
+                    category_id_user: item.categoryUserId,
+                  }}
+                  categoryById={categoryById}
+                  size={20}
+                  bubbleSize={42}
+                />
+              </View>
+
               <View style={styles.rowText}>
                 <ThemedText style={styles.desc}>
-                  {item.counterparty || "Onbekende tegenpartij"}
+                  {item.subscriptionProfileName ||
+                    item.counterparty ||
+                    "Onbekende tegenpartij"}
                 </ThemedText>
                 <ThemedText style={styles.subDesc}>
                   {item.omschrijving1 || item.description}
                 </ThemedText>
+
                 <View style={styles.categoryRow}>
                   <ThemedText style={styles.categoryBadge}>
                     {getEffectiveCategory(item)}
                   </ThemedText>
-                  {item.categoryUserId ? (
-                    <ThemedText style={styles.categoryMeta}>
-                      Handmatig
-                    </ThemedText>
-                  ) : item.categoryConfidence != null ? (
-                    <ThemedText style={styles.categoryMeta}>
-                      {`${Math.round(item.categoryConfidence * 100)}% ${item.categorySource || "automatisch"}`}
-                    </ThemedText>
-                  ) : null}
-                </View>
-                {otherCategoryId ? (
-                  <View style={styles.categoryActions}>
-                    <Pressable
-                      style={styles.categoryActionBtn}
-                      disabled={savingCategory}
-                      onPress={(event) => {
-                        event.stopPropagation();
-                        void setCategory(item, otherCategoryId, "snel overig");
-                      }}
-                    >
-                      <ThemedText style={styles.categoryActionText}>
-                        Snel Overig
-                      </ThemedText>
-                    </Pressable>
-                  </View>
+                {item.categoryUserId ? (
+                  <ThemedText style={styles.categoryMeta}>Handmatig</ThemedText>
+                ) : item.categoryConfidence != null ? (
+                  <ThemedText style={styles.categoryMeta}>
+                    {`${Math.round(item.categoryConfidence * 100)}% ${item.categorySource || "automatisch"}`}
+                  </ThemedText>
                 ) : null}
               </View>
-              <View style={styles.moneyColumns}>
-                <View style={styles.moneyColumn}>
-                  <ThemedText style={styles.columnLabel}>Bedrag</ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.amount,
-                      { color: item.amount < 0 ? "#d9534f" : "#5cb85c" },
-                    ]}
-                  >
-                    {`${item.amount < 0 ? "-" : "+"}${euroFormatter.format(Math.abs(item.amount))}`}
-                  </ThemedText>
-                </View>
-                <View style={styles.moneyColumn}>
-                  <ThemedText style={styles.columnLabel}>Saldo</ThemedText>
-                  <ThemedText style={styles.running}>
-                    {item.runningBalance == null
-                      ? "onbekend"
-                      : euroFormatter.format(item.runningBalance)}
-                  </ThemedText>
-                </View>
+              </View>
+
+              <View style={styles.amountColumn}>
+                <ThemedText
+                  style={[
+                    styles.amount,
+                    isPositive ? styles.amountPositive : styles.amountNegative,
+                  ]}
+                >
+                  {`${isPositive ? "+" : "-"}${euroFormatter.format(Math.abs(item.amount))}`}
+                </ThemedText>
+                <ThemedText style={styles.running}>
+                  {item.runningBalance == null
+                    ? "Saldo onbekend"
+                    : `Saldo ${euroFormatter.format(item.runningBalance)}`}
+                </ThemedText>
               </View>
             </TouchableOpacity>
-          </Link>
-        )}
+          );
+        }}
+        ListHeaderComponent={
+          loading ? (
+            <ActivityIndicator
+              color={FinColors.textSecondary}
+              style={styles.loadingIndicator}
+            />
+          ) : null
+        }
         ListEmptyComponent={() =>
-          !loading ? <ThemedText>Geen transacties gevonden.</ThemedText> : null
+          !loading ? (
+            <View style={styles.emptyCard}>
+              <ThemedText style={styles.emptyTitle}>
+                Geen transacties gevonden
+              </ThemedText>
+              <ThemedText style={styles.emptyText}>
+                Pas je filters aan of kies een andere periode.
+              </ThemedText>
+            </View>
+          ) : null
         }
       />
 
       <View style={styles.pager}>
-        <Button
-          title="Vorige"
-          onPress={() => setPage((p) => Math.max(0, p - 1))}
+        <Pressable
+          style={[styles.pagerButton, page === 0 && styles.pagerButtonDisabled]}
+          onPress={() => setPage((current) => Math.max(0, current - 1))}
           disabled={page === 0 || loading}
-        />
+        >
+          <AppIcon
+            name="chevron-left"
+            size={18}
+            color={page === 0 ? FinColors.textMuted : FinColors.textPrimary}
+            variant="outlined"
+          />
+          <ThemedText
+            style={[
+              styles.pagerButtonText,
+              page === 0 && styles.pagerButtonTextDisabled,
+            ]}
+          >
+            Vorige
+          </ThemedText>
+        </Pressable>
+
         <ThemedText style={styles.pageNumber}>Pagina {page + 1}</ThemedText>
-        <Button
-          title="Volgende"
-          onPress={() => page >= 0 && setPage((p) => p + 1)}
+
+        <Pressable
+          style={[
+            styles.pagerButton,
+            (!hasMore || loading) && styles.pagerButtonDisabled,
+          ]}
+          onPress={() => setPage((current) => current + 1)}
           disabled={!hasMore || loading}
-        />
+        >
+          <ThemedText
+            style={[
+              styles.pagerButtonText,
+              (!hasMore || loading) && styles.pagerButtonTextDisabled,
+            ]}
+          >
+            Volgende
+          </ThemedText>
+          <AppIcon
+            name="chevron-right"
+            size={18}
+            color={
+              !hasMore || loading ? FinColors.textMuted : FinColors.textPrimary
+            }
+            variant="outlined"
+          />
+        </Pressable>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  heading: { fontSize: 18, fontWeight: "600", marginBottom: 12 },
+  root: {
+    flex: 1,
+    backgroundColor: FinColors.bgBase,
+    padding: 16,
+  },
+  headerCard: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    marginBottom: 16,
+  },
+  eyebrow: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: FinColors.textSecondary,
+  },
+  heading: {
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    marginTop: 4,
+  },
+  helperText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: FinColors.textSecondary,
+    marginTop: 8,
+  },
+  filterChip: {
+    alignSelf: "flex-start",
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  filterChipText: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  listContent: {
+    paddingBottom: 16,
+  },
+  loadingIndicator: {
+    marginVertical: 18,
+  },
+  sectionHeader: {
+    marginBottom: 10,
+    paddingTop: 8,
+  },
+  sectionHeaderText: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+    textTransform: "capitalize",
+  },
   row: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    alignItems: "flex-start",
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
   },
-  desc: { flex: 1, fontSize: 15 },
-  subDesc: { marginTop: 4, fontSize: 13, opacity: 0.8 },
+  rowFirst: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  rowLast: {
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    marginBottom: 8,
+  },
+  rowDivider: {
+    borderBottomWidth: 0,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  iconWrap: {
+    marginRight: 12,
+    paddingTop: 2,
+  },
+  rowText: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  desc: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: FinColors.textPrimary,
+    fontWeight: "600",
+  },
+  subDesc: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
+  },
   categoryRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginTop: 6,
+    flexWrap: "wrap",
+    marginTop: 7,
   },
   categoryBadge: {
     fontSize: 12,
+    lineHeight: 16,
     fontWeight: "600",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
+    color: FinColors.green,
+    backgroundColor: FinColors.greenBg,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: "rgba(125, 211, 161, 0.18)",
   },
   categoryMeta: {
     fontSize: 11,
-    opacity: 0.7,
+    lineHeight: 16,
+    color: FinColors.textMuted,
+    marginLeft: 8,
   },
-  categoryActions: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 6,
-    flexWrap: "wrap",
-  },
-  categoryActionBtn: {
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  categoryActionText: {
-    fontSize: 11,
-    opacity: 0.9,
-  },
-  amount: { fontSize: 17, fontWeight: "700", textAlign: "right" },
-  pager: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 12,
-  },
-  pageNumber: { marginHorizontal: 12 },
-  icon: { marginRight: 10, marginTop: 4 },
-  rowText: { flex: 1, justifyContent: "center", paddingRight: 8 },
-  moneyColumns: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  moneyColumn: {
-    minWidth: 98,
+  amountColumn: {
+    minWidth: 116,
     alignItems: "flex-end",
+    marginLeft: 8,
   },
-  columnLabel: {
-    fontSize: 12,
-    opacity: 0.75,
-    marginBottom: 2,
-  },
-  running: {
+  amount: {
     fontSize: 17,
-    color: "#888",
-    fontWeight: "600",
+    lineHeight: 22,
+    fontWeight: "700",
     textAlign: "right",
   },
-  sectionHeader: { marginTop: 12, fontWeight: "600" },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "flex-end",
+  amountPositive: {
+    color: FinColors.green,
   },
-  modalCard: {
-    maxHeight: "80%",
-    backgroundColor: "#171717",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    padding: 16,
-    gap: 8,
+  amountNegative: {
+    color: FinColors.red,
   },
-  modalTxName: { fontWeight: "700", marginTop: 2 },
-  modalTxSub: { opacity: 0.75, fontSize: 13 },
-  modalList: { marginTop: 8, marginBottom: 8 },
-  modalCategoryButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    marginBottom: 8,
-  },
-  modalCloseButton: {
+  running: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: FinColors.textMuted,
     marginTop: 4,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    textAlign: "right",
   },
-  modalCloseText: { fontWeight: "600" },
+  emptyCard: {
+    marginTop: 32,
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  emptyText: {
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+    color: FinColors.textSecondary,
+  },
+  pager: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  pagerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  pagerButtonDisabled: {
+    backgroundColor: FinColors.bgElevated,
+  },
+  pagerButtonText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "600",
+    marginHorizontal: 4,
+  },
+  pagerButtonTextDisabled: {
+    color: FinColors.textMuted,
+  },
+  pageNumber: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
 });

@@ -1,8 +1,6 @@
 begin;
-
 alter table public.budget_plan_settings
   add column if not exists forecast_expense_source text not null default 'trend';
-
 do $$
 begin
   if not exists (
@@ -15,5 +13,4 @@ begin
       check (forecast_expense_source in ('trend', 'budget_settings'));
   end if;
 end $$;
-
 commit;

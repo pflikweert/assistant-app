@@ -9,7 +9,6 @@ where user_id is null
     key like 'subscription\_%' escape '\'
   )
   and budget_group is distinct from 'subscriptions';
-
 update public.categories
 set
   budget_group = 'savings',
@@ -21,7 +20,6 @@ where user_id is null
     key like 'savings\_%' escape '\'
   )
   and budget_group is distinct from 'savings';
-
 do $$
 declare
   target_user_id uuid;

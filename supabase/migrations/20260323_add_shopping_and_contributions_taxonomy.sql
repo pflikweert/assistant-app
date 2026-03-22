@@ -3,7 +3,6 @@
 -- per-transaction subject classification.
 
 begin;
-
 with desired_roots(key, name, budget_group, sort_order) as (
   values
     ('shopping_goods', 'Aankopen & spullen', 'variable', 55),
@@ -27,7 +26,6 @@ on conflict (key) do update
       budget_group = excluded.budget_group,
       sort_order = excluded.sort_order,
       updated_at = now();
-
 with desired_categories(key, name, parent_key, budget_group, sort_order) as (
   values
     ('shopping_goods_electronics', 'Elektronica', 'shopping_goods', 'variable', 56),
@@ -56,7 +54,6 @@ on conflict (key) do update
       budget_group = excluded.budget_group,
       sort_order = excluded.sort_order,
       updated_at = now();
-
 -- Only add rules for merchants/labels that are category-specific enough.
 -- Broad webshops intentionally stay without system rules so AI/manual review
 -- can use the actual purchase subject.
@@ -110,7 +107,6 @@ on conflict (pattern_normalized, pattern_type) do update
       updated_at = now()
 where public.category_rules.is_system = true
    or public.category_rules.hit_count = 0;
-
 -- Provider-level counterparty rules are too broad for Klarna/PayPal-style
 -- intermediaries, because different payments can belong to different subjects.
 update public.category_rules
@@ -127,7 +123,6 @@ where pattern_type = 'counterparty_contains'
     'in3',
     'sprinque'
   );
-
 -- Clear existing automatic rule-based categories for these providers so they
 -- can be re-evaluated with the subject-aware flow.
 update public.transactions
@@ -148,5 +143,4 @@ where category_id_user is null
     or lower(coalesce(counterparty, '')) like '%in3%'
     or lower(coalesce(counterparty, '')) like '%sprinque%'
   );
-
 commit;

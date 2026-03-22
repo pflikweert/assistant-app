@@ -1,7 +1,6 @@
 -- Migration: add transaction analysis fields and forecast storage tables
 
 begin;
-
 alter table public.transactions
   add column if not exists analysis_main_group text,
   add column if not exists analysis_category text,
@@ -9,13 +8,11 @@ alter table public.transactions
   add column if not exists recurring_type text,
   add column if not exists spending_pattern text,
   add column if not exists analysis_updated_at timestamp with time zone;
-
 alter table public.transactions
   drop constraint if exists transactions_analysis_main_group_check;
 alter table public.transactions
   add constraint transactions_analysis_main_group_check
   check (analysis_main_group in ('income', 'expense') or analysis_main_group is null);
-
 alter table public.transactions
   drop constraint if exists transactions_analysis_category_check;
 alter table public.transactions
@@ -30,7 +27,6 @@ alter table public.transactions
     )
     or analysis_category is null
   );
-
 alter table public.transactions
   drop constraint if exists transactions_recurring_type_check;
 alter table public.transactions
@@ -39,7 +35,6 @@ alter table public.transactions
     recurring_type in ('monthly', 'quarterly', 'yearly', 'irregular')
     or recurring_type is null
   );
-
 alter table public.transactions
   drop constraint if exists transactions_spending_pattern_check;
 alter table public.transactions
@@ -48,7 +43,6 @@ alter table public.transactions
     spending_pattern in ('frequent_small_expense')
     or spending_pattern is null
   );
-
 create index if not exists transactions_analysis_main_group_idx
   on public.transactions(analysis_main_group);
 create index if not exists transactions_analysis_category_idx
@@ -61,7 +55,6 @@ create index if not exists transactions_spending_pattern_idx
   on public.transactions(spending_pattern);
 create index if not exists transactions_date_analysis_idx
   on public.transactions(date, analysis_main_group, analysis_category);
-
 create table if not exists public.forecast_income_sources (
   id uuid default gen_random_uuid() primary key,
   source_key text not null unique,
@@ -77,10 +70,8 @@ create table if not exists public.forecast_income_sources (
   constraint forecast_income_sources_day_check
     check (income_day_of_month is null or (income_day_of_month between 1 and 31))
 );
-
 create index if not exists forecast_income_sources_frequency_idx
   on public.forecast_income_sources(income_frequency);
-
 create table if not exists public.monthly_cashflow_forecasts (
   id uuid default gen_random_uuid() primary key,
   month_start date not null unique,
@@ -105,8 +96,6 @@ create table if not exists public.monthly_cashflow_forecasts (
   constraint monthly_cashflow_forecasts_risk_flag_check
     check (risk_flag in ('none', 'deficit_warning'))
 );
-
 create index if not exists monthly_cashflow_forecasts_month_idx
   on public.monthly_cashflow_forecasts(month_start);
-
 commit;

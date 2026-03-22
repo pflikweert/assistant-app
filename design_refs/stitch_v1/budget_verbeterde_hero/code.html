@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+
+<html lang="nl"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Manrope:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-error": "#ffefec",
+              "secondary": "#565d5f",
+              "surface-variant": "#dadddf",
+              "error": "#b02500",
+              "primary-dim": "#5f4e00",
+              "primary": "#6d5a00",
+              "primary-fixed-dim": "#edc600",
+              "secondary-fixed-dim": "#cfd6d8",
+              "on-surface-variant": "#595c5d",
+              "error-dim": "#b92902",
+              "error-container": "#f95630",
+              "surface-container-low": "#eff1f2",
+              "outline": "#757778",
+              "on-tertiary-container": "#516000",
+              "on-secondary": "#edf4f6",
+              "primary-container": "#fdd404",
+              "secondary-fixed": "#dde4e6",
+              "secondary-container": "#dde4e6",
+              "surface-tint": "#6d5a00",
+              "on-primary-container": "#594a00",
+              "primary-fixed": "#fdd404",
+              "on-primary-fixed-variant": "#645300",
+              "on-background": "#2c2f30",
+              "on-tertiary-fixed-variant": "#5b6b00",
+              "tertiary-fixed-dim": "#d5ee68",
+              "on-primary": "#fff2ce",
+              "inverse-surface": "#0c0f10",
+              "on-secondary-container": "#4c5355",
+              "tertiary-dim": "#485500",
+              "secondary-dim": "#4a5153",
+              "tertiary-container": "#e3fd74",
+              "inverse-on-surface": "#9b9d9e",
+              "surface": "#f5f6f7",
+              "surface-container-lowest": "#ffffff",
+              "surface-bright": "#f5f6f7",
+              "on-surface": "#2c2f30",
+              "surface-container": "#e6e8ea",
+              "surface-container-high": "#e0e3e4",
+              "on-tertiary-fixed": "#414d00",
+              "tertiary": "#536200",
+              "inverse-primary": "#fdd404",
+              "background": "#f5f6f7",
+              "on-tertiary": "#e5ff76",
+              "surface-dim": "#d1d5d7",
+              "on-secondary-fixed": "#394043",
+              "on-error-container": "#520c00",
+              "outline-variant": "#abadae",
+              "tertiary-fixed": "#e3fd74",
+              "on-primary-fixed": "#433700",
+              "surface-container-highest": "#dadddf",
+              "on-secondary-fixed-variant": "#565d5f"
+            },
+            fontFamily: {
+              "headline": ["Plus Jakarta Sans"],
+              "body": ["Manrope"],
+              "label": ["Manrope"]
+            },
+            borderRadius: {"DEFAULT": "1.5rem", "lg": "2rem", "xl": "2.5rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      body {
+        background-color: #ffffff;
+        color: #2c2f30;
+        font-family: 'Manrope', sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      body {
+        min-height: max(884px, 100dvh);
+      }
+    </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface min-h-screen pb-32">
+<!-- Top Navigation Shell -->
+<header class="fixed top-0 w-full z-50 bg-[#f5f6f7]/80 backdrop-blur-xl flex justify-between items-center px-6 py-4 border-b border-outline-variant/5">
+<div class="flex items-center gap-3">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-low transition-colors text-primary">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h1 class="font-headline font-bold text-lg tracking-tight text-inverse-surface">Mijn Financiën</h1>
+</div>
+<div class="flex items-center gap-4">
+<span class="font-headline font-bold text-xl text-inverse-surface">Budget</span>
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden">
+<img alt="Gebruikersprofiel" class="w-full h-full object-cover" data-alt="Profielfoto van de gebruiker" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBU5Amv8fsZzwRDoMP2pFnFlhd_52Nsk78HpSNEjqiHWQLSPBCQuqLfLolL1xrOgsalH6Ad3IV4GigOcHmnZ_bh5CBKFcu3IMSyJ_LuOiiGP3k2G6sWAVqoHg2oxgfspneEmPQfO6e9PBYkx3GfLzb7tPSCqZFHS1mQ49dM6OGTfSOWp9Anz9BZ_S0szTp8Ah2qQ_pSLhl2FBgRW_Me7prhOt4JE2zjTpaWrbURSLBt04HrhcjQVKAosPvlFPvFpvbmlHyZhFi4AOo"/>
+</div>
+</div>
+</header>
+<main class="pt-[72px]">
+<!-- Hero Section: Budget Summary with light grey background -->
+<div class="bg-surface-container-low/50 px-6 pt-10 pb-12 border-b border-outline-variant/10">
+<div class="max-w-5xl mx-auto space-y-10">
+<!-- Swiss-style High Impact Header Section -->
+<section class="space-y-4">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 bg-primary"></div>
+<span class="font-label text-[10px] uppercase tracking-[1.5px] font-bold text-on-surface-variant">Resterend Budget</span>
+</div>
+<div class="flex flex-col md:flex-row md:items-baseline md:justify-between gap-4">
+<h1 class="text-6xl md:text-8xl font-headline font-extrabold tracking-tighter text-inverse-surface">
+                        € 1.240,00
+                    </h1>
+<div class="inline-flex items-center px-3 py-1 bg-primary-container rounded-xl">
+<span class="material-symbols-outlined text-[14px] mr-2 text-primary" style="font-variation-settings: 'FILL' 1;">trending_up</span>
+<span class="font-body text-xs font-bold text-on-primary-container uppercase tracking-wider">Op schema</span>
+</div>
+</div>
+<div class="mt-4">
+<div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary w-3/4 rounded-full"></div>
+</div>
+<div class="mt-3 flex justify-between items-center text-on-surface-variant text-xs font-bold uppercase tracking-widest">
+<span>Maart 2024</span>
+<span>75% verbruikt</span>
+</div>
+</div>
+</section>
+<!-- Tactical Metrics: Vrij te besteden per dag -->
+<section class="bg-[#FFFBEB] p-8 rounded-2xl shadow-sm border border-primary/5">
+<span class="text-on-surface-variant font-label text-[10px] uppercase tracking-widest font-bold">Vrij te besteden per dag</span>
+<div class="mt-2 flex items-baseline gap-3">
+<span class="text-4xl font-headline font-extrabold tracking-tighter text-inverse-surface">€42,50</span>
+<p class="text-on-surface-variant text-sm font-medium">Je bespaart momenteel €5 per dag.</p>
+</div>
+</section>
+</div>
+</div>
+<!-- Rest of the content on default background -->
+<div class="px-6 py-10 max-w-5xl mx-auto space-y-12">
+<!-- Overlap Weeks: Tactical Planning -->
+<section class="space-y-6">
+<div class="flex justify-between items-end">
+<h2 class="font-headline font-bold text-2xl tracking-tight text-inverse-surface">Overlapweken</h2>
+<span class="text-on-surface-variant text-sm font-medium">Volgende salaris over 12 dagen</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<!-- Week 1 -->
+<div class="bg-surface-container-low p-6 rounded-2xl border-none">
+<div class="flex justify-between items-start mb-4">
+<span class="text-on-surface font-bold text-lg">Week 12</span>
+<span class="material-symbols-outlined text-secondary text-sm">calendar_today</span>
+</div>
+<div class="space-y-3">
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant">Budget</span>
+<span class="font-bold">€300,00</span>
+</div>
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant">Uitgegeven</span>
+<span class="text-error font-bold">€315,00</span>
+</div>
+</div>
+<div class="mt-4 pt-4 border-t border-outline-variant/10">
+<span class="px-2 py-0.5 bg-error-container/20 text-error text-[10px] font-bold uppercase tracking-wider rounded-lg">Risico</span>
+</div>
+</div>
+<!-- Week 13 (Overlap) -->
+<div class="bg-surface-container-lowest p-6 rounded-2xl border-none ring-2 ring-primary-container relative overflow-hidden">
+<div class="absolute top-0 right-0 p-1">
+<span class="material-symbols-outlined text-primary-container scale-150 rotate-12 opacity-50">layers</span>
+</div>
+<div class="flex justify-between items-start mb-4">
+<span class="text-on-surface font-bold text-lg">Week 13</span>
+<span class="material-symbols-outlined text-primary">priority_high</span>
+</div>
+<div class="space-y-3">
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant">Budget</span>
+<span class="font-bold">€300,00</span>
+</div>
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant">Besparing</span>
+<span class="text-primary font-bold">€45,00</span>
+</div>
+</div>
+<div class="mt-4 pt-4 border-t border-outline-variant/10">
+<span class="px-2 py-0.5 bg-primary-container text-on-primary-container text-[10px] font-bold uppercase tracking-wider rounded-lg">Overlap focus</span>
+</div>
+</div>
+<!-- Week 14 -->
+<div class="bg-surface-container-low p-6 rounded-2xl border-none opacity-60">
+<div class="flex justify-between items-start mb-4">
+<span class="text-on-surface font-bold text-lg">Week 14</span>
+<span class="material-symbols-outlined text-secondary text-sm">upcoming</span>
+</div>
+<div class="space-y-3">
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant">Planning</span>
+<span class="font-bold">€300,00</span>
+</div>
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant">Status</span>
+<span class="italic text-xs text-on-surface-variant">Nog niet gestart</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Bento Grid: Categorized Insights -->
+<section class="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-6 h-auto">
+<!-- Category Management -->
+<div class="md:col-span-2 md:row-span-2 bg-surface-container-lowest p-8 rounded-2xl flex flex-col justify-between shadow-sm border border-outline-variant/10">
+<div>
+<h3 class="font-headline font-bold text-xl mb-6">Budget per categorie</h3>
+<div class="space-y-6">
+<!-- Item 1 -->
+<div class="group">
+<div class="flex justify-between items-center mb-2">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">shopping_cart</span>
+</div>
+<span class="font-bold text-on-surface">Boodschappen</span>
+</div>
+<span class="text-sm font-bold">€480 / €600</span>
+</div>
+<div class="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary rounded-full transition-all duration-700" style="width: 80%;"></div>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="group">
+<div class="flex justify-between items-center mb-2">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">home</span>
+</div>
+<span class="font-bold text-on-surface">Vaste Lasten</span>
+</div>
+<span class="text-sm font-bold">€1.100 / €1.100</span>
+</div>
+<div class="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-inverse-surface rounded-full transition-all duration-700" style="width: 100%;"></div>
+</div>
+</div>
+<!-- Item 3 -->
+<div class="group">
+<div class="flex justify-between items-center mb-2">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">restaurant</span>
+</div>
+<span class="font-bold text-on-surface">Vrije tijd</span>
+</div>
+<span class="text-sm font-bold text-error">€215 / €200</span>
+</div>
+<div class="w-full h-1.5 bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-error rounded-full transition-all duration-700" style="width: 100%;"></div>
+</div>
+</div>
+</div>
+</div>
+<button class="mt-8 py-4 w-full bg-surface-container-low text-on-surface font-bold rounded-xl hover:bg-surface-container-high transition-colors text-sm uppercase tracking-widest">
+                    Pas budgetten aan
+                </button>
+</div>
+<!-- Savings Goal -->
+<div class="bg-inverse-surface p-8 rounded-2xl flex flex-col justify-between text-surface min-h-[220px]">
+<div>
+<span class="text-surface-variant font-label text-[10px] uppercase tracking-widest font-bold">Spaardoel</span>
+<h3 class="mt-2 font-headline font-bold text-xl">Nieuwe Laptop</h3>
+</div>
+<div>
+<div class="text-3xl font-bold mb-2">€840,00</div>
+<p class="text-surface-variant text-sm mb-4">Nog €360 te gaan</p>
+<div class="w-full h-1 bg-surface-variant/20 rounded-full">
+<div class="h-full bg-primary-container w-[70%] rounded-full"></div>
+</div>
+</div>
+</div>
+<!-- Quick Action / Advice -->
+<div class="bg-surface-container-high p-8 rounded-2xl flex flex-col justify-center items-center text-center">
+<div class="w-12 h-12 bg-primary-container text-on-primary-container rounded-xl flex items-center justify-center mb-4">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">lightbulb</span>
+</div>
+<p class="text-sm font-medium text-on-surface">"Zet je budget voor vrije tijd op €0 voor de rest van de week om je spaardoel sneller te halen."</p>
+<button class="mt-4 text-xs font-bold uppercase tracking-widest text-primary">Toepassen</button>
+</div>
+</section>
+</div>
+</main>
+<!-- Bottom Navigation Shell -->
+<nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-6 pt-3 bg-[#f5f6f7]/80 backdrop-blur-xl rounded-t-[2.5rem] z-50 shadow-lg">
+<div class="flex flex-col items-center justify-center text-[#595c5d] px-5 py-2 hover:text-[#0c0f10] transition-colors cursor-pointer">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-['Manrope'] text-[10px] font-medium uppercase tracking-wider mt-1">Dashboard</span>
+</div>
+<div class="flex flex-col items-center justify-center bg-[#fdd404] text-[#6d5a00] rounded-2xl px-5 py-2 transition-all cursor-pointer scale-95 duration-200">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">account_balance_wallet</span>
+<span class="font-['Manrope'] text-[10px] font-medium uppercase tracking-wider mt-1">Budget</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#595c5d] px-5 py-2 hover:text-[#0c0f10] transition-colors cursor-pointer">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="font-['Manrope'] text-[10px] font-medium uppercase tracking-wider mt-1">Transacties</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#595c5d] px-5 py-2 hover:text-[#0c0f10] transition-colors cursor-pointer">
+<span class="material-symbols-outlined">query_stats</span>
+<span class="font-['Manrope'] text-[10px] font-medium uppercase tracking-wider mt-1">Inzichten</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#595c5d] px-5 py-2 hover:text-[#0c0f10] transition-colors cursor-pointer">
+<span class="material-symbols-outlined">subscriptions</span>
+<span class="font-['Manrope'] text-[10px] font-medium uppercase tracking-wider mt-1">Apps</span>
+</div>
+</nav>
+<!-- Floating Action Button (FAB) -->
+<button class="fixed bottom-24 right-6 w-14 h-14 bg-primary text-on-primary rounded-2xl shadow-lg flex items-center justify-center hover:scale-105 active:scale-90 transition-transform z-40">
+<span class="material-symbols-outlined text-3xl">add</span>
+</button>
+</body></html>

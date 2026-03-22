@@ -1,5 +1,6 @@
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
+import { normalizePattern } from "@/services/categorization-repository";
 import {
     createSubscriptionProfile,
     deleteSubscriptionProfile,
@@ -7,7 +8,7 @@ import {
     getSubscriptionDashboardData,
     linkTransactionsToSubscription,
     linkTransactionToSubscription,
-    listMonthlySubscriptionValidationCandidates,
+    listSubscriptionRuleValidationCandidates,
     markTransactionAsNotSubscription,
     setSubscriptionProfileActive,
     updateSubscriptionProfile,
@@ -95,6 +96,11 @@ function parseIntegerOrNull(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function resolveAutomaticAmountTolerance(expectedAmount: number | null): number {
+  if (expectedAmount == null || expectedAmount <= 0) return 0;
+  return Math.min(Math.max(Math.round(expectedAmount * 0.05), 1), 5);
+}
+
 function getDayOfMonthFromIso(value: string): number | null {
   const date = new Date(`${String(value || "").slice(0, 10)}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime())) return null;
@@ -169,12 +175,52 @@ function getProviderHintLabel(
   );
 }
 
+function normalizeProviderHintParam(
+  value?: string | string[],
+): SubscriptionProviderHint | null {
+  const raw = normalizeRouteParam(value);
+  if (
+    raw === "paypal" ||
+    raw === "google_play" ||
+    raw === "apple" ||
+    raw === "klarna" ||
+    raw === "other"
+  ) {
+    return raw;
+  }
+  return null;
+}
+
 function normalizeRouteParam(value?: string | string[]) {
   if (Array.isArray(value)) return value[0];
   return value;
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    const message = String((error as { message?: unknown }).message || "").trim();
+    if (message) return message;
+  }
+  if (error && typeof error === "object") {
+    const details = String((error as { details?: unknown }).details || "").trim();
+    if (details) return details;
+    const hint = String((error as { hint?: unknown }).hint || "").trim();
+    if (hint) return hint;
+  }
+  return fallback;
+}
+
 type RuleDraft = {
+  pattern: string;
+  patternType: SubscriptionProfileRuleType;
+};
+
+type AmountMatchMode = "fixed" | "flexible";
+
+type EditableRule = {
+  key: string;
+  id?: string;
   pattern: string;
   patternType: SubscriptionProfileRuleType;
 };
@@ -186,17 +232,133 @@ function getDefaultRuleDraft(): RuleDraft {
   };
 }
 
+const GENERIC_RULE_SKIP_PATTERNS = [
+  "paypal",
+  "google play",
+  "apple",
+  "klarna",
+  "riverty",
+  "payment provider",
+  "merchant of record",
+];
+
+function isUsefulRulePattern(value: string): boolean {
+  const normalized = normalizePattern(value);
+  if (!normalized || normalized.length < 3) return false;
+  return !GENERIC_RULE_SKIP_PATTERNS.includes(normalized);
+}
+
+function createEditableRule(
+  pattern: string,
+  patternType: SubscriptionProfileRuleType,
+  id?: string,
+): EditableRule | null {
+  const trimmed = String(pattern || "").trim();
+  if (!isUsefulRulePattern(trimmed)) return null;
+  return {
+    key: `${id || "draft"}:${patternType}:${normalizePattern(trimmed)}`,
+    id,
+    pattern: trimmed,
+    patternType,
+  };
+}
+
+function dedupeEditableRules(rules: EditableRule[]): EditableRule[] {
+  const seen = new Set<string>();
+  const next: EditableRule[] = [];
+  for (const rule of rules) {
+    const dedupeKey = `${rule.patternType}:${normalizePattern(rule.pattern)}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    next.push(rule);
+  }
+  return next;
+}
+
+function hasConflictingProfileName(
+  profiles: SubscriptionProfile[],
+  nextName: string,
+  editingProfileId?: string | null,
+): boolean {
+  const normalizedName = normalizePattern(nextName);
+  if (!normalizedName) return false;
+  return profiles.some(
+    (profile) =>
+      profile.id !== editingProfileId && profile.normalizedName === normalizedName,
+  );
+}
+
+function buildInitialRulesFromQueueItem(
+  queueItem: SubscriptionQueueItem,
+  fallbackName: string,
+): EditableRule[] {
+  const counterparty = String(queueItem.counterparty || "").trim();
+  const primaryRule =
+    createEditableRule(counterparty, "counterparty_contains") ||
+    createEditableRule(fallbackName, "details_contains");
+
+  return primaryRule ? [primaryRule] : [];
+}
+
 export default function SubscriptionsScreen() {
-  const params = useLocalSearchParams<{ profileId?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    profileId?: string | string[];
+    createFromTransactionId?: string | string[];
+    createFromTransactionDate?: string | string[];
+    createFromTransactionCounterparty?: string | string[];
+    createFromTransactionDetails?: string | string[];
+    createFromTransactionAmount?: string | string[];
+    createFromTransactionProvider?: string | string[];
+    createSetCategoryOnLink?: string | string[];
+  }>();
   const focusProfileId = React.useMemo(
     () => normalizeRouteParam(params.profileId),
     [params.profileId],
   );
+  const createFromTransaction = React.useMemo<SubscriptionQueueItem | null>(() => {
+    const transactionId = normalizeRouteParam(params.createFromTransactionId);
+    const date = normalizeRouteParam(params.createFromTransactionDate);
+    const details = normalizeRouteParam(params.createFromTransactionDetails);
+    const amountRaw = normalizeRouteParam(params.createFromTransactionAmount);
+
+    if (!transactionId || !date || !details) return null;
+
+    const amount = Number.parseFloat(String(amountRaw || ""));
+    if (!Number.isFinite(amount)) return null;
+
+    return {
+      transactionId,
+      date,
+      counterparty:
+        normalizeRouteParam(params.createFromTransactionCounterparty) || null,
+      details,
+      amount,
+      providerDetected: normalizeProviderHintParam(
+        params.createFromTransactionProvider,
+      ),
+      suggestions: [],
+    };
+  }, [
+    params.createFromTransactionAmount,
+    params.createFromTransactionCounterparty,
+    params.createFromTransactionDate,
+    params.createFromTransactionDetails,
+    params.createFromTransactionId,
+    params.createFromTransactionProvider,
+  ]);
+  const createSetCategoryOnLinkParam = React.useMemo(
+    () => normalizeRouteParam(params.createSetCategoryOnLink),
+    [params.createSetCategoryOnLink],
+  );
   const router = useRouter();
   const handledFocusProfileIdRef = React.useRef<string | null>(null);
+  const handledCreateTransactionIdRef = React.useRef<string | null>(null);
 
   const [loading, setLoading] = React.useState(true);
   const [savingProfile, setSavingProfile] = React.useState(false);
+  const [deletingProfileId, setDeletingProfileId] = React.useState<string | null>(
+    null,
+  );
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [busyTransactionIds, setBusyTransactionIds] = React.useState<string[]>(
     [],
@@ -209,9 +371,6 @@ export default function SubscriptionsScreen() {
   const [rulesByProfileId, setRulesByProfileId] = React.useState<
     Record<string, SubscriptionProfileRule[]>
   >({});
-  const [ruleDraftByProfileId, setRuleDraftByProfileId] = React.useState<
-    Record<string, RuleDraft>
-  >({});
 
   const [setCategoryOnLink, setSetCategoryOnLink] = React.useState(true);
   const [chooseProfileTx, setChooseProfileTx] =
@@ -220,6 +379,8 @@ export default function SubscriptionsScreen() {
   const [profileModalOpen, setProfileModalOpen] = React.useState(false);
   const [editingProfile, setEditingProfile] =
     React.useState<SubscriptionProfile | null>(null);
+  const [profilePendingDelete, setProfilePendingDelete] =
+    React.useState<SubscriptionProfile | null>(null);
   const [createForTransaction, setCreateForTransaction] =
     React.useState<SubscriptionQueueItem | null>(null);
 
@@ -227,11 +388,19 @@ export default function SubscriptionsScreen() {
   const [billingCycle, setBillingCycle] =
     React.useState<SubscriptionBillingCycle>("monthly");
   const [expectedAmountInput, setExpectedAmountInput] = React.useState("");
-  const [toleranceInput, setToleranceInput] = React.useState("0");
+  const [amountMatchMode, setAmountMatchMode] =
+    React.useState<AmountMatchMode>("fixed");
   const [expectedDayInput, setExpectedDayInput] = React.useState("");
   const [providerHint, setProviderHint] =
     React.useState<SubscriptionProviderHint | null>(null);
   const [profileIsActive, setProfileIsActive] = React.useState(true);
+  const [profileFormError, setProfileFormError] = React.useState<string | null>(
+    null,
+  );
+  const [modalRuleDraft, setModalRuleDraft] = React.useState<RuleDraft>(
+    getDefaultRuleDraft(),
+  );
+  const [modalRules, setModalRules] = React.useState<EditableRule[]>([]);
   const [validationCandidates, setValidationCandidates] = React.useState<
     SubscriptionValidationCandidate[]
   >([]);
@@ -252,7 +421,7 @@ export default function SubscriptionsScreen() {
   const summaryHeadline =
     activeProfilesCount > 0
       ? `${activeProfilesCount} actief profiel${activeProfilesCount === 1 ? "" : "en"} houden je terugkerende betalingen centraal.`
-      : "Zet je terugkerende PSP-betalingen om naar beheerde abonnementen.";
+      : "Zet je terugkerende betalingen via PayPal, Klarna of Apple om naar beheerde abonnementen.";
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -266,16 +435,9 @@ export default function SubscriptionsScreen() {
         rulesByProfileId,
       } = await getSubscriptionDashboardData(monthStartIso, monthEndIso);
 
-      const nextRuleDraftByProfileId: Record<string, RuleDraft> = {};
-
-      for (const profileId of Object.keys(rulesByProfileId)) {
-        nextRuleDraftByProfileId[profileId] = getDefaultRuleDraft();
-      }
-
       setProfiles(loadedProfiles);
       setQueueItems(queueItems);
       setRulesByProfileId(rulesByProfileId);
-      setRuleDraftByProfileId(nextRuleDraftByProfileId);
     } catch (error) {
       console.warn("[subscriptions] load error", error);
       const message =
@@ -294,10 +456,13 @@ export default function SubscriptionsScreen() {
     setProfileName("");
     setBillingCycle("monthly");
     setExpectedAmountInput("");
-    setToleranceInput("0");
+    setAmountMatchMode("fixed");
     setExpectedDayInput("");
     setProviderHint(null);
     setProfileIsActive(true);
+    setProfileFormError(null);
+    setModalRuleDraft(getDefaultRuleDraft());
+    setModalRules([]);
     setValidationCandidates([]);
     setSelectedValidationCandidateIds([]);
     setValidationError(null);
@@ -310,12 +475,15 @@ export default function SubscriptionsScreen() {
       setEditingProfile(null);
       setCreateForTransaction(queueItem || null);
       if (queueItem) {
-        setProfileName(deriveProfileNameFromQueueItem(queueItem));
+        const nextName = deriveProfileNameFromQueueItem(queueItem);
+        setProfileName(nextName);
         setBillingCycle("monthly");
         setProviderHint(queueItem.providerDetected || null);
         setExpectedAmountInput(String(Math.abs(queueItem.amount)));
+        setAmountMatchMode("fixed");
         const detectedDay = getDayOfMonthFromIso(queueItem.date);
         setExpectedDayInput(detectedDay == null ? "" : String(detectedDay));
+        setModalRules(buildInitialRulesFromQueueItem(queueItem, nextName));
       }
       setProfileModalOpen(true);
     },
@@ -331,7 +499,7 @@ export default function SubscriptionsScreen() {
       setExpectedAmountInput(
         profile.expectedAmount == null ? "" : String(profile.expectedAmount),
       );
-      setToleranceInput(String(profile.amountTolerance));
+      setAmountMatchMode(profile.amountTolerance > 0 ? "flexible" : "fixed");
       setExpectedDayInput(
         profile.expectedDayOfMonth == null
           ? ""
@@ -339,12 +507,21 @@ export default function SubscriptionsScreen() {
       );
       setProviderHint(profile.providerHint);
       setProfileIsActive(profile.isActive);
+      setModalRuleDraft(getDefaultRuleDraft());
+      setModalRules(
+        (rulesByProfileId[profile.id] || [])
+          .map((rule) =>
+            createEditableRule(rule.pattern, rule.patternType, rule.id),
+          )
+          .filter((rule): rule is EditableRule => Boolean(rule)),
+      );
       setValidationCandidates([]);
       setSelectedValidationCandidateIds([]);
       setValidationError(null);
+      setProfileFormError(null);
       setProfileModalOpen(true);
     },
-    [],
+    [rulesByProfileId],
   );
 
   const toggleValidationCandidate = React.useCallback(
@@ -360,7 +537,7 @@ export default function SubscriptionsScreen() {
   );
 
   React.useEffect(() => {
-    if (!profileModalOpen || editingProfile || !createForTransaction) {
+    if (!profileModalOpen) {
       setValidationCandidates([]);
       setSelectedValidationCandidateIds([]);
       setValidationError(null);
@@ -368,46 +545,51 @@ export default function SubscriptionsScreen() {
       return;
     }
 
-    if (billingCycle !== "monthly") {
-      setValidationCandidates([]);
-      setSelectedValidationCandidateIds([]);
-      setValidationError(null);
-      setValidationLoading(false);
-      return;
-    }
-
-    const effectiveProvider =
-      providerHint || createForTransaction.providerDetected;
-    if (!effectiveProvider) {
-      setValidationCandidates([]);
-      setSelectedValidationCandidateIds([]);
-      setValidationError(
-        "Provider kon niet worden herkend voor historische validatie.",
-      );
-      setValidationLoading(false);
-      return;
-    }
-
+    const sourceDate = createForTransaction?.date || null;
+    const sourceTransactionId = createForTransaction?.transactionId || null;
+    const trimmedName = String(profileName || "").trim();
     const expectedAmount =
       parseNumberOrNull(expectedAmountInput) ??
-      Math.abs(createForTransaction.amount);
+      (createForTransaction ? Math.abs(createForTransaction.amount) : null);
+    const amountTolerance =
+      amountMatchMode === "fixed"
+        ? 0
+        : resolveAutomaticAmountTolerance(expectedAmount);
     const expectedDay =
       parseIntegerOrNull(expectedDayInput) ??
-      getDayOfMonthFromIso(createForTransaction.date);
-    const tolerance = Math.max(parseNumberOrNull(toleranceInput) ?? 0, 0);
+      (createForTransaction ? getDayOfMonthFromIso(createForTransaction.date) : null);
+    const effectiveRules = modalRules.map((rule) => ({
+      pattern: rule.pattern,
+      patternType: rule.patternType,
+    }));
+
+    if (
+      billingCycle !== "monthly" ||
+      (!trimmedName && effectiveRules.length === 0 && expectedAmount == null)
+    ) {
+      setValidationCandidates([]);
+      setSelectedValidationCandidateIds([]);
+      setValidationError(null);
+      setValidationLoading(false);
+      return;
+    }
 
     let cancelled = false;
     setValidationLoading(true);
     setValidationError(null);
 
-    void listMonthlySubscriptionValidationCandidates({
-      sourceTransactionId: createForTransaction.transactionId,
-      sourceDate: createForTransaction.date,
-      sourceProviderHint: effectiveProvider,
+    void listSubscriptionRuleValidationCandidates({
+      profileId: editingProfile?.id || null,
+      sourceTransactionId,
+      sourceDate,
+      name: trimmedName,
+      billingCycle,
       expectedAmount,
-      amountTolerance: tolerance,
+      amountTolerance,
       expectedDayOfMonth: expectedDay,
-      maxCandidates: 3,
+      providerHint: providerHint || createForTransaction?.providerDetected || null,
+      rules: effectiveRules,
+      maxCandidates: 8,
     })
       .then((candidates) => {
         if (cancelled) return;
@@ -438,11 +620,13 @@ export default function SubscriptionsScreen() {
     billingCycle,
     createForTransaction,
     editingProfile,
+    amountMatchMode,
     expectedAmountInput,
     expectedDayInput,
+    modalRules,
     profileModalOpen,
+    profileName,
     providerHint,
-    toleranceInput,
   ]);
 
   React.useEffect(() => {
@@ -458,20 +642,89 @@ export default function SubscriptionsScreen() {
     openEditProfileModal(targetProfile);
   }, [focusProfileId, loading, openEditProfileModal, profiles]);
 
+  React.useEffect(() => {
+    if (!createFromTransaction || loading) return;
+    if (handledCreateTransactionIdRef.current === createFromTransaction.transactionId) {
+      return;
+    }
+
+    handledCreateTransactionIdRef.current = createFromTransaction.transactionId;
+    if (createSetCategoryOnLinkParam) {
+      setSetCategoryOnLink(createSetCategoryOnLinkParam !== "0");
+    }
+    openCreateProfileModal(createFromTransaction);
+  }, [
+    createFromTransaction,
+    createSetCategoryOnLinkParam,
+    loading,
+    openCreateProfileModal,
+  ]);
+
+  const handleAddModalRule = React.useCallback(() => {
+    const rule = createEditableRule(
+      modalRuleDraft.pattern,
+      modalRuleDraft.patternType,
+    );
+    if (!rule) {
+      setProfileFormError(
+        "Voeg een bruikbaar woord of naam toe voor de herkenningsregel.",
+      );
+      return;
+    }
+    setModalRules((current) => dedupeEditableRules([...current, rule]));
+    setModalRuleDraft(getDefaultRuleDraft());
+    setProfileFormError(null);
+  }, [modalRuleDraft.pattern, modalRuleDraft.patternType]);
+
+  const handleRemoveModalRule = React.useCallback((ruleKey: string) => {
+    setModalRules((current) => current.filter((rule) => rule.key !== ruleKey));
+  }, []);
+
   const handleSaveProfile = React.useCallback(async () => {
     const trimmedName = String(profileName || "").trim();
     if (!trimmedName) {
-      setErrorMessage("Voer een naam voor het abonnement in.");
+      setProfileFormError("Voer een naam voor het abonnement in.");
+      return;
+    }
+
+    const expectedDay =
+      String(expectedDayInput || "").trim() === ""
+        ? null
+        : parseIntegerOrNull(expectedDayInput);
+    if (
+      String(expectedDayInput || "").trim() !== "" &&
+      (expectedDay == null || expectedDay < 1 || expectedDay > 31)
+    ) {
+      setProfileFormError("Vul een geldige dag van de maand in tussen 1 en 31.");
+      return;
+    }
+
+    if (
+      hasConflictingProfileName(
+        profiles,
+        trimmedName,
+        editingProfile ? editingProfile.id : null,
+      )
+    ) {
+      setProfileFormError(
+        "Er bestaat al een abonnement met deze naam. Geef dit profiel een eigen naam, bijvoorbeeld de dienstnaam.",
+      );
       return;
     }
 
     setSavingProfile(true);
     setErrorMessage(null);
+    setProfileFormError(null);
 
     try {
       const expectedAmount = parseNumberOrNull(expectedAmountInput);
-      const tolerance = parseNumberOrNull(toleranceInput);
-      const expectedDay = parseIntegerOrNull(expectedDayInput);
+      const autoTolerance =
+        amountMatchMode === "fixed"
+          ? 0
+          : resolveAutomaticAmountTolerance(expectedAmount);
+      const existingProfileRules = editingProfile
+        ? rulesByProfileId[editingProfile.id] || []
+        : [];
 
       let savedProfile: SubscriptionProfile;
       if (editingProfile) {
@@ -479,8 +732,7 @@ export default function SubscriptionsScreen() {
           name: trimmedName,
           billingCycle,
           expectedAmount,
-          amountTolerance:
-            tolerance == null ? undefined : Math.max(tolerance, 0),
+          amountTolerance: autoTolerance,
           expectedDayOfMonth: expectedDay,
           providerHint,
           isActive: profileIsActive,
@@ -490,11 +742,33 @@ export default function SubscriptionsScreen() {
           name: trimmedName,
           billingCycle,
           expectedAmount,
-          amountTolerance:
-            tolerance == null ? undefined : Math.max(tolerance, 0),
+          amountTolerance: autoTolerance,
           expectedDayOfMonth: expectedDay,
           providerHint,
           isActive: profileIsActive,
+        });
+      }
+
+      if (editingProfile) {
+        const keptRuleIds = new Set(
+          modalRules
+            .map((rule) => rule.id)
+            .filter((ruleId): ruleId is string => Boolean(ruleId)),
+        );
+
+        for (const existingRule of existingProfileRules) {
+          if (!keptRuleIds.has(existingRule.id)) {
+            await deleteSubscriptionProfileRule(existingRule.id);
+          }
+        }
+      }
+
+      for (const rule of modalRules) {
+        if (rule.id) continue;
+        await upsertSubscriptionProfileRule({
+          subscriptionProfileId: savedProfile.id,
+          pattern: rule.pattern,
+          patternType: rule.patternType,
         });
       }
 
@@ -506,21 +780,20 @@ export default function SubscriptionsScreen() {
           notes: "nieuw profiel vanuit abonnementeninbox",
           setCategoryToSubscriptions: setCategoryOnLink,
         });
+      }
 
-        if (
-          billingCycle === "monthly" &&
-          selectedValidationCandidateIds.length > 0
-        ) {
-          await linkTransactionsToSubscription({
-            transactionIds: selectedValidationCandidateIds.filter(
-              (id) => id !== createForTransaction.transactionId,
-            ),
-            subscriptionProfileId: savedProfile.id,
-            confidence: 1,
-            notes: "historische koppeling vanuit abonnementeninbox",
-            setCategoryToSubscriptions: setCategoryOnLink,
-          });
-        }
+      if (selectedValidationCandidateIds.length > 0) {
+        await linkTransactionsToSubscription({
+          transactionIds: selectedValidationCandidateIds.filter(
+            (id) => id !== createForTransaction?.transactionId,
+          ),
+          subscriptionProfileId: savedProfile.id,
+          confidence: 1,
+          notes: editingProfile
+            ? "historische koppeling na profielupdate"
+            : "historische koppeling vanuit abonnementenprofiel",
+          setCategoryToSubscriptions: setCategoryOnLink,
+        });
       }
 
       setProfileModalOpen(false);
@@ -529,8 +802,18 @@ export default function SubscriptionsScreen() {
       await loadData();
     } catch (error) {
       console.warn("[subscriptions] save profile error", error);
+      const rawMessage = getErrorMessage(error, "Kon profiel niet opslaan.");
+      const normalizedMessage = rawMessage.toLowerCase();
       const message =
-        error instanceof Error ? error.message : "Kon profiel niet opslaan.";
+        normalizedMessage.includes("subscription_profiles_user_plan_name_unique") ||
+        normalizedMessage.includes("duplicate key value") ||
+        normalizedMessage.includes("normalized_name")
+          ? "Er bestaat al een abonnement met deze naam. Geef dit profiel een eigen naam, bijvoorbeeld de dienstnaam."
+          : normalizedMessage.includes("subscription_profile_rules") &&
+              normalizedMessage.includes("duplicate")
+            ? "Deze herkenningsregel bestaat al voor dit abonnement."
+          : rawMessage;
+      setProfileFormError(message);
       setErrorMessage(message);
     } finally {
       setSavingProfile(false);
@@ -539,15 +822,18 @@ export default function SubscriptionsScreen() {
     billingCycle,
     createForTransaction,
     editingProfile,
+    amountMatchMode,
     expectedAmountInput,
     expectedDayInput,
     loadData,
+    modalRules,
     profileIsActive,
     profileName,
     providerHint,
+    profiles,
+    rulesByProfileId,
     selectedValidationCandidateIds,
     setCategoryOnLink,
-    toleranceInput,
   ]);
 
   const handleToggleProfileActive = React.useCallback(
@@ -568,9 +854,16 @@ export default function SubscriptionsScreen() {
   );
 
   const handleDeleteProfile = React.useCallback(
-    async (profileId: string) => {
+    async (profile: SubscriptionProfile) => {
+      setDeletingProfileId(profile.id);
+      setErrorMessage(null);
       try {
-        await deleteSubscriptionProfile(profileId);
+        await deleteSubscriptionProfile(profile.id);
+        setProfilePendingDelete(null);
+        if (editingProfile?.id === profile.id) {
+          setProfileModalOpen(false);
+          setEditingProfile(null);
+        }
         await loadData();
       } catch (error) {
         console.warn("[subscriptions] delete profile error", error);
@@ -579,67 +872,11 @@ export default function SubscriptionsScreen() {
             ? error.message
             : "Kon abonnement niet verwijderen.";
         setErrorMessage(message);
+      } finally {
+        setDeletingProfileId(null);
       }
     },
-    [loadData],
-  );
-
-  const handleRuleDraftChange = React.useCallback(
-    (profileId: string, patch: Partial<RuleDraft>) => {
-      setRuleDraftByProfileId((current) => ({
-        ...current,
-        [profileId]: {
-          ...(current[profileId] || getDefaultRuleDraft()),
-          ...patch,
-        },
-      }));
-    },
-    [],
-  );
-
-  const handleAddRule = React.useCallback(
-    async (profileId: string) => {
-      const draft = ruleDraftByProfileId[profileId] || getDefaultRuleDraft();
-      const pattern = String(draft.pattern || "").trim();
-      if (!pattern) {
-        setErrorMessage("Voer eerst een alias of patroon in.");
-        return;
-      }
-
-      try {
-        await upsertSubscriptionProfileRule({
-          subscriptionProfileId: profileId,
-          pattern,
-          patternType: draft.patternType,
-        });
-        setRuleDraftByProfileId((current) => ({
-          ...current,
-          [profileId]: getDefaultRuleDraft(),
-        }));
-        await loadData();
-      } catch (error) {
-        console.warn("[subscriptions] add rule error", error);
-        const message =
-          error instanceof Error ? error.message : "Kon rule niet opslaan.";
-        setErrorMessage(message);
-      }
-    },
-    [loadData, ruleDraftByProfileId],
-  );
-
-  const handleDeleteRule = React.useCallback(
-    async (ruleId: string) => {
-      try {
-        await deleteSubscriptionProfileRule(ruleId);
-        await loadData();
-      } catch (error) {
-        console.warn("[subscriptions] delete rule error", error);
-        const message =
-          error instanceof Error ? error.message : "Kon rule niet verwijderen.";
-        setErrorMessage(message);
-      }
-    },
-    [loadData],
+    [editingProfile?.id, loadData],
   );
 
   const updateBusyTransaction = React.useCallback(
@@ -738,7 +975,7 @@ export default function SubscriptionsScreen() {
             <Text style={styles.heroTitle}>{summaryHeadline}</Text>
             <Text style={styles.heroCopy}>
               Houd profielen, aliases en transactiekoppelingen op een plek, zodat
-              verborgen PSP-betalingen sneller opvallen.
+              terugkerende betalingen via betaaldiensten sneller opvallen.
             </Text>
             <View style={styles.heroMetricsRow}>
               <View style={styles.heroMetricCard}>
@@ -746,7 +983,7 @@ export default function SubscriptionsScreen() {
                 <Text style={styles.heroMetricValue}>{activeProfilesCount}</Text>
               </View>
               <View style={styles.heroMetricCard}>
-                <Text style={styles.heroMetricLabel}>Open PSP-betalingen</Text>
+                <Text style={styles.heroMetricLabel}>Te koppelen betalingen</Text>
                 <Text style={styles.heroMetricValue}>{queueItems.length}</Text>
               </View>
               <View style={styles.heroMetricCard}>
@@ -776,14 +1013,10 @@ export default function SubscriptionsScreen() {
             {profiles.length === 0 ? (
               <Text style={styles.mutedText}>
                 Nog geen abonnementen ingesteld. Voeg een profiel toe om
-                PSP-betalingen te koppelen.
+                terugkerende betalingen te koppelen.
               </Text>
             ) : (
               profiles.map((profile) => {
-                const rules = rulesByProfileId[profile.id] || [];
-                const draft =
-                  ruleDraftByProfileId[profile.id] || getDefaultRuleDraft();
-
                 return (
                   <View key={profile.id} style={styles.profileCard}>
                     <View style={styles.profileHeaderRow}>
@@ -795,9 +1028,6 @@ export default function SubscriptionsScreen() {
                           )?.label || "Maandelijks"}
                           {profile.expectedAmount != null
                             ? ` · ${euroFormatter.format(profile.expectedAmount)}`
-                            : ""}
-                          {profile.providerHint
-                            ? ` · ${PROVIDER_HINT_OPTIONS.find((option) => option.value === profile.providerHint)?.label || profile.providerHint}`
                             : ""}
                         </Text>
                       </View>
@@ -826,119 +1056,34 @@ export default function SubscriptionsScreen() {
                         <Text style={styles.ghostBtnText}>Bewerk</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={styles.ghostBtn}
-                        onPress={() => void handleDeleteProfile(profile.id)}
+                        style={[styles.ghostBtn, styles.ghostDangerBtn]}
+                        onPress={() => setProfilePendingDelete(profile)}
+                        disabled={deletingProfileId === profile.id}
                       >
-                        <Text
-                          style={[
-                            styles.ghostBtnText,
-                            { color: FinColors.red },
-                          ]}
-                        >
-                          Verwijder
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.rulesWrap}>
-                      <Text style={styles.rulesTitle}>Rules / aliases</Text>
-                      {rules.length === 0 ? (
-                        <Text style={styles.mutedText}>
-                          Nog geen regels ingesteld.
-                        </Text>
-                      ) : (
-                        rules.map((rule) => (
-                          <View key={rule.id} style={styles.ruleRow}>
-                            <Text style={styles.ruleText} numberOfLines={1}>
-                              {rule.pattern}
-                            </Text>
-                            <Text style={styles.ruleTypePill}>
-                              {rule.patternType === "details_contains"
-                                ? "details"
-                                : "tegenpartij"}
-                            </Text>
-                            <TouchableOpacity
-                              style={styles.ruleDeleteBtn}
-                              onPress={() => void handleDeleteRule(rule.id)}
+                        {deletingProfileId === profile.id ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={FinColors.red}
+                          />
+                        ) : (
+                          <>
+                            <AppIcon
+                              name="delete-outline"
+                              size={15}
+                              color={FinColors.red}
+                              variant="outlined"
+                            />
+                            <Text
+                              style={[
+                                styles.ghostBtnText,
+                                styles.ghostDangerBtnText,
+                              ]}
                             >
-                              <AppIcon
-                                name="delete-outline"
-                                size={18}
-                                color={FinColors.red}
-                              />
-                            </TouchableOpacity>
-                          </View>
-                        ))
-                      )}
-
-                      <View style={styles.ruleDraftTypeRow}>
-                        <TouchableOpacity
-                          style={[
-                            styles.ruleTypeBtn,
-                            draft.patternType === "details_contains" &&
-                              styles.ruleTypeBtnActive,
-                          ]}
-                          onPress={() =>
-                            handleRuleDraftChange(profile.id, {
-                              patternType: "details_contains",
-                            })
-                          }
-                        >
-                          <Text
-                            style={[
-                              styles.ruleTypeBtnText,
-                              draft.patternType === "details_contains" &&
-                                styles.ruleTypeBtnTextActive,
-                            ]}
-                          >
-                            details
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[
-                            styles.ruleTypeBtn,
-                            draft.patternType === "counterparty_contains" &&
-                              styles.ruleTypeBtnActive,
-                          ]}
-                          onPress={() =>
-                            handleRuleDraftChange(profile.id, {
-                              patternType: "counterparty_contains",
-                            })
-                          }
-                        >
-                          <Text
-                            style={[
-                              styles.ruleTypeBtnText,
-                              draft.patternType === "counterparty_contains" &&
-                                styles.ruleTypeBtnTextActive,
-                            ]}
-                          >
-                            tegenpartij
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      <View style={styles.ruleDraftRow}>
-                        <TextInput
-                          style={styles.ruleInput}
-                          value={draft.pattern}
-                          onChangeText={(value) =>
-                            handleRuleDraftChange(profile.id, {
-                              pattern: value,
-                            })
-                          }
-                          placeholder="Bijv. netflix of spotify premium"
-                          placeholderTextColor={FinColors.textMuted}
-                        />
-                        <TouchableOpacity
-                          style={styles.primaryBtnSmall}
-                          onPress={() => void handleAddRule(profile.id)}
-                        >
-                          <Text style={styles.primaryBtnSmallText}>
-                            Toevoegen
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
+                              Verwijder
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
@@ -948,7 +1093,7 @@ export default function SubscriptionsScreen() {
 
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Nog te koppelen PSP-betalingen</Text>
+              <Text style={styles.sectionTitle}>Nog te koppelen betalingen</Text>
               <TouchableOpacity
                 style={styles.smallActionBtn}
                 onPress={() => void loadData()}
@@ -976,8 +1121,8 @@ export default function SubscriptionsScreen() {
 
             {queueItems.length === 0 ? (
               <Text style={styles.mutedText}>
-                Geen openstaande PSP-transacties zonder abonnementskoppeling in
-                deze maand.
+                Geen openstaande betalingen via PayPal, Klarna, Apple of een
+                andere betaaldienst zonder abonnementskoppeling in deze maand.
               </Text>
             ) : (
               queueItems.map((item) => {
@@ -1101,283 +1246,437 @@ export default function SubscriptionsScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>
-                {editingProfile ? "Abonnement bewerken" : "Nieuw abonnement"}
-              </Text>
-              <TouchableOpacity onPress={() => setProfileModalOpen(false)}>
-                <AppIcon
-                  name="close"
-                  size={18}
-                  color={FinColors.textSecondary}
-                />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              style={styles.modalInput}
-              value={profileName}
-              onChangeText={setProfileName}
-              placeholder="Naam (bijv. Netflix)"
-              placeholderTextColor={FinColors.textMuted}
-            />
-
-            <Text style={styles.modalFieldHint}>
-              Gebruik hier de dienstnaam, niet de ruwe transactietekst.
-            </Text>
-
-            <Text style={styles.modalSectionLabel}>Factuurcyclus</Text>
-            <View style={styles.modalChipRow}>
-              {BILLING_CYCLE_OPTIONS.map((option) => (
-                <TouchableOpacity
-                  key={option.value}
-                  style={[
-                    styles.modalChip,
-                    billingCycle === option.value && styles.modalChipActive,
-                  ]}
-                  onPress={() => setBillingCycle(option.value)}
-                >
-                  <Text
-                    style={[
-                      styles.modalChipText,
-                      billingCycle === option.value &&
-                        styles.modalChipTextActive,
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              <View style={styles.modalHeaderRow}>
+                <Text style={styles.modalTitle}>
+                  {editingProfile ? "Abonnement bewerken" : "Nieuw abonnement"}
+                </Text>
+                <TouchableOpacity onPress={() => setProfileModalOpen(false)}>
+                  <AppIcon
+                    name="close"
+                    size={18}
+                    color={FinColors.textSecondary}
+                  />
                 </TouchableOpacity>
-              ))}
-            </View>
+              </View>
 
-            <Text style={styles.modalSectionLabel}>
-              Verwacht bedrag en tolerantie
-            </Text>
-            <View style={styles.inlineInputRow}>
               <TextInput
-                style={[styles.modalInput, { flex: 1 }]}
-                value={expectedAmountInput}
-                onChangeText={setExpectedAmountInput}
-                placeholder="Verwacht bedrag"
+                style={styles.modalInput}
+                value={profileName}
+                onChangeText={(value) => {
+                  setProfileName(value);
+                  if (profileFormError) setProfileFormError(null);
+                }}
+                placeholder="Naam (bijv. Netflix)"
                 placeholderTextColor={FinColors.textMuted}
-                keyboardType="decimal-pad"
               />
-              <TextInput
-                style={[styles.modalInput, { width: 110 }]}
-                value={toleranceInput}
-                onChangeText={setToleranceInput}
-                placeholder="Tolerantie EUR"
-                placeholderTextColor={FinColors.textMuted}
-                keyboardType="decimal-pad"
-              />
-            </View>
 
-            <Text style={styles.modalFieldHint}>
-              Tolerantie bepaalt hoeveel het bedrag mag afwijken. Standaard: 0
-              EUR.
-            </Text>
+              <Text style={styles.modalFieldHint}>
+                Gebruik hier de dienstnaam, niet de ruwe transactietekst.
+              </Text>
 
-            <View style={styles.inlineInputRow}>
-              <TextInput
-                style={[styles.modalInput, { flex: 1 }]}
-                value={expectedDayInput}
-                onChangeText={setExpectedDayInput}
-                placeholder="Dag van maand (1-31)"
-                placeholderTextColor={FinColors.textMuted}
-                keyboardType="number-pad"
-              />
-              <View style={[styles.providerSelectWrap, { flex: 1.2 }]}>
-                <Text style={styles.modalSectionLabel}>Provider hint</Text>
-                {createForTransaction?.providerDetected ? (
-                  <Text style={styles.modalFieldHint}>
-                    Gedetecteerd vanuit transactie:{" "}
-                    {getProviderHintLabel(
-                      createForTransaction.providerDetected,
-                    )}
+              <Text style={styles.modalSectionLabel}>Factuurcyclus</Text>
+              <View style={styles.modalChipRow}>
+                {BILLING_CYCLE_OPTIONS.map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.modalChip,
+                      billingCycle === option.value && styles.modalChipActive,
+                    ]}
+                    onPress={() => setBillingCycle(option.value)}
+                  >
+                    <Text
+                      style={[
+                        styles.modalChipText,
+                        billingCycle === option.value &&
+                          styles.modalChipTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.modalSectionLabel}>Verwacht bedrag</Text>
+              <View style={styles.inlineInputRow}>
+                <TextInput
+                  style={[styles.modalInput, { flex: 1 }]}
+                  value={expectedAmountInput}
+                  onChangeText={(value) => {
+                    setExpectedAmountInput(value);
+                    if (profileFormError) setProfileFormError(null);
+                  }}
+                  placeholder="Verwacht bedrag"
+                  placeholderTextColor={FinColors.textMuted}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+
+              <View style={styles.amountMatchWrap}>
+                <Text style={styles.modalSectionLabel}>Bedrag matcht op</Text>
+                <View style={styles.modalChipRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalChip,
+                      amountMatchMode === "fixed" && styles.modalChipActive,
+                    ]}
+                    onPress={() => setAmountMatchMode("fixed")}
+                  >
+                    <Text
+                      style={[
+                        styles.modalChipText,
+                        amountMatchMode === "fixed" &&
+                          styles.modalChipTextActive,
+                      ]}
+                    >
+                      Vast bedrag
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalChip,
+                      amountMatchMode === "flexible" && styles.modalChipActive,
+                    ]}
+                    onPress={() => setAmountMatchMode("flexible")}
+                  >
+                    <Text
+                      style={[
+                        styles.modalChipText,
+                        amountMatchMode === "flexible" &&
+                          styles.modalChipTextActive,
+                      ]}
+                    >
+                      Mag afwijken
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <Text style={styles.modalFieldHint}>
+                {amountMatchMode === "fixed"
+                  ? "We matchen alleen op precies dit bedrag."
+                  : "We laten een kleine afwijking rond dit bedrag toe."}
+              </Text>
+
+              <View style={styles.inlineInputRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalSectionLabel}>
+                    Verwachte dag van afschrijving
                   </Text>
-                ) : null}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.modalChipRow}>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={expectedDayInput}
+                    onChangeText={(value) => {
+                      setExpectedDayInput(value);
+                      if (profileFormError) setProfileFormError(null);
+                    }}
+                    placeholder="Bijv. 12"
+                    placeholderTextColor={FinColors.textMuted}
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </View>
+
+              {createForTransaction?.providerDetected ? (
+                <Text style={styles.modalFieldHint}>
+                  Betaaldienst automatisch herkend als{" "}
+                  {getProviderHintLabel(createForTransaction.providerDetected)}.
+                  Die herkenning gebruiken we op de achtergrond voor historische
+                  controle en matching.
+                </Text>
+              ) : null}
+
+              <View style={styles.rulesWrap}>
+                <Text style={styles.rulesTitle}>Herkenningsregels</Text>
+                <Text style={styles.mutedText}>
+                  Zo herkennen we toekomstige betalingen voor dit abonnement.
+                </Text>
+
+                <View style={styles.ruleSectionCard}>
+                  <Text style={styles.ruleSectionTitle}>Ingestelde regels</Text>
+                  {modalRules.length === 0 ? (
+                    <Text style={styles.mutedText}>
+                      Nog geen herkenningsregels ingesteld.
+                    </Text>
+                  ) : (
+                    modalRules.map((rule) => (
+                      <View key={rule.key} style={styles.ruleRow}>
+                        <Text style={styles.ruleText} numberOfLines={1}>
+                          {rule.pattern}
+                        </Text>
+                        <Text style={styles.ruleTypePill}>
+                          {rule.patternType === "details_contains"
+                            ? "details"
+                            : "tegenpartij"}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.ruleDeleteBtn}
+                          onPress={() => handleRemoveModalRule(rule.key)}
+                        >
+                          <AppIcon
+                            name="close"
+                            size={18}
+                            color={FinColors.red}
+                            variant="outlined"
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    ))
+                  )}
+                </View>
+
+                <View style={styles.ruleComposerCard}>
+                  <Text style={styles.ruleSectionTitle}>Nieuwe regel toevoegen</Text>
+                  <Text style={styles.ruleComposerHint}>
+                    Kies of we zoeken in de tegenpartij of in de omschrijving.
+                  </Text>
+
+                  <View style={styles.ruleDraftTypeRow}>
                     <TouchableOpacity
                       style={[
-                        styles.modalChip,
-                        providerHint == null && styles.modalChipActive,
+                        styles.ruleTypeBtn,
+                        modalRuleDraft.patternType === "details_contains" &&
+                          styles.ruleTypeBtnActive,
                       ]}
-                      onPress={() => setProviderHint(null)}
+                      onPress={() =>
+                        setModalRuleDraft((current) => ({
+                          ...current,
+                          patternType: "details_contains",
+                        }))
+                      }
                     >
                       <Text
                         style={[
-                          styles.modalChipText,
-                          providerHint == null && styles.modalChipTextActive,
+                          styles.ruleTypeBtnText,
+                          modalRuleDraft.patternType === "details_contains" &&
+                            styles.ruleTypeBtnTextActive,
                         ]}
                       >
-                        Geen
+                        details
                       </Text>
                     </TouchableOpacity>
-                    {PROVIDER_HINT_OPTIONS.map((option) => (
-                      <TouchableOpacity
-                        key={option.value}
+                    <TouchableOpacity
+                      style={[
+                        styles.ruleTypeBtn,
+                        modalRuleDraft.patternType === "counterparty_contains" &&
+                          styles.ruleTypeBtnActive,
+                      ]}
+                      onPress={() =>
+                        setModalRuleDraft((current) => ({
+                          ...current,
+                          patternType: "counterparty_contains",
+                        }))
+                      }
+                    >
+                      <Text
                         style={[
-                          styles.modalChip,
-                          providerHint === option.value &&
-                            styles.modalChipActive,
+                          styles.ruleTypeBtnText,
+                          modalRuleDraft.patternType === "counterparty_contains" &&
+                            styles.ruleTypeBtnTextActive,
                         ]}
-                        onPress={() => setProviderHint(option.value)}
                       >
-                        <Text
-                          style={[
-                            styles.modalChipText,
-                            providerHint === option.value &&
-                              styles.modalChipTextActive,
-                          ]}
-                        >
-                          {option.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
-            </View>
-
-            <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>Profiel actief</Text>
-              <Switch
-                value={profileIsActive}
-                onValueChange={setProfileIsActive}
-                trackColor={{
-                  false: FinColors.bgElevated,
-                  true: FinColors.greenBorder,
-                }}
-                thumbColor={
-                  profileIsActive ? FinColors.green : FinColors.textMuted
-                }
-              />
-            </View>
-
-            {createForTransaction ? (
-              <View style={styles.validationInfoWrap}>
-                <Text style={styles.mutedText}>
-                  Dit profiel wordt direct gekoppeld aan de geselecteerde
-                  PSP-transactie.
-                </Text>
-                {billingCycle === "monthly" ? (
-                  <>
-                    <Text style={styles.modalSectionLabel}>
-                      Controle vorige betalingen (max 3)
-                    </Text>
-                    <Text style={styles.modalFieldHint}>
-                      Selecteer eerdere matches. Deze worden direct gekoppeld
-                      bij opslaan.
-                    </Text>
-
-                    {validationLoading ? (
-                      <View style={styles.validationLoadingRow}>
-                        <ActivityIndicator
-                          size="small"
-                          color={FinColors.green}
-                        />
-                        <Text style={styles.mutedText}>
-                          Vorige transacties laden…
-                        </Text>
-                      </View>
-                    ) : validationError ? (
-                      <Text style={styles.errorText}>{validationError}</Text>
-                    ) : validationCandidates.length === 0 ? (
-                      <Text style={styles.mutedText}>
-                        Geen eerdere maandelijkse kandidaten gevonden.
+                        tegenpartij
                       </Text>
-                    ) : (
-                      <View style={styles.validationListWrap}>
-                        {validationCandidates.map((candidate) => {
-                          const selected =
-                            selectedValidationCandidateIds.includes(
-                              candidate.transactionId,
-                            );
-                          return (
-                            <TouchableOpacity
-                              key={candidate.transactionId}
-                              style={[
-                                styles.validationItem,
-                                selected && styles.validationItemSelected,
-                              ]}
-                              onPress={() =>
-                                toggleValidationCandidate(
-                                  candidate.transactionId,
-                                )
-                              }
-                            >
-                              <View style={styles.validationItemHeaderRow}>
-                                <AppIcon
-                                  name={
-                                    selected
-                                      ? "check-box"
-                                      : "check-box-outline-blank"
-                                  }
-                                  size={18}
-                                  color={
-                                    selected
-                                      ? FinColors.green
-                                      : FinColors.textMuted
-                                  }
-                                />
-                                <Text style={styles.validationItemDate}>
-                                  {formatDateLabel(candidate.date)}
-                                </Text>
-                                <Text style={styles.validationItemAmount}>
-                                  -
-                                  {euroFormatter.format(
-                                    Math.abs(candidate.amount),
-                                  )}
-                                </Text>
-                              </View>
-                              <Text
-                                style={styles.validationItemSubject}
-                                numberOfLines={2}
-                              >
-                                {extractSubject(candidate.details)}
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.ruleDraftRow}>
+                    <TextInput
+                      style={styles.ruleInput}
+                      value={modalRuleDraft.pattern}
+                      onChangeText={(value) =>
+                        setModalRuleDraft((current) => ({
+                          ...current,
+                          pattern: value,
+                        }))
+                      }
+                      placeholder="Bijv. netflix of spotify premium"
+                      placeholderTextColor={FinColors.textMuted}
+                    />
+                    <TouchableOpacity
+                      style={styles.primaryBtnSmall}
+                      onPress={handleAddModalRule}
+                    >
+                      <Text style={styles.primaryBtnSmallText}>Toevoegen</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>Profiel actief</Text>
+                <Switch
+                  value={profileIsActive}
+                  onValueChange={setProfileIsActive}
+                  trackColor={{
+                    false: FinColors.bgElevated,
+                    true: FinColors.greenBorder,
+                  }}
+                  thumbColor={
+                    profileIsActive ? FinColors.green : FinColors.textMuted
+                  }
+                />
+              </View>
+
+              {billingCycle === "monthly" ? (
+                <View style={styles.validationInfoWrap}>
+                  {createForTransaction ? (
+                    <Text style={styles.mutedText}>
+                      Dit profiel wordt direct gekoppeld aan de geselecteerde
+                      betaling.
+                    </Text>
+                  ) : (
+                    <Text style={styles.mutedText}>
+                      Kandidaten worden live ververst op basis van naam,
+                      herkenningsregels, bedrag en afschrijvingsdag.
+                    </Text>
+                  )}
+
+                  <Text style={styles.modalSectionLabel}>
+                    Mogelijke vorige betalingen
+                  </Text>
+                  <Text style={styles.modalFieldHint}>
+                    Deze betalingen lijken al bij dit abonnement te horen.
+                    Aangevinkte betalingen worden gekoppeld bij opslaan.
+                  </Text>
+
+                  {validationLoading ? (
+                    <View style={styles.validationLoadingRow}>
+                      <ActivityIndicator size="small" color={FinColors.green} />
+                      <Text style={styles.mutedText}>
+                        Vorige transacties laden…
+                      </Text>
+                    </View>
+                  ) : validationError ? (
+                    <Text style={styles.errorText}>{validationError}</Text>
+                  ) : validationCandidates.length === 0 ? (
+                    <Text style={styles.mutedText}>
+                      Nog geen passende eerdere betalingen gevonden.
+                    </Text>
+                  ) : (
+                    <View style={styles.validationListWrap}>
+                      {validationCandidates.map((candidate) => {
+                        const selected =
+                          selectedValidationCandidateIds.includes(
+                            candidate.transactionId,
+                          );
+                        return (
+                          <TouchableOpacity
+                            key={candidate.transactionId}
+                            style={[
+                              styles.validationItem,
+                              selected && styles.validationItemSelected,
+                            ]}
+                            onPress={() =>
+                              toggleValidationCandidate(candidate.transactionId)
+                            }
+                          >
+                            <View style={styles.validationItemHeaderRow}>
+                              <AppIcon
+                                name={
+                                  selected
+                                    ? "check-box"
+                                    : "check-box-outline-blank"
+                                }
+                                size={18}
+                                color={
+                                  selected
+                                    ? FinColors.green
+                                    : FinColors.textMuted
+                                }
+                              />
+                              <Text style={styles.validationItemDate}>
+                                {formatDateLabel(candidate.date)}
                               </Text>
-                              <Text style={styles.validationItemMeta}>
-                                {candidate.counterparty ||
-                                  "Onbekende tegenpartij"}{" "}
-                                ·{" "}
-                                {getProviderHintLabel(
-                                  candidate.providerDetected,
+                              <Text style={styles.validationItemAmount}>
+                                -
+                                {euroFormatter.format(
+                                  Math.abs(candidate.amount),
                                 )}
                               </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                        <Text style={styles.modalFieldHint}>
-                          Geselecteerd: {selectedValidationCandidateIds.length}
-                        </Text>
-                      </View>
-                    )}
-                  </>
-                ) : null}
-              </View>
-            ) : null}
+                            </View>
+                            <Text
+                              style={styles.validationItemSubject}
+                              numberOfLines={2}
+                            >
+                              {extractSubject(candidate.details)}
+                            </Text>
+                            <Text style={styles.validationItemMeta}>
+                              {candidate.counterparty ||
+                                "Onbekende tegenpartij"}{" "}
+                              · {getProviderHintLabel(candidate.providerDetected)}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                      <Text style={styles.modalFieldHint}>
+                        Geselecteerd: {selectedValidationCandidateIds.length}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ) : null}
 
-            <View style={styles.modalActionsRow}>
-              <TouchableOpacity
-                style={styles.ghostBtn}
-                onPress={() => setProfileModalOpen(false)}
-                disabled={savingProfile}
-              >
-                <Text style={styles.ghostBtnText}>Annuleren</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={() => void handleSaveProfile()}
-                disabled={savingProfile}
-              >
-                {savingProfile ? (
-                  <ActivityIndicator size="small" color={FinColors.bgBase} />
-                ) : (
-                  <Text style={styles.primaryBtnText}>Opslaan</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+              {profileFormError ? (
+                <View style={styles.modalErrorCard}>
+                  <Text style={styles.errorText}>{profileFormError}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.modalActionsRow}>
+                {editingProfile ? (
+                  <TouchableOpacity
+                    style={[styles.ghostBtn, styles.modalDangerBtn]}
+                    onPress={() => setProfilePendingDelete(editingProfile)}
+                    disabled={savingProfile || deletingProfileId === editingProfile.id}
+                  >
+                    {deletingProfileId === editingProfile.id ? (
+                      <ActivityIndicator size="small" color={FinColors.red} />
+                    ) : (
+                      <>
+                        <AppIcon
+                          name="delete-outline"
+                          size={15}
+                          color={FinColors.red}
+                          variant="outlined"
+                        />
+                        <Text
+                          style={[
+                            styles.ghostBtnText,
+                            styles.ghostDangerBtnText,
+                          ]}
+                        >
+                          Verwijder profiel
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  style={styles.ghostBtn}
+                  onPress={() => setProfileModalOpen(false)}
+                  disabled={savingProfile}
+                >
+                  <Text style={styles.ghostBtnText}>Annuleren</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.primaryBtn}
+                  onPress={() => void handleSaveProfile()}
+                  disabled={savingProfile}
+                >
+                  {savingProfile ? (
+                    <ActivityIndicator size="small" color={FinColors.bgBase} />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Opslaan</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -1461,6 +1760,56 @@ export default function SubscriptionsScreen() {
                 }}
               >
                 <Text style={styles.primaryBtnText}>Nieuw abonnement</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={profilePendingDelete != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setProfilePendingDelete(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModalCard}>
+            <View style={styles.confirmModalIconWrap}>
+              <AppIcon
+                name="delete-outline"
+                size={20}
+                color={FinColors.red}
+                variant="outlined"
+              />
+            </View>
+            <Text style={styles.confirmModalTitle}>Profiel verwijderen?</Text>
+            <Text style={styles.confirmModalText}>
+              {profilePendingDelete
+                ? `Je verwijdert ${profilePendingDelete.name}. De bijbehorende rules worden ook verwijderd. Gekoppelde transacties blijven bestaan.`
+                : "Dit profiel wordt verwijderd."}
+            </Text>
+            <View style={styles.confirmModalActionsRow}>
+              <TouchableOpacity
+                style={styles.ghostBtn}
+                onPress={() => setProfilePendingDelete(null)}
+                disabled={Boolean(deletingProfileId)}
+              >
+                <Text style={styles.ghostBtnText}>Annuleren</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmDeleteBtn}
+                onPress={() =>
+                  profilePendingDelete
+                    ? void handleDeleteProfile(profilePendingDelete)
+                    : undefined
+                }
+                disabled={Boolean(deletingProfileId)}
+              >
+                {deletingProfileId ? (
+                  <ActivityIndicator size="small" color={FinColors.bgCard} />
+                ) : (
+                  <Text style={styles.confirmDeleteBtnText}>Verwijderen</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1628,6 +1977,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
+  ghostDangerBtn: {
+    borderColor: FinColors.redBorder,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  ghostDangerBtnText: {
+    color: FinColors.red,
+  },
   rulesWrap: {
     gap: 8,
     borderTopWidth: 1,
@@ -1639,11 +1997,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
+  ruleSectionCard: {
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  ruleComposerCard: {
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgElevated,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  ruleSectionTitle: {
+    color: FinColors.textPrimary,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  ruleComposerHint: {
+    color: FinColors.textMuted,
+    fontSize: 11,
+    lineHeight: 16,
+  },
   ruleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: FinColors.bgCard,
+    backgroundColor: FinColors.bgElevated,
     borderRadius: 8,
     paddingVertical: 6,
     paddingHorizontal: 8,
@@ -1850,6 +2238,10 @@ const styles = StyleSheet.create({
     gap: 10,
     maxHeight: "85%",
   },
+  modalScrollContent: {
+    paddingBottom: 4,
+    gap: 10,
+  },
   modalHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1882,6 +2274,9 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: -2,
   },
+  amountMatchWrap: {
+    gap: 6,
+  },
   modalChipRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1911,9 +2306,6 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 8,
   },
-  providerSelectWrap: {
-    gap: 6,
-  },
   validationInfoWrap: {
     gap: 8,
   },
@@ -1924,6 +2316,14 @@ const styles = StyleSheet.create({
   },
   validationListWrap: {
     gap: 8,
+  },
+  modalErrorCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: FinColors.red,
+    backgroundColor: FinColors.redBg,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
   },
   validationItem: {
     borderRadius: 8,
@@ -1967,8 +2367,65 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
+    flexWrap: "wrap",
     gap: 8,
     marginTop: 2,
+  },
+  modalDangerBtn: {
+    marginRight: "auto",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  confirmModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    alignSelf: "center",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: FinColors.border,
+    backgroundColor: FinColors.bgCard,
+    padding: 18,
+    gap: 14,
+  },
+  confirmModalIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: FinColors.redBg,
+    borderWidth: 1,
+    borderColor: FinColors.redBorder,
+  },
+  confirmModalTitle: {
+    color: FinColors.textPrimary,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  confirmModalText: {
+    color: FinColors.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  confirmModalActionsRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  confirmDeleteBtn: {
+    minWidth: 120,
+    borderRadius: 10,
+    backgroundColor: FinColors.red,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
+  confirmDeleteBtnText: {
+    color: FinColors.bgCard,
+    fontSize: 13,
+    fontWeight: "700",
   },
   modalListWrap: {
     gap: 8,

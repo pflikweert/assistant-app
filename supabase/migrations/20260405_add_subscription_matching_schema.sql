@@ -1,5 +1,4 @@
 begin;
-
 create table if not exists public.subscription_profiles (
   id uuid primary key default gen_random_uuid(),
   plan_key text not null default 'default',
@@ -24,10 +23,8 @@ create table if not exists public.subscription_profiles (
   constraint subscription_profiles_plan_name_unique
     unique (plan_key, normalized_name)
 );
-
 create index if not exists subscription_profiles_plan_is_active_idx
   on public.subscription_profiles(plan_key, is_active);
-
 create table if not exists public.subscription_profile_rules (
   id uuid primary key default gen_random_uuid(),
   subscription_profile_id uuid not null
@@ -47,10 +44,8 @@ create table if not exists public.subscription_profile_rules (
   constraint subscription_profile_rules_unique_pattern
     unique (subscription_profile_id, pattern_normalized, pattern_type)
 );
-
 create index if not exists subscription_profile_rules_pattern_idx
   on public.subscription_profile_rules(pattern_normalized, pattern_type, is_active);
-
 create table if not exists public.transaction_subscription_matches (
   transaction_id uuid primary key
     references public.transactions(id)
@@ -68,11 +63,8 @@ create table if not exists public.transaction_subscription_matches (
   constraint transaction_subscription_matches_confidence_check
     check (confidence is null or (confidence >= 0 and confidence <= 1))
 );
-
 create index if not exists transaction_subscription_matches_profile_idx
   on public.transaction_subscription_matches(subscription_profile_id);
-
 create index if not exists transaction_subscription_matches_source_idx
   on public.transaction_subscription_matches(match_source);
-
 commit;

@@ -3,15 +3,11 @@
 alter table public.categories
   add column if not exists budget_group text,
   add column if not exists sort_order integer;
-
 create index if not exists categories_budget_group_idx on public.categories(budget_group);
 create index if not exists categories_sort_order_idx on public.categories(sort_order);
-
 alter table public.category_rules
   add column if not exists is_system boolean not null default false;
-
 create index if not exists category_rules_system_idx on public.category_rules(is_system);
-
 with desired_categories(key, name, parent_key, budget_group, sort_order) as (
   values
     ('income', 'Inkomen', null, 'income', 10),
@@ -107,7 +103,6 @@ on conflict (key) do update
       budget_group = excluded.budget_group,
       sort_order = excluded.sort_order,
       updated_at = now();
-
 with desired_keys(key) as (
   values
     ('income'),
@@ -173,7 +168,6 @@ set is_system = false,
     updated_at = now()
 where is_system = true
   and key not in (select key from desired_keys);
-
 with desired_rules(pattern, pattern_normalized, category_key, confidence) as (
   values
     ('Jumbo', 'jumbo', 'groceries_household_supermarket', 0.98),

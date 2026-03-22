@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+
+<html class="light" lang="nl"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Manrope:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-error": "#ffefec",
+              "secondary": "#565d5f",
+              "surface-variant": "#dadddf",
+              "error": "#b02500",
+              "primary-dim": "#5f4e00",
+              "primary": "#6d5a00",
+              "primary-fixed-dim": "#edc600",
+              "secondary-fixed-dim": "#cfd6d8",
+              "on-surface-variant": "#595c5d",
+              "error-dim": "#b92902",
+              "error-container": "#f95630",
+              "surface-container-low": "#eff1f2",
+              "outline": "#757778",
+              "on-tertiary-container": "#516000",
+              "on-secondary": "#edf4f6",
+              "primary-container": "#fdd404",
+              "secondary-fixed": "#dde4e6",
+              "secondary-container": "#dde4e6",
+              "surface-tint": "#6d5a00",
+              "on-primary-container": "#594a00",
+              "primary-fixed": "#fdd404",
+              "on-primary-fixed-variant": "#645300",
+              "on-background": "#2c2f30",
+              "on-tertiary-fixed-variant": "#5b6b00",
+              "tertiary-fixed-dim": "#d5ee68",
+              "on-primary": "#fff2ce",
+              "inverse-surface": "#0c0f10",
+              "on-secondary-container": "#4c5355",
+              "tertiary-dim": "#485500",
+              "secondary-dim": "#4a5153",
+              "tertiary-container": "#e3fd74",
+              "inverse-on-surface": "#9b9d9e",
+              "surface": "#f5f6f7",
+              "surface-container-lowest": "#ffffff",
+              "surface-bright": "#f5f6f7",
+              "on-surface": "#2c2f30",
+              "surface-container": "#e6e8ea",
+              "surface-container-high": "#e0e3e4",
+              "on-tertiary-fixed": "#414d00",
+              "tertiary": "#536200",
+              "inverse-primary": "#fdd404",
+              "background": "#f5f6f7",
+              "on-tertiary": "#e5ff76",
+              "surface-dim": "#d1d5d7",
+              "on-secondary-fixed": "#394043",
+              "on-error-container": "#520c00",
+              "outline-variant": "#abadae",
+              "tertiary-fixed": "#e3fd74",
+              "on-primary-fixed": "#433700",
+              "surface-container-highest": "#dadddf",
+              "on-secondary-fixed-variant": "#565d5f"
+            },
+            fontFamily: {
+              "headline": ["Plus Jakarta Sans"],
+              "body": ["Manrope"],
+              "label": ["Manrope"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      body {
+        font-family: 'Manrope', sans-serif;
+        background-color: #f5f6f7;
+      }
+      .headline-font {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+      }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="fixed top-0 w-full z-50 bg-[#f5f6f7]/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-surface-container">
+<div class="flex justify-between items-center px-6 py-4 w-full">
+<div class="flex items-center gap-4">
+<button class="text-[#6d5a00] dark:text-[#fdd404] hover:bg-[#eff1f2] dark:hover:bg-slate-800 transition-colors p-2 rounded-full active:scale-95 duration-200 ease-out">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h1 class="font-['Plus_Jakarta_Sans'] font-bold text-lg tracking-tight text-[#0c0f10] dark:text-white">Mijn Financiën</h1>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden border-2 border-primary-container">
+<img alt="Gebruikersprofiel" class="w-full h-full object-cover" data-alt="Close up profile photo of a smiling man" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAGlezOovxtLFYqVP4Jq6-_gYINLhCWDuU8LRv_lNRkex-QOhkX9CzpSepmK9qRnDK3e4mn0p903dLqbky-QI66jYZ65ja5xQP2T7PLAv_WIlX5TFCNh2rngmijs6UCqIo66N9pjxzUZ4G1jCKmIDpNJH1hBUvJP0osm7oTlQPp5VNsQ3OCJtyKqncJe7RF7kLXHRqZeJg5pHffPpBUDbDe88vwIwNKyaYQeVa0rHKCyG-Oud2JA6BZ9QX2-Jepx6bgyGMuBjR9nIA"/>
+</div>
+</div>
+</div>
+</header>
+<main class="pt-16 pb-32 max-w-5xl mx-auto">
+<!-- Bold Swiss-style Header Section with Subtle Grey Background -->
+<section class="bg-surface px-6 pt-12 pb-16 mb-12">
+<div class="max-w-5xl mx-auto">
+<p class="text-label-md uppercase tracking-[0.2em] text-on-surface-variant font-extrabold mb-4">Totaal per maand</p>
+<h2 class="headline-font text-6xl md:text-7xl font-extrabold tracking-tighter text-inverse-surface mb-4">€ 142,85</h2>
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-1.5 py-1.5 px-3 bg-primary-container/30 text-primary-dim rounded-full font-bold text-sm">
+<span class="material-symbols-outlined text-base">trending_down</span>
+<span>€ 12,50 minder</span>
+</div>
+<p class="text-on-surface-variant font-medium text-sm">vergeleken met vorige maand</p>
+</div>
+</div>
+</section>
+<div class="px-6">
+<!-- Insights Bento Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+<!-- Savings Opportunity (Primary Card) -->
+<div class="md:col-span-3 bg-primary-container rounded-3xl p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative overflow-hidden group">
+<div class="relative z-10 flex gap-6 items-start">
+<div class="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-on-primary-container text-4xl" style="font-variation-settings: 'FILL' 1;">lightbulb</span>
+</div>
+<div>
+<h4 class="headline-font text-2xl font-extrabold text-on-primary-container leading-tight">Besparingskans gevonden</h4>
+<p class="text-on-primary-container/80 font-medium mt-1">Je hebt 2 ongebruikte streamingdiensten. Zeg ze op en bespaar € 24,98 p/m.</p>
+</div>
+</div>
+<button class="relative z-10 bg-inverse-surface text-surface rounded-full py-4 px-8 font-extrabold text-base hover:opacity-90 transition-all active:scale-95">Bekijk nu</button>
+<div class="absolute -right-12 -bottom-12 w-64 h-64 bg-white/10 rounded-full blur-3xl group-hover:scale-110 transition-transform duration-1000"></div>
+</div>
+</div>
+<!-- Subscriptions List -->
+<section>
+<div class="flex items-center justify-between mb-8">
+<h3 class="headline-font text-2xl font-extrabold text-inverse-surface">Actieve Abonnementen <span class="text-on-surface-variant/40 ml-1 font-medium">(8)</span></h3>
+<div class="flex gap-2">
+<button class="bg-surface-container-low p-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined">filter_list</span>
+</button>
+<button class="bg-surface-container-low p-2.5 rounded-xl text-on-surface-variant hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined">sort</span>
+</button>
+</div>
+</div>
+<div class="space-y-4">
+<!-- Subscription Card 1 -->
+<div class="bg-surface-container-lowest border border-surface-container rounded-[2rem] p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-primary-container/50 hover:shadow-xl hover:shadow-on-surface/5 transition-all group">
+<div class="flex items-center gap-5">
+<div class="w-16 h-16 bg-surface-container-low rounded-2xl flex items-center justify-center text-inverse-surface">
+<span class="material-symbols-outlined text-3xl">subscriptions</span>
+</div>
+<div>
+<h4 class="font-extrabold text-xl text-inverse-surface">Netflix Premium</h4>
+<p class="text-on-surface-variant text-sm font-medium flex items-center gap-2 mt-1">
+<span class="material-symbols-outlined text-sm">credit_card</span>
+                                Betaald via ING • **** 4821
+                            </p>
+</div>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-3 gap-8 flex-1 md:max-w-md">
+<div>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-extrabold mb-1">Bedrag</p>
+<p class="font-extrabold text-lg text-inverse-surface">€ 15,99</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-extrabold mb-1">Volgende</p>
+<p class="font-extrabold text-lg text-inverse-surface">12 Okt</p>
+</div>
+<div class="hidden md:block">
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-extrabold mb-1">Opzegtermijn</p>
+<p class="font-extrabold text-lg text-error">1 Maand</p>
+</div>
+</div>
+<button class="w-12 h-12 flex items-center justify-center rounded-full bg-surface-container-low group-hover:bg-primary group-hover:text-surface transition-all">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+<!-- Subscription Card 2 -->
+<div class="bg-surface-container-lowest border border-surface-container rounded-[2rem] p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-primary-container/50 hover:shadow-xl hover:shadow-on-surface/5 transition-all group">
+<div class="flex items-center gap-5">
+<div class="w-16 h-16 bg-surface-container-low rounded-2xl flex items-center justify-center text-inverse-surface">
+<span class="material-symbols-outlined text-3xl">bolt</span>
+</div>
+<div>
+<h4 class="font-extrabold text-xl text-inverse-surface">Vattenfall Energie</h4>
+<p class="text-on-surface-variant text-sm font-medium flex items-center gap-2 mt-1">
+<span class="material-symbols-outlined text-sm">account_balance</span>
+                                Automatische Incasso
+                            </p>
+</div>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-3 gap-8 flex-1 md:max-w-md">
+<div>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-extrabold mb-1">Bedrag</p>
+<p class="font-extrabold text-lg text-inverse-surface">€ 89,00</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-extrabold mb-1">Volgende</p>
+<p class="font-extrabold text-lg text-inverse-surface">01 Okt</p>
+</div>
+<div class="hidden md:block">
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-extrabold mb-1">Opzegtermijn</p>
+<p class="font-extrabold text-lg text-secondary">Vast (1jr)</p>
+</div>
+</div>
+<button class="w-12 h-12 flex items-center justify-center rounded-full bg-surface-container-low group-hover:bg-primary group-hover:text-surface transition-all">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+<!-- Subscription Card 3 -->
+<div class="bg-surface-container-lowest border border-surface-container rounded-[2rem] p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-primary-container/50 hover:shadow-xl hover:shadow-on-surface/5 transition-all group">
+<div class="flex items-center gap-5">
+<div class="w-16 h-16 bg-surface-container-low rounded-2xl flex items-center justify-center text-inverse-surface">
+<span class="material-symbols-outlined text-3xl">fitness_center</span>
+</div>
+<div>
+<h4 class="font-extrabold text-xl text-inverse-surface">Basic-Fit</h4>
+<p class="text-on-surface-variant text-sm font-medium flex items-center gap-2 mt-1">
+<span class="material-symbols-outlined text-sm">credit_card</span>
+                                Betaald via PayPal
+                            </p>
+</div>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-3 gap-8 flex-1 md:max-w-md">
+<div>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-extrabold mb-1">Bedrag</p>
+<p class="font-extrabold text-lg text-inverse-surface">€ 19,99</p>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-extrabold mb-1">Volgende</p>
+<p class="font-extrabold text-lg text-inverse-surface">25 Sep</p>
+</div>
+<div class="hidden md:block">
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant font-extrabold mb-1">Opzegtermijn</p>
+<p class="font-extrabold text-lg text-error">4 Weken</p>
+</div>
+</div>
+<button class="w-12 h-12 flex items-center justify-center rounded-full bg-surface-container-low group-hover:bg-primary group-hover:text-surface transition-all">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+<!-- Subscription Card 4 (Inactive Suggestion) -->
+<div class="bg-surface-container/30 rounded-[2rem] p-6 border-2 border-dashed border-outline-variant/30 flex flex-col md:flex-row md:items-center justify-between gap-6">
+<div class="flex items-center gap-5 opacity-50">
+<div class="w-16 h-16 bg-surface-container-high rounded-2xl flex items-center justify-center">
+<span class="material-symbols-outlined text-3xl">potted_plant</span>
+</div>
+<div>
+<h4 class="font-extrabold text-xl">Bloomon</h4>
+<p class="text-sm font-medium">Gepauzeerd sinds Aug</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-sm font-extrabold text-primary underline underline-offset-4 decoration-2">Hervat abonnement</button>
+<button class="w-12 h-12 flex items-center justify-center rounded-full bg-surface-container text-on-surface-variant hover:text-error transition-colors"><span class="material-symbols-outlined">delete</span></button>
+</div>
+</div>
+</div>
+</section>
+<!-- Rules & Notice Section -->
+<section class="mt-16 bg-surface-container-low rounded-[2.5rem] p-10 mb-8">
+<h3 class="headline-font text-2xl font-extrabold text-inverse-surface mb-8">Regels &amp; Termijnen</h3>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+<div class="flex gap-6">
+<div class="w-14 h-14 bg-surface rounded-2xl flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary text-3xl">gavel</span>
+</div>
+<div>
+<p class="font-extrabold text-lg text-inverse-surface mb-1">Wet Dam</p>
+<p class="text-sm text-on-surface-variant leading-relaxed">In Nederland mag een stilzwijgende verlenging van een abonnement meestal maandelijks worden opgezegd.</p>
+</div>
+</div>
+<div class="flex gap-6">
+<div class="w-14 h-14 bg-surface rounded-2xl flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary text-3xl">notifications_active</span>
+</div>
+<div>
+<p class="font-extrabold text-lg text-inverse-surface mb-1">Slimme Herinnering</p>
+<p class="text-sm text-on-surface-variant leading-relaxed">Wij sturen je 7 dagen voordat een opzegtermijn verstrijkt een pushbericht.</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50">
+<div class="bg-[#f5f6f7]/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-surface-container px-4 pb-6 pt-3 flex justify-around items-center">
+<a class="flex flex-col items-center justify-center text-[#595c5d] dark:text-slate-400 px-5 py-2 hover:text-[#0c0f10] transition-all" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-['Manrope'] text-[10px] font-bold uppercase tracking-wider mt-1">Dashboard</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#595c5d] dark:text-slate-400 px-5 py-2 hover:text-[#0c0f10] transition-all" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="font-['Manrope'] text-[10px] font-bold uppercase tracking-wider mt-1">Budget</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#595c5d] dark:text-slate-400 px-5 py-2 hover:text-[#0c0f10] transition-all" href="#">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="font-['Manrope'] text-[10px] font-bold uppercase tracking-wider mt-1">Transacties</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#595c5d] dark:text-slate-400 px-5 py-2 hover:text-[#0c0f10] transition-all" href="#">
+<span class="material-symbols-outlined">query_stats</span>
+<span class="font-['Manrope'] text-[10px] font-bold uppercase tracking-wider mt-1">Inzichten</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-[#fdd404] dark:bg-[#6d5a00] text-[#6d5a00] dark:text-[#fff2ce] rounded-full px-5 py-2 transition-all active:scale-90" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">subscriptions</span>
+<span class="font-['Manrope'] text-[10px] font-bold uppercase tracking-wider mt-1">Apps</span>
+</a>
+</div>
+</nav>
+</body></html>

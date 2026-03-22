@@ -13,7 +13,6 @@ BEGIN
   END IF;
 END
 $$;
-
 -- add more generic columns and metadata jsonb (idempotent)
 alter table public.transactions
   add column if not exists counterparty text;
@@ -23,6 +22,5 @@ alter table public.transactions
   add column if not exists type text;
 alter table public.transactions
   add column if not exists metadata jsonb;
-
 -- the unique index on (date,details,amount) still serves to prevent duplicates
--- but details may now be longer if constructed from multiple fields
+-- but details may now be longer if constructed from multiple fields;

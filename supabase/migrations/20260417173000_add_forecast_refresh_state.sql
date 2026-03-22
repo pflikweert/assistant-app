@@ -8,12 +8,9 @@ create table if not exists public.forecast_refresh_state (
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
-
 create index if not exists forecast_refresh_state_dirty_idx
   on public.forecast_refresh_state(is_dirty, updated_at desc);
-
 alter table public.forecast_refresh_state enable row level security;
-
 drop policy if exists forecast_refresh_state_owner_policy on public.forecast_refresh_state;
 create policy forecast_refresh_state_owner_policy
   on public.forecast_refresh_state

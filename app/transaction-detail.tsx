@@ -20,9 +20,9 @@ import {
 } from "@/services/category-display";
 import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import {
-    createSubscriptionProfile,
     getTransactionSubscriptionMatch,
     linkTransactionToSubscription,
+    listTransactionSubscriptionProfileNames,
     listSubscriptionProfiles,
     markTransactionAsNotSubscription,
     type TransactionSubscriptionMatchWithProfile,
@@ -42,7 +42,6 @@ import {
     StyleSheet,
     Switch,
     Text,
-    TextInput,
     TouchableOpacity,
     View,
 } from "react-native";
@@ -86,63 +85,6 @@ function isSubjectDrivenCounterparty(counterparty: string | null | undefined) {
 
 function getSubjectFromDetails(details: string) {
   return details.split("|")[0]?.trim() || details;
-}
-
-function toTitleCaseWords(value: string) {
-  return value
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(" ")
-    .trim();
-}
-
-function getDayOfMonthFromIso(value: string): number | null {
-  const date = new Date(`${String(value || "").slice(0, 10)}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.getUTCDate();
-}
-
-function suggestSubscriptionNameFromTransaction(
-  counterparty: string | null,
-  details: string,
-) {
-  const subject = getSubjectFromDetails(details);
-  const withoutLeadingReference = subject.replace(/^\d+[\/-]*/, "").trim();
-  const firstPart =
-    withoutLeadingReference.split("|")[0] || withoutLeadingReference;
-  const providerTrimmed = firstPart
-    .replace(/^paypal\s*/i, "")
-    .replace(/^google\s*play\s*/i, "")
-    .replace(/^apple\s*/i, "")
-    .replace(/^klarna\s*/i, "")
-    .trim();
-
-  const starPart = providerTrimmed.includes("*")
-    ? providerTrimmed
-        .split("*")
-        .map((part) => part.trim())
-        .find((part) => /[a-zA-Z]{3,}/.test(part)) || providerTrimmed
-    : providerTrimmed;
-
-  const cleaned = starPart
-    .replace(/https?:\/\/\S+/gi, " ")
-    .replace(/\b(www|com|nl|eu)\b/gi, " ")
-    .replace(/[^a-zA-Z0-9 ]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (cleaned) {
-    const titled = toTitleCaseWords(cleaned);
-    if (titled.length <= 48) return titled;
-    return titled.slice(0, 48).trim();
-  }
-
-  const cp = String(counterparty || "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (cp) return cp;
-  return "Nieuw abonnement";
 }
 
 function detectProviderHintFromTransaction(
@@ -244,7 +186,9 @@ export default function TransactionDetailScreen() {
 
   const [tx, setTx] = React.useState<TransactionDetail | null>(null);
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
-  const [history, setHistory] = React.useState<CounterpartyTxSummary[]>([]);
+  const [history, setHistory] = React.useState<
+    (CounterpartyTxSummary & { subscriptionProfileName?: string | null })[]
+  >([]);
   const [loading, setLoading] = React.useState(true);
   const [showPicker, setShowPicker] = React.useState(false);
   const [savingCategory, setSavingCategory] = React.useState(false);
@@ -278,10 +222,6 @@ export default function TransactionDetailScreen() {
     React.useState(false);
   const [setCategoryToSubscriptions, setSetCategoryToSubscriptions] =
     React.useState(true);
-  const [newSubscriptionName, setNewSubscriptionName] = React.useState("");
-  const [newSubscriptionError, setNewSubscriptionError] = React.useState<
-    string | null
-  >(null);
   const [detailsExpanded, setDetailsExpanded] = React.useState(false);
 
   // ── Derived maps ───────────────────────────────────────────────────────
@@ -353,14 +293,6 @@ export default function TransactionDetailScreen() {
       ? "PSP-betaling"
       : null;
 
-  React.useEffect(() => {
-    if (!subscriptionModalOpen || !tx) return;
-    setNewSubscriptionError(null);
-    setNewSubscriptionName(
-      suggestSubscriptionNameFromTransaction(tx.counterparty, tx.details),
-    );
-  }, [subscriptionModalOpen, tx]);
-
   // ── Data loading ────────────────────────────────────────────────────────
   const loadData = React.useCallback(async () => {
     if (!transactionId) {
@@ -386,7 +318,15 @@ export default function TransactionDetailScreen() {
           transactionId,
           5,
         );
-        setHistory(hist);
+        const subscriptionNames = await listTransactionSubscriptionProfileNames(
+          hist.map((item) => item.id),
+        );
+        setHistory(
+          hist.map((item) => ({
+            ...item,
+            subscriptionProfileName: subscriptionNames[item.id] || null,
+          })),
+        );
       }
     } catch (e) {
       console.warn("transaction-detail load error", e);
@@ -510,7 +450,15 @@ export default function TransactionDetailScreen() {
         transactionId,
         5,
       );
-      setHistory(hist);
+      const subscriptionNames = await listTransactionSubscriptionProfileNames(
+        hist.map((item) => item.id),
+      );
+      setHistory(
+        hist.map((item) => ({
+          ...item,
+          subscriptionProfileName: subscriptionNames[item.id] || null,
+        })),
+      );
       setBulkPhase("done");
     } catch (e) {
       console.warn("bulk update error", e);
@@ -583,62 +531,6 @@ export default function TransactionDetailScreen() {
     }
   }, [transactionId, subscriptionActionBusy]);
 
-  const handleCreateAndLinkSubscription = React.useCallback(async () => {
-    if (!transactionId || !tx || subscriptionActionBusy) return;
-
-    const name = String(newSubscriptionName || "").trim();
-    if (!name) {
-      setNewSubscriptionError("Voer een naam voor het abonnement in.");
-      return;
-    }
-
-    setSubscriptionActionBusy(true);
-    setNewSubscriptionError(null);
-    try {
-      const created = await createSubscriptionProfile({
-        name,
-        billingCycle: "monthly",
-        expectedAmount: Math.abs(tx.amount),
-        amountTolerance: 0,
-        expectedDayOfMonth: getDayOfMonthFromIso(tx.date),
-        providerHint: detectProviderHintFromTransaction(
-          tx.counterparty,
-          tx.details,
-        ),
-        isActive: true,
-      });
-
-      await linkTransactionToSubscription({
-        transactionId,
-        subscriptionProfileId: created.id,
-        notes: "nieuw profiel vanuit transactie-detail",
-        confidence: 1,
-        setCategoryToSubscriptions,
-      });
-
-      const [detail, profiles, match] = await Promise.all([
-        getTransactionDetail(transactionId),
-        listSubscriptionProfiles(),
-        getTransactionSubscriptionMatch(transactionId),
-      ]);
-      setTx(detail);
-      setSubscriptionProfiles(profiles);
-      setSubscriptionMatch(match);
-      setSubscriptionModalOpen(false);
-    } catch (e) {
-      console.warn("create and link subscription error", e);
-      setNewSubscriptionError("Kon abonnement niet aanmaken.");
-    } finally {
-      setSubscriptionActionBusy(false);
-    }
-  }, [
-    newSubscriptionName,
-    setCategoryToSubscriptions,
-    subscriptionActionBusy,
-    transactionId,
-    tx,
-  ]);
-
   const handleOpenSubscriptionAction = React.useCallback(() => {
     if (linkedSubscriptionProfile?.id) {
       router.push({
@@ -649,6 +541,25 @@ export default function TransactionDetailScreen() {
     }
     setSubscriptionModalOpen(true);
   }, [linkedSubscriptionProfile?.id, router]);
+
+  const handleOpenCreateSubscriptionProfile = React.useCallback(() => {
+    if (!transactionId || !tx) return;
+
+    setSubscriptionModalOpen(false);
+    router.push({
+      pathname: "/subscriptions",
+      params: {
+        createFromTransactionId: transactionId,
+        createFromTransactionDate: tx.date,
+        createFromTransactionCounterparty: tx.counterparty || "",
+        createFromTransactionDetails: tx.details,
+        createFromTransactionAmount: String(tx.amount),
+        createFromTransactionProvider:
+          detectProviderHintFromTransaction(tx.counterparty, tx.details) || "",
+        createSetCategoryOnLink: setCategoryToSubscriptions ? "1" : "0",
+      },
+    });
+  }, [router, setCategoryToSubscriptions, transactionId, tx]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   if (loading) {
@@ -1157,7 +1068,7 @@ export default function TransactionDetailScreen() {
                         <View style={styles.historyLeft}>
                           <Text style={styles.historyDate}>{item.date}</Text>
                           <Text style={styles.historyDesc} numberOfLines={2}>
-                            {subject}
+                            {item.subscriptionProfileName || subject}
                           </Text>
                           <Text style={styles.historyCat}>{categoryLabel}</Text>
                         </View>
@@ -1244,48 +1155,19 @@ export default function TransactionDetailScreen() {
               />
             </View>
 
-            <ScrollView
-              style={styles.subscriptionProfileList}
-              contentContainerStyle={styles.subscriptionProfileListContent}
-            >
+              <ScrollView
+                style={styles.subscriptionProfileList}
+                contentContainerStyle={styles.subscriptionProfileListContent}
+              >
               {activeSubscriptionProfiles.length === 0 ? (
                 <View style={styles.subscriptionQuickCreateWrap}>
                   <Text style={styles.subscriptionModalEmptyText}>
                     Geen actieve abonnementen gevonden.
                   </Text>
                   <Text style={styles.subscriptionQuickCreateHint}>
-                    Maak direct een nieuw abonnement aan en koppel deze
-                    transactie.
+                    Maak direct een nieuw profiel aan met de gegevens van deze
+                    betaling.
                   </Text>
-                  <TextInput
-                    style={styles.subscriptionQuickCreateInput}
-                    value={newSubscriptionName}
-                    onChangeText={setNewSubscriptionName}
-                    placeholder="Naam (bijv. Netflix)"
-                    placeholderTextColor={FinColors.textMuted}
-                    autoCapitalize="words"
-                  />
-                  {newSubscriptionError ? (
-                    <Text style={styles.subscriptionQuickCreateError}>
-                      {newSubscriptionError}
-                    </Text>
-                  ) : null}
-                  <TouchableOpacity
-                    style={styles.subscriptionQuickCreateBtn}
-                    onPress={() => void handleCreateAndLinkSubscription()}
-                    disabled={subscriptionActionBusy}
-                  >
-                    {subscriptionActionBusy ? (
-                      <ActivityIndicator
-                        size="small"
-                        color={FinColors.bgBase}
-                      />
-                    ) : (
-                      <Text style={styles.subscriptionQuickCreateBtnText}>
-                        Aanmaken en koppelen
-                      </Text>
-                    )}
-                  </TouchableOpacity>
                 </View>
               ) : (
                 activeSubscriptionProfiles.map((profile) => (
@@ -1320,18 +1202,17 @@ export default function TransactionDetailScreen() {
                   Geen abonnement
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.subscriptionManageBtn}
-                onPress={() => {
-                  setSubscriptionModalOpen(false);
-                  router.push("/subscriptions");
-                }}
-                disabled={subscriptionActionBusy}
-              >
-                <Text style={styles.subscriptionManageBtnText}>
-                  Beheer / nieuw
-                </Text>
-              </TouchableOpacity>
+              {!linkedSubscriptionProfile ? (
+                <TouchableOpacity
+                  style={styles.subscriptionManageBtn}
+                  onPress={handleOpenCreateSubscriptionProfile}
+                  disabled={subscriptionActionBusy}
+                >
+                  <Text style={styles.subscriptionManageBtnText}>
+                    Nieuw profiel
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
         </View>
