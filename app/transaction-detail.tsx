@@ -1,13 +1,21 @@
-import { TransactionCategoryIcon } from "@/components/category-icon";
-import { AppIcon } from "@/components/ui/app-icon";
+import {
+  FinanceTransactionsBlock,
+  type FinanceTransactionsBlockItem,
+} from "@/components/transactions/finance-transactions-block";
+import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
+import { FinanceCircleIconButton } from "@/components/ui/finance-circle-icon-button";
 import { FinanceDetailCard } from "@/components/ui/finance-detail-card";
+import { FinanceBudgetStatusToggle } from "@/components/ui/finance-budget-status-toggle";
 import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceModalTopBar } from "@/components/ui/finance-modal-top-bar";
+import { FinanceSubscriptionCallout } from "@/components/ui/finance-subscription-callout";
 import { FinanceQuickMenu } from "@/components/navigation/finance-quick-menu";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceTextBlock } from "@/components/ui/finance-text-block";
 import { FinColors } from "@/constants/theme";
+import { BUDGET_GROUP_LABELS } from "@/services/category-budget-groups";
+import { resolveTransactionCategoryIconName } from "@/services/category-icon";
 import {
     bulkUpdateCategoryByCounterparty,
     countCounterpartyTransactions,
@@ -54,12 +62,112 @@ const euroFormatter = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
 });
+const CONTENT_MAX_WIDTH = 1040;
 
 function parseSaldo(value: unknown): number | null {
   if (value == null) return null;
   const s = String(value).replace(/\./g, "").replace(",", ".").trim();
   const n = Number.parseFloat(s);
   return Number.isNaN(n) ? null : n;
+}
+
+function readMetadataString(
+  metadata: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (value == null) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return null;
+}
+
+function formatPaymentAccount(value: string): string {
+  const compact = value.replace(/\s+/g, "").toUpperCase();
+  const ibanLike = /^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(compact);
+  if (!ibanLike) return value;
+
+  const bankCode = compact.slice(4, 8);
+  const bankNames: Record<string, string> = {
+    INGB: "ING",
+    RABO: "Rabobank",
+    ABNA: "ABN AMRO",
+    SNSB: "SNS",
+    ASN: "ASN Bank",
+    KNAB: "Knab",
+    TRIO: "Triodos",
+    BUNQ: "bunq",
+  };
+  const bankName = bankNames[bankCode];
+  const last4 = compact.slice(-4);
+  return bankName
+    ? `${bankName} betaalrekening (**** ${last4})`
+    : `Betaalrekening (**** ${last4})`;
+}
+
+function resolvePaymentMethodFromMetadata(
+  metadata: Record<string, unknown>,
+): string | null {
+  const bankName = readMetadataString(metadata, [
+    "Naam rekening",
+    "Rekening naam",
+    "Naam bank",
+    "Bank",
+    "Account name",
+  ]);
+  const method = readMetadataString(metadata, [
+    "Betaalmethode",
+    "Betaal methode",
+    "Betaalpas",
+    "Betaalwijze",
+    "Methode",
+    "Kanaal",
+  ]);
+  const maskedCard = readMetadataString(metadata, [
+    "Pasnummer",
+    "Pas nr",
+    "Pasnr",
+    "Kaartnummer",
+    "Card",
+    "Card last4",
+    "Laatste 4 cijfers",
+  ]);
+  const accountRef = readMetadataString(metadata, [
+    "IBAN/BBAN",
+    "IBAN",
+    "Rekening",
+    "Rekeningnummer",
+    "Rekening nummer",
+    "Account",
+    "Account number",
+    "Accountnummer",
+  ]);
+  const tegenRekeningRef = readMetadataString(metadata, [
+    "Tegenrekening IBAN/BBAN",
+  ]);
+  const resolvedAccount = accountRef || tegenRekeningRef;
+  const accountLabel = resolvedAccount
+    ? formatPaymentAccount(resolvedAccount)
+    : null;
+
+  const suffix = maskedCard
+    ? maskedCard.startsWith("(")
+      ? ` ${maskedCard}`
+      : ` (${maskedCard})`
+    : accountLabel
+      ? accountLabel.startsWith("(")
+        ? ` ${accountLabel}`
+        : ` (${accountLabel})`
+      : "";
+
+  if (bankName && method) return `${bankName} ${method}${suffix}`;
+  if (method) return `${method}${suffix}`;
+  if (bankName && accountLabel) return `${bankName} (${accountLabel})`;
+  if (accountLabel) return accountLabel;
+  if (bankName) return bankName;
+  return null;
 }
 
 function normalizeRouteParam(value?: string | string[]) {
@@ -75,6 +183,16 @@ function formatTransactionDateLabel(value: string) {
     weekday: "long",
     day: "numeric",
     month: "long",
+    year: "numeric",
+  });
+}
+
+function formatHistoryDateLabel(value: string) {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("nl-NL", {
+    day: "2-digit",
+    month: "short",
     year: "numeric",
   });
 }
@@ -133,15 +251,6 @@ function isLikelySubscriptionPspTransaction(
   if (!haystack) return false;
   return PSP_HINTS.some((hint) =>
     haystack.includes(normalizeSubscriptionText(hint)),
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
-    </View>
   );
 }
 
@@ -252,6 +361,25 @@ export default function TransactionDetailScreen() {
     if (tx.amount >= 0) return false;
     return isLikelySubscriptionPspTransaction(tx.counterparty, tx.details);
   }, [tx]);
+  const historyItems = React.useMemo<FinanceTransactionsBlockItem[]>(
+    () =>
+      history.map((item) => {
+        const subject = getSubjectFromDetails(item.details);
+        const categoryLabel = getCategoryPathLabel(item, categoryById);
+        return {
+          id: item.id,
+          title: item.subscriptionProfileName || item.counterparty || subject || "Onbekende tegenpartij",
+          subtitle: subject,
+          meta: categoryLabel,
+          dateLabel: formatHistoryDateLabel(item.date),
+          amount: item.amount,
+          categoryAutoId: item.category_id_auto,
+          categoryUserId: item.category_id_user,
+          runningBalance: null,
+        };
+      }),
+    [history, categoryById],
+  );
 
   // ── Data loading ────────────────────────────────────────────────────────
   const loadData = React.useCallback(async () => {
@@ -276,7 +404,7 @@ export default function TransactionDetailScreen() {
         const hist = await getCounterpartyTransactions(
           detail.counterparty,
           transactionId,
-          5,
+          6,
         );
         const subscriptionNames = await listTransactionSubscriptionProfileNames(
           hist.map((item) => item.id),
@@ -348,7 +476,7 @@ export default function TransactionDetailScreen() {
       const hist = await getCounterpartyTransactions(
         tx.counterparty,
         transactionId,
-        5,
+        6,
       );
       const subscriptionNames = await listTransactionSubscriptionProfileNames(
         hist.map((item) => item.id),
@@ -499,9 +627,23 @@ export default function TransactionDetailScreen() {
   const saldoNaTrn = parseSaldo(tx.metadata["Saldo na trn"]);
   const omschrijving = tx.details.split("|")[0]?.trim() || tx.details;
   const transactionDateLabel = formatTransactionDateLabel(tx.date);
-  const budgetStatusLabel = tx.budget_excluded
-    ? "Buiten budget"
-    : "Binnen budget opgenomen";
+  const paymentMethodLabel =
+    resolvePaymentMethodFromMetadata(tx.metadata) || "Onbekend";
+  const categoryIconName = resolveTransactionCategoryIconName(
+    {
+      category_id_auto: tx.category_id_auto,
+      category_id_user: tx.category_id_user,
+    },
+    categoryById,
+  ) as AppIconName;
+  const budgetBucketLabel = (() => {
+    const budgetGroup = String(effectiveCategory?.budget_group || "").toLowerCase();
+    if (budgetGroup === "fixed") return BUDGET_GROUP_LABELS.fixed;
+    if (budgetGroup === "variable") return BUDGET_GROUP_LABELS.variable;
+    if (budgetGroup === "subscriptions") return BUDGET_GROUP_LABELS.subscriptions;
+    if (budgetGroup === "savings") return BUDGET_GROUP_LABELS.savings;
+    return null;
+  })();
   return (
     <View style={styles.root}>
       <FinanceScreenBackdrop tone="warm" />
@@ -545,39 +687,62 @@ export default function TransactionDetailScreen() {
           <FinanceTextBlock
             label="Categorie"
             style={styles.textBlock}
-            rightSlot={
-              <TouchableOpacity
-                style={styles.categoryEditButton}
+          >
+            <View style={styles.categoryContentRow}>
+              <View style={styles.categoryPathWrap}>
+                {effectiveCategory ? (
+                  <View style={styles.categoryDisplayRow}>
+                    <View style={styles.categoryInlineIconWrap}>
+                      <AppIcon
+                        name={categoryIconName}
+                        size={18}
+                        color={FinColors.textSecondary}
+                        variant="outlined"
+                      />
+                    </View>
+                    <View style={styles.categoryPathRow}>
+                      <Text style={styles.categoryPathParent}>
+                        {parentCategory?.name || effectiveCategory.name}
+                      </Text>
+                      {parentCategory ? (
+                        <>
+                          <Text style={styles.categoryPathSeparator}>›</Text>
+                          <Text style={styles.categoryPathChild}>
+                            {effectiveCategory.name}
+                          </Text>
+                        </>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.mutedText}>Ongecategoriseerd</Text>
+                )}
+              </View>
+              <FinanceCircleIconButton
+                icon="edit"
+                iconColor={FinColors.textPrimary}
                 onPress={() => setShowPicker((v) => !v)}
                 disabled={savingCategory}
-                activeOpacity={0.8}
-              >
+                accessibilityLabel="Bewerk categorie"
+                style={styles.categoryEditButton}
+              />
+            </View>
+          </FinanceTextBlock>
+
+          <FinanceTextBlock label="Betaald via" style={styles.textBlock}>
+            <View style={styles.paymentMethodRow}>
+              <View style={styles.paymentMethodIconWrap}>
                 <AppIcon
-                  name="edit"
-                  size={16}
-                  color={FinColors.warningText}
+                  name="payments"
+                  size={18}
+                  color={FinColors.textSecondary}
                   variant="outlined"
                 />
-              </TouchableOpacity>
-            }
-          >
-            {effectiveCategory ? (
-              <View style={styles.categoryPathRow}>
-                <Text style={styles.categoryPathParent}>
-                  {parentCategory?.name || effectiveCategory.name}
-                </Text>
-                {parentCategory ? (
-                  <>
-                    <Text style={styles.categoryPathSeparator}>›</Text>
-                    <Text style={styles.categoryPathChild}>
-                      {effectiveCategory.name}
-                    </Text>
-                  </>
-                ) : null}
               </View>
-            ) : (
-              <Text style={styles.mutedText}>Ongecategoriseerd</Text>
-            )}
+              <Text style={styles.paymentMethodValue} numberOfLines={2}>
+                {paymentMethodLabel}
+              </Text>
+            </View>
           </FinanceTextBlock>
 
           {showPicker ? (
@@ -620,101 +785,25 @@ export default function TransactionDetailScreen() {
             </FinanceDetailCard>
           ) : null}
 
-        <FinanceDetailCard tone="subtle" style={styles.statusCard}>
-          <View style={styles.statusCardRow}>
-            <View style={styles.statusIconWrap}>
-              <AppIcon
-                name="check-circle"
-                size={18}
-                color={FinColors.warningText}
-                variant="outlined"
-              />
-            </View>
-            <View style={styles.statusCopyWrap}>
-              <Text style={styles.statusTitle}>
-                Status: {budgetStatusLabel}
-              </Text>
-              <Text style={styles.statusSubtitle}>Markeer als uitzondering</Text>
-            </View>
-            <Switch
-              value={tx.budget_excluded}
-              onValueChange={handleBudgetExcludedToggle}
-              disabled={budgetExclusionToggling}
-              trackColor={{
-                false: FinColors.bgElevated,
-                true: FinColors.red,
-              }}
-              thumbColor={tx.budget_excluded ? FinColors.red : FinColors.textMuted}
-            />
-          </View>
-        </FinanceDetailCard>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Context</Text>
-          <InfoRow label="Omschrijving" value={omschrijving} />
-          <InfoRow
-            label="Status budget"
-            value={
-              tx.budget_excluded ? "Buiten budget" : "Binnen budget opgenomen"
-            }
-          />
-        </View>
+        <FinanceBudgetStatusToggle
+          excluded={tx.budget_excluded}
+          onToggle={handleBudgetExcludedToggle}
+          disabled={budgetExclusionToggling}
+          budgetBucketLabel={budgetBucketLabel}
+        />
 
         {isPspLikeExpense || linkedSubscriptionProfile ? (
-          <FinanceDetailCard tone="warning" style={styles.subscriptionCard}>
-            <Text style={styles.sectionTitle}>
-              {linkedSubscriptionProfile ? "Abonnement" : "Mogelijk abonnement"}
-            </Text>
-            {linkedSubscriptionProfile ? (
-              <Text style={styles.subscriptionLinkedText}>
-                Gekoppeld aan abonnement: {linkedSubscriptionProfile.name}
-              </Text>
-            ) : subscriptionMatch?.match.matchSource === "ignored" ? (
-              <Text style={styles.subscriptionMutedText}>
-                Deze transactie is gemarkeerd als geen abonnement.
-              </Text>
-            ) : (
-              <Text style={styles.subscriptionMutedText}>
-                Deze PSP-betaling lijkt op een abonnement. Koppel om suggesties
-                en beheer centraal te houden.
-              </Text>
-            )}
-
-            <TouchableOpacity
-              style={styles.subscriptionActionBtn}
-              onPress={handleOpenSubscriptionAction}
-            >
-              <Text style={styles.subscriptionActionBtnText}>
-                {linkedSubscriptionProfile
-                  ? "Bekijk abonnement"
-                  : "Koppel aan abonnement"}
-              </Text>
-            </TouchableOpacity>
-          </FinanceDetailCard>
+          <FinanceSubscriptionCallout
+            title={linkedSubscriptionProfile ? "Abonnement gekoppeld" : "Mogelijk abonnement"}
+            description={
+              linkedSubscriptionProfile
+                ? `Gekoppeld aan ${linkedSubscriptionProfile.name}.`
+                : "We hebben dit herkend als een vaste last."
+            }
+            actionLabel={linkedSubscriptionProfile ? "Bekijk abonnement" : "Koppel aan abonnement"}
+            onPress={handleOpenSubscriptionAction}
+          />
         ) : null}
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Extra informatie</Text>
-          {tx.type ? <InfoRow label="Type" value={tx.type} /> : null}
-          {tx.currency ? <InfoRow label="Valuta" value={tx.currency} /> : null}
-          {saldoNaTrn != null ? (
-            <InfoRow
-              label="Saldo na transactie"
-              value={euroFormatter.format(saldoNaTrn)}
-            />
-          ) : null}
-          {tx.created_at ? (
-            <InfoRow
-              label="Aangemaakt op"
-              value={new Date(tx.created_at).toLocaleDateString("nl-NL", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-            />
-          ) : null}
-        </View>
 
         {bulkPhase !== "idle" && tx.counterparty ? (
           <View style={styles.card}>
@@ -789,75 +878,31 @@ export default function TransactionDetailScreen() {
         ) : null}
 
         {tx.counterparty ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              Andere transacties:{" "}
-              <Text style={styles.counterpartyInline}>{tx.counterparty}</Text>
-            </Text>
-            {history.length === 0 ? (
-              <Text style={styles.mutedText}>
-                Geen andere transacties gevonden.
-              </Text>
-            ) : (
-              history.map((item) => {
-                const categoryLabel = getCategoryPathLabel(item, categoryById);
-                const subject = getSubjectFromDetails(item.details);
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.historyItem}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/transaction-detail",
-                        params: { id: item.id },
-                      })
-                    }
-                  >
-                    <View style={styles.historyIconWrap}>
-                      <TransactionCategoryIcon
-                        row={item}
-                        categoryById={categoryById}
-                      />
-                    </View>
-                    <View style={styles.historyLeft}>
-                      <Text style={styles.historyDate}>{item.date}</Text>
-                      <Text style={styles.historyDesc} numberOfLines={2}>
-                        {item.subscriptionProfileName || subject}
-                      </Text>
-                      <Text style={styles.historyCat}>{categoryLabel}</Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.historyAmount,
-                        {
-                          color:
-                            item.amount < 0 ? FinColors.red : FinColors.green,
-                        },
-                      ]}
-                    >
-                      {item.amount < 0 ? "−" : "+"}
-                      {euroFormatter.format(Math.abs(item.amount))}
-                    </Text>
-                  </TouchableOpacity>
-                );
+          <FinanceTransactionsBlock
+            title="Historie"
+            items={historyItems}
+            categoryById={categoryById}
+            maxItems={6}
+            onPressItem={(id) =>
+              router.push({
+                pathname: "/transaction-detail",
+                params: { id },
               })
-            )}
-            <TouchableOpacity
-              style={styles.viewAllBtn}
-              onPress={() =>
-                router.push(
-                  `/transactions?counterparty=${encodeURIComponent(tx.counterparty!)}`,
-                )
-              }
-            >
-              <Text style={styles.viewAllText}>
-                Bekijk alle transacties van {tx.counterparty} →
-              </Text>
-            </TouchableOpacity>
-          </View>
+            }
+            onPressSeeAll={() =>
+              router.push(
+                `/transactions?counterparty=${encodeURIComponent(tx.counterparty!)}`,
+              )
+            }
+            seeAllLabel="Bekijk alles"
+            showRunningBalance={false}
+            emptyTitle="Geen andere transacties"
+            emptyDescription={`We vonden nog geen andere transacties van ${tx.counterparty}.`}
+          />
         ) : null}
 
         <View style={{ height: 32 }} />
+        </View>
       </ScrollView>
 
       <FinanceQuickMenu
@@ -1015,7 +1060,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(17,17,17,0.06)",
   },
   heroInner: {
-    paddingTop: 16,
+    paddingTop: 32,
     paddingBottom: 18,
     gap: 10,
   },
@@ -1076,39 +1121,6 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     gap: 10,
   },
-  statusCard: {
-    gap: 0,
-  },
-  statusCardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  statusIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: FinColors.bgCard,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  statusCopyWrap: {
-    flex: 1,
-    gap: 4,
-  },
-  statusTitle: {
-    color: FinColors.textPrimary,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "800",
-  },
-  statusSubtitle: {
-    color: FinColors.textSecondary,
-    fontSize: 12,
-    lineHeight: 16,
-  },
   subscriptionChipLinked: {
     backgroundColor: FinColors.warningBg,
     borderColor: FinColors.warningBorder,
@@ -1131,6 +1143,9 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
   },
   mainColumn: {
+    width: "100%",
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
     gap: 32,
   },
   detailCard: {
@@ -1159,25 +1174,65 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   categoryEditButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
+    marginLeft: 12,
+    alignSelf: "center",
+  },
+  categoryContentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  categoryPathWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  categoryDisplayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  categoryInlineIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
+  },
+  paymentMethodRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  paymentMethodIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  paymentMethodValue: {
+    flex: 1,
+    color: FinColors.textSecondary,
+    fontSize: 25 / 2,
+    lineHeight: 19,
+    fontWeight: "500",
   },
   categoryPathRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     gap: 6,
+    flex: 1,
+    minWidth: 0,
   },
   categoryPathParent: {
     fontSize: 15,
     fontWeight: "800",
     color: FinColors.textPrimary,
+    flexShrink: 1,
   },
   categoryPathSeparator: {
     color: FinColors.textMuted,
@@ -1188,6 +1243,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: FinColors.textSecondary,
+    flexShrink: 1,
   },
   categoryMetaText: {
     color: FinColors.textSecondary,
@@ -1288,9 +1344,6 @@ const styles = StyleSheet.create({
     color: FinColors.warningText,
     fontSize: 12,
     fontWeight: "800",
-  },
-  subscriptionCard: {
-    marginTop: 2,
   },
   infoRow: {
     flexDirection: "row",
@@ -1579,40 +1632,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // Subscription hint
-  subscriptionCardLegacy: {
-    backgroundColor: FinColors.warningBg,
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: FinColors.warningBorder,
-    padding: 14,
-    gap: 8,
-  },
-  subscriptionLinkedText: {
-    color: FinColors.warningText,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  subscriptionMutedText: {
-    color: FinColors.textSecondary,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  subscriptionActionBtn: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: FinColors.warningBorder,
-    backgroundColor: FinColors.bgCard,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  subscriptionActionBtnText: {
-    color: FinColors.warningText,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
   // Subscription modal
   subscriptionModalOverlay: {
     flex: 1,
@@ -1886,42 +1905,4 @@ const styles = StyleSheet.create({
   scopeBtnTextActive: { color: FinColors.warningText, fontWeight: "600" },
   bulkActions: { flexDirection: "row", gap: 8 },
 
-  // History
-  historyItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: FinColors.border,
-    gap: 10,
-  },
-  historyIconWrap: {
-    marginRight: 2,
-  },
-  historyLeft: { flex: 1, gap: 3 },
-  historyDate: { color: FinColors.textSecondary, fontSize: 13 },
-  historyDesc: {
-    color: FinColors.textPrimary,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  historyCat: {
-    color: FinColors.textMuted,
-    fontSize: 11,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: FinColors.bgInput,
-    borderRadius: 999,
-    alignSelf: "flex-start",
-    overflow: "hidden",
-  },
-  historyAmount: { fontSize: 15, fontWeight: "600" },
-  viewAllBtn: {
-    marginTop: 4,
-    paddingVertical: 10,
-    alignItems: "center",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: FinColors.border,
-  },
-  viewAllText: { color: FinColors.warningText, fontSize: 14, fontWeight: "600" },
 });

@@ -57,6 +57,11 @@ Exit-criteria:
 - als een patroon op 2 of meer schermen terugkomt, bestaat er een gedeelde component
 - schermen leveren vooral inhoud en uitzonderingen aan, geen eigen styling-variant
 
+Update (huidige stand):
+
+- transactierij en transactielijstblok zijn nu als gedeelde componenten ingezet voor `Transactions`, `Dashboard` recents en `Transaction Detail` historie
+- detailstatusblokken en calloutblokken zijn gecomponentiseerd (budgetstatus, abonnementscallout, ronde icon-knop)
+
 ### Stap 3 - Scherminhoud Per Scherm Aanpakken
 
 Doel: elk scherm afwerken binnen dezelfde visuele taal.
@@ -107,6 +112,7 @@ Doel: de uitwerking afmaken zonder nieuwe patronen te introduceren.
 - performance en scroll-gedrag nalopen
 - laatste visuele verschillen per scherm wegwerken
 - expliciete offset-check: `Dashboard`, `Transactions`, `Settings`, `Subscriptions` hebben gelijk hero/topbar-ritme
+- expliciete breedte-check utilityschermen: content onder hero gebruikt gecentreerde `max-width` (geen onbedoelde full-width op desktop)
 
 Exit-criteria:
 

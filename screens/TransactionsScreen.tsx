@@ -1,4 +1,4 @@
-import { TransactionCategoryIcon } from "@/components/category-icon";
+import { TransactionListRow } from "@/components/transactions/transaction-list-row";
 import {
   FinanceQuickMenu,
   type FinanceQuickMenuKey,
@@ -44,10 +44,6 @@ import {
 
 const PAGE_SIZE = 20;
 const CONTENT_MAX_WIDTH = 1040;
-const euroFormatter = new Intl.NumberFormat("nl-NL", {
-  style: "currency",
-  currency: "EUR",
-});
 const ALL_MONTHS_KEY = "all-months";
 
 function normalizeSearch(value: string) {
@@ -543,52 +539,24 @@ export default function TransactionsScreen({
           </View>
         )}
         renderItem={({ item }) => {
-          const isPositive = item.amount >= 0;
-
           return (
-            <TouchableOpacity
-              style={styles.row}
-              activeOpacity={0.78}
+            <TransactionListRow
+              title={item.subscriptionProfileName || item.counterparty || "Onbekende tegenpartij"}
+              subtitle={item.omschrijving1 || item.description}
+              meta={item.categoryLabel}
+              amount={item.amount}
+              runningBalance={item.runningBalance}
+              categoryAutoId={item.categoryAutoId}
+              categoryUserId={item.categoryUserId}
+              categoryById={categoryById}
+              maxWidth={CONTENT_MAX_WIDTH}
               onPress={() =>
                 router.push({
                   pathname: "/transaction-detail",
                   params: { id: item.id },
                 })
               }
-            >
-              <View style={styles.rowIconWrap}>
-                <TransactionCategoryIcon
-                  row={{
-                    category_id_auto: item.categoryAutoId,
-                    category_id_user: item.categoryUserId,
-                  }}
-                  categoryById={categoryById}
-                  size={20}
-                  bubbleSize={42}
-                />
-              </View>
-
-              <View style={styles.rowBody}>
-                <Text style={styles.rowTitle} numberOfLines={2}>
-                  {item.subscriptionProfileName || item.counterparty || "Onbekende tegenpartij"}
-                </Text>
-                <Text style={styles.rowSubtitle} numberOfLines={2}>
-                  {item.omschrijving1 || item.description}
-                </Text>
-                <Text style={styles.rowMeta} numberOfLines={1}>
-                  {item.categoryLabel}
-                </Text>
-              </View>
-
-              <View style={styles.amountColumn}>
-                <Text style={[styles.amount, isPositive ? styles.amountPositive : styles.amountNegative]}>
-                  {`${isPositive ? "+" : "-"}${euroFormatter.format(Math.abs(item.amount))}`}
-                </Text>
-                <Text style={styles.running}>
-                  {item.runningBalance == null ? "Saldo onbekend" : `Saldo ${euroFormatter.format(item.runningBalance)}`}
-                </Text>
-              </View>
-            </TouchableOpacity>
+            />
           );
         }}
         ListEmptyComponent={() =>
@@ -1015,69 +983,6 @@ const styles = StyleSheet.create({
     color: FinColors.textMuted,
     textTransform: "uppercase",
     letterSpacing: 1.2,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 0,
-    width: "100%",
-    maxWidth: CONTENT_MAX_WIDTH,
-    alignSelf: "center",
-  },
-  rowIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
-    backgroundColor: FinColors.bgElevated,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
-  },
-  rowBody: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  rowTitle: {
-    fontSize: 16,
-    lineHeight: 21,
-    fontWeight: "800",
-    color: FinColors.textPrimary,
-  },
-  rowSubtitle: {
-    marginTop: 2,
-    fontSize: 12,
-    lineHeight: 16,
-    color: FinColors.textSecondary,
-  },
-  rowMeta: {
-    marginTop: 3,
-    fontSize: 11,
-    lineHeight: 14,
-    color: FinColors.textMuted,
-  },
-  amountColumn: {
-    minWidth: 92,
-    alignItems: "flex-end",
-  },
-  amount: {
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: "800",
-    textAlign: "right",
-  },
-  amountPositive: {
-    color: FinColors.green,
-  },
-  amountNegative: {
-    color: FinColors.textPrimary,
-  },
-  running: {
-    marginTop: 4,
-    fontSize: 10,
-    lineHeight: 13,
-    color: FinColors.textMuted,
-    textAlign: "right",
   },
   emptyCard: {
     marginTop: 20,

@@ -43,6 +43,7 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
   - gebruik de standaard hero-offset uit de gedeelde hero-component
   - voeg geen schermspecifieke hero `paddingTop`-overrides toe tenzij er aantoonbaar een afwijkende shell nodig is
   - als een afwijking echt nodig is, documenteer die expliciet in `docs/UI_PATTERNS.md`
+- Utility-schermen met hero gebruiken onder de hero dezelfde gecentreerde contentkolom (`max-width`) als hoofdschermen; voorkom full-width content op web/desktop.
 
 ## Kernbegrippen
 
@@ -172,6 +173,8 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Nieuwe schermen moeten standaard starten vanuit de juiste shell-keuze; voorkom dat een utility-scherm per ongeluk een hoofdscherm-shell krijgt of andersom
 - Voor header/hero-ritme geldt: eerst component-default aanpassen, pas daarna scherm-overrides overwegen
 - Als op meerdere pagina's dezelfde hero-offset gewenst is, wijzig de gedeelde hero-component en verwijder tijdelijke scherm-overrides
+- Gebruik voor transactielijsten één gedeelde rijcomponent en één gedeeld lijstblok als patroon; schermen leveren alleen inhoud (titel, datum/meta, bedrag, acties).
+- Vermijd technische labels in zichtbare UI-copy; kies begrijpelijke termen voor brede doelgroep (bijv. `Betaald via` i.p.v. `Betaalmethode` wanneer dat duidelijker is).
 
 ## QA En Tests
 

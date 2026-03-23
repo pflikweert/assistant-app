@@ -68,6 +68,7 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Web/native aandachtspunten:
   - op web altijd een vaste `max-width` voor content
   - op native geen desktop-achtige gutters simuleren als het toestel die ruimte niet heeft
+  - utility/detailschermen met hero volgen dezelfde regel: hero full-bleed mag, maar contentzone eronder blijft gecentreerd met vaste `max-width`
 - Componentrichtlijn:
   - gebruik gedeelde shells voor backdrop, hero, topbar en dock
   - laat schermen niet zelf hun eigen layout-variant bouwen als dezelfde shell al bestaat
@@ -170,6 +171,31 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Componentrichtlijn:
   - maak rijen die per scherm terugkomen direct gedeeld, inclusief icon sizing en spacing
   - gebruik één rijcomponentfamilie voor transacties, historie en vergelijkbare lijstitems
+  - combineer waar mogelijk een gedeeld `transactions block` + gedeelde `transaction row` zodat Dashboard, Transactions en Detail-historie niet divergeren
+
+### Patroon: Utility Content Width
+
+- Naam: Utility content in vaste kolom
+- Doel: utility/detailschermen op web rustig en consistent houden met hoofdschermen
+- Waar toepasbaar in de app: Transaction Detail, settings-achtige utilityschermen, modale detailflows met hero
+- Structuur / opbouw:
+  - topbar + hero mogen full-bleed
+  - content onder hero in gecentreerde kolom (`max-width`)
+- Belangrijkste visuele regels:
+  - geen full-width tekstblokken op desktop onder een hero
+  - spacing en ritme onder hero sluiten aan op Dashboard/Transactions
+- Mobile-first aandachtspunten:
+  - op mobiel blijft de kolom praktisch full-width met vaste horizontale padding
+- Web/native aandachtspunten:
+  - op web altijd `max-width` + `alignSelf: center` voor de contentlaag onder hero
+  - op native geen extra kunstmatige marges toevoegen
+
+### Copy Richtlijn: Begrijpelijke Labels
+
+- Vermijd technisch jargon in zichtbare labels als het geen besliswaarde heeft.
+- Gebruik termen die direct duidelijk zijn voor brede doelgroep.
+- Voorbeeld:
+  - liever `Betaald via` dan `Betaalmethode` als de bronrekening/betaalroute bedoeld is.
 
 ### Patroon: Filter Bars
 
