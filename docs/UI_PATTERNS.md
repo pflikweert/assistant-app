@@ -6,6 +6,7 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 
 - Werk mobile-first: eerst de verticale flow, daarna pas bredere web-layouts.
 - Gebruik full-bleed achtergrondvlakken alleen voor hero- of sectie-ankers; houd inhoud zelf binnen een vaste, gecentreerde contentkolom.
+- Gebruik voor de app-backdrop een rustige, consistente basis (`#fafbff`) met subtiele decoratie; decoratie mag nooit concurreren met content.
 - Basis is wit, warm grijs en zwart; geel is functioneel accent en geen dominante basiskleur.
 - Geef primaire getallen, status en eerstvolgende actie de meeste visuele prioriteit.
 - Vermijd drukke kaarten met te veel badges, lijnen of gelijkwaardige informatieblokken.
@@ -377,6 +378,7 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
   - hero krijgt de ruimste verticale padding
   - tussen secties zit duidelijke ademruimte
   - binnen kaarten is padding consistent
+  - voor contentblokken met beslisinformatie (zoals `Insights`) is `32px` verticale sectieafstand het uitgangspunt
 - Mobile-first aandachtspunten:
   - liever meer verticale dan horizontale variatie
   - voorkom kleine willekeurige ruimtes tussen vergelijkbare componenten
@@ -489,6 +491,25 @@ Belangrijkste patronen:
 
 Wanneer hergebruiken:
 - bij schermen die overzicht eerst en details pas daarna tonen
+
+### Insights
+
+Referentie:
+- Stitch: relevante `Insights`-voorbeelden en afgeleide blokken binnen `design_refs/stitch_v1`
+
+Belangrijkste patronen:
+- hero blijft compact: titel, maandcontext, status en korte mensentaal
+- maandselector staat onder de hero als contextlaag, niet in de hero zelf
+- secties volgen vaste verticale cadans (`32px`) voor rust en scanbaarheid
+- `Wat valt op` gebruikt maximaal 3 full-width insight cards in prioriteitsvolgorde
+- `Forecast` gebruikt een premium summary card met:
+  - `Verwacht eindsaldo` op 1 regel
+  - statuschip rechtsboven
+  - subblok `Laagste saldo` met icoon en kleine ondersteunende copy
+  - korte, niet-technische uitlegzin
+
+Wanneer hergebruiken:
+- voor alle trend/forecast/risico-pagina's waar mensentaal belangrijker is dan technische details
 
 ### Subscriptions
 

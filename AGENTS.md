@@ -16,7 +16,7 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 ## Doelgroep
 
 - van tiener tot en met bejaarden
-- Niet gericht op zakelijk gebruik
+- niet gericht op zakelijk gebruik
 
 ## Productprincipes
 
@@ -37,13 +37,29 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 - Bij nieuwe schermen eerst bepalen: is dit een hoofdscherm of een utility/subscherm?
   - hoofdscherm: gebruikt de gedeelde app-shell met topbar, hero en docked quick menu
   - utility/subscherm: gebruikt een compacte detail- of modal-shell zonder hoofdscherm-dock
-  - als dit nog onduidelijk is, moet de vraag expliciet gesteld worden voordat er gebouwd wordt
+  - als dit nog onduidelijk is, moet dit expliciet benoemd worden vóórdat er gebouwd wordt
 - Hero-offset en topbar-offset horen bij de shell, niet bij losse schermen:
   - gebruik voor hoofdschermen dezelfde topbarpositie als `Transactions` als referentie
   - gebruik de standaard hero-offset uit de gedeelde hero-component
   - voeg geen schermspecifieke hero `paddingTop`-overrides toe tenzij er aantoonbaar een afwijkende shell nodig is
   - als een afwijking echt nodig is, documenteer die expliciet in `docs/UI_PATTERNS.md`
-- Utility-schermen met hero gebruiken onder de hero dezelfde gecentreerde contentkolom (`max-width`) als hoofdschermen; voorkom full-width content op web/desktop.
+- Utility-schermen met hero gebruiken onder de hero dezelfde gecentreerde contentkolom (`max-width`) als hoofdschermen; voorkom full-width content op web/desktop
+
+## Shell-beslisregel
+
+Voordat een nieuw scherm wordt gebouwd, moet expliciet bepaald worden of het een:
+
+- `hoofdscherm`
+- `utility/subscherm`
+
+is.
+
+Beslisregel:
+
+- gebruik `hoofdscherm` alleen als het scherm een primaire navigatiefunctie heeft in de app
+- gebruik `utility/subscherm` voor detail, beheer, modal, selectie, create/edit en ondersteunende flows
+- combineer deze shells niet binnen één scherm
+- als een scherm tussen beide in lijkt te zitten, analyseer eerst bestaande navigatie, gebruikersdoel en patroon in de codebase, en benoem de gemaakte keuze expliciet
 
 ## Kernbegrippen
 
@@ -57,6 +73,8 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 - `boven tempo`: gebruiker geeft sneller uit dan logisch is voor de periode
 - `let op`: signaal dat context of actie vraagt, maar niet per definitie kritiek is
 
+Gebruik deze termen consistent. Introduceer geen nieuwe termen als de bestaande producttaal al volstaat.
+
 ## Verwachting Per Taak
 
 Bij elke taak:
@@ -68,6 +86,36 @@ Bij elke taak:
 5. noem welke bestanden aangepast moeten worden
 6. geef kort aan hoe de wijziging handmatig geverifieerd kan worden
 
+## Verplichte Output Per Taak
+
+Bij elke wijziging moet het antwoord deze structuur hebben:
+
+1. **Analyse van bestaand patroon**
+   - welke bestaande componenten, services, helpers of UI-patronen relevant zijn
+   - of het huidige gedrag waarschijnlijk legacygedrag of een bewuste productkeuze is
+
+2. **Voorgestelde wijziging**
+   - wat er precies verandert
+   - waarom dit de kleinst mogelijke logische oplossing is
+
+3. **Bestanden**
+   - welke bestanden aangepast moeten worden
+   - welke nieuwe bestanden alleen echt nodig zijn als hergebruik niet logisch past
+
+4. **Risico's**
+   - of saldo, budget, forecast, import, dedupe, categorisatie of abonnementen geraakt worden
+   - welke regressies kunnen ontstaan
+
+5. **Handmatige verificatie**
+   - welke gebruikersflow gecontroleerd moet worden
+   - wat zichtbaar of functioneel correct moet zijn
+
+6. **Tests**
+   - welke bestaande tests relevant zijn
+   - welke nieuwe tests nodig zijn als financiële logica of matching verandert
+
+Geef geen codewijzigingen zonder eerst deze analyse te doen.
+
 ## Bronnen Van Waarheid
 
 Gebruik deze volgorde bij twijfel:
@@ -78,7 +126,26 @@ Gebruik deze volgorde bij twijfel:
 4. schermspecifieke bestaande patronen in de codebase
 5. open taken in `OPEN_TAKEN_FINANCE_APP.md`
 
-Als iets in code en playbook lijkt te botsen, analyseer eerst of de code legacygedrag bevat of een bewuste productkeuze is. Verander dit niet zomaar zonder expliciet te benoemen.
+Als iets in code en playbook lijkt te botsen, analyseer eerst of de code legacygedrag bevat of een bewuste productkeuze is. Verander dit niet zomaar zonder dit expliciet te benoemen.
+
+## Databronnen En Verantwoordelijkheid
+
+- database- en querylaag zijn leidend voor ruwe transactiedata
+- services bepalen normalisatie, matching, forecast en andere afgeleide financiële logica
+- UI presenteert uitkomsten, maar bedenkt geen eigen financiële waarheid
+- formattering, labels en terminologie moeten uit gedeelde helpers of bestaande patronen komen
+- verplaats geen financiële betekenis of afleiding naar losse schermcomponenten als dat in services hoort
+
+## Financiële Logica Is Conservatief
+
+Bij twijfel in geldlogica:
+
+- toon liever minder slimme afleiding dan een mogelijk onjuiste conclusie
+- presenteer forecast altijd als verwachting, niet als zekerheid
+- maak onderscheid tussen bekende transacties, herkende patronen en aannames
+- voorkom dat UI-copy meer zekerheid suggereert dan de data ondersteunt
+- rond bedragen, datums en periodes consistent af volgens bestaande formattering en services
+- verander geen semantische betekenis van bestaande bedragen of velden zonder dit expliciet te benoemen
 
 ## Done When
 
@@ -127,6 +194,11 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - gebruik dit scherm voor trends, forecast, risico en uitleg
 - maak cashflow, budgetbasis en verwachting uit elkaar houdbaar
 - toon duidelijke routes naar details en correcties
+- houd `Insights` als rustige scrollpagina zonder extra subnavigatie bovenaan
+- zet maandkeuze direct onder de hero als maandcontext voor alle insight-blokken
+- zorg dat `Wat valt op` nooit stilvalt door alleen timingfilters:
+  - gebruik repeat suppression met activiteitssignaal (laatste transactiedatum)
+  - toon altijd een zinvolle fallbackkaart bij weinig data of stabiele maand
 
 ### Transaction Detail
 
@@ -149,6 +221,18 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Normalizeer import- en details-strings consequent, vooral legacy `|`-varianten
 - Wees voorzichtig met semantische betekenissen zoals `variabel budget`, `trend`, `budgetplan`, `op schema`, `let op` en `boven tempo`
 
+## Insight-Signalen En AI-Invloeden
+
+- Voor `Wat valt op` en vergelijkbare samenvattingsblokken geldt: bouw selectie, confidence, dedupe, fingerprint en herhaalonderdrukking altijd in een gedeelde service of selector, niet in de schermcomponent
+- Label elke kandidaat expliciet als `hard` of `ai-influenced` zodat zichtbaar blijft welke signalen direct uit data komen en welke upstream beïnvloed zijn
+- Toon alleen kaarten boven de afgesproken confidence-drempel; kleine verschillen horen niet op hoofdniveau
+- Dedupe op semantische betekenis, niet alleen op technische family of id, zodat inhoudelijk vergelijkbare kaarten niet dubbel terugkomen
+- Onderdruk herhaling over dagen via persistente history per gebruiker en maand, zodat dezelfde betekenis niet statisch blijft voelen
+- Maak herhaalonderdrukking activiteit-aware:
+  - als er in de gekozen maand geen recente transactiemutaties zijn, versoepel suppressie zodat het blok niet leeg blijft
+  - historische maanden blijven inzichten tonen op basis van maandcontext, niet op basis van "vandaag"
+- Als een insight-blok op meer dan één scherm terugkomt, moet dezelfde gedeelde logica en dezelfde tests worden gebruikt
+
 ## Data En Import
 
 - Bij import eerst normaliseren, daarna dedupliceren
@@ -169,17 +253,31 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Ruim oude inline varianten op zodra een gedeelde component of module bestaat, zodat nieuwe schermen niet opnieuw dezelfde code krijgen
 - Maak componenten bewust breder inzetbaar: stop stijl, spacing en shellgedrag in de component zelf; schermen leveren vooral inhoud en uitzonderingen aan
 - Als een nieuwe stijl, hero, card, block, filter, modal of dock op 2 schermen nuttig blijkt, refactor hem direct naar een gedeeld component in dezelfde wijziging
+- Als een insight-, summary- of signaalblok regelgebaseerd of AI-beïnvloed is, maak de selector/service direct gedeeld en voeg confidence- en repeat-suppressietests toe
 - Houd tijdelijke scherm-specifieke styling klein en verwijder die weer zodra het patroon is gecentraliseerd
 - Nieuwe schermen moeten standaard starten vanuit de juiste shell-keuze; voorkom dat een utility-scherm per ongeluk een hoofdscherm-shell krijgt of andersom
 - Voor header/hero-ritme geldt: eerst component-default aanpassen, pas daarna scherm-overrides overwegen
 - Als op meerdere pagina's dezelfde hero-offset gewenst is, wijzig de gedeelde hero-component en verwijder tijdelijke scherm-overrides
-- Gebruik voor transactielijsten één gedeelde rijcomponent en één gedeeld lijstblok als patroon; schermen leveren alleen inhoud (titel, datum/meta, bedrag, acties).
-- Gebruik voor budget-voortgang één gedeelde progressbar-component in plaats van losse inline balken.
+- Gebruik voor transactielijsten één gedeelde rijcomponent en één gedeeld lijstblok als patroon; schermen leveren alleen inhoud (titel, datum/meta, bedrag, acties)
+- Gebruik voor budget-voortgang één gedeelde progressbar-component in plaats van losse inline balken
   - kleurcontract:
-  - `good`: `#10b981`
-  - `watch`: geel (theme accent)
-  - `critical`: rood (theme danger)
-- Vermijd technische labels in zichtbare UI-copy; kies begrijpelijke termen voor brede doelgroep (bijv. `Betaald via` i.p.v. `Betaalmethode` wanneer dat duidelijker is).
+    - `good`: `#10b981`
+    - `watch`: geel (theme accent)
+    - `critical`: rood (theme danger)
+- Vermijd technische labels in zichtbare UI-copy; kies begrijpelijke termen voor brede doelgroep (bijv. `Betaald via` i.p.v. `Betaalmethode` wanneer dat duidelijker is)
+
+## Vermijd Altijd
+
+- introduceer geen nieuwe terminologie als bestaande producttaal al volstaat
+- maak geen brede refactor als een kleine gerichte wijziging voldoende is
+- dupliceer geen bestaande shell-, hero-, card-, filter- of lijstpatronen
+- verplaats geen businesslogica naar UI-componenten
+- verander geen financiële betekenis van bestaande velden zonder dit expliciet te benoemen
+- voeg geen visuele nadruk toe aan informatie die niet helpt bij een beslissing
+- los performanceproblemen niet eerst op met lokale caches als query- of datalogica de echte oorzaak is
+- maak geen schermspecifieke style-overrides als hetzelfde via gedeelde componenten opgelost moet worden
+- bouw geen hybride schermen die tegelijk hoofdscherm- en utility-gedrag mengen
+- voeg geen technische of Engelstalige copy toe in zichtbare UI als de rest van de flow Nederlandstalig en gebruiksvriendelijk is
 
 ## QA En Tests
 
@@ -196,6 +294,7 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Gebruik `apply_patch` voor handmatige edits
 - Houd commits klein, inhoudelijk en logisch afgebakend
 - Benoem risico's expliciet als een wijziging geld, forecast, dedupe of categorieën raakt
+- Als een vervolgverbetering bewust buiten scope blijft, zet die in `OPEN_TAKEN_FINANCE_APP.md`
 
 ## Taal
 
@@ -203,7 +302,19 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Vermijd zichtbare technische afkortingen als die voor eindgebruikers geen waarde hebben
 - Schrijf copy kort, duidelijk en actiegericht
 
+## Bij categorie-overzichten op Insights geldt:
+
+- voor afgeronde maanden toon categorieën op basis van werkelijke uitgaven
+- voor de lopende maand toon categorieën op basis van verwachte maanduitgaven
+- verwachte maanduitgaven mogen bestaan uit:
+  - geplande vaste lasten
+  - herkende abonnementen
+  - budgetgebaseerde verwachting voor variabele categorieën
+- maak in de UI altijd duidelijk of een bedrag werkelijk, gepland of verwacht is
+- presenteer de lopende maand niet alsof alle categorie-uitgaven al definitief zijn
+
 ## Voortgang
 
-- Gebruik `OPEN_TAKEN_FINANCE_APP.md` voor open product- en implementatietaken
+- Gebruik `OPEN_TAKEN_FINANCE_APP.md` als centrale backlog voor open product- en implementatietaken
+- Nieuwe openstaande vervolgpunten of bewust uitgestelde verbeteringen moeten daar direct aan toegevoegd worden
 - Houd die lijst bijgewerkt als een fase afgerond is of als de prioriteit wijzigt

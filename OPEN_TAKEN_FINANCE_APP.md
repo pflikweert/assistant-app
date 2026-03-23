@@ -17,6 +17,21 @@ De focus is nu niet meer "opnieuw bouwen", maar:
 - visuele polish
 - laatste productlagen toevoegen waar ze echt waarde geven
 
+## Nieuwe leerpunten (vastgelegd)
+
+- `Insights` werkt beter als rustige, lineaire scrollpagina zonder extra top-subnavigatie.
+- Maandcontext moet altijd expliciet zichtbaar en bedienbaar zijn (maandselector onder hero).
+- `Wat valt op` moet inhoudelijk slim filteren, maar niet leegvallen:
+  - confidence-gating + semantische dedupe + repeat suppression blijven verplicht
+  - repeat suppression moet rekening houden met activiteit (zoals laatste transactiedatum)
+  - no-data en stabiele maand tonen altijd een menselijk fallback-inzicht
+- Voor `Insights`-informatieblokken werkt een vaste verticale ritmiek van `32px` beter voor rust en scanbaarheid.
+- Forecast-samenvatting werkt het duidelijkst als premium card met:
+  - eindsaldo als hoofdsignaal
+  - statuschip
+  - laagste-saldo subblok
+  - korte menselijke uitlegzin
+
 ## Redesign Roadmap
 
 Deze volgorde gebruiken we voortaan als we schermen verder redesignen:
