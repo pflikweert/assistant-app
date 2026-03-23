@@ -114,3 +114,17 @@ Voor schermopbouw, componenthergebruik, kleuren en spacing gelden de projectrich
 - [docs/UI_PATTERNS.md](./docs/UI_PATTERNS.md)
 
 Nieuwe UI hoort zoveel mogelijk via gedeelde componenten en shells te lopen, zodat styling en lay-out op één plek te onderhouden blijven.
+
+## Rabobank PDF import testen (echte fixture)
+
+Voor een echte Rabobank PDF-validatie van de parser:
+
+1. Zet een lokale PDF-export met transacties op `tmp/import-fixtures/rabobank-transactions.pdf`
+2. Of zet een aangepast pad via `RABOBANK_PDF_FIXTURE=/absoluut/of/relatief/pad.pdf`
+3. Run de gerichte test:
+
+```bash
+npm run test:unit -- services/import/transaction-import-parser.test.ts
+```
+
+De integratietest op echte PDF-data wordt automatisch overgeslagen als er geen fixturebestand aanwezig is.

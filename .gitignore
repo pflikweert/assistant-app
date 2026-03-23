@@ -45,3 +45,6 @@ app-example
 .env # ignore it going forward
 .env # ignore it going forward
 .env
+
+# local bank import fixtures (do not commit personal PDF exports)
+tmp/import-fixtures/*.pdf
