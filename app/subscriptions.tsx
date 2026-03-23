@@ -983,7 +983,6 @@ export default function SubscriptionsScreen() {
       <FinanceScreenBackdrop tone="warm" />
       <FinanceTopBar
         title="Abonnementen"
-        showMenu={false}
         rightSlot={<FinanceAvatarBadge />}
       />
       {loading ? (

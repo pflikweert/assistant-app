@@ -1,10 +1,9 @@
-import { supabase } from "@/services/supabase";
+import { getSession } from "@/services/supabase";
 import type { User } from "@supabase/supabase-js";
 
 export async function getCurrentUser(): Promise<User | null> {
-  const { data, error } = await supabase.auth.getUser();
-  if (error) throw error;
-  return data.user ?? null;
+  const session = await getSession();
+  return session?.user ?? null;
 }
 
 export async function requireCurrentUser(): Promise<User> {

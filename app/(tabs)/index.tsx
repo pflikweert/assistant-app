@@ -3,6 +3,7 @@ import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceLoadingSplash } from "@/components/ui/finance-loading-splash";
+import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SquareAccentBlock } from "@/components/ui/square-accent-block";
@@ -437,15 +438,7 @@ export default function DashboardScreen() {
       <FinanceTopBar
         shellStyle={styles.topBar}
         title="Mijn Financiën"
-        rightSlot={
-          <View style={styles.headerBadge}>
-            <AppIcon
-              name="notifications-none"
-              size={18}
-              color={FinColors.textPrimary}
-            />
-          </View>
-        }
+        rightSlot={<FinanceAvatarBadge />}
       />
 
       {isBootstrapping ? (
@@ -748,16 +741,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 20,
-  },
-  headerBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    justifyContent: "center",
-    alignItems: "center",
   },
   scroll: {
     paddingBottom: 128,

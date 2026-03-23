@@ -192,6 +192,17 @@ export default function TransactionDetailScreen() {
     activeElement?.blur?.();
   }, []);
 
+  const closeSubscriptionModal = React.useCallback(() => {
+    blurActiveWebElement();
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.setTimeout(() => {
+        setSubscriptionModalOpen(false);
+      }, 0);
+      return;
+    }
+    setSubscriptionModalOpen(false);
+  }, [blurActiveWebElement]);
+
   // ── Derived maps ───────────────────────────────────────────────────────
   const categoryById = React.useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
@@ -392,8 +403,7 @@ export default function TransactionDetailScreen() {
         ]);
         setTx(detail);
         setSubscriptionMatch(match);
-        blurActiveWebElement();
-        setSubscriptionModalOpen(false);
+        closeSubscriptionModal();
       } catch (e) {
         console.warn("link subscription error", e);
       } finally {
@@ -401,7 +411,7 @@ export default function TransactionDetailScreen() {
       }
     },
     [
-      blurActiveWebElement,
+      closeSubscriptionModal,
       transactionId,
       setCategoryToSubscriptions,
       subscriptionActionBusy,
@@ -418,14 +428,13 @@ export default function TransactionDetailScreen() {
       );
       const match = await getTransactionSubscriptionMatch(transactionId);
       setSubscriptionMatch(match);
-      blurActiveWebElement();
-      setSubscriptionModalOpen(false);
+      closeSubscriptionModal();
     } catch (e) {
       console.warn("ignore subscription error", e);
     } finally {
       setSubscriptionActionBusy(false);
     }
-  }, [blurActiveWebElement, transactionId, subscriptionActionBusy]);
+  }, [closeSubscriptionModal, transactionId, subscriptionActionBusy]);
 
   const handleOpenSubscriptionAction = React.useCallback(() => {
     if (linkedSubscriptionProfile?.id) {
@@ -443,19 +452,31 @@ export default function TransactionDetailScreen() {
     if (!transactionId || !tx) return;
 
     blurActiveWebElement();
+    const navigate = () => {
+      router.push({
+        pathname: "/subscriptions",
+        params: {
+          createFromTransactionId: transactionId,
+          createFromTransactionDate: tx.date,
+          createFromTransactionCounterparty: tx.counterparty || "",
+          createFromTransactionDetails: tx.details,
+          createFromTransactionAmount: String(tx.amount),
+          createFromTransactionProvider: "",
+          createSetCategoryOnLink: setCategoryToSubscriptions ? "1" : "0",
+        },
+      });
+    };
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.setTimeout(() => {
+        setSubscriptionModalOpen(false);
+        navigate();
+      }, 0);
+      return;
+    }
+
     setSubscriptionModalOpen(false);
-    router.push({
-      pathname: "/subscriptions",
-      params: {
-        createFromTransactionId: transactionId,
-        createFromTransactionDate: tx.date,
-        createFromTransactionCounterparty: tx.counterparty || "",
-        createFromTransactionDetails: tx.details,
-        createFromTransactionAmount: String(tx.amount),
-        createFromTransactionProvider: "",
-        createSetCategoryOnLink: setCategoryToSubscriptions ? "1" : "0",
-      },
-    });
+    navigate();
   }, [blurActiveWebElement, router, setCategoryToSubscriptions, transactionId, tx]);
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -859,8 +880,7 @@ export default function TransactionDetailScreen() {
         transparent
         animationType="fade"
         onRequestClose={() => {
-          blurActiveWebElement();
-          setSubscriptionModalOpen(false);
+          closeSubscriptionModal();
         }}
       >
         <View style={styles.subscriptionModalOverlay}>
@@ -869,8 +889,7 @@ export default function TransactionDetailScreen() {
               title="Koppel abonnement"
               subtitle={getSubjectFromDetails(tx.details)}
               onClose={() => {
-                blurActiveWebElement();
-                setSubscriptionModalOpen(false);
+                closeSubscriptionModal();
               }}
             />
 

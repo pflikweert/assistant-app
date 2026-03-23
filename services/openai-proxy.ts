@@ -1,11 +1,11 @@
-import { supabase } from "./supabase";
+import { getSession } from "./supabase";
 import { getApiBaseUrl } from "./api-base";
 
 const OPENAI_PROXY_PATH = "/api/openai/chat-completions";
 
 export async function postOpenAIChatCompletion(body: unknown) {
-  const { data } = await supabase.auth.getSession();
-  const accessToken = data.session?.access_token;
+  const session = await getSession();
+  const accessToken = session?.access_token;
   if (!accessToken) {
     throw new Error("Je sessie is verlopen. Log opnieuw in om AI-functies te gebruiken.");
   }

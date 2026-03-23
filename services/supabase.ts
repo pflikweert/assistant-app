@@ -176,6 +176,17 @@ export const supabase = createClient(url, anonKey, {
   },
 });
 
+let authReadQueue: Promise<void> = Promise.resolve();
+
+function runAuthRead<T>(task: () => Promise<T>): Promise<T> {
+  const next = authReadQueue.then(task, task);
+  authReadQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
 // Auth helpers
 export async function loginWithEmail(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
@@ -211,8 +222,10 @@ export async function logout() {
 }
 
 export async function getSession(): Promise<Session | null> {
-  const { data } = await supabase.auth.getSession();
-  return data.session ?? null;
+  return runAuthRead(async () => {
+    const { data } = await supabase.auth.getSession();
+    return data.session ?? null;
+  });
 }
 
 export function onAuthStateChange(
