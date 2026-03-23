@@ -61,6 +61,7 @@ Update (huidige stand):
 
 - transactierij en transactielijstblok zijn nu als gedeelde componenten ingezet voor `Transactions`, `Dashboard` recents en `Transaction Detail` historie
 - detailstatusblokken en calloutblokken zijn gecomponentiseerd (budgetstatus, abonnementscallout, ronde icon-knop)
+- budget-voortgang gebruikt nu een gedeelde component (`FinanceBudgetProgressBar`) op Dashboard (maand + week) met vaste statuskleurregels
 
 ### Stap 3 - Scherminhoud Per Scherm Aanpakken
 

@@ -147,6 +147,11 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Componentrichtlijn:
   - stat blocks zijn bij voorkeur herbruikbare bouwstenen met wisselbare inhoud
   - bouw varianten voor kerngetal, secundair statblok en accentblok op dezelfde componentfamilie
+  - budget-voortgangsbalken komen uit één gedeelde component (`FinanceBudgetProgressBar`) en niet uit schermspecifieke inline views
+  - kleurcontract voor budgetprogress:
+    - goed: `#10b981`
+    - aandacht: geel accent
+    - kritisch: rood
 
 ### Patroon: List Rows
 
@@ -480,6 +485,7 @@ Belangrijkste patronen:
 - compacte status cards
 - korte snapshot-lijsten in plaats van zware dashboards
 - bottom quick menu blijft docked en licht
+- gedeelde budgetprogressbalk voor zowel maand- als weekvoortgang
 
 Wanneer hergebruiken:
 - bij schermen die overzicht eerst en details pas daarna tonen

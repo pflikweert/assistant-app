@@ -1,4 +1,3 @@
-import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
@@ -7,6 +6,7 @@ import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SquareAccentBlock } from "@/components/ui/square-accent-block";
+import { FinanceBudgetProgressBar } from "@/components/ui/finance-budget-progress-bar";
 import { FinColors } from "@/constants/theme";
 import {
   getMonthVariableBudgetUsageText,
@@ -494,16 +494,10 @@ export default function DashboardScreen() {
                     : "Budgetgegevens laden..."}
               </Text>
               {budgetPlan ? (
-                <View style={styles.heroBudgetTrack}>
-                  <View
-                    style={[
-                      styles.heroBudgetTrackFill,
-                      {
-                        width: `${monthBudgetFill}%`,
-                      },
-                    ]}
-                  />
-                </View>
+                <FinanceBudgetProgressBar
+                  progress={monthBudgetFill}
+                  tone={monthRiskTone}
+                />
               ) : null}
             </SquareAccentBlock>
           </FinanceHeroShell>
@@ -567,10 +561,9 @@ export default function DashboardScreen() {
                       {currentWeekRemainingDays || "Deze week"}
                     </Text>
                   </View>
-                  <RiskProgressBar
-                    progress={currentWeekProgress}
+                  <FinanceBudgetProgressBar
+                    progress={currentWeekProgress * 100}
                     tone={currentWeekRiskTone}
-                    style={styles.progressTrack}
                   />
                   {weeklyTrendBars.length ? (
                     <View style={styles.sparklineRow}>
@@ -792,18 +785,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     color: FinColors.textSecondary,
-  },
-  heroBudgetTrack: {
-    width: "100%",
-    height: 6,
-    borderRadius: 0,
-    backgroundColor: "rgba(17,17,17,0.08)",
-    overflow: "hidden",
-  },
-  heroBudgetTrackFill: {
-    height: "100%",
-    borderRadius: 0,
-    backgroundColor: FinColors.warningText,
   },
   contentMax: {
     width: "100%",

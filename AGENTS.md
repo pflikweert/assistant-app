@@ -174,6 +174,11 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Voor header/hero-ritme geldt: eerst component-default aanpassen, pas daarna scherm-overrides overwegen
 - Als op meerdere pagina's dezelfde hero-offset gewenst is, wijzig de gedeelde hero-component en verwijder tijdelijke scherm-overrides
 - Gebruik voor transactielijsten één gedeelde rijcomponent en één gedeeld lijstblok als patroon; schermen leveren alleen inhoud (titel, datum/meta, bedrag, acties).
+- Gebruik voor budget-voortgang één gedeelde progressbar-component in plaats van losse inline balken.
+  - kleurcontract:
+  - `good`: `#10b981`
+  - `watch`: geel (theme accent)
+  - `critical`: rood (theme danger)
 - Vermijd technische labels in zichtbare UI-copy; kies begrijpelijke termen voor brede doelgroep (bijv. `Betaald via` i.p.v. `Betaalmethode` wanneer dat duidelijker is).
 
 ## QA En Tests
