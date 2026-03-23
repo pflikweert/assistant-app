@@ -1,6 +1,11 @@
 import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
-import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
+import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
+import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
+import {
+  FinanceQuickMenu,
+  type FinanceQuickMenuKey,
+} from "@/components/navigation/finance-quick-menu";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { useSession } from "@/app/_layout";
@@ -370,272 +375,290 @@ export default function SettingsScreen() {
       <FinanceScreenBackdrop tone="warm" />
       <FinanceTopBar
         shellStyle={styles.topBar}
-        innerStyle={styles.topBarInner}
         title="Instellingen"
-        titleStyle={styles.pageTitle}
-        showMenu={false}
-        rightSlot={<HeaderDropdownMenu />}
+        rightSlot={<FinanceAvatarBadge />}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scroll}
       >
-        <View style={styles.profileCard}>
-          <View style={styles.profileTopRow}>
-            <View style={styles.avatarLarge}>
-              <Text style={styles.avatarText}>{userInitials || "G"}</Text>
-            </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>{userName}</Text>
-              <Text style={styles.profileEmail}>{userEmail}</Text>
-            </View>
-          </View>
-          <View style={styles.profileMetaRow}>
-            <View style={styles.profileStatusPill}>
-              <Text style={styles.profileStatusPillText}>{backgroundSummary}</Text>
-            </View>
-            <Text style={styles.profileMetaText}>
-              {backgroundStatus.updatedCount} transacties recent bijgewerkt
-            </Text>
-          </View>
-        </View>
-
-        <SectionHeader title="Import en accounts" />
-        <View style={styles.card}>
-          <SettingsRow
-            iconName="upload-file"
-            label="Transacties importeren"
-            subtitle="Upload een Rabobank CSV"
-            onPress={() => router.push("/csv-import")}
-          />
-          <View style={styles.divider} />
-          <SettingsRow
-            iconName="manage-accounts"
-            label="Rekeningen beheren"
-            subtitle="Bankrekeningen toevoegen of verwijderen"
-            onPress={() => {}}
-          />
-           <View style={styles.divider} />
-           <SettingsRow
-             iconName="password"
-             label="Wachtwoord wijzigen"
-             subtitle="Wijzig je accountwachtwoord"
-             onPress={() => router.push("/account/change-password")}
-           />
-        </View>
-
-        <SectionHeader title="Voorkeuren" />
-        <View style={styles.card}>
-          <SettingsRow
-            iconName="euro-symbol"
-            label="Valuta"
-            value="EUR"
-            onPress={() => {}}
-          />
-          <SettingsRow
-            iconName="palette"
-            label="Weergave"
-            value="Standaard"
-            subtitle="Meer thema-opties volgen later"
-          />
-        </View>
-
-        <SectionHeader title="Beheer" />
-        <View style={styles.card}>
-          <SettingsRow
-            iconName="tune"
-            label="Categorie-indeling"
-            subtitle="Beheer wat onder vaste lasten, variabel of abonnementen valt"
-            onPress={() => router.push("/category-budget-groups")}
-          />
-          <View style={styles.divider} />
-          <SettingsRow
-            iconName="subscriptions"
-            label="Abonnementen"
-            subtitle="Beheer profielen, PSP-koppelingen en regels"
-            onPress={() => router.push("/subscriptions")}
-          />
-        </View>
-
-        <SectionHeader title="Forecast" />
-        <View style={styles.card}>
-          <SettingsRow
-            iconName="autorenew"
-            label="Forecast opnieuw berekenen"
-            subtitle={forecastSummary}
-            onPress={handleRefreshForecast}
-            rightElement={
-              isRefreshingForecast ? (
-                <ActivityIndicator size="small" color={FinColors.green} />
-              ) : undefined
-            }
-          />
-          {forecastRefreshStatus?.lastError ? (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.inlineNote}>
-                <Text style={styles.inlineNoteError}>
-                  Laatste fout: {forecastRefreshStatus.lastError}
-                </Text>
-              </View>
-            </>
-          ) : null}
-        </View>
-
-        <SectionHeader title="Data" />
-        <View style={styles.card}>
-          <SettingsRow
-            iconName="download"
-            label="Data exporteren"
-            subtitle="Download alle transacties als CSV"
-            onPress={() => {}}
-          />
-          <View style={styles.divider} />
-          <SettingsRow
-            iconName="autorenew"
-            label="Alles hercategoriseren"
-            subtitle="Zet alle niet-handmatige transacties opnieuw door rules en OpenAI"
-            onPress={() => runRecategorizationForAllInBackground()}
-            rightElement={
-              isBusy ? (
-                <ActivityIndicator size="small" color={FinColors.green} />
-              ) : undefined
-            }
-          />
-          <View style={styles.divider} />
-          <SettingsRow
-            iconName="delete-outline"
-            label="Transacties resetten"
-            subtitle="Verwijder alle transactiegegevens en categorisaties"
-            onPress={handleResetPress}
-            rightElement={
-              isClearing ? (
-                <ActivityIndicator size="small" color={FinColors.green} />
-              ) : undefined
-            }
-          />
-        </View>
-
-        <SectionHeader title="Achtergrondtaken" />
-        <View style={styles.statusCard}>
-          <View style={styles.statusHeader}>
-            <Text style={styles.statusTitle}>Categorisatie</Text>
-            <Text style={styles.statusPhase}>{backgroundStatus.phase}</Text>
-          </View>
-          <Text style={styles.statusText}>
-            {formatCategorizationStatus(backgroundStatus)}
-          </Text>
-          <View style={styles.controlRow}>
-            <TouchableOpacity
-              style={[
-                styles.controlButton,
-                (isPaused || !isBusy) && styles.controlButtonDisabled,
-              ]}
-              onPress={pauseBackgroundCategorization}
-              disabled={isPaused || !isBusy}
-            >
-              <Text style={styles.controlButtonText}>Pauzeer</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.controlButton,
-                !isPaused &&
-                  !backgroundStatus.queuedCount &&
-                  styles.controlButtonDisabled,
-              ]}
-              onPress={resumeBackgroundCategorization}
-              disabled={!isPaused && !backgroundStatus.queuedCount}
-            >
-              <Text style={styles.controlButtonText}>Hervat</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.controlButton,
-                !isBusy && !isPaused && styles.controlButtonDisabled,
-              ]}
-              onPress={stopBackgroundCategorization}
-              disabled={!isBusy && !isPaused}
-            >
-              <Text style={styles.controlButtonText}>Stop</Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            style={[
-              styles.secondaryControlButton,
-              !backgroundStatus.queuedCount && styles.controlButtonDisabled,
-            ]}
-            onPress={clearQueuedCategorizationQueue}
-            disabled={!backgroundStatus.queuedCount}
-          >
-            <Text style={styles.secondaryControlButtonText}>
-              Wachtrij leegmaken
-            </Text>
-          </TouchableOpacity>
-          <View style={styles.statusMetaRow}>
-            <Text style={styles.statusMetaText}>
-              Verwerkt: {backgroundStatus.processedCount}
-            </Text>
-            <Text style={styles.statusMetaText}>
-              Bijgewerkt: {backgroundStatus.updatedCount}
-            </Text>
-          </View>
-          <View style={styles.statusMetaRow}>
-            <Text style={styles.statusMetaText}>
-              Rules: {backgroundStatus.ruleCount}
-            </Text>
-            <Text style={styles.statusMetaText}>
-              OpenAI: {backgroundStatus.openAiCount}
-            </Text>
-          </View>
-          <View style={styles.statusMetaRow}>
-            <Text style={styles.statusMetaText}>
-              Laatste mode: {backgroundStatus.lastRunMode || "-"}
-            </Text>
-            <Text style={styles.statusMetaText}>
-              Overgeslagen: {backgroundStatus.skippedCount}
-            </Text>
-          </View>
-          {backgroundStatus.lastError ? (
-            <Text style={styles.statusError}>
-              Laatste fout: {backgroundStatus.lastError}
-            </Text>
-          ) : null}
-          {backgroundStatus.lastCompletedAt ? (
-            <Text style={styles.statusTimestamp}>
-              Laatste afronding:{" "}
-              {new Date(backgroundStatus.lastCompletedAt).toLocaleString(
-                "nl-NL",
-              )}
-            </Text>
-          ) : null}
-        </View>
-
-        {/* About */}
-        <SectionHeader title="About" />
-        <View style={styles.card}>
-          <SettingsRow iconName="info-outline" label="Versie" value="1.0.0" />
-          <View style={styles.divider} />
-          <SettingsRow
-            iconName="support-agent"
-            label="Hulp en support"
-            onPress={() => {}}
-          />
-        </View>
-
-        <TouchableOpacity
-          style={styles.signOutBtn}
-          activeOpacity={0.7}
-          onPress={handleLogout}
-          disabled={isSigningOut}
+        <FinanceHeroShell
+          eyebrow="Account"
+          title="Instellingen"
+          subtitle="Beheer je account, data en forecast vanuit één plek."
+          subtitleStyle={styles.heroSubtitle}
+          titleStyle={styles.heroTitle}
+          shellStyle={styles.heroShell}
         >
-          {isSigningOut ? (
-            <ActivityIndicator size="small" color={FinColors.red} />
-          ) : (
-            <Text style={styles.signOutText}>Uitloggen</Text>
-          )}
-        </TouchableOpacity>
+          <View style={styles.profileCard}>
+            <View style={styles.profileTopRow}>
+              <View style={styles.avatarLarge}>
+                <Text style={styles.avatarText}>{userInitials || "G"}</Text>
+              </View>
+              <View style={styles.profileInfo}>
+                <Text style={styles.profileName}>{userName}</Text>
+                <Text style={styles.profileEmail}>{userEmail}</Text>
+              </View>
+            </View>
+            <View style={styles.profileMetaRow}>
+              <View style={styles.profileStatusPill}>
+                <Text style={styles.profileStatusPillText}>{backgroundSummary}</Text>
+              </View>
+              <Text style={styles.profileMetaText}>
+                {backgroundStatus.updatedCount} transacties recent bijgewerkt
+              </Text>
+            </View>
+          </View>
+        </FinanceHeroShell>
+
+        <View style={styles.contentMax}>
+          <SectionHeader title="Import en accounts" />
+          <View style={styles.card}>
+            <SettingsRow
+              iconName="upload-file"
+              label="Transacties importeren"
+              subtitle="Upload een Rabobank CSV"
+              onPress={() => router.push("/csv-import")}
+            />
+            <View style={styles.divider} />
+            <SettingsRow
+              iconName="manage-accounts"
+              label="Rekeningen beheren"
+              subtitle="Bankrekeningen toevoegen of verwijderen"
+              onPress={() => {}}
+            />
+            <View style={styles.divider} />
+            <SettingsRow
+              iconName="password"
+              label="Wachtwoord wijzigen"
+              subtitle="Wijzig je accountwachtwoord"
+              onPress={() => router.push("/account/change-password")}
+            />
+          </View>
+
+          <SectionHeader title="Voorkeuren" />
+          <View style={styles.card}>
+            <SettingsRow
+              iconName="euro-symbol"
+              label="Valuta"
+              value="EUR"
+              onPress={() => {}}
+            />
+            <SettingsRow
+              iconName="palette"
+              label="Weergave"
+              value="Standaard"
+              subtitle="Meer thema-opties volgen later"
+            />
+          </View>
+
+          <SectionHeader title="Beheer" />
+          <View style={styles.card}>
+            <SettingsRow
+              iconName="tune"
+              label="Categorie-indeling"
+              subtitle="Beheer wat onder vaste lasten, variabel of abonnementen valt"
+              onPress={() => router.push("/category-budget-groups")}
+            />
+            <View style={styles.divider} />
+            <SettingsRow
+              iconName="subscriptions"
+              label="Abonnementen"
+              subtitle="Beheer profielen, PSP-koppelingen en regels"
+              onPress={() => router.push("/subscriptions")}
+            />
+          </View>
+
+          <SectionHeader title="Forecast" />
+          <View style={styles.card}>
+            <SettingsRow
+              iconName="autorenew"
+              label="Forecast opnieuw berekenen"
+              subtitle={forecastSummary}
+              onPress={handleRefreshForecast}
+              rightElement={
+                isRefreshingForecast ? (
+                  <ActivityIndicator size="small" color={FinColors.green} />
+                ) : undefined
+              }
+            />
+            {forecastRefreshStatus?.lastError ? (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.inlineNote}>
+                  <Text style={styles.inlineNoteError}>
+                    Laatste fout: {forecastRefreshStatus.lastError}
+                  </Text>
+                </View>
+              </>
+            ) : null}
+          </View>
+
+          <SectionHeader title="Data" />
+          <View style={styles.card}>
+            <SettingsRow
+              iconName="download"
+              label="Data exporteren"
+              subtitle="Download alle transacties als CSV"
+              onPress={() => {}}
+            />
+            <View style={styles.divider} />
+            <SettingsRow
+              iconName="autorenew"
+              label="Alles hercategoriseren"
+              subtitle="Zet alle niet-handmatige transacties opnieuw door rules en OpenAI"
+              onPress={() => runRecategorizationForAllInBackground()}
+              rightElement={
+                isBusy ? (
+                  <ActivityIndicator size="small" color={FinColors.green} />
+                ) : undefined
+              }
+            />
+            <View style={styles.divider} />
+            <SettingsRow
+              iconName="delete-outline"
+              label="Transacties resetten"
+              subtitle="Verwijder alle transactiegegevens en categorisaties"
+              onPress={handleResetPress}
+              rightElement={
+                isClearing ? (
+                  <ActivityIndicator size="small" color={FinColors.green} />
+                ) : undefined
+              }
+            />
+          </View>
+
+          <SectionHeader title="Achtergrondtaken" />
+          <View style={styles.statusCard}>
+            <View style={styles.statusHeader}>
+              <Text style={styles.statusTitle}>Categorisatie</Text>
+              <Text style={styles.statusPhase}>{backgroundStatus.phase}</Text>
+            </View>
+            <Text style={styles.statusText}>
+              {formatCategorizationStatus(backgroundStatus)}
+            </Text>
+            <View style={styles.controlRow}>
+              <TouchableOpacity
+                style={[
+                  styles.controlButton,
+                  (isPaused || !isBusy) && styles.controlButtonDisabled,
+                ]}
+                onPress={pauseBackgroundCategorization}
+                disabled={isPaused || !isBusy}
+              >
+                <Text style={styles.controlButtonText}>Pauzeer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.controlButton,
+                  !isPaused &&
+                    !backgroundStatus.queuedCount &&
+                    styles.controlButtonDisabled,
+                ]}
+                onPress={resumeBackgroundCategorization}
+                disabled={!isPaused && !backgroundStatus.queuedCount}
+              >
+                <Text style={styles.controlButtonText}>Hervat</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.controlButton,
+                  !isBusy && !isPaused && styles.controlButtonDisabled,
+                ]}
+                onPress={stopBackgroundCategorization}
+                disabled={!isBusy && !isPaused}
+              >
+                <Text style={styles.controlButtonText}>Stop</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.secondaryControlButton,
+                !backgroundStatus.queuedCount && styles.controlButtonDisabled,
+              ]}
+              onPress={clearQueuedCategorizationQueue}
+              disabled={!backgroundStatus.queuedCount}
+            >
+              <Text style={styles.secondaryControlButtonText}>
+                Wachtrij leegmaken
+              </Text>
+            </TouchableOpacity>
+            <View style={styles.statusMetaRow}>
+              <Text style={styles.statusMetaText}>
+                Verwerkt: {backgroundStatus.processedCount}
+              </Text>
+              <Text style={styles.statusMetaText}>
+                Bijgewerkt: {backgroundStatus.updatedCount}
+              </Text>
+            </View>
+            <View style={styles.statusMetaRow}>
+              <Text style={styles.statusMetaText}>
+                Rules: {backgroundStatus.ruleCount}
+              </Text>
+              <Text style={styles.statusMetaText}>
+                OpenAI: {backgroundStatus.openAiCount}
+              </Text>
+            </View>
+            <View style={styles.statusMetaRow}>
+              <Text style={styles.statusMetaText}>
+                Laatste mode: {backgroundStatus.lastRunMode || "-"}
+              </Text>
+              <Text style={styles.statusMetaText}>
+                Overgeslagen: {backgroundStatus.skippedCount}
+              </Text>
+            </View>
+            {backgroundStatus.lastError ? (
+              <Text style={styles.statusError}>
+                Laatste fout: {backgroundStatus.lastError}
+              </Text>
+            ) : null}
+            {backgroundStatus.lastCompletedAt ? (
+              <Text style={styles.statusTimestamp}>
+                Laatste afronding:{" "}
+                {new Date(backgroundStatus.lastCompletedAt).toLocaleString(
+                  "nl-NL",
+                )}
+              </Text>
+            ) : null}
+          </View>
+
+          {/* About */}
+          <SectionHeader title="About" />
+          <View style={styles.card}>
+            <SettingsRow iconName="info-outline" label="Versie" value="1.0.0" />
+            <View style={styles.divider} />
+            <SettingsRow
+              iconName="support-agent"
+              label="Hulp en support"
+              onPress={() => {}}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.signOutBtn}
+            activeOpacity={0.7}
+            onPress={handleLogout}
+            disabled={isSigningOut}
+          >
+            {isSigningOut ? (
+              <ActivityIndicator size="small" color={FinColors.red} />
+            ) : (
+              <Text style={styles.signOutText}>Uitloggen</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </ScrollView>
+
+      <FinanceQuickMenu
+        activeKey={null}
+        onSelect={(key: FinanceQuickMenuKey) => {
+          if (key === "index") router.push("/");
+          if (key === "transactions") router.push("/transactions");
+          if (key === "insights") router.push("/insights");
+          if (key === "budget") router.push("/budget");
+        }}
+      />
 
       <ConfirmResetModal
         visible={showConfirmModal}
@@ -657,8 +680,13 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: FinColors.bgBase },
+  root: { flex: 1, backgroundColor: FinColors.bgBase, overflow: "hidden" },
   topBar: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
     backgroundColor: "rgba(246,245,242,0.8)",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(17,17,17,0.06)",
@@ -674,53 +702,72 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
     letterSpacing: -1,
   },
-  scroll: { paddingHorizontal: 24, paddingBottom: 48, gap: 10 },
+  scroll: { paddingHorizontal: 24, paddingBottom: 176, gap: 10 },
+  heroShell: {
+    backgroundColor: FinColors.bgElevated,
+    marginHorizontal: -24,
+  },
+  heroTitle: {
+    fontSize: 42,
+    lineHeight: 44,
+    letterSpacing: -1.2,
+  },
+  heroSubtitle: {
+    fontSize: 16,
+    lineHeight: 24,
+    maxWidth: 760,
+  },
+  contentMax: {
+    width: "100%",
+    maxWidth: 1040,
+    alignSelf: "center",
+  },
 
   // Profile
   profileCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 28,
-    padding: 22,
-    marginBottom: 8,
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    gap: 16,
+    gap: 14,
   },
   profileTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 18,
+    gap: 14,
   },
   avatarLarge: {
-    width: 60,
-    height: 60,
-    borderRadius: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 18,
     backgroundColor: "rgba(242,201,76,0.16)",
     justifyContent: "center",
     alignItems: "center",
   },
   avatarText: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
     color: FinColors.textSecondary,
   },
   profileInfo: { flex: 1 },
   profileName: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: "800",
     color: FinColors.textPrimary,
   },
-  profileEmail: { fontSize: 13, color: FinColors.textMuted, marginTop: 4 },
+  profileEmail: { fontSize: 13, color: FinColors.textMuted, marginTop: 2 },
   profileMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     flexWrap: "wrap",
   },
   profileStatusPill: {
     borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     backgroundColor: FinColors.warningBg,
     borderWidth: 1,
     borderColor: FinColors.warningBorder,
@@ -731,7 +778,7 @@ const styles = StyleSheet.create({
     color: FinColors.warningText,
   },
   profileMetaText: {
-    fontSize: 12,
+    fontSize: 11,
     color: FinColors.textSecondary,
     flexShrink: 1,
   },
@@ -744,14 +791,14 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 2,
     paddingHorizontal: 4,
-    paddingTop: 20,
+    paddingTop: 18,
     paddingBottom: 10,
   },
 
   // Card
   card: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 24,
+    borderRadius: 22,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
@@ -763,13 +810,13 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 18,
+    paddingVertical: 16,
     paddingHorizontal: 20,
   },
   rowIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -778,7 +825,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   rowContent: { flex: 1 },
-  rowLabel: { fontSize: 15, fontWeight: "700", color: FinColors.textPrimary },
+  rowLabel: { fontSize: 14, fontWeight: "700", color: FinColors.textPrimary },
   rowSub: { fontSize: 12, color: FinColors.textMuted, marginTop: 4 },
   rowRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   rowValue: { fontSize: 14, color: FinColors.textSecondary, fontWeight: "500" },
@@ -799,8 +846,8 @@ const styles = StyleSheet.create({
 
   statusCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 22,
+    padding: 18,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
@@ -829,11 +876,11 @@ const styles = StyleSheet.create({
   controlRow: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 12,
+    marginTop: 10,
   },
   controlButton: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 11,
     alignItems: "center",
     borderRadius: 999,
     backgroundColor: FinColors.yellowSoft,
@@ -850,7 +897,7 @@ const styles = StyleSheet.create({
   },
   secondaryControlButton: {
     marginTop: 10,
-    paddingVertical: 12,
+    paddingVertical: 11,
     alignItems: "center",
     borderRadius: 999,
     backgroundColor: FinColors.bgElevated,
@@ -879,10 +926,10 @@ const styles = StyleSheet.create({
 
   // Sign out
   signOutBtn: {
-    marginTop: 24,
+    marginTop: 20,
     backgroundColor: FinColors.bgCard,
     borderRadius: 999,
-    paddingVertical: 16,
+    paddingVertical: 15,
     alignItems: "center",
     borderWidth: 1,
     borderColor: FinColors.red,

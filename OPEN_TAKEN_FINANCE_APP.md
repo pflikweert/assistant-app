@@ -30,12 +30,14 @@ Doel: één vaste app-basis waar alle schermen op landen.
 - quick menu en bottom navigation één keer stylen
 - modal headers en detail headers hergebruiken
 - vaste contentkolom en screen padding gelijk trekken
+- hero/topbar-offset per shellfamilie gelijk trekken (gebruik `Transactions` als referentie voor hoofdschermen)
 
 Exit-criteria:
 
 - dezelfde shellgedrag- en spacingregels gelden op Dashboard, Transactions,
   Budget, Insights, Subscriptions en detailpagina's
 - geen unieke inline header- of shellstyling meer per scherm
+- geen ongewenste verschillen meer in ruimte tussen topbar en hero binnen dezelfde schermfamilie
 
 ### Stap 2 - Herbruikbare UI-Bouwstenen
 
@@ -104,6 +106,7 @@ Doel: de uitwerking afmaken zonder nieuwe patronen te introduceren.
 - aria/focus gedrag nalopen
 - performance en scroll-gedrag nalopen
 - laatste visuele verschillen per scherm wegwerken
+- expliciete offset-check: `Dashboard`, `Transactions`, `Settings`, `Subscriptions` hebben gelijk hero/topbar-ritme
 
 Exit-criteria:
 

@@ -14,6 +14,7 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 - Gebruik segmenten, tabs en filterchips alleen als ze echt helpen bij een beslissing.
 - Maak klikbaarheid zichtbaar via vorm, contrast en iconografie, niet via extra uitleg.
 - Lege staten moeten richting geven: wat zie ik niet, waarom niet, en wat kan ik nu doen?
+- Hero- en topbar-ritmiek is onderdeel van de shell: gelijke shell betekent gelijke verticale offset.
 
 ## Component-First Werkafspraken
 
@@ -24,6 +25,23 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 - Verander terugkerende shell-elementen nooit alleen lokaal in één scherm als het een app-brede component hoort te zijn.
 - Kies liever één sterke gedeelde implementatie met kleine props dan meerdere bijna-gelijke schermspecifieke varianten.
 - Als een nieuwe uitzondering echt nodig is, documenteer die in de betreffende sectie van dit bestand.
+- Pas hero-offset eerst in de gedeelde hero-component aan, niet met losse scherm-overrides.
+- Verwijder tijdelijke scherm-overrides zodra de component-default klopt.
+
+## Shell Offset Contract
+
+- Doel: geen visuele sprongen tussen hoofdschermen met dezelfde shell.
+- Regel:
+  - hoofdschermen volgen `Transactions` als referentie voor topbar/hero-offset
+  - hero-offset komt standaard uit `FinanceHeroShell`
+  - per-scherm `innerStyle`-offsets zijn alleen toegestaan bij aantoonbaar afwijkende shell
+- Implementatievolgorde:
+  - 1. pas `FinanceHeroShell` of `FinanceTopBar` default aan
+  - 2. verwijder lokale hero-offset overrides
+  - 3. check hoofdschermen op gelijke bovenruimte
+- QA-check:
+  - vergelijk `Dashboard`, `Transactions`, `Settings`, `Subscriptions` op ruimte tussen topbar en hero-eyebrow
+  - als de shell gelijk is maar de ruimte anders voelt, is dit een regressie
 
 ## Core Patterns
 
@@ -53,6 +71,7 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Componentrichtlijn:
   - gebruik gedeelde shells voor backdrop, hero, topbar en dock
   - laat schermen niet zelf hun eigen layout-variant bouwen als dezelfde shell al bestaat
+  - hero mag full-bleed zijn, maar hero-inhoud en vervolgcontent blijven in dezelfde gecentreerde contentkolom
 
 ### Patroon: Topbars / Headers
 
@@ -79,6 +98,7 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Componentrichtlijn:
   - hergebruik `components/ui/finance-top-bar.tsx` of een daarop gebaseerde variant
   - maak een nieuwe headercomponent alleen als de interaction of context echt fundamenteel afwijkt
+  - houd topbarpositie en hero-offset consistent binnen dezelfde schermfamilie
 
 ### Patroon: Cards
 

@@ -62,8 +62,8 @@ const styles = StyleSheet.create({
     maxWidth: 1040,
     alignSelf: "center",
     paddingHorizontal: 16,
-    paddingTop: 86,
-    paddingBottom: 30,
+    paddingTop: 102,
+    paddingBottom: 24,
   },
   eyebrowRow: {
     flexDirection: "row",
@@ -103,6 +103,6 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
   },
   children: {
-    marginTop: 18,
+    marginTop: 16,
   },
 });
