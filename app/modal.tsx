@@ -1,12 +1,19 @@
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 import { FinColors } from "@/constants/theme";
+import { FinanceModalTopBar } from "@/components/ui/finance-modal-top-bar";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 
 export default function ModalScreen() {
+  const router = useRouter();
   return (
     <View style={styles.container}>
       <FinanceScreenBackdrop tone="warm" />
+      <FinanceModalTopBar
+        title="Info"
+        subtitle="Voorbeeldmodal"
+        onClose={() => router.back()}
+      />
       <View style={styles.card}>
         <Text style={styles.eyebrow}>Voorbeeldmodal</Text>
         <Text style={styles.title}>This is a modal</Text>

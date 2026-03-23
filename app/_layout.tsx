@@ -1,5 +1,4 @@
 import { MATERIAL_ICON_FONT_MAP } from "@/components/ui/app-icon";
-import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors } from "@/constants/theme";
 import { clearCategorizationClientState } from "@/services/categorization";
 import { getAuthRedirectPath } from "@/services/auth-routing";
@@ -177,17 +176,14 @@ function RootNavigator() {
         <Stack.Screen
           name="csv-import"
           options={{
-            title: "Import Transactions",
-            headerShown: true,
-            headerRight: () => <HeaderDropdownMenu mode="detail" />,
+            headerShown: false,
           }}
         />
         <Stack.Screen
           name="modal"
           options={{
             presentation: "modal",
-            title: "Info",
-            headerRight: () => <HeaderDropdownMenu mode="detail" />,
+            headerShown: false,
           }}
         />
         <Stack.Screen
@@ -204,25 +200,19 @@ function RootNavigator() {
         <Stack.Screen
           name="analysis-detail"
           options={{
-            title: "Analyse detail",
-            headerShown: true,
-            headerRight: () => <HeaderDropdownMenu mode="detail" />,
+            headerShown: false,
           }}
         />
         <Stack.Screen
           name="subscriptions"
           options={{
-            title: "Abonnementen",
-            headerShown: true,
-            headerRight: () => <HeaderDropdownMenu mode="detail" />,
+            headerShown: false,
           }}
         />
         <Stack.Screen
           name="category-budget-groups"
           options={{
-            title: "Categorie-indeling",
-            headerShown: true,
-            headerRight: () => <HeaderDropdownMenu mode="detail" />,
+            headerShown: false,
           }}
         />
       </Stack>

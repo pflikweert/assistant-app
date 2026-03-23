@@ -4,6 +4,7 @@ import {
   type FinanceQuickMenuKey,
 } from "@/components/navigation/finance-quick-menu";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
+import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
@@ -111,14 +112,6 @@ type TxSection = {
   title: string;
   data: TxRowItem[];
 };
-
-function TopAvatar() {
-  return (
-    <View style={styles.avatar}>
-      <Text style={styles.avatarText}>PF</Text>
-    </View>
-  );
-}
 
 export default function TransactionsScreen({
   counterpartyFilter,
@@ -530,7 +523,7 @@ export default function TransactionsScreen({
         shellStyle={styles.topBar}
         innerStyle={styles.topBarInner}
         title="Mijn Financiën"
-        rightSlot={<TopAvatar />}
+        rightSlot={<FinanceAvatarBadge />}
       />
 
       <SectionList
@@ -871,21 +864,6 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 12,
   },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: FinColors.bgElevated,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: FinColors.warningText,
-  },
   heroShell: {
     marginHorizontal: -16,
   },
@@ -1024,7 +1002,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 16,
-    paddingBottom: 120,
+    paddingBottom: 188,
     backgroundColor: "transparent",
   },
   sectionHeader: {
@@ -1226,7 +1204,7 @@ const styles = StyleSheet.create({
   fabButton: {
     position: "absolute",
     right: 22,
-    bottom: 84,
+    bottom: 172,
     width: 64,
     height: 64,
     borderRadius: 32,

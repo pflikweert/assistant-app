@@ -34,6 +34,10 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 - Als een scherm bewust afwijkt van `docs/UI_PATTERNS.md`, benoem dan expliciet waarom dat productmatig of technisch nodig is
 - Nieuwe visuele patronen eerst als gedeelde component of style-module bouwen; pas daarna op schermniveau invullen
 - Laat shell-elementen die op meerdere schermen terugkomen nooit per scherm opnieuw uitvinden, maar centraliseer ze direct
+- Bij nieuwe schermen eerst bepalen: is dit een hoofdscherm of een utility/subscherm?
+  - hoofdscherm: gebruikt de gedeelde app-shell met topbar, hero en docked quick menu
+  - utility/subscherm: gebruikt een compacte detail- of modal-shell zonder hoofdscherm-dock
+  - als dit nog onduidelijk is, moet de vraag expliciet gesteld worden voordat er gebouwd wordt
 
 ## Kernbegrippen
 
@@ -160,6 +164,7 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Maak componenten bewust breder inzetbaar: stop stijl, spacing en shellgedrag in de component zelf; schermen leveren vooral inhoud en uitzonderingen aan
 - Als een nieuwe stijl, hero, card, block, filter, modal of dock op 2 schermen nuttig blijkt, refactor hem direct naar een gedeeld component in dezelfde wijziging
 - Houd tijdelijke scherm-specifieke styling klein en verwijder die weer zodra het patroon is gecentraliseerd
+- Nieuwe schermen moeten standaard starten vanuit de juiste shell-keuze; voorkom dat een utility-scherm per ongeluk een hoofdscherm-shell krijgt of andersom
 
 ## QA En Tests
 

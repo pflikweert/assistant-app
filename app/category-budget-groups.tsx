@@ -1,4 +1,5 @@
 import { AppIcon } from "@/components/ui/app-icon";
+import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
 import { FinColors } from "@/constants/theme";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import {
@@ -22,7 +23,7 @@ import type {
   EditableBudgetGroup,
 } from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
@@ -112,6 +113,7 @@ function applyOverrideState(
 
 export default function CategoryBudgetGroupsScreen() {
   const params = useLocalSearchParams<{ categoryId?: string | string[] }>();
+  const router = useRouter();
   const focusCategoryId = React.useMemo(
     () => normalizeRouteParam(params.categoryId),
     [params.categoryId],
@@ -357,6 +359,10 @@ export default function CategoryBudgetGroupsScreen() {
     return (
       <View style={styles.root}>
         <FinanceScreenBackdrop tone="warm" />
+        <FinanceDetailTopBar
+          title="Categorie-indeling"
+          onBack={() => router.back()}
+        />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={FinColors.green} />
         </View>
@@ -367,6 +373,10 @@ export default function CategoryBudgetGroupsScreen() {
   return (
     <View style={styles.root}>
       <FinanceScreenBackdrop tone="warm" />
+      <FinanceDetailTopBar
+        title="Categorie-indeling"
+        onBack={() => router.back()}
+      />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}

@@ -1,7 +1,7 @@
 import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 export type FinanceQuickMenuKey =
   | "index"
@@ -23,7 +23,7 @@ export const FINANCE_QUICK_MENU_ITEMS: FinanceQuickMenuItem[] = [
 ];
 
 type FinanceQuickMenuProps = {
-  activeKey: FinanceQuickMenuKey;
+  activeKey?: FinanceQuickMenuKey | null;
   onSelect: (key: FinanceQuickMenuKey) => void;
 };
 
@@ -35,7 +35,7 @@ export function FinanceQuickMenu({
     <View style={[styles.outer, styles.outerPointerEvents]}>
       <View style={styles.shell}>
         {FINANCE_QUICK_MENU_ITEMS.map((item) => {
-          const isActive = item.key === activeKey;
+          const isActive = activeKey != null && item.key === activeKey;
 
           return (
             <Pressable
@@ -71,15 +71,12 @@ export function FinanceQuickMenu({
 
 const styles = StyleSheet.create({
   outer: {
-    position: Platform.select({
-      web: "fixed",
-      default: "absolute",
-    }),
+    position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 60,
-    elevation: 20,
+    zIndex: 999,
+    elevation: 24,
   },
   outerPointerEvents: {
     pointerEvents: "box-none",
@@ -95,8 +92,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingVertical: 10,
     paddingHorizontal: 10,
-    boxShadow: "0px 8px 18px rgba(17,17,17,0.10)",
-    elevation: 12,
+    boxShadow: "0px 10px 22px rgba(17,17,17,0.12)",
+    elevation: 18,
   },
   item: {
     flex: 1,

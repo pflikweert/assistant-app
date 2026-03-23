@@ -1,5 +1,8 @@
 import { FinColors } from "@/constants/theme";
 import { normalizePattern } from "@/services/categorization-repository";
+import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
+import { FinanceQuickMenu } from "@/components/navigation/finance-quick-menu";
+import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import {
     createSubscriptionProfile,
@@ -978,6 +981,11 @@ export default function SubscriptionsScreen() {
   return (
     <View style={styles.root}>
       <FinanceScreenBackdrop tone="warm" />
+      <FinanceTopBar
+        title="Abonnementen"
+        showMenu={false}
+        rightSlot={<FinanceAvatarBadge />}
+      />
       {loading ? (
         <View style={styles.centered}>
           <ActivityIndicator color={FinColors.warningText} size="large" />
@@ -1588,6 +1596,23 @@ export default function SubscriptionsScreen() {
         </ScrollView>
       )}
 
+      {!loading ? (
+        <FinanceQuickMenu
+          activeKey={null}
+          onSelect={(key) => {
+            if (key === "index") {
+              router.push("/");
+            } else if (key === "budget") {
+              router.push("/budget");
+            } else if (key === "transactions") {
+              router.push("/transactions");
+            } else if (key === "insights") {
+              router.push("/insights");
+            }
+          }}
+        />
+      ) : null}
+
       <Modal
         visible={profileModalOpen}
         transparent
@@ -2187,7 +2212,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 32,
+    paddingBottom: 176,
     gap: 16,
   },
   pageGrid: {

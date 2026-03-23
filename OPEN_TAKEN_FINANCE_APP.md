@@ -17,6 +17,99 @@ De focus is nu niet meer "opnieuw bouwen", maar:
 - visuele polish
 - laatste productlagen toevoegen waar ze echt waarde geven
 
+## Redesign Roadmap
+
+Deze volgorde gebruiken we voortaan als we schermen verder redesignen:
+
+### Stap 1 - Shell Eerst
+
+Doel: één vaste app-basis waar alle schermen op landen.
+
+- topbar-componenten centraliseren
+- backdrop- en hero-shells centraliseren
+- quick menu en bottom navigation één keer stylen
+- modal headers en detail headers hergebruiken
+- vaste contentkolom en screen padding gelijk trekken
+
+Exit-criteria:
+
+- dezelfde shellgedrag- en spacingregels gelden op Dashboard, Transactions,
+  Budget, Insights, Subscriptions en detailpagina's
+- geen unieke inline header- of shellstyling meer per scherm
+
+### Stap 2 - Herbruikbare UI-Bouwstenen
+
+Doel: alle terugkerende visuele patronen als component vastleggen.
+
+- hero shells
+- stat blocks
+- text blocks
+- detail cards
+- filter launchers
+- list rows
+- empty states
+- statuspills
+
+Exit-criteria:
+
+- als een patroon op 2 of meer schermen terugkomt, bestaat er een gedeelde component
+- schermen leveren vooral inhoud en uitzonderingen aan, geen eigen styling-variant
+
+### Stap 3 - Scherminhoud Per Scherm Aanpakken
+
+Doel: elk scherm afwerken binnen dezelfde visuele taal.
+
+Volgorde:
+
+1. `Transaction Detail`
+2. `Transactions`
+3. `Dashboard`
+4. `Budget`
+5. `Insights`
+6. `Subscriptions`
+7. `Settings` en utility-schermen
+
+Per scherm:
+
+- hero op basis van de shared shell
+- contentzone onder de hero volgens de pattern library
+- acties, filters en detailblokken in herbruikbare bouwstenen
+- oude unieke styling opruimen zodra de gedeelde variant staat
+
+Exit-criteria:
+
+- scherm ziet duidelijk uit als onderdeel van dezelfde app-familie
+- dezelfde componenten worden hergebruikt in plaats van herbouwd
+
+### Stap 4 - Standaardisatie En Opruimen
+
+Doel: voorkomen dat er opnieuw losse varianten ontstaan.
+
+- inline styles verplaatsen naar gedeelde componenten of tokens
+- oude schermspecifieke shells verwijderen
+- spacing- en typografieregels expliciet in docs vastleggen
+- nieuwe uitzonderingen alleen toestaan met een duidelijke reden
+
+Exit-criteria:
+
+- nieuwe schermen kunnen worden opgebouwd door bestaande componenten te combineren
+- losse stijl-duplicatie is zichtbaar afgenomen
+
+### Stap 5 - QA En Final Polish
+
+Doel: de uitwerking afmaken zonder nieuwe patronen te introduceren.
+
+- mobile/web-vergelijking
+- header-, hero- en footer-ritme nalopen
+- aria/focus gedrag nalopen
+- performance en scroll-gedrag nalopen
+- laatste visuele verschillen per scherm wegwerken
+
+Exit-criteria:
+
+- schermen voelen consistent, rustig en compleet
+- geen onverwachte scroll-, focus- of shellproblemen meer
+
 ## Wat nu echt openstaat
 
 ### Hoogste prioriteit

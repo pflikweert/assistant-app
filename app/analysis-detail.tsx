@@ -1,5 +1,7 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinColors } from "@/constants/theme";
+import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import {
   buildCategoryRecordMap,
@@ -724,6 +726,7 @@ export default function AnalysisDetailScreen() {
             date: String(row.date || ""),
             amount: Number(row.amount || 0),
             counterparty: String(row.counterparty || "").trim(),
+            subscriptionProfileName: null as string | null,
             details: String(row.details || ""),
             category_id_auto: row.category_id_auto || null,
             category_id_user: row.category_id_user || null,
@@ -761,16 +764,30 @@ export default function AnalysisDetailScreen() {
 
   if (!validGroup || !monthStart || !monthEnd) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.emptyText}>Ongeldige detailparameter.</Text>
+      <View style={styles.root}>
+        <FinanceScreenBackdrop tone="warm" />
+        <FinanceDetailTopBar
+          title="Analyse"
+          onBack={() => router.back()}
+        />
+        <View style={styles.centered}>
+          <Text style={styles.emptyText}>Ongeldige detailparameter.</Text>
+        </View>
       </View>
     );
   }
 
   if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator color={FinColors.green} size="large" />
+      <View style={styles.root}>
+        <FinanceScreenBackdrop tone="warm" />
+        <FinanceDetailTopBar
+          title="Analyse"
+          onBack={() => router.back()}
+        />
+        <View style={styles.centered}>
+          <ActivityIndicator color={FinColors.green} size="large" />
+        </View>
       </View>
     );
   }
@@ -778,8 +795,11 @@ export default function AnalysisDetailScreen() {
   const maxTrend = Math.max(1, ...derivedData.trend.map((item) => item.amount));
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <View style={styles.card}>
+    <View style={styles.root}>
+      <FinanceScreenBackdrop tone="warm" />
+      <FinanceDetailTopBar title="Analyse" onBack={() => router.back()} />
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        <View style={styles.card}>
         <Text style={styles.title}>{labelForGroup(validGroup)}</Text>
         <Text style={styles.subTitle}>{monthLabel}</Text>
         <View style={styles.summaryRow}>
@@ -804,9 +824,9 @@ export default function AnalysisDetailScreen() {
             {derivedData.currentTransactions.length}
           </Text>
         </View>
-      </View>
+        </View>
 
-      <View style={styles.card}>
+        <View style={styles.card}>
         <Text style={styles.cardTitle}>Verdeling per subcategorie</Text>
         {derivedData.subcategoryGroups.length ? (
           derivedData.subcategoryGroups.map((item) => {
@@ -907,9 +927,9 @@ export default function AnalysisDetailScreen() {
         ) : (
           <Text style={styles.emptyText}>Geen data voor deze selectie.</Text>
         )}
-      </View>
+        </View>
 
-      <View style={styles.card}>
+        <View style={styles.card}>
         <Text style={styles.cardTitle}>Grafiek per maand</Text>
         {derivedData.trend.length ? (
           derivedData.trend.map((item) => (
@@ -933,13 +953,15 @@ export default function AnalysisDetailScreen() {
             Geen niet-lege maanden beschikbaar.
           </Text>
         )}
-      </View>
-    </ScrollView>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: FinColors.bgBase },
+  root: { flex: 1, backgroundColor: "transparent" },
+  scroll: { flex: 1, backgroundColor: "transparent" },
   content: { padding: 16, gap: 12, paddingBottom: 24 },
   centered: {
     flex: 1,

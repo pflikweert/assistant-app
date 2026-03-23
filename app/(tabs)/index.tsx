@@ -450,14 +450,9 @@ export default function DashboardScreen() {
 
       {isBootstrapping ? (
         <FinanceLoadingSplash
-          title="Dashboard laden"
-          subtitle="We halen je actuele saldo, maandbudget en laatste transacties op."
-          steps={[
-            "Saldo synchroniseren",
-            "Budget berekenen",
-            "Recente transacties ophalen",
-          ]}
-          note="Dit duurt meestal maar een paar seconden."
+          title="Gegevens laden"
+          subtitle="We zetten je overzicht klaar."
+          note="Even geduld."
         />
       ) : (
         <ScrollView

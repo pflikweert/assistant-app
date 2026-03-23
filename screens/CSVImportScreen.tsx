@@ -15,6 +15,7 @@ import {
 } from "react-native";
 // @ts-ignore
 import { FinColors } from "@/constants/theme";
+import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { runCategorizationInBackground } from "@/services/categorization";
 import {
@@ -76,10 +77,6 @@ export default function CSVImportScreen() {
       }
     });
     return unsub;
-  }, [navigation, loading]);
-
-  React.useLayoutEffect(() => {
-    navigation.setOptions({ headerLeft: loading ? () => null : undefined });
   }, [navigation, loading]);
 
   const loadBankAccounts = React.useCallback(async () => {
@@ -372,6 +369,7 @@ export default function CSVImportScreen() {
   return (
     <View style={styles.root}>
       <FinanceScreenBackdrop tone="warm" />
+      <FinanceDetailTopBar title="Importeren" onBack={() => navigation.goBack()} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}

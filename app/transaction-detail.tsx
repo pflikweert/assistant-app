@@ -970,6 +970,7 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
     backgroundColor: "transparent",
+    marginTop: -1,
     overflow: "hidden",
   },
   content: {
@@ -989,7 +990,7 @@ const styles = StyleSheet.create({
 
   heroShell: {
     marginHorizontal: -16,
-    marginTop: -8,
+    marginTop: 0,
     backgroundColor: FinColors.bgElevated,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(17,17,17,0.06)",
