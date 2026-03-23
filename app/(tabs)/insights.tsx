@@ -1,6 +1,8 @@
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { MonthPickerSheet } from "@/components/month-picker-sheet";
+import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
+import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { FinColors } from "@/constants/theme";
@@ -249,6 +251,38 @@ type CategoryGroup = {
   sortOrder: number;
   children: CategoryRecord[];
 };
+
+function getInsightsHeroCopy(segment: SegmentKey, monthLabel: string) {
+  if (segment === "forecast") {
+    return {
+      eyebrow: "Inzichten voorspelling",
+      title: "Voorspelling",
+      subtitle: `Vooruitblik en risico's voor ${monthLabel.toLowerCase()}.`,
+    };
+  }
+
+  if (segment === "rare") {
+    return {
+      eyebrow: "Inzichten abonnementen",
+      title: "Verborgen kosten",
+      subtitle: "Herken zeldzame afschrijvingen voordat ze je maand verstoren.",
+    };
+  }
+
+  if (segment === "review") {
+    return {
+      eyebrow: "Inzichten controle",
+      title: "Controle",
+      subtitle: "Werk categorisatie bij en houd je data scherp voor betere sturing.",
+    };
+  }
+
+  return {
+    eyebrow: "Inzichten overzicht",
+    title: "Trends",
+    subtitle: `Kijk wat er speelt in ${monthLabel.toLowerCase()} en waar je kunt bijsturen.`,
+  };
+}
 
 function isSubjectDrivenCounterparty(counterparty: string | null | undefined) {
   const normalized = String(counterparty || "").toLowerCase();
@@ -2407,90 +2441,16 @@ export default function InsightsScreen() {
     </Pressable>
   );
 
+  const heroCopy = getInsightsHeroCopy(segment, selectedMonth.label);
+
   return (
     <View style={styles.root}>
       <FinanceScreenBackdrop tone="warm" />
       <FinanceTopBar
         shellStyle={styles.topBar}
-        innerStyle={styles.topBarInner}
-        title="Insights"
-        subtitle="Begrijpen, voorspellen, verbeteren."
-        titleStyle={styles.pageTitle}
-        subtitleStyle={styles.pageSubtitle}
-        rightSlot={
-          <TouchableOpacity
-            style={styles.headerCta}
-            onPress={() => router.push("/budget")}
-          >
-            <Text style={styles.headerCtaText}>Budget</Text>
-          </TouchableOpacity>
-        }
-      >
-        <View style={styles.monthRow}>
-          <Pressable
-            style={[
-              styles.monthNavButton,
-              !canGoToOlderMonth && styles.monthNavButtonDisabled,
-            ]}
-            onPress={() => {
-              if (!canGoToOlderMonth) return;
-              const nextOption = monthOptions[selectedMonthIndex + 1];
-              if (nextOption) setSelectedMonthKey(nextOption.key);
-            }}
-            disabled={!canGoToOlderMonth}
-          >
-            <Text style={styles.monthNavButtonText}>‹</Text>
-          </Pressable>
-          <Pressable
-            style={styles.monthBadge}
-            onPress={() => setMonthPickerOpen(true)}
-          >
-            <Text style={styles.monthBadgeText}>{selectedMonth.label}</Text>
-            <AppIcon
-              name="expand-more"
-              size={18}
-              color={FinColors.textSecondary}
-              variant="outlined"
-            />
-          </Pressable>
-          <Pressable
-            style={[
-              styles.monthNavButton,
-              !canGoToNewerMonth && styles.monthNavButtonDisabled,
-            ]}
-            onPress={() => {
-              if (!canGoToNewerMonth) return;
-              const nextOption = monthOptions[selectedMonthIndex - 1];
-              if (nextOption) setSelectedMonthKey(nextOption.key);
-            }}
-            disabled={!canGoToNewerMonth}
-          >
-            <Text style={styles.monthNavButtonText}>›</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.segmentRow}>
-          {SEGMENTS.map((item) => (
-            <TouchableOpacity
-              key={item.key}
-              style={[
-                styles.segmentChip,
-                segment === item.key && styles.segmentChipActive,
-              ]}
-              onPress={() => setSegment(item.key)}
-            >
-              <Text
-                style={[
-                  styles.segmentChipText,
-                  segment === item.key && styles.segmentChipTextActive,
-                ]}
-              >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </FinanceTopBar>
+        title="Inzichten"
+        rightSlot={<FinanceAvatarBadge />}
+      />
 
       {loading ? (
         <View style={styles.centered}>
@@ -2501,6 +2461,82 @@ export default function InsightsScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
         >
+          <FinanceHeroShell
+            eyebrow={heroCopy.eyebrow}
+            title={heroCopy.title}
+            subtitle={heroCopy.subtitle}
+            shellStyle={styles.heroShell}
+            innerStyle={styles.heroShellInner}
+            titleStyle={styles.heroShellTitle}
+            subtitleStyle={styles.heroShellSubtitle}
+          />
+
+          <View style={styles.contentMax}>
+            <View style={styles.monthRow}>
+              <Pressable
+                style={[
+                  styles.monthNavButton,
+                  !canGoToOlderMonth && styles.monthNavButtonDisabled,
+                ]}
+                onPress={() => {
+                  if (!canGoToOlderMonth) return;
+                  const nextOption = monthOptions[selectedMonthIndex + 1];
+                  if (nextOption) setSelectedMonthKey(nextOption.key);
+                }}
+                disabled={!canGoToOlderMonth}
+              >
+                <Text style={styles.monthNavButtonText}>‹</Text>
+              </Pressable>
+              <Pressable
+                style={styles.monthBadge}
+                onPress={() => setMonthPickerOpen(true)}
+              >
+                <Text style={styles.monthBadgeText}>{selectedMonth.label}</Text>
+                <AppIcon
+                  name="expand-more"
+                  size={18}
+                  color={FinColors.textSecondary}
+                  variant="outlined"
+                />
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.monthNavButton,
+                  !canGoToNewerMonth && styles.monthNavButtonDisabled,
+                ]}
+                onPress={() => {
+                  if (!canGoToNewerMonth) return;
+                  const nextOption = monthOptions[selectedMonthIndex - 1];
+                  if (nextOption) setSelectedMonthKey(nextOption.key);
+                }}
+                disabled={!canGoToNewerMonth}
+              >
+                <Text style={styles.monthNavButtonText}>›</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.segmentRow}>
+              {SEGMENTS.map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.segmentChip,
+                    segment === item.key && styles.segmentChipActive,
+                  ]}
+                  onPress={() => setSegment(item.key)}
+                >
+                  <Text
+                    style={[
+                      styles.segmentChipText,
+                      segment === item.key && styles.segmentChipTextActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+                ))}
+              </View>
+
           {segment === "trends" ? (
             <>
               <View style={styles.heroCard}>
@@ -3606,6 +3642,7 @@ export default function InsightsScreen() {
               </View>
             </>
           ) : null}
+          </View>
         </ScrollView>
       )}
 
@@ -4136,40 +4173,27 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   topBar: {
-    backgroundColor: "rgba(246,245,242,0.9)",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.08)",
-    boxShadow: "0px 8px 16px rgba(17,17,17,0.05)",
-    elevation: 1,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
   },
-  topBarInner: {
+  heroShell: {
+    marginBottom: 16,
+  },
+  heroShellInner: {
     paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 14,
   },
-  pageTitle: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: FinColors.textPrimary,
+  heroShellTitle: {
+    fontSize: 44,
+    lineHeight: 46,
+    letterSpacing: -1.2,
   },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 14,
-    color: FinColors.textSecondary,
-  },
-  headerCta: {
-    borderRadius: 999,
-    backgroundColor: FinColors.warningBg,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  headerCtaText: {
-    color: FinColors.warningText,
-    fontWeight: "700",
-    fontSize: 12,
+  heroShellSubtitle: {
+    maxWidth: 760,
   },
   monthRow: {
-    marginTop: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -4216,7 +4240,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginTop: 16,
   },
   segmentChip: {
     paddingHorizontal: 14,
@@ -4244,8 +4267,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   content: {
-    paddingHorizontal: 24,
     paddingBottom: 128,
+    gap: 16,
+  },
+  contentMax: {
+    width: "100%",
+    maxWidth: 1040,
+    alignSelf: "center",
+    paddingHorizontal: 24,
     gap: 16,
   },
   heroCard: {
