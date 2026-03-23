@@ -5,20 +5,57 @@ type FinanceScreenBackdropProps = {
   tone?: "warm" | "neutral";
 };
 
+const HORIZONTAL_GRID_LINES = [
+  "8%",
+  "16%",
+  "24%",
+  "32%",
+  "40%",
+  "48%",
+  "56%",
+  "64%",
+  "72%",
+  "80%",
+  "88%",
+];
+
+const VERTICAL_GRID_LINES = [
+  "8%",
+  "16%",
+  "24%",
+  "32%",
+  "40%",
+  "48%",
+  "56%",
+  "64%",
+  "72%",
+  "80%",
+  "88%",
+];
+
 export function FinanceScreenBackdrop({
   tone = "warm",
 }: FinanceScreenBackdropProps) {
   return (
     <View style={[styles.fill, styles.fillPointerEvents]}>
       <View style={styles.base} />
+      <View style={styles.paperLayer} />
       <View
-        style={[
-          styles.topWash,
-          tone === "neutral" && styles.topWashNeutral,
-        ]}
+        style={[styles.topWash, tone === "neutral" && styles.topWashNeutral]}
       />
-      <View style={styles.blueFadeTop} />
-      <View style={styles.blueFadeMid} />
+
+      <View style={styles.gridWrap}>
+        {HORIZONTAL_GRID_LINES.map((top) => (
+          <View key={`h-${top}`} style={[styles.gridHorizontal, { top }]} />
+        ))}
+        {VERTICAL_GRID_LINES.map((left) => (
+          <View key={`v-${left}`} style={[styles.gridVertical, { left }]} />
+        ))}
+      </View>
+      <View style={styles.techLineLeft} />
+      <View style={styles.techLineRight} />
+      <View style={styles.techLineDiagA} />
+      <View style={styles.techLineDiagB} />
       <View
         style={[
           styles.backdropGlowTop,
@@ -44,57 +81,113 @@ const styles = StyleSheet.create({
   },
   base: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#ffffff",
+    backgroundColor: "#fafbff",
+  },
+  paperLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(250,251,255,0.92)",
   },
   topWash: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: 180,
-    backgroundColor: "rgba(255,255,255,0.70)",
+    height: 220,
+    backgroundColor: "rgba(250,251,255,0.78)",
   },
   topWashNeutral: {
-    backgroundColor: "rgba(255,255,255,0.42)",
+    backgroundColor: "rgba(250,251,255,0.58)",
   },
-  blueFadeTop: {
+  coolFadeTop: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: 260,
-    backgroundColor: "rgba(245,249,255,0.40)",
+    height: 300,
+    backgroundColor: "rgba(237,244,255,0.56)",
   },
-  blueFadeMid: {
+  coolFadeMid: {
     position: "absolute",
-    top: 140,
+    top: 180,
     left: 0,
     right: 0,
-    height: 340,
-    backgroundColor: "rgba(235,243,255,0.20)",
+    height: 360,
+    backgroundColor: "rgba(227,236,252,0.30)",
+  },
+  gridWrap: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 1,
+  },
+  gridHorizontal: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: "rgba(62,92,142,0.03)",
+  },
+  gridVertical: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: "rgba(62,92,142,0.03)",
+  },
+  techLineLeft: {
+    position: "absolute",
+    top: "12%",
+    left: "6%",
+    width: "22%",
+    height: 1,
+    backgroundColor: "rgba(108,139,190,0.10)",
+  },
+  techLineRight: {
+    position: "absolute",
+    top: "28%",
+    right: "7%",
+    width: "26%",
+    height: 1,
+    backgroundColor: "rgba(108,139,190,0.10)",
+  },
+  techLineDiagA: {
+    position: "absolute",
+    top: "42%",
+    left: "-8%",
+    width: "42%",
+    height: 1,
+    backgroundColor: "rgba(108,139,190,0.06)",
+    transform: [{ rotate: "-18deg" }],
+  },
+  techLineDiagB: {
+    position: "absolute",
+    top: "70%",
+    right: "-10%",
+    width: "46%",
+    height: 1,
+    backgroundColor: "rgba(108,139,190,0.05)",
+    transform: [{ rotate: "-16deg" }],
   },
   backdropGlowTop: {
     position: "absolute",
-    top: -70,
-    right: -98,
-    width: 320,
-    height: 320,
+    top: -84,
+    right: -108,
+    width: 340,
+    height: 340,
     borderRadius: 999,
-    backgroundColor: "rgba(242,201,76,0.11)",
+    backgroundColor: "rgba(242,201,76,0.10)",
   },
   backdropGlowTopNeutral: {
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
   backdropGlowBottom: {
     position: "absolute",
-    bottom: -140,
-    left: -110,
-    width: 300,
-    height: 300,
+    bottom: -156,
+    left: -126,
+    width: 320,
+    height: 320,
     borderRadius: 999,
-    backgroundColor: "rgba(229,238,249,0.16)",
+    backgroundColor: "rgba(210,225,246,0.34)",
   },
   backdropGlowBottomNeutral: {
-    backgroundColor: "rgba(242,201,76,0.05)",
+    backgroundColor: "rgba(242,201,76,0.06)",
   },
 });

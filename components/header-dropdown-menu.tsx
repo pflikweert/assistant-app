@@ -11,6 +11,7 @@ type MenuItem = {
     | "/"
     | "/transactions"
     | "/insights"
+    | "/insights-legacy"
     | "/budget"
     | "/subscriptions"
     | "/settings";
@@ -20,6 +21,7 @@ const MENU_ITEMS: MenuItem[] = [
   { label: "Dashboard", iconName: "space-dashboard", path: "/" },
   { label: "Transactions", iconName: "receipt-long", path: "/transactions" },
   { label: "Insights", iconName: "insights", path: "/insights" },
+  { label: "Insights (oud)", iconName: "history", path: "/insights-legacy" },
   { label: "Budget", iconName: "account-balance-wallet", path: "/budget" },
   { label: "Abonnementen", iconName: "subscriptions", path: "/subscriptions" },
   { label: "Settings", iconName: "settings", path: "/settings" },
