@@ -26,7 +26,6 @@ import { listTransactionSubscriptionProfileNames } from "@/services/subscription
 import { supabase } from "@/services/supabase";
 import type {
   BudgetPlanComputation,
-  BudgetWeekPlanRow,
   CategoryRecord,
 } from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
@@ -99,10 +98,6 @@ function formatRemainingDaysInWeekLabel(
   return `${remainingDays} ${dayLabel} resterend`;
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
 function isMissingRelationError(error: unknown) {
   const code = String((error as { code?: string })?.code || "");
   const message = String(
@@ -111,36 +106,6 @@ function isMissingRelationError(error: unknown) {
 
   if (code === "42P01" || code === "PGRST205") return true;
   return message.includes("relation") && message.includes("does not exist");
-}
-
-function buildPositiveNudges({
-  remainingBudget,
-  week,
-  streak,
-}: {
-  remainingBudget: number | null;
-  week: BudgetWeekPlanRow | null;
-  streak: number;
-}) {
-  const items: string[] = [];
-
-  if (week?.remaining != null && week.remaining > 0) {
-    items.push(`Je houdt waarschijnlijk ${fmt.format(week.remaining)} over deze week`);
-  }
-
-  if (remainingBudget != null && remainingBudget > 0) {
-    items.push(`${fmt.format(remainingBudget)} maandruimte staat nog open`);
-  }
-
-  if (streak >= 2) {
-    items.push(`${streak} weken op rij onder budget`);
-  }
-
-  if (week && week.actual === 0) {
-    items.push("Rustige start van de week");
-  }
-
-  return items.slice(0, 3);
 }
 
 function TxRow({
@@ -242,47 +207,7 @@ export default function DashboardScreen() {
   );
   const currentWeekRiskTone = currentWeekSnapshot.tone;
   const monthRiskTone = monthBudgetSnapshot.tone;
-
-  const underBudgetStreak = React.useMemo(() => {
-    if (!budgetPlan) return 0;
-
-    const completedWeeks = [...budgetPlan.weeklyVariablePlan]
-      .filter((week) => week.isPastWeek)
-      .sort((left, right) =>
-        left.endDateExclusive < right.endDateExclusive ? 1 : -1,
-      );
-
-    let streak = 0;
-    for (const week of completedWeeks) {
-      if (week.actual <= week.budget) {
-        streak += 1;
-      } else {
-        break;
-      }
-    }
-
-    return streak;
-  }, [budgetPlan]);
-
-  const positiveNudges = React.useMemo(
-    () =>
-      buildPositiveNudges({
-        remainingBudget,
-        week: currentWeekPlan,
-        streak: underBudgetStreak,
-      }),
-    [currentWeekPlan, remainingBudget, underBudgetStreak],
-  );
-  const weeklyTrendBars = React.useMemo(() => {
-    if (!budgetPlan) return [];
-
-    return budgetPlan.weeklyVariablePlan.slice(0, 4).map((week) => ({
-      key: week.endDateExclusive,
-      label: week.label,
-      utilization: clamp(week.utilization, 0, 1.25),
-      isCurrentWeek: week.isCurrentWeek,
-    }));
-  }, [budgetPlan]);
+  const monthBudgetStatusLabel = monthBudgetSnapshot.label.toUpperCase();
 
   const loadCategories = React.useCallback(async () => {
     try {
@@ -472,13 +397,42 @@ export default function DashboardScreen() {
             >
               <View style={styles.heroBudgetHeader}>
                 <Text style={styles.heroBudgetEyebrow}>Huidig maandbudget</Text>
-                <View style={styles.inlineCta}>
-                  <Text style={styles.inlineCtaText}>Bekijk budget</Text>
-                  <AppIcon
-                    name="chevron-right"
-                    size={16}
-                    color={FinColors.warningText}
-                  />
+                <View style={styles.heroBudgetHeaderMeta}>
+                  <View
+                    style={[
+                      styles.heroMonthStatusPill,
+                      monthRiskTone === "good" && styles.heroMonthStatusPillGood,
+                      monthRiskTone === "watch" && styles.heroMonthStatusPillWatch,
+                      monthRiskTone === "critical" && styles.heroMonthStatusPillCritical,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.heroMonthStatusDot,
+                        monthRiskTone === "good" && styles.heroMonthStatusDotGood,
+                        monthRiskTone === "watch" && styles.heroMonthStatusDotWatch,
+                        monthRiskTone === "critical" && styles.heroMonthStatusDotCritical,
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.heroMonthStatusText,
+                        monthRiskTone === "good" && styles.heroMonthStatusTextGood,
+                        monthRiskTone === "watch" && styles.heroMonthStatusTextWatch,
+                        monthRiskTone === "critical" && styles.heroMonthStatusTextCritical,
+                      ]}
+                    >
+                      {monthBudgetStatusLabel}
+                    </Text>
+                  </View>
+                  <View style={styles.inlineCta}>
+                    <Text style={styles.inlineCtaText}>Bekijk budget</Text>
+                    <AppIcon
+                      name="chevron-right"
+                      size={16}
+                      color={FinColors.warningText}
+                    />
+                  </View>
                 </View>
               </View>
               <Text style={styles.heroBudgetValue}>
@@ -527,142 +481,70 @@ export default function DashboardScreen() {
                     </View>
                     <View
                       style={[
-                        styles.statusChip,
-                        currentWeekRiskTone === "good" &&
-                          styles.statusChipGood,
-                        currentWeekRiskTone === "watch" &&
-                          styles.statusChipWatch,
-                        currentWeekRiskTone === "critical" &&
-                          styles.statusChipCritical,
+                        styles.weekStatusPill,
+                        currentWeekRiskTone === "good" && styles.weekStatusPillGood,
+                        currentWeekRiskTone === "watch" && styles.weekStatusPillWatch,
+                        currentWeekRiskTone === "critical" && styles.weekStatusPillCritical,
                       ]}
                     >
+                      <View
+                        style={[
+                          styles.weekStatusDot,
+                          currentWeekRiskTone === "good" && styles.weekStatusDotGood,
+                          currentWeekRiskTone === "watch" && styles.weekStatusDotWatch,
+                          currentWeekRiskTone === "critical" && styles.weekStatusDotCritical,
+                        ]}
+                      />
                       <Text
                         style={[
-                          styles.statusChipText,
-                          currentWeekRiskTone === "good" &&
-                            styles.statusChipTextGood,
-                          currentWeekRiskTone === "watch" &&
-                            styles.statusChipTextWatch,
-                          currentWeekRiskTone === "critical" &&
-                            styles.statusChipTextCritical,
+                          styles.weekStatusText,
+                          currentWeekRiskTone === "good" && styles.weekStatusTextGood,
+                          currentWeekRiskTone === "watch" && styles.weekStatusTextWatch,
+                          currentWeekRiskTone === "critical" && styles.weekStatusTextCritical,
                         ]}
                       >
-                        {currentWeekSnapshot.label}
+                        {currentWeekSnapshot.label.toUpperCase()}
                       </Text>
                     </View>
                   </View>
                   <View style={styles.weekSummaryRow}>
-                    <Text style={styles.weekSummaryValue}>
-                      {currentWeekPlan
-                        ? `${fmt.format(currentWeekPlan.actual)} van ${fmt.format(currentWeekPlan.budget)}`
-                        : "Nog geen weekbudget"}
-                    </Text>
-                    <Text style={styles.weekSummaryMeta}>
-                      {currentWeekRemainingDays || "Deze week"}
-                    </Text>
+                    <View style={styles.weekSummaryMain}>
+                      <View style={styles.weekAmountRow}>
+                        <Text style={styles.weekSummaryValue}>
+                          {currentWeekPlan ? fmt.format(currentWeekPlan.actual) : "Nog geen data"}
+                        </Text>
+                        {currentWeekPlan ? (
+                          <Text style={styles.weekSummaryOfBudget}>
+                            van {fmt.format(currentWeekPlan.budget)}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                    <View style={styles.weekMetaWrap}>
+                      <Text style={styles.weekSummaryMeta}>
+                        {currentWeekRemainingDays || "Deze week"}
+                      </Text>
+                    </View>
                   </View>
                   <FinanceBudgetProgressBar
                     progress={currentWeekProgress * 100}
                     tone={currentWeekRiskTone}
                   />
-                  {weeklyTrendBars.length ? (
-                    <View style={styles.sparklineRow}>
-                      {weeklyTrendBars.map((bar) => (
-                        <View key={bar.key} style={styles.sparklineItem}>
-                          <View style={styles.sparklineTrack}>
-                            <View
-                              style={[
-                                styles.sparklineFill,
-                                {
-                                  height: `${Math.round(bar.utilization * 100)}%`,
-                                },
-                                bar.isCurrentWeek && styles.sparklineFillCurrent,
-                              ]}
-                            />
-                          </View>
-                          <Text
-                            style={[
-                              styles.sparklineLabel,
-                              bar.isCurrentWeek && styles.sparklineLabelCurrent,
-                            ]}
-                          >
-                            {bar.label.replace("Week ", "W")}
-                          </Text>
-                        </View>
-                      ))}
+                  <View style={styles.weekHintCard}>
+                    <View style={styles.weekHintIconWrap}>
+                      <AppIcon
+                        name="eco"
+                        size={14}
+                        color={FinColors.warningText}
+                        variant="outlined"
+                      />
                     </View>
-                  ) : null}
-                  <Text style={styles.weekTrendText}>
-                    {getWeekTempoMessage(currentWeekPlan)}
-                  </Text>
+                    <Text style={styles.weekTrendText}>
+                      {getWeekTempoMessage(currentWeekPlan)}
+                    </Text>
+                  </View>
                 </Pressable>
 
-                <View style={[styles.sideStack, isWideLayout && styles.sideStackWide]}>
-                  <View style={[styles.surfaceCard, styles.monthStatusCard]}>
-                    <View style={styles.cardHeaderRow}>
-                      <View style={styles.cardHeaderText}>
-                        <Text style={styles.sectionTitle}>Maandstatus</Text>
-                        <Text style={styles.sectionSubtle}>Uitgaven van deze maand</Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.statusChip,
-                          monthRiskTone === "good" && styles.statusChipGood,
-                          monthRiskTone === "watch" && styles.statusChipWatch,
-                          monthRiskTone === "critical" && styles.statusChipCritical,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusChipText,
-                            monthRiskTone === "good" && styles.statusChipTextGood,
-                            monthRiskTone === "watch" && styles.statusChipTextWatch,
-                            monthRiskTone === "critical" && styles.statusChipTextCritical,
-                          ]}
-                        >
-                          {monthBudgetSnapshot.label}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.subStatsColumn}>
-                      <View style={styles.subStatCard}>
-                        <Text style={styles.subStatLabel}>Variabel gebruikt</Text>
-                        <Text style={styles.subStatValue}>
-                          {monthSpentInBudget == null
-                            ? "Onbekend"
-                            : fmt.format(monthSpentInBudget)}
-                        </Text>
-                      </View>
-                      <View style={styles.subStatCard}>
-                        <Text style={styles.subStatLabel}>Nog vrij</Text>
-                        <Text style={styles.subStatValue}>
-                          {remainingBudget == null
-                            ? "Onbekend"
-                            : fmt.format(Math.max(remainingBudget, 0))}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  <View style={[styles.accentCard, styles.nudgeCard]}>
-                    <View style={styles.nudgeHeader}>
-                      <Text style={styles.sectionTitle}>Positieve signalen</Text>
-                      <AppIcon name="wb-sunny" size={16} color={FinColors.warningText} />
-                    </View>
-                    {positiveNudges.length ? (
-                      positiveNudges.map((item) => (
-                        <View key={item} style={styles.nudgeRow}>
-                          <View style={styles.nudgeDot} />
-                          <Text style={styles.nudgeText}>{item}</Text>
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={styles.nudgeFallback}>
-                        Zodra er wat meer ritme in je transacties zit, laten we hier je positieve voortgang zien.
-                      </Text>
-                    )}
-                  </View>
-                </View>
               </View>
 
               <View style={styles.actionsRow}>
@@ -766,6 +648,60 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
+  heroBudgetHeaderMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  heroMonthStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: FinColors.bgElevated,
+  },
+  heroMonthStatusPillGood: {
+    backgroundColor: "#e7f3a8",
+  },
+  heroMonthStatusPillWatch: {
+    backgroundColor: FinColors.warningBg,
+  },
+  heroMonthStatusPillCritical: {
+    backgroundColor: FinColors.redBg,
+  },
+  heroMonthStatusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: FinColors.textMuted,
+  },
+  heroMonthStatusDotGood: {
+    backgroundColor: "#10b981",
+  },
+  heroMonthStatusDotWatch: {
+    backgroundColor: FinColors.warningText,
+  },
+  heroMonthStatusDotCritical: {
+    backgroundColor: FinColors.red,
+  },
+  heroMonthStatusText: {
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    color: FinColors.textSecondary,
+  },
+  heroMonthStatusTextGood: {
+    color: "#5b6a1b",
+  },
+  heroMonthStatusTextWatch: {
+    color: FinColors.warningText,
+  },
+  heroMonthStatusTextCritical: {
+    color: FinColors.red,
+  },
   heroBudgetEyebrow: {
     fontSize: 10,
     lineHeight: 14,
@@ -810,24 +746,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
   },
-  accentCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 30,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
   weekCard: {
     gap: 14,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#f3f4f4",
+    borderRadius: 28,
   },
   weekCardWide: {
     flex: 1.25,
-  },
-  sideStack: {
-    gap: 18,
-  },
-  sideStackWide: {
-    flex: 0.95,
   },
   monthStatusCard: {
     gap: 14,
@@ -931,97 +858,118 @@ const styles = StyleSheet.create({
   },
   weekSummaryRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "space-between",
     gap: 12,
   },
-  weekSummaryValue: {
+  weekSummaryMain: {
     flex: 1,
-    fontSize: 18,
-    fontWeight: "800",
-    color: FinColors.textPrimary,
+    minWidth: 0,
   },
-  weekSummaryMeta: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: FinColors.textSecondary,
-  },
-  progressTrack: {
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: "rgba(17,17,17,0.08)",
-    overflow: "hidden",
-  },
-  weekTrendText: {
-    fontSize: 13,
-    lineHeight: 20,
-    color: FinColors.textSecondary,
-  },
-  sparklineRow: {
+  weekAmountRow: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 10,
-    minHeight: 64,
-  },
-  sparklineItem: {
-    alignItems: "center",
     gap: 6,
+    flexWrap: "wrap",
   },
-  sparklineTrack: {
-    width: 16,
-    height: 46,
-    borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
-    justifyContent: "flex-end",
-    overflow: "hidden",
+  weekSummaryValue: {
+    fontSize: 42,
+    lineHeight: 44,
+    fontWeight: "900",
+    color: FinColors.textPrimary,
+    letterSpacing: -0.8,
   },
-  sparklineFill: {
-    width: "100%",
-    borderRadius: 999,
-    backgroundColor: "rgba(17,17,17,0.14)",
-    minHeight: 6,
+  weekSummaryOfBudget: {
+    fontSize: 30 / 2,
+    lineHeight: 24,
+    fontWeight: "500",
+    color: FinColors.textSecondary,
+    marginBottom: 3,
   },
-  sparklineFillCurrent: {
-    backgroundColor: FinColors.yellow,
+  weekMetaWrap: {
+    minWidth: 84,
+    alignItems: "flex-end",
   },
-  sparklineLabel: {
+  weekSummaryMeta: {
     fontSize: 11,
-    color: FinColors.textMuted,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1.1,
+    color: FinColors.warningText,
+    textAlign: "right",
+  },
+  weekTrendText: {
+    flex: 1,
+    fontSize: 21 / 2,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
     fontWeight: "600",
   },
-  sparklineLabelCurrent: {
-    color: FinColors.textPrimary,
-  },
-  nudgeCard: {
-    gap: 12,
-  },
-  nudgeHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  nudgeRow: {
+  weekHintCard: {
+    marginTop: 4,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgElevated,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
-  nudgeDot: {
+  weekHintIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: FinColors.bgCard,
+  },
+  weekStatusPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: FinColors.bgElevated,
+  },
+  weekStatusPillGood: {
+    backgroundColor: "#e7f3a8",
+  },
+  weekStatusPillWatch: {
+    backgroundColor: FinColors.warningBg,
+  },
+  weekStatusPillCritical: {
+    backgroundColor: FinColors.redBg,
+  },
+  weekStatusDot: {
     width: 8,
     height: 8,
     borderRadius: 999,
-    backgroundColor: FinColors.yellow,
+    backgroundColor: FinColors.textMuted,
   },
-  nudgeText: {
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "600",
-    color: FinColors.textPrimary,
+  weekStatusDotGood: {
+    backgroundColor: "#10b981",
   },
-  nudgeFallback: {
-    fontSize: 13,
-    lineHeight: 20,
+  weekStatusDotWatch: {
+    backgroundColor: FinColors.warningText,
+  },
+  weekStatusDotCritical: {
+    backgroundColor: FinColors.red,
+  },
+  weekStatusText: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.1,
     color: FinColors.textSecondary,
+  },
+  weekStatusTextGood: {
+    color: "#5b6a1b",
+  },
+  weekStatusTextWatch: {
+    color: FinColors.warningText,
+  },
+  weekStatusTextCritical: {
+    color: FinColors.red,
   },
   actionsRow: {
     flexDirection: "row",
