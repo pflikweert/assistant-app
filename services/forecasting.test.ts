@@ -42,6 +42,54 @@ describe("resolveExpectedCashflowIncomeBaseline", () => {
     expect(result).toBe(2829);
   });
 
+  it("keeps the budget planner basis authoritative when income sources disagree", () => {
+    const result = resolveExpectedCashflowIncomeBaselineBreakdown({
+      monthStart: new Date("2026-03-01T00:00:00.000Z"),
+      budgetPlan: {
+        settings: {
+          forecastExpenseSource: "trend",
+          includeIncome: {
+            salary: true,
+            childBudget: true,
+            structuralOther: false,
+            variable: false,
+          },
+        },
+        trend: {
+          income: {
+            salary: 2400,
+            childBudget: 429,
+            structuralOther: 0,
+            variable: 0,
+            windfalls: 0,
+            costRefunds: 0,
+            total: 2829,
+          },
+        },
+        flowSummary: {
+          expectedIncomeMonthly: 2829,
+        },
+      } as any,
+      incomeSources: [
+        {
+          source_key: "salary",
+          source_label: "Salaris",
+          expected_income: 3104,
+          income_bucket: "salary",
+          income_frequency: "monthly",
+          income_day_of_month: 25,
+          last_detected_at: "2026-02-25T09:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(result).toEqual({
+      total: 2829,
+      structural: 2829,
+      variable: 0,
+    });
+  });
+
   it("respects includeIncome when trend forecast mode is active", () => {
     const result = resolveExpectedCashflowIncomeBaselineBreakdown({
       monthStart: new Date("2026-03-01T00:00:00.000Z"),
@@ -53,6 +101,17 @@ describe("resolveExpectedCashflowIncomeBaseline", () => {
             childBudget: true,
             structuralOther: false,
             variable: false,
+          },
+        },
+        trend: {
+          income: {
+            salary: 2400,
+            childBudget: 429,
+            structuralOther: 0,
+            variable: 650,
+            windfalls: 50,
+            costRefunds: 25,
+            total: 3554,
           },
         },
         flowSummary: {

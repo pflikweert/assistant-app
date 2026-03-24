@@ -1,10 +1,13 @@
 import { BudgetAmountSlider } from "@/components/budget-amount-slider";
 import { BudgetCategoryProgressRow } from "@/components/budget-category-progress-row";
 import { TransactionCategoryIcon } from "@/components/category-icon";
-import { MonthPickerSheet } from "@/components/month-picker-sheet";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { FinColors } from "@/constants/theme";
+import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
+import { FinanceMonthSelector } from "@/components/ui/finance-month-selector";
+import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import {
   resolveLockedVariableMainCategories,
@@ -132,6 +135,7 @@ const INCOME_SOURCE_OPTIONS: {
 
 const SAVINGS_SLIDER_STEP = 25;
 const FUTURE_BUDGET_MONTH_COUNT = 6;
+const CONTENT_MAX_WIDTH = 1040;
 
 type SegmentKey = (typeof SEGMENTS)[number]["key"];
 type BudgetDraftValues = Partial<Record<BudgetCategoryKey, string>>;
@@ -1600,6 +1604,57 @@ export default function BudgetScreen() {
     };
   }, [budgetModeDraft, budgetPlan]);
 
+  const budgetHeroCopy = React.useMemo(() => {
+    if (segment === "week") {
+      return {
+        eyebrow: focusWeek?.isCurrentWeek ? "Weeksturing" : "Weekruimte",
+        title:
+          focusWeek == null
+            ? "Nog geen weekdata"
+            : focusWeek.remaining >= 0
+              ? "Je ligt op koers"
+              : "Let op: je loopt achter",
+        subtitle: focusWeek
+          ? getWeekTempoMessage(focusWeek)
+          : "Bekijk het tempo van je huidige week.",
+      };
+    }
+
+    if (segment === "month") {
+      return {
+        eyebrow: "Maandsturing",
+        title:
+          monthlyRemaining == null
+            ? "Nog geen maanddata"
+            : monthlyRemaining >= 0
+              ? "Maand op schema"
+              : "Let op: maand staat onder druk",
+        subtitle:
+          monthSpent == null || !budgetPlan
+            ? "Maandsturing verschijnt zodra budgetdata beschikbaar is."
+            : getMonthVariableBudgetUsageText(monthBudgetSnapshot, fmt),
+      };
+    }
+
+    return {
+      eyebrow: "Budgetbeheer",
+      title: budgetPlan == null ? "Nog geen data" : "Budget beheren",
+      subtitle: budgetPlan
+        ? draftBudgetAllocationSummary.isOverAllocated
+          ? "Je planning ligt boven je inkomend budget."
+          : "Je planning past binnen je inkomend budget."
+        : "Pas je maandbudget, inkomstenbasis en verdeling aan zodra de data geladen is.",
+    };
+  }, [
+    budgetPlan,
+    draftBudgetAllocationSummary.isOverAllocated,
+    focusWeek,
+    monthBudgetSnapshot,
+    monthSpent,
+    monthlyRemaining,
+    segment,
+  ]);
+
   const resolveWeekSpendBreakdown = React.useCallback(
     (week: BudgetWeekPlanRow | null) => {
       if (!budgetPlan || !week) return null;
@@ -2434,85 +2489,9 @@ export default function BudgetScreen() {
       <FinanceScreenBackdrop tone="warm" />
       <FinanceTopBar
         shellStyle={styles.topBar}
-        innerStyle={styles.topBarInner}
         title="Budget"
-        subtitle="Week sturen, maand bewaken, slim beheren."
-        titleStyle={styles.pageTitle}
-        subtitleStyle={styles.pageSubtitle}
-        rightSlot={
-          <TouchableOpacity
-            style={styles.headerCta}
-            onPress={() => router.push("/insights")}
-          >
-            <Text style={styles.headerCtaText}>Insights</Text>
-          </TouchableOpacity>
-        }
-      >
-        <View style={styles.monthRow}>
-          <Pressable
-            style={[
-              styles.monthNavButton,
-              !canGoToOlderMonth && styles.monthNavButtonDisabled,
-            ]}
-            onPress={() => {
-              if (!canGoToOlderMonth) return;
-              const nextOption = monthOptions[selectedMonthIndex + 1];
-              if (nextOption) setSelectedMonthKey(nextOption.key);
-            }}
-            disabled={!canGoToOlderMonth}
-          >
-            <Text style={styles.monthNavButtonText}>‹</Text>
-          </Pressable>
-          <Pressable
-            style={styles.monthBadge}
-            onPress={() => setMonthPickerOpen(true)}
-          >
-            <Text style={styles.monthBadgeText}>{selectedMonth?.label}</Text>
-            <AppIcon
-              name="expand-more"
-              size={18}
-              color={FinColors.textSecondary}
-              variant="outlined"
-            />
-          </Pressable>
-          <Pressable
-            style={[
-              styles.monthNavButton,
-              !canGoToNewerMonth && styles.monthNavButtonDisabled,
-            ]}
-            onPress={() => {
-              if (!canGoToNewerMonth) return;
-              const nextOption = monthOptions[selectedMonthIndex - 1];
-              if (nextOption) setSelectedMonthKey(nextOption.key);
-            }}
-            disabled={!canGoToNewerMonth}
-          >
-            <Text style={styles.monthNavButtonText}>›</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.segmentRow}>
-          {SEGMENTS.map((item) => (
-            <TouchableOpacity
-              key={item.key}
-              style={[
-                styles.segmentChip,
-                segment === item.key && styles.segmentChipActive,
-              ]}
-              onPress={() => setSegment(item.key)}
-            >
-              <Text
-                style={[
-                  styles.segmentChipText,
-                  segment === item.key && styles.segmentChipTextActive,
-                ]}
-              >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </FinanceTopBar>
+        rightSlot={<FinanceAvatarBadge />}
+      />
 
       {loading && !budgetPlan ? (
         <View style={styles.centered}>
@@ -2521,11 +2500,56 @@ export default function BudgetScreen() {
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={styles.scroll}
         >
-          {segment === "week" ? (
-            <>
-              <View style={styles.heroCard}>
+          <FinanceHeroShell
+            eyebrow={budgetHeroCopy.eyebrow}
+            title={budgetHeroCopy.title}
+            subtitle={budgetHeroCopy.subtitle}
+          />
+
+          <View style={styles.contentMax}>
+            <FinanceMonthSelector
+              label={selectedMonth.label}
+              canGoToOlderMonth={canGoToOlderMonth}
+              canGoToNewerMonth={canGoToNewerMonth}
+              onPressLabel={() => setMonthPickerOpen(true)}
+              onGoToOlderMonth={() => {
+                if (!canGoToOlderMonth) return;
+                const nextOption = monthOptions[selectedMonthIndex + 1];
+                if (nextOption) setSelectedMonthKey(nextOption.key);
+              }}
+              onGoToNewerMonth={() => {
+                if (!canGoToNewerMonth) return;
+                const nextOption = monthOptions[selectedMonthIndex - 1];
+                if (nextOption) setSelectedMonthKey(nextOption.key);
+              }}
+            />
+            <View style={styles.segmentRow}>
+              {SEGMENTS.map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.segmentChip,
+                    segment === item.key && styles.segmentChipActive,
+                  ]}
+                  onPress={() => setSegment(item.key)}
+                >
+                  <Text
+                    style={[
+                      styles.segmentChipText,
+                      segment === item.key && styles.segmentChipTextActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.mainStack}>
+              {segment === "week" ? (
+                <>
+                  <View style={styles.heroCard}>
                 <Text style={styles.eyebrow}>
                   {focusWeek?.isCurrentWeek ? "Nog vrij te besteden" : "Weekruimte"}
                 </Text>
@@ -2577,9 +2601,9 @@ export default function BudgetScreen() {
                     <Text style={styles.inlineLinkText}>Open weekdetail</Text>
                   </Pressable>
                 ) : null}
-              </View>
+                  </View>
 
-              <View style={styles.card}>
+                  <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.sectionTitle}>Categorieen met aandacht</Text>
                   <Text style={styles.sectionHelper}>Waar je deze week het eerst op stuurt</Text>
@@ -2625,24 +2649,24 @@ export default function BudgetScreen() {
                     Nog geen variabele uitgaven in deze week.
                   </Text>
                 )}
-              </View>
+                  </View>
 
-              {positiveLine ? (
-                <View style={styles.positiveCard}>
-                  <AppIcon
-                    name="wb-sunny"
-                    size={18}
-                    color={FinColors.warningText}
-                  />
-                  <Text style={styles.positiveText}>{positiveLine}</Text>
-                </View>
+                  {positiveLine ? (
+                    <View style={styles.positiveCard}>
+                      <AppIcon
+                        name="wb-sunny"
+                        size={18}
+                        color={FinColors.warningText}
+                      />
+                      <Text style={styles.positiveText}>{positiveLine}</Text>
+                    </View>
+                  ) : null}
+                </>
               ) : null}
-            </>
-          ) : null}
 
-          {segment === "month" ? (
-            <>
-              <View style={styles.heroCard}>
+              {segment === "month" ? (
+                <>
+                  <View style={styles.heroCard}>
                 <Text style={styles.eyebrow}>Nog vrij te besteden</Text>
                 <Text style={styles.heroValue}>
                   {monthlyRemaining == null
@@ -2683,9 +2707,9 @@ export default function BudgetScreen() {
                     {completedMonthBaselineHelper}
                   </Text>
                 ) : null}
-              </View>
+                  </View>
 
-              <View style={styles.card}>
+                  <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Actie voor nu</Text>
                 <Text style={styles.recommendationText}>
                   {actionRecommendation || "Je ligt goed op schema. Houd dit ritme vast."}
@@ -2704,20 +2728,20 @@ export default function BudgetScreen() {
                     <Text style={styles.secondaryButtonText}>Budget beheren</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
+                  </View>
 
-              {positiveLine ? (
-                <View style={styles.positiveCard}>
-                  <AppIcon
-                    name="wb-sunny"
-                    size={18}
-                    color={FinColors.warningText}
-                  />
-                  <Text style={styles.positiveText}>{positiveLine}</Text>
-                </View>
-              ) : null}
+                  {positiveLine ? (
+                    <View style={styles.positiveCard}>
+                      <AppIcon
+                        name="wb-sunny"
+                        size={18}
+                        color={FinColors.warningText}
+                      />
+                      <Text style={styles.positiveText}>{positiveLine}</Text>
+                    </View>
+                  ) : null}
 
-              <View style={styles.card}>
+                  <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.sectionTitle}>Maandstructuur</Text>
                   <Text style={styles.sectionHelper}>Vaste druk op je maandruimte</Text>
@@ -2759,9 +2783,9 @@ export default function BudgetScreen() {
                     </Pressable>
                   );
                 })}
-              </View>
+                  </View>
 
-              <View style={styles.card}>
+                  <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Categorieoverzicht</Text>
                 {categoryRows.map((row) => (
                   <Pressable
@@ -2804,9 +2828,9 @@ export default function BudgetScreen() {
                     </View>
                   </Pressable>
                 ))}
-              </View>
+                  </View>
 
-              <View style={styles.card}>
+                  <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.sectionTitle}>Wekenoverzicht deze maand</Text>
                   <Text style={styles.sectionHelper}>Van week 1 tot nu</Text>
@@ -2866,9 +2890,9 @@ export default function BudgetScreen() {
                     </Pressable>
                   );
                 })}
-              </View>
+                  </View>
 
-              <View style={styles.card}>
+                  <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.sectionTitle}>Spaardoel</Text>
                   <Text style={styles.sectionHelper}>
@@ -2895,10 +2919,10 @@ export default function BudgetScreen() {
                     </Text>
                   </View>
                 </View>
-              </View>
+                  </View>
 
-              {budgetPlan && budgetPlan.outsideBudgetExpenses.total > 0 ? (
-                <View style={styles.card}>
+                  {budgetPlan && budgetPlan.outsideBudgetExpenses.total > 0 ? (
+                    <View style={styles.card}>
                   <View style={styles.cardHeaderRow}>
                     <Text style={styles.sectionTitle}>Buiten budget</Text>
                     <Pressable onPress={() => setOutsideBudgetOpen(true)}>
@@ -2915,11 +2939,11 @@ export default function BudgetScreen() {
                     {outsideBudgetTransactionCount} transactie
                     {outsideBudgetTransactionCount === 1 ? "" : "s"} uitgesloten
                   </Text>
-                </View>
-              ) : null}
+                    </View>
+                  ) : null}
 
-              {budgetPlan?.warnings.length ? (
-                <View style={styles.card}>
+                  {budgetPlan?.warnings.length ? (
+                    <View style={styles.card}>
                   <Text style={styles.sectionTitle}>Waarschuwingen</Text>
                   {budgetPlan.warnings.slice(0, 4).map((warning) => (
                     <View key={warning.message} style={styles.bulletRow}>
@@ -2927,14 +2951,14 @@ export default function BudgetScreen() {
                       <Text style={styles.bulletText}>{warning.message}</Text>
                     </View>
                   ))}
-                </View>
+                    </View>
+                  ) : null}
+                </>
               ) : null}
-            </>
-          ) : null}
 
-          {segment === "manage" ? (
-            <>
-              <View style={styles.card}>
+              {segment === "manage" ? (
+                <>
+                  <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Budgetmodus</Text>
                 <View style={styles.modeRow}>
                   {BUDGET_MODE_OPTIONS.map((option) => {
@@ -3003,9 +3027,9 @@ export default function BudgetScreen() {
                     </View>
                   ) : null}
                 </View>
-              </View>
+                  </View>
 
-              <View style={styles.card}>
+                  <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Inkomstenbasis</Text>
                 <Text style={styles.supportText}>
                   Kies welke inkomsten je meeneemt in je maandplan en forecast.
@@ -3055,9 +3079,9 @@ export default function BudgetScreen() {
                     );
                   })}
                 </View>
-              </View>
+                  </View>
 
-              <View style={styles.card}>
+                  <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Maandverdeling</Text>
                 <Text style={styles.supportText}>
                   Zo verdeel je je inkomende ruimte over vaste lasten, variabele uitgaven en sparen.
@@ -3101,9 +3125,9 @@ export default function BudgetScreen() {
                     Je planning ligt nu boven je inkomend budget. Verlaag een categoriebedrag of je spaardoel.
                   </Text>
                 ) : null}
-              </View>
+                  </View>
 
-              <View style={styles.card}>
+                  <View style={styles.card}>
                 <View style={styles.cardHeaderRow}>
                   <Text style={styles.sectionTitle}>Maandbudget per categorie</Text>
                   <Text style={styles.sectionHelper}>{selectedMonth.label}</Text>
@@ -3298,9 +3322,9 @@ export default function BudgetScreen() {
                     </View>
                   </View>
                 </View>
-              </View>
+                  </View>
 
-              <View style={styles.actionCard}>
+                  <View style={styles.actionCard}>
                 <TouchableOpacity
                   style={styles.primaryButton}
                   onPress={() => void saveManageChanges()}
@@ -3310,20 +3334,20 @@ export default function BudgetScreen() {
                     {savingManage ? "Opslaan..." : "Opslaan"}
                   </Text>
                 </TouchableOpacity>
-              </View>
-            </>
-          ) : null}
+                  </View>
+                </>
+              ) : null}
+            </View>
+          </View>
         </ScrollView>
       )}
 
-      <MonthPickerSheet
+      <FinanceMonthSelectorModal
         visible={monthPickerOpen}
-        title="Kies maand"
-        helper="Historie plus 6 maanden vooruit"
-        options={monthOptions}
         selectedKey={selectedMonth?.key || null}
         onClose={() => setMonthPickerOpen(false)}
-        onSelect={setSelectedMonthKey}
+        onConfirm={setSelectedMonthKey}
+        monthOptions={monthOptions}
       />
 
       <Modal
@@ -4108,37 +4132,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   topBar: {
-    backgroundColor: "rgba(246,245,242,0.9)",
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.08)",
-    boxShadow: "0px 8px 16px rgba(17,17,17,0.05)",
-    elevation: 1,
-  },
-  topBarInner: {
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 14,
-  },
-  pageTitle: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: FinColors.textPrimary,
-  },
-  pageSubtitle: {
-    marginTop: 2,
-    fontSize: 14,
-    color: FinColors.textSecondary,
-  },
-  headerCta: {
-    borderRadius: 999,
-    backgroundColor: FinColors.yellow,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  headerCtaText: {
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-    fontSize: 12,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
   },
   monthRow: {
     marginTop: 16,
@@ -4214,9 +4212,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  content: {
-    paddingHorizontal: 24,
+  scroll: {
     paddingBottom: 128,
+  },
+  contentMax: {
+    width: "100%",
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: "center",
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    gap: 32,
+  },
+  mainStack: {
     gap: 16,
   },
   heroCard: {

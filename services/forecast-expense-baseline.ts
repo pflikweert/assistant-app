@@ -95,30 +95,26 @@ export function resolveForecastExpenseBaselines(params: {
   return {
     fixedCosts: round2(
       Math.max(
-        historyForecast.fixedCosts,
-        asNumber(trendExpenses?.fixedCosts, 0),
+        asNumber(trendExpenses?.fixedCosts, historyForecast.fixedCosts),
         asNumber(monthToDateExpenses?.fixedCosts, 0),
       ),
     ),
     subscriptions: round2(
       Math.max(
-        historyForecast.subscriptions,
-        asNumber(trendExpenses?.subscriptions, 0),
+        asNumber(trendExpenses?.subscriptions, historyForecast.subscriptions),
         asNumber(monthToDateExpenses?.subscriptions, 0),
       ),
     ),
-      variableCosts: round2(
-        Math.max(
-          historyForecast.variableCosts,
-          asNumber(trendExpenses?.variableCosts, 0),
-          asNumber(monthToDateExpenses?.variableCosts, 0),
-        ),
+    variableCosts: round2(
+      Math.max(
+        asNumber(trendExpenses?.variableCosts, historyForecast.variableCosts),
+        asNumber(monthToDateExpenses?.variableCosts, 0),
       ),
-      projectedVariableCostsTotal,
-      savingsTransfers: round2(
-        Math.max(
-          historyForecast.savingsTransfers,
-        asNumber(trendExpenses?.savingsTransfer, 0),
+    ),
+    projectedVariableCostsTotal,
+    savingsTransfers: round2(
+      Math.max(
+        asNumber(trendExpenses?.savingsTransfer, historyForecast.savingsTransfers),
         asNumber(monthToDateExpenses?.savingsTransfer, 0),
       ),
     ),

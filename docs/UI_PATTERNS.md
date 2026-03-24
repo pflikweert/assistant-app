@@ -8,6 +8,9 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 - Gebruik full-bleed achtergrondvlakken alleen voor hero- of sectie-ankers; houd inhoud zelf binnen een vaste, gecentreerde contentkolom.
 - Gebruik voor de app-backdrop een rustige, consistente basis (`#fafbff`) met subtiele decoratie; decoratie mag nooit concurreren met content.
 - Basis is wit, warm grijs en zwart; geel is functioneel accent en geen dominante basiskleur.
+- Gebruik vlakke, zachte oppervlakken vaker dan harde borders; een rustige vlakvulling is meestal beter leesbaar dan een omlijnde box.
+- Gebruik borders alleen als ze een echte scheiding of focus nodig maken; als de inhoud al duidelijk gescheiden is, mag de box borderloos blijven.
+- Kies voor kaarten en knoppen liever een lichte onderlaag met subtiel contrast dan een zware schaduw of dikke rand.
 - Geef primaire getallen, status en eerstvolgende actie de meeste visuele prioriteit.
 - Vermijd drukke kaarten met te veel badges, lijnen of gelijkwaardige informatieblokken.
 - Gebruik compactere topbars en laat grote schermtitels in de hero leven, niet dubbel in de content.
@@ -47,6 +50,73 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 ## Core Patterns
 
 De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als primaire referentie voor nieuwe schermen en redesigns.
+
+### Oppervlakken / Surfaces
+
+- Naam: Zachte onderlaag met duidelijk contrast
+- Doel: schermen rust geven zonder dat elk blok een harde kaart wordt
+- Waar toepasbaar in de app: cards, settingspanelen, selectieflows, detailblokken, quick actions
+- Kleurcontract:
+  - app basisachtergrond: `#fafbff`
+  - hoofdkaart / elevated surface: `#ffffff` of het bestaande `FinColors.bgCard`
+  - zachte achtergrond voor utility-blokken: `#f0f1f2`
+  - lichte sublaag of leaf-row: `#f7f8f9`
+  - subtiele rail / helper / uitstand van switch: `#f7f8f9` of een vergelijkbare lichte grijstint
+- Belangrijkste visuele regels:
+  - gebruik `#f0f1f2` voor compacte actiekaarten, keuzevakken en vaste helperblokken
+  - gebruik `#f7f8f9` voor ingesprongen subopties en compacte subregels
+  - laat geselecteerde subopties niet altijd van kleur veranderen; een rustige geselecteerde toestand kan ook alleen via icon, labelgewicht of checkbox werken
+  - vermijd tegelijk een sterke border en een sterke schaduw op hetzelfde blok
+- Componentrichtlijn:
+  - bouw surface-varianten als gedeelde componentstijlen, niet lokaal per scherm
+  - maak onderscheid tussen hoofdkaart, flat choice card en subtiele sub-row
+  - gebruik een apart oppervlak alleen als de interactie of hiërarchie echt verandert
+
+### Kaders / Borders
+
+- Naam: Bordervlakken met lage nadruk
+- Doel: scheiding tonen zonder dat het scherm als een formulier uit 2018 voelt
+- Waar toepasbaar in de app: cards, modals, chips, inputs, toggles, list items
+- Belangrijkste visuele regels:
+  - border is subtiel en dun, niet dominant
+  - als een blok al een rustige achtergrond heeft, hoeft het niet ook nog een border te hebben
+  - bij keuze- of actiekaarten mag de achtergrond het onderscheid dragen in plaats van de rand
+  - gebruik afgeronde randen alleen waar het blok een duidelijke eigen eenheid moet zijn
+- Aanbevolen radii:
+  - grote kaart of sheet: ruime radius
+  - flat choice card: middelgrote radius
+  - subcategory row: compacter, vaak rechter en rustiger
+- Componentrichtlijn:
+  - kaartcomponenten mogen borderloos zijn als de achtergrondkleur al voldoende hiërarchie geeft
+  - als een border toch nodig is, houd die licht en consistent over de hele app
+  - combineer border en shadow spaarzaam; meestal is één van de twee genoeg
+
+### Boxen / Cards / Choice Tiles
+
+- Naam: Rustige keuze- en informatiebox
+- Doel: een keuze of samenvatting tonen zonder extra visuele ruis
+- Waar toepasbaar in de app: category pickers, settings-onderdelen, bevestigingskaarten, subscription acties, month selectors
+- Structuur / opbouw:
+  - een compacte titel of label
+  - korte toelichting
+  - optioneel een control rechts, zoals switch, checkbox of CTA
+  - indien nodig een apart children-gebied voor subopties
+- Belangrijkste visuele regels:
+  - gebruik een vlakke kaart zonder border als de inhoud al duidelijk spreekt
+  - zet de inhoud voldoende los van de rand via padding, niet via dikke lijnen
+  - gebruik achtergrondkleur om hiërarchie aan te geven, niet alleen radius
+  - de rechterkant van een choice tile mag een control dragen, maar niet de hele kaart domineren
+- Geleerde styling uit huidige flows:
+  - vaste actiekaarten en helperkaarten gebruiken vaak `#f0f1f2`
+  - hoofdcategoriekaarten mogen ook `#f0f1f2` gebruiken zolang ze nog van subopties te onderscheiden zijn
+  - subcategorie-rijen gebruiken `#f7f8f9`
+  - een geselecteerde subcategorie hoeft niet expliciet donkerder te worden als de checkbox of het label al genoeg signaal geeft
+  - checkboxen mogen groter zijn dan het standaard icoonformaat, maar zonder extra schaduw of glans
+  - switches moeten in uitstand nog zichtbaar zijn; geef de uitstand een lichte, zichtbare rail in plaats van een bijna onzichtbare transparantie
+- Componentrichtlijn:
+  - bouw choice tiles als gedeelde componenten met vaste spacing en vaste radius
+  - houd de control rechts compact en consistent, zodat de tekst links scanbaar blijft
+  - laat schermen de inhoud en labels bepalen, niet de boxvorm
 
 ### Patroon: Screen Layout
 
@@ -120,6 +190,12 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
   - close-knop en lichte rails gebruiken `#eff1f2`
   - backdrop is donker genoeg om focus te geven, maar niet zwart
   - modal mag premium aanvoelen zonder zware panelen of harde randen
+- Geleerde flowregels:
+  - vaste header en vaste footer horen bij de shell, niet bij de inhoud
+  - alleen de body scrollt; header, helperkaarten en footer blijven zichtbaar
+  - een bevestigingsknop hoort vast onderin te staan als de actie pas op het einde toepasbaar is
+  - bij selectieflows is het wenselijk dat de huidige keuze automatisch in beeld wordt gebracht zodra de sheet opent of een AI-keuze terugkomt
+  - de sheet mag een compacte, rustige inhoudszone hebben met duidelijke scheiding tussen vaste uitleg en scrollbare keuzes
 - Mobile-first aandachtspunten:
   - inhoud moet scrollbaar blijven bij kleine schermhoogtes
   - selecteerbare grids en quick actions moeten touch targets van voldoende formaat houden
@@ -145,6 +221,11 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
   - grote radius
   - liever 1 subtiele border dan zware schaduw
   - hover of focus alleen licht versterken
+- Geleerde cardvarianten:
+  - informatiekaarten die vooral een keuze ondersteunen mogen vlak en borderloos zijn
+  - keuzekaarten met een control rechts mogen een zachte vlakvulling gebruiken in plaats van een omlijnde box
+  - een groepkaart mag iets sterker aanvoelen dan een suboptiekaart, maar het verschil moet vooral via oppervlak en spacing komen
+  - een subkaart of leaf-row hoeft niet afgerond te zijn als dat de scanbaarheid verbetert
 - Mobile-first aandachtspunten:
   - inhoud stapelt verticaal
   - gebruik kaarten alleen als ze echt informatie groeperen
@@ -232,6 +313,16 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Gebruik termen die direct duidelijk zijn voor brede doelgroep.
 - Voorbeeld:
   - liever `Betaald via` dan `Betaalmethode` als de bronrekening/betaalroute bedoeld is.
+
+### Visuele Accentregels
+
+- Geel is functioneel accent voor primaire bevestiging, focus, selectie en belangrijke highlight.
+- Groen is voor goed, positief of bevestigend financieel signaal.
+- Rood is voor risico, verlies of kritieke waarschuwing.
+- Gebruik geel niet als algemene achtergrondkleur voor hele schermen; het is een accent, geen basisvlak.
+- Selectiestanden mogen subtiel geel worden, maar alleen waar de interactie direct duidelijk moet zijn.
+- Als de inhoud al genoeg betekenis geeft, hoeft de gekozen staat niet hard te contrasteren.
+- Kaarten, randen en boxen moeten de inhoud dragen, niet andersom.
 
 ### Patroon: Filter Bars
 

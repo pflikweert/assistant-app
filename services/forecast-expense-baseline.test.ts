@@ -88,7 +88,7 @@ describe("resolveForecastExpenseBaselines", () => {
     expect(baselines.projectedVariableCostsTotal).toBe(295);
   });
 
-  it("falls back to trend/history when the forecast source is trend", () => {
+  it("keeps the budget trend authoritative when the forecast source is trend", () => {
     const baselines = resolveForecastExpenseBaselines({
       historyForecast: {
         fixedCosts: 820,
@@ -125,7 +125,52 @@ describe("resolveForecastExpenseBaselines", () => {
 
     expect(baselines).toEqual({
       fixedCosts: 840,
-      subscriptions: 55,
+      subscriptions: 52,
+      variableCosts: 330,
+      projectedVariableCostsTotal: null,
+      savingsTransfers: 100,
+      source: "trend",
+    });
+  });
+
+  it("keeps the budget trend authoritative over older history when trend source is active", () => {
+    const baselines = resolveForecastExpenseBaselines({
+      historyForecast: {
+        fixedCosts: 1200,
+        subscriptions: 140,
+        variableCosts: 400,
+        savingsTransfers: 180,
+      },
+      budgetPlan: {
+        settings: {
+          forecastExpenseSource: "trend",
+        },
+        trend: {
+          expenses: {
+            fixedCosts: 840,
+            subscriptions: 52,
+            variableCosts: 330,
+            savingsTransfer: 100,
+          },
+        },
+        flowSummary: {
+          fixedCostsBudget: 900,
+          subscriptionsBudget: 60,
+          variableBudget: 280,
+          appliedSavingsTarget: 150,
+        },
+      } as any,
+      monthToDateExpenses: {
+        fixedCosts: 650,
+        subscriptions: 20,
+        variableCosts: 90,
+        savingsTransfer: 0,
+      } as any,
+    });
+
+    expect(baselines).toEqual({
+      fixedCosts: 840,
+      subscriptions: 52,
       variableCosts: 330,
       projectedVariableCostsTotal: null,
       savingsTransfers: 100,

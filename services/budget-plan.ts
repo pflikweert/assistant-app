@@ -4,6 +4,7 @@ import {
   listCategoryBudgetGroupOverrides,
 } from "@/services/category-budget-groups";
 import { normalizePattern } from "@/services/pattern-normalization";
+import { resolveBudgetIncomePreview } from "@/services/budget-income-preview";
 import {
     allocateIntegerBudget,
     allocateWeekBudgetsByMainCategory,
@@ -584,18 +585,11 @@ export function resolveIncludedIncomePreview(
   income: BudgetIncomeBreakdown,
   settings: BudgetPlanSettings,
 ): IncludedIncomePreview {
-  const includeIncome = settings.includeIncome ?? DEFAULT_INCLUDE_INCOME;
-  const structural = round2(
-    (includeIncome.salary ? income.salary : 0) +
-      (includeIncome.childBudget ? income.childBudget : 0) +
-      (includeIncome.structuralOther ? income.structuralOther : 0),
-  );
-  const variable = includeIncome.variable ? round2(income.variable) : 0;
-
+  const preview = resolveBudgetIncomePreview(income, settings.includeIncome);
   return {
-    total: resolveIncludedIncomeTotal(income, settings),
-    structural,
-    variable,
+    total: preview.total,
+    structural: preview.structural,
+    variable: preview.variable,
   };
 }
 

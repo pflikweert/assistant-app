@@ -1,7 +1,7 @@
+import { resolveBudgetIncomePreview } from "@/services/budget-income-preview";
 import { isIncludedForecastIncomeBucket } from "@/services/forecast-income-utils";
 import type {
   BudgetPlanComputation,
-  BudgetPlanSettings,
   ForecastIncomeBucket,
   RecurringType,
 } from "../types/categorization";
@@ -21,35 +21,6 @@ function round2(value: number) {
 function asNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function resolveIncludedIncomePreview(
-  income: {
-    salary: number;
-    childBudget: number;
-    structuralOther: number;
-    variable: number;
-  },
-  settings: Pick<BudgetPlanSettings, "includeIncome">,
-) {
-  const includeIncome = settings.includeIncome ?? {
-    salary: true,
-    childBudget: true,
-    structuralOther: false,
-    variable: false,
-  };
-  const structural = round2(
-    (includeIncome.salary ? income.salary : 0) +
-      (includeIncome.childBudget ? income.childBudget : 0) +
-      (includeIncome.structuralOther ? income.structuralOther : 0),
-  );
-  const variable = includeIncome.variable ? round2(income.variable) : 0;
-
-  return {
-    total: round2(structural + variable),
-    structural,
-    variable,
-  };
 }
 
 type IncomeBaselineBreakdown = {
@@ -77,9 +48,9 @@ function resolveBudgetPlanIncomeBaseline(
       variable: 0,
     };
   }
-  const preview = resolveIncludedIncomePreview(
+  const preview = resolveBudgetIncomePreview(
     budgetPlan.trend.income,
-    budgetPlan.settings,
+    budgetPlan.settings.includeIncome,
   );
 
   return {
@@ -97,6 +68,10 @@ export function resolveExpectedCashflowIncomeBaselineBreakdown(params: {
   const { monthStart, budgetPlan, incomeSources } = params;
   const preferredSource = budgetPlan?.settings?.forecastExpenseSource || "trend";
   const budgetPlanBaseline = resolveBudgetPlanIncomeBaseline(budgetPlan);
+
+  if (budgetPlanBaseline.total > 0) {
+    return budgetPlanBaseline;
+  }
 
   if (preferredSource === "budget_settings" && budgetPlan) {
     return budgetPlanBaseline;
@@ -142,16 +117,14 @@ export function resolveExpectedCashflowIncomeBaselineBreakdown(params: {
   }
 
   if (budgetPlan) {
-    return budgetPlanBaseline.total > 0
-      ? budgetPlanBaseline
-      : {
-          total: Math.max(
-            0,
-            asNumber(budgetPlan.flowSummary.expectedIncomeMonthly, 0),
-          ),
-          structural: budgetPlanBaseline.structural,
-          variable: budgetPlanBaseline.variable,
-        };
+    return {
+      total: Math.max(
+        0,
+        asNumber(budgetPlan.flowSummary.expectedIncomeMonthly, 0),
+      ),
+      structural: budgetPlanBaseline.structural,
+      variable: budgetPlanBaseline.variable,
+    };
   }
 
   return emptyIncomeBaselineBreakdown();

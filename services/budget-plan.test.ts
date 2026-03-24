@@ -117,7 +117,12 @@ function expenseTx(params: {
   } as any;
 }
 
-function incomeTx(params: { date: string; amount: number; details: string }) {
+function incomeTx(params: {
+  date: string;
+  amount: number;
+  details: string;
+  categoryId?: string | null;
+}) {
   return {
     id: `income-${params.date}-${params.details}`,
     date: params.date,
@@ -125,7 +130,7 @@ function incomeTx(params: { date: string; amount: number; details: string }) {
     details: params.details,
     counterparty: params.details,
     category_id_auto: null,
-    category_id_user: null,
+    category_id_user: params.categoryId || null,
     analysis_main_group: "income",
     analysis_category: "income_structural",
     budget_excluded: false,
@@ -313,37 +318,64 @@ describe("future budget baselines", () => {
   });
 
   it("uses only completed months for the expected income baseline", () => {
+    const categoryMap = new Map([
+      [
+        "salary-category",
+        {
+          id: "salary-category",
+          key: "income_salary",
+          name: "Salaris",
+          parent_id: null,
+          budget_group: "salary",
+        },
+      ],
+      [
+        "child-budget-category",
+        {
+          id: "child-budget-category",
+          key: "income_child_budget",
+          name: "Kindgebonden budget",
+          parent_id: null,
+          budget_group: "salary",
+        },
+      ],
+    ]);
     const rows = [
       incomeTx({
         date: "2026-01-25",
         amount: 2400,
         details: "Salaris",
+        categoryId: "salary-category",
       }),
       incomeTx({
         date: "2026-02-25",
         amount: 2600,
         details: "Salaris",
+        categoryId: "salary-category",
       }),
       incomeTx({
         date: "2026-03-25",
         amount: 400,
         details: "Salaris",
+        categoryId: "salary-category",
       }),
       incomeTx({
         date: "2026-01-20",
         amount: 400,
         details: "Kindgebonden budget",
+        categoryId: "child-budget-category",
       }),
       incomeTx({
         date: "2026-02-20",
         amount: 400,
         details: "Kindgebonden budget",
+        categoryId: "child-budget-category",
       }),
     ];
 
     const expectedIncomeMonthly = resolveExpectedIncomeMonthlyFromCompletedMonths(
       rows,
-      new Map(),
+      categoryMap,
       DEFAULT_SETTINGS,
       new Date("2025-12-01T00:00:00.000Z"),
       new Date("2026-03-01T00:00:00.000Z"),
