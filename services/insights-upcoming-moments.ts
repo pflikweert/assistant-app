@@ -1,4 +1,6 @@
+import type { ForecastTimelineEventRecord } from "@/services/forecast-timeline-events";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
+import type { InsightsSignalTransaction } from "@/services/insights-highlights";
 import type { TransactionMonthOption } from "@/services/transaction-month-options";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
@@ -52,9 +54,8 @@ function isoFromDate(date: Date) {
 function toDayMonthLabels(iso: string) {
   const parsed = parseIsoDate(iso);
   if (!parsed) {
-    const fallbackDay = iso.slice(-2);
     return {
-      dayLabel: fallbackDay || "--",
+      dayLabel: iso.slice(-2) || "--",
       monthLabel: "DAT",
     };
   }
@@ -68,34 +69,150 @@ function toDayMonthLabels(iso: string) {
   };
 }
 
-function normalizeEventLabel(label: string | null | undefined) {
-  return String(label || "").trim();
+function normalizeText(value: string | null | undefined) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
-function isIncomeLabel(label: string) {
-  const normalized = label.toLowerCase();
+function normalizedComparisonLabel(value: string | null | undefined) {
+  return normalizeText(value);
+}
+
+function confidenceCopy(confidence: "high" | "medium") {
+  return confidence === "high" ? "Verwacht" : "Verwacht rond";
+}
+
+type ReferenceSignal = Pick<
+  InsightsSignalTransaction,
+  "counterparty" | "details" | "categoryKey" | "categoryLabel" | "analysisCategory"
+> & {
+  date: string;
+};
+
+function isGenericMomentLabel(label: string) {
+  const normalized = normalizeText(label);
   return (
-    normalized.includes("salaris") ||
-    normalized.includes("inkomen") ||
-    normalized.includes("loon") ||
-    normalized.includes("storting")
+    !normalized ||
+    normalized === "onbekend" ||
+    normalized === "verwacht moment" ||
+    normalized === "belangrijk verwacht moment" ||
+    normalized === "grote vaste lasten" ||
+    normalized === "salaris verwacht" ||
+    normalized === "verwachte inkomende betaling" ||
+    normalized === "verwachte inkomende betalingen" ||
+    normalized === "verwachte uitgave" ||
+    normalized === "verwachte betaling" ||
+    normalized === "nog verwacht deze maand"
   );
 }
 
-function isExpenseLabel(label: string) {
-  const normalized = label.toLowerCase();
-  return (
-    normalized.includes("incasso") ||
-    normalized.includes("vaste last") ||
-    normalized.includes("huur") ||
-    normalized.includes("hypotheek") ||
-    normalized.includes("abonnement")
-  );
+function buildSignalLookup(signals: InsightsSignalTransaction[] | null | undefined) {
+  const lookup = new Map<string, ReferenceSignal>();
+
+  for (const signal of signals || []) {
+    const record: ReferenceSignal = {
+      counterparty: signal.counterparty,
+      details: signal.details,
+      categoryKey: signal.categoryKey,
+      categoryLabel: signal.categoryLabel,
+      analysisCategory: signal.analysisCategory,
+      date: signal.date,
+    };
+
+    const candidateKeys = [
+      normalizedComparisonLabel(signal.counterparty),
+      normalizedComparisonLabel(signal.details?.split("|")[0]),
+      normalizedComparisonLabel(signal.details),
+    ].filter(Boolean);
+
+    for (const key of candidateKeys) {
+      const existing = lookup.get(key);
+      if (!existing || record.date > existing.date) {
+        lookup.set(key, record);
+      }
+    }
+  }
+
+  return lookup;
+}
+
+function resolveSignalForEvent(
+  event: ForecastTimelineEventRecord,
+  lookup: Map<string, ReferenceSignal>,
+) {
+  const keys = [
+    normalizedComparisonLabel(event.label),
+    normalizedComparisonLabel(event.label.split("|")[0]),
+  ].filter(Boolean);
+
+  for (const key of keys) {
+    const found = lookup.get(key);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function buildMomentSubtitle(
+  event: ForecastTimelineEventRecord,
+  signal: ReferenceSignal | null,
+) {
+  if (event.eventType === "milestone_lowest_balance") {
+    return `${confidenceCopy(event.confidence)} moment van minste saldo`;
+  }
+
+  const categoryLabel = cleanDetails(signal?.categoryLabel);
+  const categoryKey = normalizeText(signal?.categoryKey);
+  const signalType = signal?.analysisCategory || null;
+  const labelNorm = normalizeText(event.label);
+
+  if (
+    signalType === "income_structural" ||
+    categoryKey.includes("salary") ||
+    categoryKey.includes("loon") ||
+    labelNorm.includes("salaris") ||
+    labelNorm.includes("loon")
+  ) {
+    return "Verwacht salaris";
+  }
+
+  if (signalType === "income_variable") {
+    return "Verwachte inkomende betaling";
+  }
+
+  if (signalType === "savings_transfer") {
+    return "Verwachte spaarboeking";
+  }
+
+  if (signalType === "subscriptions") {
+    if (categoryLabel) return categoryLabel;
+    return "Verwacht abonnement";
+  }
+
+  if (signalType === "fixed_costs") {
+    if (categoryLabel) {
+      const normalized = normalizeText(categoryLabel);
+      if (normalized.includes("verzekering")) {
+        return `Vaste lasten ${categoryLabel.toLowerCase()}`;
+      }
+      return categoryLabel;
+    }
+    return "Verwachte vaste last";
+  }
+
+  if (categoryLabel) return categoryLabel;
+
+  if (event.eventType === "income") return "Verwachte inkomende betaling";
+  if (event.eventType === "subscription") return "Verwacht abonnement";
+  if (event.eventType === "savings_transfer") return "Verwachte spaarboeking";
+  if (event.eventType === "fixed_cost") return "Verwachte vaste last";
+  return "Verwachte betaling";
 }
 
 function buildAmountLabel(value: number | null, tone: "income" | "expense" | "neutral") {
   if (value == null || Number.isNaN(value)) return "n.b.";
-
   if (tone === "income") return `+ ${fmt.format(Math.abs(value))}`;
   if (tone === "expense") return `- ${fmt.format(Math.abs(value))}`;
   return fmt.format(value);
@@ -113,28 +230,136 @@ function dedupeByMeaning(items: InsightsUpcomingMoment[]) {
   return next;
 }
 
+function cleanDetails(value: string | null | undefined) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const first = raw.split("|")[0]?.trim() || raw;
+  if (!first) return null;
+  return first.length > 42 ? `${first.slice(0, 39)}...` : first;
+}
+
+function hasFutureDate(
+  eventDate: string,
+  referenceIso: string,
+  selectedMonth: TransactionMonthOption,
+) {
+  return (
+    eventDate > referenceIso &&
+    eventDate >= selectedMonth.startIso &&
+    eventDate < selectedMonth.endIso
+  );
+}
+
+function buildFromTimelineEvents(input: {
+  timelineEvents: ForecastTimelineEventRecord[];
+  referenceSignals: InsightsSignalTransaction[] | null | undefined;
+  referenceIso: string;
+  selectedMonth: TransactionMonthOption;
+}) {
+  const { timelineEvents, referenceSignals, referenceIso, selectedMonth } = input;
+  const signalLookup = buildSignalLookup(referenceSignals);
+  const futureEvents = timelineEvents
+    .filter((event) => hasFutureDate(event.eventDate, referenceIso, selectedMonth))
+    .sort((left, right) => {
+      if (left.eventDate !== right.eventDate) return left.eventDate.localeCompare(right.eventDate);
+      return left.eventKey.localeCompare(right.eventKey);
+    });
+
+  if (!futureEvents.length) return [];
+
+  const picked: ForecastTimelineEventRecord[] = [];
+  const pushUnique = (event: ForecastTimelineEventRecord | null | undefined) => {
+    if (!event) return;
+    if (picked.some((row) => row.eventKey === event.eventKey)) return;
+    picked.push(event);
+  };
+
+  pushUnique(futureEvents.find((event) => event.eventType === "milestone_lowest_balance"));
+
+  for (const event of futureEvents) {
+    if (picked.length >= 4) break;
+    if (event.eventType === "milestone_lowest_balance") continue;
+    const title = cleanDetails(event.label);
+    if (isGenericMomentLabel(title)) continue;
+    pushUnique(event);
+  }
+
+  const mapped = picked
+    .sort((left, right) => left.eventDate.localeCompare(right.eventDate))
+    .slice(0, 4)
+    .map((event) => {
+      const labels = toDayMonthLabels(event.eventDate);
+      const title = cleanDetails(event.label) || "Verwacht moment";
+      const matchedSignal = resolveSignalForEvent(event, signalLookup);
+
+      if (event.eventType === "milestone_lowest_balance") {
+        return {
+          id: event.eventKey,
+          dateIso: event.eventDate,
+          dayLabel: labels.dayLabel,
+          monthLabel: labels.monthLabel,
+          title: "Laagste saldo verwacht",
+          subtitle: `${confidenceCopy(event.confidence)} moment van minste saldo`,
+          amountLabel: buildAmountLabel(event.amount, "neutral"),
+          amountTone: "neutral" as const,
+        } satisfies InsightsUpcomingMoment;
+      }
+
+      if (isGenericMomentLabel(title)) return null;
+
+      return {
+        id: event.eventKey,
+        dateIso: event.eventDate,
+        dayLabel: labels.dayLabel,
+        monthLabel: labels.monthLabel,
+        title,
+        subtitle: buildMomentSubtitle(event, matchedSignal),
+        amountLabel: buildAmountLabel(
+          event.amount,
+          event.amount > 0 ? "income" : event.eventType === "income" ? "income" : "expense",
+        ),
+        amountTone: (event.amount > 0 ? "income" : "expense") as
+          | "income"
+          | "expense",
+      } satisfies InsightsUpcomingMoment;
+    })
+    .filter((item): item is InsightsUpcomingMoment => item !== null);
+
+  return dedupeByMeaning(mapped);
+}
+
 export function buildInsightsUpcomingMoments(input: {
   forecast: InsightsForecastSummary | null;
+  timelineEvents?: ForecastTimelineEventRecord[] | null;
+  referenceSignals?: InsightsSignalTransaction[] | null;
   selectedMonth: TransactionMonthOption;
   now?: Date;
 }): InsightsUpcomingMoment[] {
-  const { forecast, selectedMonth, now = new Date() } = input;
+  const {
+    forecast,
+    timelineEvents = null,
+    referenceSignals = null,
+    selectedMonth,
+    now = new Date(),
+  } = input;
   if (!forecast) return [];
 
   const isHistoricalMonth = selectedMonth.key < getCurrentMonthKey(now);
   if (isHistoricalMonth) return [];
 
-  const monthEndInclusive = (() => {
-    const endExclusive = parseIsoDate(selectedMonth.endIso);
-    if (!endExclusive) return null;
-    return new Date(endExclusive.getTime() - 24 * 60 * 60 * 1000);
-  })();
-
   const referenceIso =
     forecast.forecastReferenceDate ||
     (selectedMonth.isCurrentMonth ? isoFromDate(now) : selectedMonth.startIso);
 
-  const candidates: InsightsUpcomingMoment[] = [];
+  if (timelineEvents && timelineEvents.length > 0) {
+    const fromTimeline = buildFromTimelineEvents({
+      timelineEvents,
+      referenceSignals,
+      referenceIso,
+      selectedMonth,
+    });
+    if (fromTimeline.length > 0) return fromTimeline;
+  }
 
   if (
     forecast.lowestExpectedBalanceDate &&
@@ -142,90 +367,19 @@ export function buildInsightsUpcomingMoments(input: {
     forecast.lowestExpectedBalanceDate > referenceIso
   ) {
     const labels = toDayMonthLabels(forecast.lowestExpectedBalanceDate);
-    candidates.push({
-      id: "lowest-balance",
-      dateIso: forecast.lowestExpectedBalanceDate,
-      dayLabel: labels.dayLabel,
-      monthLabel: labels.monthLabel,
-      title: "Laagste saldo verwacht",
-      subtitle: "Moment van minste saldo",
-      amountLabel: buildAmountLabel(forecast.lowestExpectedBalance, "neutral"),
-      amountTone: "neutral",
-    });
+    return [
+      {
+        id: "lowest-balance",
+        dateIso: forecast.lowestExpectedBalanceDate,
+        dayLabel: labels.dayLabel,
+        monthLabel: labels.monthLabel,
+        title: "Laagste saldo verwacht",
+        subtitle: "Moment van minste saldo",
+        amountLabel: buildAmountLabel(forecast.lowestExpectedBalance, "neutral"),
+        amountTone: "neutral",
+      },
+    ];
   }
 
-  const nextLabel = normalizeEventLabel(forecast.nextExpectedEventLabel);
-  if (forecast.nextExpectedEventDate && forecast.nextExpectedEventDate > referenceIso) {
-    const labels = toDayMonthLabels(forecast.nextExpectedEventDate);
-    const tone = isIncomeLabel(nextLabel)
-      ? "income"
-      : isExpenseLabel(nextLabel)
-        ? "expense"
-        : "neutral";
-    const amountValue =
-      tone === "income"
-        ? forecast.upcomingCommittedIncomeTotal
-        : tone === "expense"
-          ? forecast.upcomingCommittedExpenseTotal
-          : null;
-    candidates.push({
-      id: "next-event",
-      dateIso: forecast.nextExpectedEventDate,
-      dayLabel: labels.dayLabel,
-      monthLabel: labels.monthLabel,
-      title: nextLabel || "Volgend verwacht moment",
-      subtitle:
-        tone === "income"
-          ? "Verwachte inkomende betaling"
-          : tone === "expense"
-            ? "Verwachte uitgaande betaling"
-            : "Belangrijk verwacht moment",
-      amountLabel: buildAmountLabel(amountValue, tone),
-      amountTone: tone,
-    });
-  }
-
-  if (
-    monthEndInclusive &&
-    forecast.upcomingCommittedExpenseTotal > 0 &&
-    isoFromDate(monthEndInclusive) > referenceIso
-  ) {
-    const labels = toDayMonthLabels(isoFromDate(monthEndInclusive));
-    candidates.push({
-      id: "expense-cluster",
-      dateIso: isoFromDate(monthEndInclusive),
-      dayLabel: labels.dayLabel,
-      monthLabel: labels.monthLabel,
-      title: "Grote vaste lasten",
-      subtitle: "Nog verwacht deze maand",
-      amountLabel: buildAmountLabel(forecast.upcomingCommittedExpenseTotal, "expense"),
-      amountTone: "expense",
-    });
-  }
-
-  if (
-    monthEndInclusive &&
-    forecast.upcomingCommittedIncomeTotal > 0 &&
-    isoFromDate(monthEndInclusive) > referenceIso
-  ) {
-    const labels = toDayMonthLabels(isoFromDate(monthEndInclusive));
-    candidates.push({
-      id: "income-cluster",
-      dateIso: isoFromDate(monthEndInclusive),
-      dayLabel: labels.dayLabel,
-      monthLabel: labels.monthLabel,
-      title: "Salaris verwacht",
-      subtitle: "Verwachte inkomende betalingen",
-      amountLabel: buildAmountLabel(forecast.upcomingCommittedIncomeTotal, "income"),
-      amountTone: "income",
-    });
-  }
-
-  return dedupeByMeaning(candidates)
-    .sort((left, right) => {
-      if (left.dateIso !== right.dateIso) return left.dateIso.localeCompare(right.dateIso);
-      return left.title.localeCompare(right.title, "nl");
-    })
-    .slice(0, 4);
+  return [];
 }
-

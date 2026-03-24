@@ -22,6 +22,7 @@ import {
   resolveExpectedDayOfMonth,
   type ForecastTimelineEvent,
 } from "@/services/forecast-timeline";
+import { buildForecastReferenceContext } from "@/services/forecast-reference";
 import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import { detectRareSubscriptionItems } from "@/services/rare-subscriptions";
 import { supabase } from "@/services/supabase";
@@ -64,6 +65,11 @@ type IncomeSourceRow = {
   income_frequency: RecurringType;
   income_day_of_month: number | null;
   last_detected_at: string;
+  reference_transaction_id: string | null;
+  reference_category_id: string | null;
+  reference_category_path: string | null;
+  reference_label: string | null;
+  reference_source_type: "transaction" | "derived";
 };
 
 type BalanceAnchor = {
@@ -121,6 +127,42 @@ type StoredForecastSummary = {
   topCostBuckets: string[];
 };
 
+type StoredForecastTimelineEvent = {
+  user_id: string;
+  month_start: string;
+  event_key: string;
+  event_date: string;
+  event_type:
+    | "income"
+    | "fixed_cost"
+    | "subscription"
+    | "savings_transfer"
+    | "milestone_lowest_balance";
+  label: string;
+  amount: number;
+  source:
+    | "income_source"
+    | "recurring_history"
+    | "subscription_profile"
+    | "rare_subscription"
+    | "derived";
+  confidence: "medium" | "high";
+  fingerprint: string;
+  reference_transaction_id?: string | null;
+  reference_category_id?: string | null;
+  reference_category_path?: string | null;
+  reference_label?: string | null;
+  reference_source_type?:
+    | "transaction"
+    | "income_source"
+    | "subscription_profile"
+    | "rare_subscription"
+    | "derived"
+    | null;
+  computed_at: string;
+  updated_at: string;
+};
+
 const PAGE_SIZE = 500;
 const HISTORY_LOOKBACK_DAYS = 760;
 const FUTURE_FORECAST_MONTHS = 6;
@@ -169,6 +211,13 @@ function isMissingColumnError(error: unknown): boolean {
   const message = String((error as { message?: string })?.message || "").toLowerCase();
   if (code === "42703") return true;
   return message.includes("column") && message.includes("does not exist");
+}
+
+function isMissingRelationError(error: unknown): boolean {
+  const code = String((error as { code?: string })?.code || "");
+  const message = String((error as { message?: string })?.message || "").toLowerCase();
+  if (code === "42P01" || code === "PGRST205") return true;
+  return message.includes("relation") && message.includes("does not exist");
 }
 
 function parseSaldoValue(metadata: Record<string, unknown>) {
@@ -326,7 +375,7 @@ async function fetchCategoryMap() {
 
 async function fetchIncomeSources(userId: string): Promise<IncomeSourceRow[]> {
   const enhancedSelect =
-    "source_key,source_label,expected_income,income_bucket,income_frequency,income_day_of_month,last_detected_at";
+    "source_key,source_label,expected_income,income_bucket,income_frequency,income_day_of_month,last_detected_at,reference_transaction_id,reference_category_id,reference_category_path,reference_label,reference_source_type";
   const legacySelect =
     "source_key,source_label,expected_income,income_frequency,income_day_of_month,last_detected_at";
   let { data, error } = await supabase
@@ -354,6 +403,18 @@ async function fetchIncomeSources(userId: string): Promise<IncomeSourceRow[]> {
     income_day_of_month:
       row.income_day_of_month == null ? null : Number(row.income_day_of_month),
     last_detected_at: String(row.last_detected_at || new Date().toISOString()),
+    reference_transaction_id: row.reference_transaction_id
+      ? String(row.reference_transaction_id)
+      : null,
+    reference_category_id: row.reference_category_id
+      ? String(row.reference_category_id)
+      : null,
+    reference_category_path: row.reference_category_path
+      ? String(row.reference_category_path)
+      : null,
+    reference_label: row.reference_label ? String(row.reference_label) : null,
+    reference_source_type:
+      row.reference_source_type === "transaction" ? "transaction" : "derived",
   }));
 }
 
@@ -562,6 +623,7 @@ function buildRecurringHistoryEvents(params: {
       similarRows.slice(0, 3).map((row) => Math.abs(row.amount)),
     );
     if (amount <= 0) continue;
+    const reference = buildForecastReferenceContext(latest, categoryMap, "transaction");
 
     events.set(key, {
       date: scheduledDate,
@@ -586,6 +648,11 @@ function buildRecurringHistoryEvents(params: {
           : undefined,
       source: "recurring_history",
       confidence: similarRows.length >= 3 ? "high" : "medium",
+      referenceTransactionId: reference.referenceTransactionId,
+      referenceCategoryId: reference.referenceCategoryId,
+      referenceCategoryPath: reference.referenceCategoryPath,
+      referenceLabel: reference.referenceLabel,
+      referenceSourceType: reference.referenceSourceType,
     });
   }
 
@@ -656,6 +723,11 @@ function mergeIncomeSourceEvents(params: {
       incomeBucket: source.income_bucket,
       source: "income_source",
       confidence: source.income_day_of_month != null ? "high" : "medium",
+      referenceTransactionId: source.reference_transaction_id,
+      referenceCategoryId: source.reference_category_id,
+      referenceCategoryPath: source.reference_category_path,
+      referenceLabel: source.reference_label,
+      referenceSourceType: "income_source",
     });
   }
 
@@ -666,6 +738,7 @@ function mergeSubscriptionProfileEvents(params: {
   profiles: SubscriptionProfile[];
   existingEvents: Map<string, ForecastTimelineEvent>;
   transactions: ForecastTx[];
+  categoryMap: Map<string, CategoryRecord>;
   monthStart: Date;
   monthEndExclusive: Date;
   referenceDate: Date;
@@ -674,6 +747,7 @@ function mergeSubscriptionProfileEvents(params: {
     profiles,
     existingEvents,
     transactions,
+    categoryMap,
     monthStart,
     monthEndExclusive,
     referenceDate,
@@ -683,19 +757,23 @@ function mergeSubscriptionProfileEvents(params: {
   const monthStartIso = dateToIso(monthStart);
   const monthEndIso = dateToIso(monthEndExclusive);
   const referenceIso = dateToIso(referenceDate);
-  const observedDescriptors = new Set(
-    transactions
-      .filter(
-        (tx) =>
-          tx.date <= referenceIso &&
-          tx.date >= monthStartIso &&
-          tx.date < monthEndIso &&
-          tx.amount < 0 &&
-          tx.analysis_category === "subscriptions",
-      )
-      .map((tx) => descriptor(tx))
-      .filter(Boolean),
-  );
+  const observedThisMonth = new Set<string>();
+  const latestByDescriptor = new Map<string, ForecastTx>();
+  for (const tx of transactions) {
+    if (tx.date > referenceIso || tx.amount >= 0 || tx.analysis_category !== "subscriptions") {
+      continue;
+    }
+
+    const key = descriptor(tx);
+    if (!key) continue;
+    const existing = latestByDescriptor.get(key);
+    if (!existing || existing.date < tx.date) {
+      latestByDescriptor.set(key, tx);
+    }
+    if (tx.date >= monthStartIso && tx.date < monthEndIso) {
+      observedThisMonth.add(key);
+    }
+  }
 
   for (const profile of profiles) {
     if (!profile.isActive) continue;
@@ -703,13 +781,23 @@ function mergeSubscriptionProfileEvents(params: {
     if (profile.billingCycle !== "monthly") continue;
 
     const key = normalizePattern(profile.normalizedName || profile.name);
-    if (!key || observedDescriptors.has(key) || next.has(key)) continue;
+    if (!key || observedThisMonth.has(key) || next.has(key)) continue;
 
     const scheduledDate = buildScheduledDateForMonth(
       monthStart,
       profile.expectedDayOfMonth ?? 1,
     );
     if (scheduledDate <= referenceIso) continue;
+    const referenceTx = latestByDescriptor.get(key) || null;
+    const reference = referenceTx
+      ? buildForecastReferenceContext(referenceTx, categoryMap, "transaction")
+      : {
+          referenceTransactionId: null,
+          referenceCategoryId: null,
+          referenceCategoryPath: null,
+          referenceLabel: profile.name,
+          referenceSourceType: "subscription_profile" as const,
+        };
 
     next.set(key, {
       date: scheduledDate,
@@ -718,6 +806,11 @@ function mergeSubscriptionProfileEvents(params: {
       kind: "subscription",
       source: "subscription_profile",
       confidence: profile.expectedDayOfMonth != null ? "high" : "medium",
+      referenceTransactionId: reference.referenceTransactionId,
+      referenceCategoryId: reference.referenceCategoryId,
+      referenceCategoryPath: reference.referenceCategoryPath,
+      referenceLabel: reference.referenceLabel,
+      referenceSourceType: reference.referenceSourceType,
     });
   }
 
@@ -755,6 +848,11 @@ function mergeRareSubscriptionEvents(params: {
       kind: "subscription",
       source: "rare_subscription",
       confidence: "medium",
+      referenceTransactionId: item.latestTransactionId,
+      referenceCategoryId: item.latestCategoryId,
+      referenceCategoryPath: item.latestCategoryPath,
+      referenceLabel: item.latestReferenceLabel,
+      referenceSourceType: "rare_subscription",
     });
   }
 
@@ -904,6 +1002,92 @@ function buildTopCostBuckets(params: {
     .map((entry) => entry.key);
 }
 
+function normalizeEventKeyPart(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function mapEventTypeForStorage(
+  kind: ForecastTimelineEvent["kind"],
+): StoredForecastTimelineEvent["event_type"] {
+  if (kind === "income") return "income";
+  if (kind === "fixed_cost") return "fixed_cost";
+  if (kind === "subscription") return "subscription";
+  return "savings_transfer";
+}
+
+function buildTimelineEventRows(params: {
+  row: StoredForecastSummary;
+  userId: string;
+  events: ForecastTimelineEvent[];
+  computedAtIso: string;
+}): StoredForecastTimelineEvent[] {
+  const { row, userId, events, computedAtIso } = params;
+  const mapped: StoredForecastTimelineEvent[] = events.map((event) => {
+    const eventType = mapEventTypeForStorage(event.kind);
+    const normalizedLabel = normalizeEventKeyPart(event.label) || "event";
+    const eventKey = [
+      event.source,
+      eventType,
+      event.date,
+      normalizedLabel,
+    ].join("|");
+
+    return {
+      user_id: userId,
+      month_start: row.monthStart,
+      event_key: eventKey,
+      event_date: event.date,
+      event_type: eventType,
+      label: event.label,
+      amount: round2(event.amount),
+      source: event.source,
+      confidence: event.confidence,
+      fingerprint: [
+        event.source,
+        eventType,
+        event.date,
+        normalizedLabel,
+        round2(event.amount),
+        event.confidence,
+        event.incomeBucket || "none",
+      ].join("|"),
+      computed_at: computedAtIso,
+      updated_at: computedAtIso,
+    };
+  });
+
+  if (
+    row.lowestExpectedBalanceDate &&
+    row.lowestExpectedBalance != null
+  ) {
+    mapped.push({
+      user_id: userId,
+      month_start: row.monthStart,
+      event_key: `derived|milestone_lowest_balance|${row.lowestExpectedBalanceDate}`,
+      event_date: row.lowestExpectedBalanceDate,
+      event_type: "milestone_lowest_balance",
+      label: "Laagste saldo verwacht",
+      amount: round2(row.lowestExpectedBalance),
+      source: "derived",
+      confidence: "high",
+      fingerprint: [
+        "derived",
+        "milestone_lowest_balance",
+        row.lowestExpectedBalanceDate,
+        round2(row.lowestExpectedBalance),
+      ].join("|"),
+      computed_at: computedAtIso,
+      updated_at: computedAtIso,
+    });
+  }
+
+  return mapped;
+}
+
 function toStoredForecastRow(row: StoredForecastSummary, userId: string) {
   return {
     user_id: userId,
@@ -1032,6 +1216,7 @@ export async function recomputeCurrentMonthCashflowForecast(
   });
 
   const forecastRows: StoredForecastSummary[] = [];
+  const timelineRows: StoredForecastTimelineEvent[] = [];
   let chainedStartingBalance: number | null = null;
 
   for (const monthStart of requestedMonths) {
@@ -1096,6 +1281,7 @@ export async function recomputeCurrentMonthCashflowForecast(
       profiles,
       existingEvents: recurringExpenseEvents,
       transactions,
+      categoryMap,
       monthStart,
       monthEndExclusive,
       referenceDate,
@@ -1261,6 +1447,14 @@ export async function recomputeCurrentMonthCashflowForecast(
     };
 
     forecastRows.push(row);
+    timelineRows.push(
+      ...buildTimelineEventRows({
+        row,
+        userId,
+        events: timelineProjection.events,
+        computedAtIso: new Date().toISOString(),
+      }),
+    );
     chainedStartingBalance = row.expectedEndOfMonthBalance;
   }
 
@@ -1285,6 +1479,51 @@ export async function recomputeCurrentMonthCashflowForecast(
   }
 
   if (error) throw error;
+
+  const monthStartValues = forecastRows.map((row) => row.monthStart);
+  if (monthStartValues.length > 0) {
+    const timelineDeleteResult = await supabase
+      .from("forecast_timeline_events")
+      .delete()
+      .eq("user_id", userId)
+      .in("month_start", monthStartValues);
+
+    if (timelineDeleteResult.error) {
+      if (
+        isMissingRelationError(timelineDeleteResult.error) ||
+        isMissingColumnError(timelineDeleteResult.error)
+      ) {
+        console.warn(
+          "[forecast] timeline events table unavailable, continuing without persisted timeline",
+        );
+      } else {
+        console.warn(
+          "[forecast] timeline events clear failed, continuing with monthly forecast only",
+          timelineDeleteResult.error,
+        );
+      }
+    } else if (timelineRows.length > 0) {
+      const timelineInsertResult = await supabase
+        .from("forecast_timeline_events")
+        .insert(timelineRows);
+
+      if (timelineInsertResult.error) {
+        if (
+          isMissingRelationError(timelineInsertResult.error) ||
+          isMissingColumnError(timelineInsertResult.error)
+        ) {
+          console.warn(
+            "[forecast] timeline events table unavailable, continuing without persisted timeline",
+          );
+        } else {
+          console.warn(
+            "[forecast] timeline events write failed, continuing with monthly forecast only",
+            timelineInsertResult.error,
+          );
+        }
+      }
+    }
+  }
 
   return (
     forecastRows.find((row) => row.monthStart === targetMonthStartIso) ||

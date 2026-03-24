@@ -17,6 +17,10 @@ import { computeBudgetPlan } from "@/services/budget-plan";
 import { requireCurrentUserId } from "@/services/current-user";
 import { ensureForecastFresh } from "@/services/forecast-refresh";
 import {
+  listForecastTimelineEvents,
+  type ForecastTimelineEventRecord,
+} from "@/services/forecast-timeline-events";
+import {
   loadInsightsHighlightHistory,
   recordInsightsHighlightHistory,
 } from "@/services/insights-highlight-history";
@@ -56,6 +60,7 @@ import {
 } from "react-native";
 
 type InsightSignals = {
+  all: InsightsSignalTransaction[];
   currentMonth: InsightsSignalTransaction[];
   previousMonth: InsightsSignalTransaction[];
   lookback: InsightsSignalTransaction[];
@@ -145,7 +150,16 @@ export default function InsightsScreen() {
   const [budgetPlan, setBudgetPlan] = React.useState<BudgetPlanComputation | null>(
     null,
   );
+  const [insightSignals, setInsightSignals] = React.useState<InsightSignals>({
+    all: [],
+    currentMonth: [],
+    previousMonth: [],
+    lookback: [],
+  });
   const [highlights, setHighlights] = React.useState<InsightsHighlight[]>([]);
+  const [timelineEvents, setTimelineEvents] = React.useState<
+    ForecastTimelineEventRecord[]
+  >([]);
   const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
 
   const selectedMonth = React.useMemo(
@@ -185,9 +199,11 @@ export default function InsightsScreen() {
     () =>
       buildInsightsUpcomingMoments({
         forecast,
+        timelineEvents,
         selectedMonth,
+        referenceSignals: insightSignals.all,
       }),
-    [forecast, selectedMonth],
+    [forecast, insightSignals.all, selectedMonth, timelineEvents],
   );
 
   const loadMonthOptions = React.useCallback(async () => {
@@ -235,7 +251,7 @@ export default function InsightsScreen() {
             .eq("month_start", selectedMonth.startIso)
             .maybeSingle();
 
-        let result = await fetchLatest();
+        let result: any = await fetchLatest();
         if (result.error && isMissingColumnError(result.error)) {
           result = await fetchLegacy();
         }
@@ -342,30 +358,44 @@ export default function InsightsScreen() {
         const previous = buildPreviousMonthRange(selectedMonth);
         const lookbackStart = new Date(`${selectedMonth.startIso}T00:00:00.000Z`);
         lookbackStart.setUTCDate(lookbackStart.getUTCDate() - 120);
+        const categoryById = new Map<string, { name: string; key: string }>();
+
+        const categoryResult = await supabase
+          .from("categories")
+          .select("id,key,name")
+          .order("name", { ascending: true });
+
+        if (!categoryResult.error) {
+          for (const row of (categoryResult.data || []) as Record<string, unknown>[]) {
+            const id = row.id ? String(row.id) : "";
+            const name = row.name ? String(row.name) : "";
+            const key = row.key ? String(row.key) : "";
+            if (!id || !name) continue;
+            categoryById.set(id, { name, key });
+          }
+        }
 
         const fetchWithAnalysis = async () =>
           supabase
             .from("transactions")
-            .select("id,amount,counterparty,date,analysis_category")
+            .select("id,amount,counterparty,details,date,analysis_category,category_id_auto,category_id_user")
             .eq("user_id", userId)
             .gte("date", toIsoDate(lookbackStart))
             .lt("date", selectedMonth.endIso)
-            .lt("amount", 0)
             .order("date", { ascending: false })
             .limit(1500);
 
         const fetchLegacy = async () =>
           supabase
             .from("transactions")
-            .select("id,amount,counterparty,date")
+            .select("id,amount,counterparty,details,date,category_id_auto,category_id_user")
             .eq("user_id", userId)
             .gte("date", toIsoDate(lookbackStart))
             .lt("date", selectedMonth.endIso)
-            .lt("amount", 0)
             .order("date", { ascending: false })
             .limit(1500);
 
-        let result = await fetchWithAnalysis();
+        let result: any = await fetchWithAnalysis();
         if (result.error && isMissingColumnError(result.error)) {
           result = await fetchLegacy();
         }
@@ -377,18 +407,38 @@ export default function InsightsScreen() {
             id: row.id ? String(row.id) : undefined,
             amount: Number(row.amount || 0),
             counterparty: row.counterparty ? String(row.counterparty) : null,
+            details: row.details ? String(row.details) : null,
             date: String(row.date || ""),
+            categoryKey: (() => {
+              const categoryId = row.category_id_user || row.category_id_auto;
+              if (!categoryId) return null;
+              return categoryById.get(String(categoryId))?.key || null;
+            })(),
+            categoryLabel: (() => {
+              const categoryId = row.category_id_user || row.category_id_auto;
+              if (!categoryId) return null;
+              return categoryById.get(String(categoryId))?.name || null;
+            })(),
             analysisCategory:
+              row.analysis_category === "income_structural" ||
+              row.analysis_category === "income_variable" ||
               row.analysis_category === "fixed_costs" ||
               row.analysis_category === "subscriptions" ||
               row.analysis_category === "variable_costs" ||
               row.analysis_category === "savings_transfer"
-                ? row.analysis_category
+                ? (row.analysis_category as
+                    | "income_structural"
+                    | "income_variable"
+                    | "fixed_costs"
+                    | "subscriptions"
+                    | "variable_costs"
+                    | "savings_transfer")
                 : null,
           }),
         );
 
         return {
+          all: rows,
           currentMonth: rows.filter(
             (row) => row.date >= selectedMonth.startIso && row.date < selectedMonth.endIso,
           ),
@@ -399,7 +449,7 @@ export default function InsightsScreen() {
         };
       } catch (error) {
         console.error("[insights] insight signals load error", error);
-        return { currentMonth: [], previousMonth: [], lookback: [] };
+        return { all: [], currentMonth: [], previousMonth: [], lookback: [] };
       }
     },
     [selectedMonth],
@@ -415,10 +465,19 @@ export default function InsightsScreen() {
           loadBudgetSummary(),
           loadInsightSignals(userId),
           loadInsightsHighlightHistory(userId, selectedMonth.key),
-        ]);
+      ]);
 
       setForecast(forecastSummary);
       setBudgetPlan(budgetSummary);
+      setInsightSignals(insightSignals);
+      const nextTimelineEvents = await listForecastTimelineEvents({
+        userId,
+        monthStart: selectedMonth.startIso,
+      }).catch((error) => {
+        console.warn("[insights] timeline events load error", error);
+        return [] as ForecastTimelineEventRecord[];
+      });
+      setTimelineEvents(nextTimelineEvents);
       const nextHighlights = selectInsightsHighlights({
         selectedMonthKey: selectedMonth.key,
         selectedMonthLabel: selectedMonth.label,
@@ -459,6 +518,7 @@ export default function InsightsScreen() {
     loadForecastSummary,
     loadInsightSignals,
     selectedMonth.key,
+    selectedMonth.startIso,
     selectedMonth.label,
   ]);
 
@@ -595,7 +655,7 @@ export default function InsightsScreen() {
             <FinanceForecastSummaryCard model={forecastCard} />
           </View>
 
-          {upcomingMoments.length > 0 ? (
+          {forecast && selectedMonth.key >= getCurrentMonthKey() ? (
             <View style={styles.sectionBlock}>
               <FinanceSectionHeader title="Komende momenten" />
               <FinanceUpcomingMomentsCard items={upcomingMoments} />

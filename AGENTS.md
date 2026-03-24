@@ -199,6 +199,11 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - zorg dat `Wat valt op` nooit stilvalt door alleen timingfilters:
   - gebruik repeat suppression met activiteitssignaal (laatste transactiedatum)
   - toon altijd een zinvolle fallbackkaart bij weinig data of stabiele maand
+- maak `Komende momenten` betekenisvol en categorie-gedreven:
+  - toon liever geen kaart dan een vage bedrijfsnaam zonder besliswaarde
+  - gebruik echte transactielabels, categorieën en budgetgroepcontext als bron voor titel en subtitel
+  - als forecast- of timeline-data onvoldoende concreet is, toon een nette empty state in plaats van generieke fallbackkaarten
+  - houd reads en writes schema-safe als forecast referentievelden nog niet overal beschikbaar zijn
 
 ### Transaction Detail
 
@@ -220,6 +225,7 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Vermijd local caches als dezelfde verbetering beter in database of query-optimalisatie opgelost kan worden
 - Normalizeer import- en details-strings consequent, vooral legacy `|`-varianten
 - Wees voorzichtig met semantische betekenissen zoals `variabel budget`, `trend`, `budgetplan`, `op schema`, `let op` en `boven tempo`
+- Gebruik bij forecast- en insight-vertaling geen fuzzy matching als de echte categorie-, referentie- of transactiedata beschikbaar is
 
 ## Insight-Signalen En AI-Invloeden
 
@@ -232,6 +238,10 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
   - als er in de gekozen maand geen recente transactiemutaties zijn, versoepel suppressie zodat het blok niet leeg blijft
   - historische maanden blijven inzichten tonen op basis van maandcontext, niet op basis van "vandaag"
 - Als een insight-blok op meer dan één scherm terugkomt, moet dezelfde gedeelde logica en dezelfde tests worden gebruikt
+- Voor forecastgedreven blokken zoals `Komende momenten` geldt extra:
+  - gebruik duidelijke labels uit transacties en categorieën
+  - kies liever een lege staat dan generieke koppen zoals `volgend verwacht moment`
+  - als referentievelden schema-afhankelijk zijn, laat de app veilig terugvallen op legacy reads/writes totdat de migratie bevestigd is
 
 ## Data En Import
 

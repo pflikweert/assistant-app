@@ -26,7 +26,12 @@ export type InsightsSignalTransaction = {
   amount: number;
   counterparty: string | null;
   date: string;
+  details?: string | null;
+  categoryKey?: string | null;
+  categoryLabel?: string | null;
   analysisCategory:
+    | "income_structural"
+    | "income_variable"
     | "fixed_costs"
     | "subscriptions"
     | "variable_costs"

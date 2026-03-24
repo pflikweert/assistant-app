@@ -1,4 +1,5 @@
 import type { CategoryRecord } from "@/types/categorization";
+import { buildForecastReferenceContext } from "@/services/forecast-reference";
 
 const GENERIC_COUNTERPARTIES = [
   "paypal",
@@ -80,6 +81,9 @@ export type RareSubscriptionItem = {
   latestCounterparty: string | null;
   latestDetails: string;
   latestAmount: number;
+  latestCategoryId: string | null;
+  latestCategoryPath: string | null;
+  latestReferenceLabel: string | null;
   transactionIds: string[];
 };
 
@@ -370,6 +374,7 @@ export function detectRareSubscriptionItems(input: {
         nextExpectedDate == null
           ? null
           : diffDays(input.referenceDate, nextExpectedDate);
+      const reference = buildForecastReferenceContext(latest, categoryMap, "transaction");
 
       items.push({
         id: `${cluster.descriptor}:${Math.round(cluster.amountAnchor * 100)}`,
@@ -389,6 +394,9 @@ export function detectRareSubscriptionItems(input: {
         latestCounterparty: latest.counterparty,
         latestDetails: latest.details,
         latestAmount: latest.amount,
+        latestCategoryId: reference.referenceCategoryId,
+        latestCategoryPath: reference.referenceCategoryPath,
+        latestReferenceLabel: reference.referenceLabel,
         transactionIds: sorted.map((tx) => tx.id),
       });
     }

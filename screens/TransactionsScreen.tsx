@@ -230,6 +230,17 @@ export default function TransactionsScreen({
       if (categoryFilterIdCsv) {
         query = query.or(`category_id_user.in.(${categoryFilterIdCsv}),category_id_auto.in.(${categoryFilterIdCsv})`);
       }
+      const searchTokensForQuery = normalizeSearch(searchQuery).split(" ").filter(Boolean);
+      if (searchTokensForQuery.length) {
+        const tokenFilters = searchTokensForQuery.map(
+          (token) => `or(details.ilike.%${token}%,counterparty.ilike.%${token}%)`,
+        );
+        const searchFilter =
+          tokenFilters.length === 1
+            ? tokenFilters[0]
+            : `and(${tokenFilters.join(",")})`;
+        query = query.or(searchFilter);
+      }
 
       const response = await query
         .order("date", { ascending: false })
@@ -283,11 +294,11 @@ export default function TransactionsScreen({
     } finally {
       setLoading(false);
     }
-  }, [analysisCategoryFilter, categoryFilterIdCsv, categoryFilterIds.length, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter]);
+  }, [analysisCategoryFilter, categoryFilterIdCsv, categoryFilterIds.length, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchQuery]);
 
   React.useEffect(() => {
     setPage(0);
-  }, [analysisCategoryFilter, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter]);
+  }, [analysisCategoryFilter, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchQuery]);
 
   React.useEffect(() => {
     const handle = setTimeout(() => setSearchQuery(searchInput.trim()), 180);
@@ -329,7 +340,6 @@ export default function TransactionsScreen({
     () => normalizeSearch(searchQuery).split(" ").filter(Boolean),
     [searchQuery],
   );
-
   const filteredTransactions = React.useMemo(() => {
     if (!searchTokens.length) return displayTransactions;
 

@@ -12,6 +12,17 @@ export type ForecastTimelineEvent = {
     | "subscription_profile"
     | "rare_subscription";
   confidence: "medium" | "high";
+  referenceTransactionId?: string | null;
+  referenceCategoryId?: string | null;
+  referenceCategoryPath?: string | null;
+  referenceLabel?: string | null;
+  referenceSourceType?:
+    | "transaction"
+    | "income_source"
+    | "subscription_profile"
+    | "rare_subscription"
+    | "derived"
+    | null;
 };
 
 export type ForecastTimelineProjection = {

@@ -14,6 +14,17 @@ function resolveAmountColor(tone: InsightsUpcomingMoment["amountTone"]) {
 }
 
 export function FinanceUpcomingMomentsCard({ items }: FinanceUpcomingMomentsCardProps) {
+  if (!items.length) {
+    return (
+      <View style={styles.emptyCard}>
+        <Text style={styles.emptyTitle}>Nog geen concrete momenten</Text>
+        <Text style={styles.emptyDescription}>
+          Zodra er iets belangrijks aankomt, tonen we het hier.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.card}>
       {items.map((item, index) => (
@@ -53,6 +64,26 @@ const styles = StyleSheet.create({
     borderColor: FinColors.borderSubtle,
     backgroundColor: FinColors.bgCard,
     overflow: "hidden",
+  },
+  emptyCard: {
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    gap: 6,
+  },
+  emptyTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  emptyDescription: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: FinColors.textSecondary,
   },
   row: {
     minHeight: 78,

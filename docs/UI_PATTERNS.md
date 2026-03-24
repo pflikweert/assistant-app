@@ -507,6 +507,11 @@ Belangrijkste patronen:
   - statuschip rechtsboven
   - subblok `Laagste saldo` met icoon en kleine ondersteunende copy
   - korte, niet-technische uitlegzin
+- `Komende momenten` gebruikt een compacte forecastmomentenkaart met:
+  - echte labelnamen of duidelijke contexttitels
+  - subtitel uit transacties, categorieën of budgetgroepcontext
+  - liever een lege staat dan een generieke gok
+  - schema-veilige fallback als forecast/timeline-data nog niet volledig beschikbaar is
 
 Wanneer hergebruiken:
 - voor alle trend/forecast/risico-pagina's waar mensentaal belangrijker is dan technische details
@@ -565,6 +570,29 @@ Belangrijkste patronen:
 
 Wanneer hergebruiken:
 - wanneer een scherm zonder data anders leeg of technisch zou aanvoelen
+
+### Forecast Moments / Komende Momenten
+
+- Naam: Betekenisvolle forecastmomenten
+- Doel: gebruikers snel laten zien welke momenten later in de maand belangrijk worden
+- Waar toepasbaar in de app: Insights, maandvooruitblik en forecast-samenvattingen
+- Structuur / opbouw:
+  - compacte timeline of lijstkaart
+  - datum links, titel en subtitel midden, bedrag rechts
+  - maximaal een paar regels, alleen concrete en betekenisvolle momenten
+- Belangrijkste visuele regels:
+  - gebruik echte labelnamen en duidelijke context
+  - vermijd generieke koppen zoals `Volgend verwacht moment`
+  - onzekere of ontbrekende data hoort niet op hoofdniveau
+- Mobile-first aandachtspunten:
+  - liever minder regels dan vage of herhaalde regels
+  - geen overvolle labels of dubbele context
+- Web/native aandachtspunten:
+  - op web mag de kaart rustiger en iets breder zijn, maar wel binnen de contentkolom
+  - op native dezelfde verticale ritmiek en compacte rijhoogte behouden
+- Componentrichtlijn:
+  - bouw `Komende momenten` als gedeelde component zodra hetzelfde patroon op meerdere schermen terugkomt
+  - als de onderliggende forecast/timeline-data onvoldoende concreet is, laat de component een empty state zien in plaats van een gok
 
 ## Gebruik in de app
 

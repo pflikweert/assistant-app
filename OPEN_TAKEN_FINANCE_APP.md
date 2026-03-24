@@ -31,6 +31,11 @@ De focus is nu niet meer "opnieuw bouwen", maar:
   - statuschip
   - laagste-saldo subblok
   - korte menselijke uitlegzin
+- `Komende momenten` moet productmatig streng blijven:
+  - toon alleen betekenisvolle forecastmomenten
+  - gebruik echte transactielabels, categorieën en budgetgroepcontext
+  - liever een nette empty state dan generieke gokcopy
+  - keep forecast/timeline reads schema-safe zolang referentievelden niet overal gegarandeerd beschikbaar zijn
 
 ## Redesign Roadmap
 
@@ -178,6 +183,7 @@ Exit-criteria:
 - Herverdeling-preview in `Budget > Beheer` voordat de gebruiker opslaat
 - `Wat is veranderd`-laag in `Insights`
 - extra coach- of advieskaarten in `Budget` en `Insights`
+- verdere verfijning van `Komende momenten` als gedeeld patroon zodra forecast reference-data app-breed stabiel is
 - extra schermtests voor de geharmoniseerde flows
 
 ### Nog niet af

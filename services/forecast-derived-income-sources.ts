@@ -1,4 +1,5 @@
 import { resolveExpectedDayOfMonth } from "./forecast-timeline";
+import { buildForecastReferenceContext } from "./forecast-reference";
 import {
   resolveForecastIncomeBucketForTransaction,
   resolveForecastIncomeBucketFromValue,
@@ -10,10 +11,12 @@ import type {
 } from "../types/categorization";
 
 type ForecastLikeTx = {
+  id: string;
   date: string;
   amount: number;
   details: string;
   counterparty: string | null;
+  analysis_main_group: "income" | "expense" | null;
   recurring_type: RecurringType | null;
   category_id_auto: string | null;
   category_id_user: string | null;
@@ -36,6 +39,11 @@ export type ForecastDerivedIncomeSource = {
   income_frequency: RecurringType;
   income_day_of_month: number | null;
   last_detected_at: string;
+  reference_transaction_id: string | null;
+  reference_category_id: string | null;
+  reference_category_path: string | null;
+  reference_label: string | null;
+  reference_source_type: "transaction" | "derived";
 };
 
 function round2(value: number) {
@@ -124,51 +132,62 @@ export function deriveIncomeSourcesFromTransactions(
     grouped.set(key, current);
   }
 
-  return Array.from(grouped.entries())
-    .map(([key, rows]) => {
-      const sortedDesc = [...rows].sort((left, right) =>
-        right.date.localeCompare(left.date),
+  const sources: ForecastDerivedIncomeSource[] = [];
+
+  for (const [key, rows] of grouped.entries()) {
+    const sortedDesc = [...rows].sort((left, right) =>
+      right.date.localeCompare(left.date),
+    );
+    const latest = sortedDesc[0];
+    if (!latest) continue;
+    const reference = buildForecastReferenceContext(latest, categoryMap, "transaction");
+
+    const sortedAsc = [...sortedDesc].sort((left, right) =>
+      left.date.localeCompare(right.date),
+    );
+    const intervals: number[] = [];
+    for (let index = 1; index < sortedAsc.length; index += 1) {
+      const previousDate = toUtcDate(sortedAsc[index - 1].date);
+      const nextDate = toUtcDate(sortedAsc[index].date);
+      const diffDays = Math.round(
+        (nextDate.getTime() - previousDate.getTime()) / 86400000,
       );
-      const latest = sortedDesc[0];
-      if (!latest) return null;
+      if (diffDays > 0) intervals.push(diffDays);
+    }
 
-      const sortedAsc = [...sortedDesc].sort((left, right) =>
-        left.date.localeCompare(right.date),
-      );
-      const intervals: number[] = [];
-      for (let index = 1; index < sortedAsc.length; index += 1) {
-        const previousDate = toUtcDate(sortedAsc[index - 1].date);
-        const nextDate = toUtcDate(sortedAsc[index].date);
-        const diffDays = Math.round(
-          (nextDate.getTime() - previousDate.getTime()) / 86400000,
-        );
-        if (diffDays > 0) intervals.push(diffDays);
-      }
+    const recurringType =
+      latest.recurring_type && latest.recurring_type !== "irregular"
+        ? latest.recurring_type
+        : classifyRecurringType(intervals);
 
-      const recurringType =
-        latest.recurring_type && latest.recurring_type !== "irregular"
-          ? latest.recurring_type
-          : classifyRecurringType(intervals);
+    sources.push({
+      source_key: key,
+      source_label: labelForTransaction(latest),
+      expected_income: weightedRecentAverage(
+        sortedDesc.slice(0, 3).map((row) => Math.abs(row.amount)),
+      ),
+      income_bucket: resolveForecastIncomeBucketForTransaction(
+        latest,
+        categoryMap,
+      ),
+      income_frequency: recurringType,
+      income_day_of_month:
+        resolveExpectedDayOfMonth(sortedDesc.slice(0, 6).map((row) => row.date)) ??
+        toUtcDate(latest.date).getUTCDate(),
+      last_detected_at: dateToMiddayIso(latest.date),
+      reference_transaction_id: reference.referenceTransactionId,
+      reference_category_id: reference.referenceCategoryId,
+      reference_category_path: reference.referenceCategoryPath,
+      reference_label: reference.referenceLabel,
+      reference_source_type:
+        (reference.referenceSourceType as "transaction" | "derived" | null) ||
+        "transaction",
+    } satisfies ForecastDerivedIncomeSource);
+  }
 
-      return {
-        source_key: key,
-        source_label: labelForTransaction(latest),
-        expected_income: weightedRecentAverage(
-          sortedDesc.slice(0, 3).map((row) => Math.abs(row.amount)),
-        ),
-        income_bucket: resolveForecastIncomeBucketForTransaction(
-          latest,
-          categoryMap,
-        ),
-        income_frequency: recurringType,
-        income_day_of_month:
-          resolveExpectedDayOfMonth(sortedDesc.slice(0, 6).map((row) => row.date)) ??
-          toUtcDate(latest.date).getUTCDate(),
-        last_detected_at: dateToMiddayIso(latest.date),
-      } satisfies ForecastDerivedIncomeSource;
-    })
-    .filter((row): row is ForecastDerivedIncomeSource => Boolean(row))
-    .sort((left, right) => left.source_label.localeCompare(right.source_label, "nl"));
+  return sources.sort((left, right) =>
+    left.source_label.localeCompare(right.source_label, "nl"),
+  );
 }
 
 export function mergeForecastIncomeSources(
@@ -212,6 +231,15 @@ export function mergeForecastIncomeSources(
         source.income_day_of_month ?? existing.income_day_of_month,
       last_detected_at:
         derivedIsNewer ? source.last_detected_at : existing.last_detected_at,
+      reference_transaction_id:
+        source.reference_transaction_id || existing.reference_transaction_id,
+      reference_category_id:
+        source.reference_category_id || existing.reference_category_id,
+      reference_category_path:
+        source.reference_category_path || existing.reference_category_path,
+      reference_label: source.reference_label || existing.reference_label,
+      reference_source_type:
+        source.reference_source_type || existing.reference_source_type,
     });
   }
 

@@ -170,6 +170,11 @@ export type ForecastIncomeSource = {
   incomeFrequency: RecurringType;
   incomeDayOfMonth: number | null;
   lastDetectedAt: string;
+  referenceTransactionId?: string | null;
+  referenceCategoryId?: string | null;
+  referenceCategoryPath?: string | null;
+  referenceLabel?: string | null;
+  referenceSourceType?: "transaction" | "derived" | null;
 };
 
 export type ForecastRefreshReason =

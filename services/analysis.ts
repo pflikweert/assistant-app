@@ -2,6 +2,7 @@ import {
   applyEffectiveBudgetGroupsToCategories,
   listCategoryBudgetGroupOverrides,
 } from "@/services/category-budget-groups";
+import { buildForecastReferenceContext } from "@/services/forecast-reference";
 import { resolveForecastIncomeBucketFromValue } from "@/services/forecast-income-utils";
 import { resolveIncomeSemantics } from "@/services/income-semantics";
 import { supabase } from "@/services/supabase";
@@ -302,9 +303,10 @@ function resolveIncomeAnalysisCategory(
   return "income_variable";
 }
 
-async function getCategoryMetaMap(userId: string): Promise<
-  Map<string, AnalysisCategoryMeta>
-> {
+async function getCategoryMaps(userId: string): Promise<{
+  categoryMetaMap: Map<string, AnalysisCategoryMeta>;
+  categoryById: Map<string, CategoryRecord>;
+}> {
   const { data, error } = await supabase
     .from("categories")
     .select("id,key,name,parent_id,budget_group,sort_order")
@@ -327,15 +329,25 @@ async function getCategoryMetaMap(userId: string): Promise<
     await listCategoryBudgetGroupOverrides(userId),
   );
 
-  const map = new Map<string, AnalysisCategoryMeta>();
+  const categoryMetaMap = new Map<string, AnalysisCategoryMeta>();
+  const categoryById = new Map<string, CategoryRecord>();
   for (const row of categories) {
-    map.set(String(row.id), {
+    const category = {
       id: String(row.id),
       key: String(row.key || ""),
+      name: String(row.name || ""),
+      parent_id: row.parent_id ? String(row.parent_id) : null,
       budget_group: row.budget_group ? String(row.budget_group) : null,
+      sort_order: row.sort_order == null ? null : Number(row.sort_order),
+    } satisfies CategoryRecord;
+    categoryById.set(category.id, category);
+    categoryMetaMap.set(category.id, {
+      id: category.id,
+      key: category.key,
+      budget_group: category.budget_group,
     });
   }
-  return map;
+  return { categoryMetaMap, categoryById };
 }
 
 async function getTransactionsByIds(
@@ -553,6 +565,7 @@ function mergeIncomeSources(
   tx: AnalysisTx,
   update: TransactionAnalysisUpdate,
   categoryMap: Map<string, AnalysisCategoryMeta>,
+  categoryById: Map<string, CategoryRecord>,
   collector: Map<string, ForecastIncomeSource>,
 ) {
   if (update.analysisMainGroup !== "income") return;
@@ -588,6 +601,17 @@ function mergeIncomeSources(
   ).trim();
   const nextFrequency = update.recurringType || "irregular";
   const nextValue = Math.abs(tx.amount);
+  const reference = buildForecastReferenceContext(
+    {
+      id: tx.id,
+      counterparty: tx.counterparty,
+      details: tx.details,
+      category_id_auto: tx.category_id_auto,
+      category_id_user: tx.category_id_user,
+    },
+    categoryById,
+    "transaction",
+  );
 
   const existing = collector.get(descriptor);
   if (!existing) {
@@ -599,6 +623,13 @@ function mergeIncomeSources(
       incomeFrequency: nextFrequency,
       incomeDayOfMonth: date.getUTCDate(),
       lastDetectedAt: detectedAtIso,
+      referenceTransactionId: reference.referenceTransactionId,
+      referenceCategoryId: reference.referenceCategoryId,
+      referenceCategoryPath: reference.referenceCategoryPath,
+      referenceLabel: reference.referenceLabel,
+      referenceSourceType:
+        (reference.referenceSourceType as "transaction" | "derived" | null) ||
+        "transaction",
     });
     return;
   }
@@ -622,6 +653,17 @@ function mergeIncomeSources(
       detectedAtIso > existing.lastDetectedAt
         ? detectedAtIso
         : existing.lastDetectedAt,
+    referenceTransactionId:
+      reference.referenceTransactionId || existing.referenceTransactionId,
+    referenceCategoryId:
+      reference.referenceCategoryId || existing.referenceCategoryId,
+    referenceCategoryPath:
+      reference.referenceCategoryPath || existing.referenceCategoryPath,
+    referenceLabel: reference.referenceLabel || existing.referenceLabel,
+    referenceSourceType:
+      ((reference.referenceSourceType as "transaction" | "derived" | null) ||
+        existing.referenceSourceType ||
+        "transaction"),
   });
 }
 
@@ -663,6 +705,11 @@ async function upsertIncomeSources(
     income_frequency: source.incomeFrequency,
     income_day_of_month: source.incomeDayOfMonth,
     last_detected_at: source.lastDetectedAt,
+    reference_transaction_id: source.referenceTransactionId || null,
+    reference_category_id: source.referenceCategoryId || null,
+    reference_category_path: source.referenceCategoryPath || null,
+    reference_label: source.referenceLabel || null,
+    reference_source_type: source.referenceSourceType || null,
     updated_at: new Date().toISOString(),
   }));
 
@@ -671,7 +718,17 @@ async function upsertIncomeSources(
     .upsert(payload, { onConflict: "user_id,source_key" });
 
   if (error && isMissingColumnError(error)) {
-    const fallbackPayload = payload.map(({ income_bucket: _incomeBucket, ...row }) => row);
+    const fallbackPayload = payload.map(
+      ({
+        income_bucket: _incomeBucket,
+        reference_transaction_id: _referenceTransactionId,
+        reference_category_id: _referenceCategoryId,
+        reference_category_path: _referenceCategoryPath,
+        reference_label: _referenceLabel,
+        reference_source_type: _referenceSourceType,
+        ...row
+      }) => row,
+    );
     error = (
       await supabase
         .from("forecast_income_sources")
@@ -708,13 +765,13 @@ export async function enrichTransactionAnalysis(
     userId,
   );
 
-  const categoryMap = await getCategoryMetaMap(userId);
+  const { categoryMetaMap, categoryById } = await getCategoryMaps(userId);
   const updates: TransactionAnalysisUpdate[] = [];
   const incomeCollector = new Map<string, ForecastIncomeSource>();
 
   for (const tx of currentRows) {
-    const update = buildAnalysisUpdate(tx, categoryMap, allWindowTransactions);
-    mergeIncomeSources(tx, update, categoryMap, incomeCollector);
+    const update = buildAnalysisUpdate(tx, categoryMetaMap, allWindowTransactions);
+    mergeIncomeSources(tx, update, categoryMetaMap, categoryById, incomeCollector);
     if (!updateChanged(tx, update)) continue;
     updates.push(update);
   }
