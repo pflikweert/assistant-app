@@ -3,8 +3,10 @@ import {
   FinanceInsightCard,
   type FinanceInsightCardType,
 } from "@/components/ui/finance-insight-card";
+import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
 import { FinanceForecastSummaryCard } from "@/components/ui/finance-forecast-summary-card";
+import { FinanceCategorySummaryCard } from "@/components/ui/finance-category-summary-card";
 import { FinanceMonthSelector } from "@/components/ui/finance-month-selector";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
@@ -37,6 +39,7 @@ import {
   buildInsightsMonthContextSummary,
   type InsightsForecastSummary,
 } from "@/services/insights-month-context";
+import { buildInsightsCategorySummary } from "@/services/insights-category-summary";
 import { buildInsightsUpcomingMoments } from "@/services/insights-upcoming-moments";
 import { supabase } from "@/services/supabase";
 import {
@@ -49,7 +52,7 @@ import type { BudgetPlanComputation } from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 type InsightSignals = {
   all: InsightsSignalTransaction[];
@@ -152,6 +155,7 @@ export default function InsightsScreen() {
     ForecastTimelineEventRecord[]
   >([]);
   const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
+  const [allCategoriesOpen, setAllCategoriesOpen] = React.useState(false);
 
   const selectedMonth = React.useMemo(
     () =>
@@ -185,6 +189,25 @@ export default function InsightsScreen() {
         selectedMonth,
       }),
     [forecast, selectedMonth],
+  );
+  const categorySummary = React.useMemo(
+    () =>
+      buildInsightsCategorySummary({
+        selectedMonth,
+        budgetPlan,
+        currentMonthTransactions: insightSignals.currentMonth,
+      }),
+    [budgetPlan, insightSignals.currentMonth, selectedMonth],
+  );
+  const allCategoriesSummary = React.useMemo(
+    () =>
+      buildInsightsCategorySummary({
+        selectedMonth,
+        budgetPlan,
+        currentMonthTransactions: insightSignals.currentMonth,
+        maxRows: null,
+      }),
+    [budgetPlan, insightSignals.currentMonth, selectedMonth],
   );
   const upcomingMoments = React.useMemo(
     () =>
@@ -599,6 +622,25 @@ export default function InsightsScreen() {
               <FinanceUpcomingMomentsCard items={upcomingMoments} />
             </View>
           ) : null}
+
+          <View style={styles.sectionBlock}>
+            <FinanceSectionHeader title="Waar gaat het meeste geld naartoe?" />
+            <FinanceCategorySummaryCard model={categorySummary} />
+            {categorySummary.rows.length > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setAllCategoriesOpen(true)}
+                style={({ pressed }) => [
+                  styles.showAllButton,
+                  pressed ? styles.showAllButtonPressed : null,
+                ]}
+              >
+                <Text style={styles.showAllButtonText}>
+                  Toon alle hoofdcategorieën
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       </ScrollView>
 
@@ -612,6 +654,23 @@ export default function InsightsScreen() {
           setMonthPickerOpen(false);
         }}
       />
+
+      <FinanceBottomSheetShell
+        visible={allCategoriesOpen}
+        title="Alle hoofdcategorieën"
+        subtitle="De volledige verdeling voor deze maand"
+        onClose={() => setAllCategoriesOpen(false)}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.sheetScroll}
+        >
+          <FinanceCategorySummaryCard
+            model={allCategoriesSummary}
+            showHeader={false}
+          />
+        </ScrollView>
+      </FinanceBottomSheetShell>
     </View>
   );
 }
@@ -653,5 +712,25 @@ const styles = StyleSheet.create({
   },
   insightsList: {
     gap: 10,
+  },
+  showAllButton: {
+    marginTop: 14,
+    borderRadius: 18,
+    backgroundColor: "#f0f1f2",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: "center",
+  },
+  showAllButtonPressed: {
+    opacity: 0.88,
+  },
+  showAllButtonText: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  sheetScroll: {
+    paddingBottom: 12,
   },
 });

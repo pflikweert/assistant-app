@@ -95,6 +95,7 @@ const fmt = new Intl.NumberFormat("nl-NL", {
 });
 
 const SEGMENTS = [
+  { key: "new", label: "Nieuw" },
   { key: "week", label: "Week" },
   { key: "month", label: "Maand" },
   { key: "manage", label: "Beheer" },
@@ -710,7 +711,7 @@ export default function BudgetScreen() {
     [],
   );
 
-  const [segment, setSegment] = React.useState<SegmentKey>("week");
+  const [segment, setSegment] = React.useState<SegmentKey>("new");
   const [selectedMonthKey, setSelectedMonthKey] = React.useState(
     getCurrentMonthKey(),
   );
@@ -809,7 +810,7 @@ export default function BudgetScreen() {
     const raw = Array.isArray(routeParams.segment)
       ? routeParams.segment[0]
       : routeParams.segment;
-    if (raw === "week" || raw === "month" || raw === "manage") {
+    if (raw === "new" || raw === "week" || raw === "month" || raw === "manage") {
       return raw as SegmentKey;
     }
     return null;
@@ -1605,6 +1606,14 @@ export default function BudgetScreen() {
   }, [budgetModeDraft, budgetPlan]);
 
   const budgetHeroCopy = React.useMemo(() => {
+    if (segment === "new") {
+      return {
+        eyebrow: "Budget",
+        title: "Nog geen inhoud",
+        subtitle: "Deze tijdelijke tab is standaard geselecteerd.",
+      };
+    }
+
     if (segment === "week") {
       return {
         eyebrow: focusWeek?.isCurrentWeek ? "Weeksturing" : "Weekruimte",
@@ -2662,6 +2671,15 @@ export default function BudgetScreen() {
                     </View>
                   ) : null}
                 </>
+              ) : null}
+
+              {segment === "new" ? (
+                <View style={styles.card}>
+                  <Text style={styles.sectionTitle}>Nog geen inhoud</Text>
+                  <Text style={styles.supportText}>
+                    Deze tijdelijke tab is standaard geselecteerd en wordt later ingevuld.
+                  </Text>
+                </View>
               ) : null}
 
               {segment === "month" ? (
