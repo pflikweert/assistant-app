@@ -31,6 +31,7 @@ export function BudgetCategoryProgressRow({
   onPress,
   showChevron = false,
   chevronExpanded = false,
+  hideAmountMeta = false,
   style,
 }: {
   label: string;
@@ -41,6 +42,7 @@ export function BudgetCategoryProgressRow({
   onPress?: () => void;
   showChevron?: boolean;
   chevronExpanded?: boolean;
+  hideAmountMeta?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const progress = Number.isFinite(utilization)
@@ -89,9 +91,11 @@ export function BudgetCategoryProgressRow({
 
       <RiskProgressBar progress={progress} tone={tone} style={styles.track} />
 
-      <Text style={styles.amountMeta}>
-        {fmt.format(actual)} van {fmt.format(budget)}
-      </Text>
+      {hideAmountMeta ? null : (
+        <Text style={styles.amountMeta}>
+          {fmt.format(actual)} van {fmt.format(budget)}
+        </Text>
+      )}
     </>
   );
 

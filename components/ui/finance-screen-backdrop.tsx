@@ -6,31 +6,19 @@ type FinanceScreenBackdropProps = {
 };
 
 const HORIZONTAL_GRID_LINES = [
-  "8%",
-  "16%",
-  "24%",
-  "32%",
-  "40%",
-  "48%",
-  "56%",
-  "64%",
-  "72%",
-  "80%",
-  "88%",
+  "12%",
+  "28%",
+  "44%",
+  "60%",
+  "76%",
 ];
 
 const VERTICAL_GRID_LINES = [
-  "8%",
-  "16%",
-  "24%",
-  "32%",
-  "40%",
+  "12%",
+  "30%",
   "48%",
-  "56%",
-  "64%",
-  "72%",
-  "80%",
-  "88%",
+  "66%",
+  "84%",
 ];
 
 export function FinanceScreenBackdrop({
@@ -123,14 +111,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 1,
-    backgroundColor: "rgba(62,92,142,0.03)",
+    backgroundColor: "rgba(62,92,142,0.02)",
   },
   gridVertical: {
     position: "absolute",
     top: 0,
     bottom: 0,
     width: 1,
-    backgroundColor: "rgba(62,92,142,0.03)",
+    backgroundColor: "rgba(62,92,142,0.02)",
   },
   techLineLeft: {
     position: "absolute",
@@ -138,7 +126,7 @@ const styles = StyleSheet.create({
     left: "6%",
     width: "22%",
     height: 1,
-    backgroundColor: "rgba(108,139,190,0.10)",
+    backgroundColor: "rgba(108,139,190,0.06)",
   },
   techLineRight: {
     position: "absolute",
@@ -146,7 +134,7 @@ const styles = StyleSheet.create({
     right: "7%",
     width: "26%",
     height: 1,
-    backgroundColor: "rgba(108,139,190,0.10)",
+    backgroundColor: "rgba(108,139,190,0.06)",
   },
   techLineDiagA: {
     position: "absolute",
@@ -154,7 +142,7 @@ const styles = StyleSheet.create({
     left: "-8%",
     width: "42%",
     height: 1,
-    backgroundColor: "rgba(108,139,190,0.06)",
+    backgroundColor: "rgba(108,139,190,0.04)",
     transform: [{ rotate: "-18deg" }],
   },
   techLineDiagB: {
@@ -163,7 +151,7 @@ const styles = StyleSheet.create({
     right: "-10%",
     width: "46%",
     height: 1,
-    backgroundColor: "rgba(108,139,190,0.05)",
+    backgroundColor: "rgba(108,139,190,0.035)",
     transform: [{ rotate: "-16deg" }],
   },
   backdropGlowTop: {

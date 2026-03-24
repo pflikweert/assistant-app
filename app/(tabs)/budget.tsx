@@ -1,5 +1,19 @@
 import { BudgetAmountSlider } from "@/components/budget-amount-slider";
 import { BudgetCategoryProgressRow } from "@/components/budget-category-progress-row";
+import {
+  BudgetMonthBreakdownCard,
+  type BudgetMonthBreakdownRow,
+} from "@/components/budget-month-breakdown-card";
+import {
+  BudgetWeekBreakdownModal,
+  type BudgetWeekBreakdownRow,
+} from "@/components/budget-week-breakdown-modal";
+import {
+  BudgetPressureList,
+  type BudgetPressureItem,
+} from "@/components/budget-pressure-list";
+import { BudgetMonthSummaryCard } from "@/components/budget-month-summary-card";
+import { BudgetWeekRhythmCard } from "@/components/budget-week-rhythm-card";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { FinColors } from "@/constants/theme";
@@ -18,7 +32,6 @@ import {
   resolveIncludedIncomePreview,
 } from "@/services/budget-plan";
 import {
-  buildWeekAttentionRows,
   getBudgetCategoryDisplayLabel,
   VARIABLE_BUDGET_BREAKDOWN_KEYS,
   type VariableBudgetCategoryKey,
@@ -30,7 +43,6 @@ import {
   getMonthVariableBudgetUsageText,
   getMonthVariableBudgetSnapshot,
   getWeekBudgetSnapshot,
-  getWeekTempoMessage,
   type BudgetRiskTone,
 } from "@/services/budget-risk";
 import {
@@ -96,7 +108,6 @@ const fmt = new Intl.NumberFormat("nl-NL", {
 
 const SEGMENTS = [
   { key: "new", label: "Nieuw" },
-  { key: "week", label: "Week" },
   { key: "month", label: "Maand" },
   { key: "manage", label: "Beheer" },
 ] as const;
@@ -693,6 +704,125 @@ function getPositiveLine(plan: BudgetPlanComputation | null) {
   return plan.coachReport.sections.strengths[0] || null;
 }
 
+function getBudgetMonthSummaryStatusLabel(
+  snapshot: ReturnType<typeof getMonthVariableBudgetSnapshot>,
+) {
+  if (snapshot.state === "no_data") return "Nog geen data";
+  if (snapshot.state === "no_budget") return "Nog geen variabel budget";
+  if (snapshot.tone === "good") return "Op koers";
+  if (snapshot.tone === "watch") return "Let op";
+  return "Onder druk";
+}
+
+function getBudgetWeekRhythmStatusLabel(
+  snapshot: ReturnType<typeof getWeekBudgetSnapshot>,
+) {
+  if (snapshot.state === "no_data") return "Nog geen weekdata";
+  if (snapshot.tone === "good") return "Op koers";
+  if (snapshot.tone === "watch") return "Let op";
+  if (snapshot.tone === "critical") return "Boven tempo";
+  return "Nog geen weekdata";
+}
+
+function buildBudgetMonthBreakdownItems(
+  plan: BudgetPlanComputation | null,
+): BudgetMonthBreakdownRow[] {
+  if (!plan) return [];
+
+  return [
+    {
+      key: "income",
+      label: "Inkomend",
+      description: "deze maand",
+      amount: Math.max(Math.round(plan.flowSummary.expectedIncomeMonthly), 0),
+      icon: "account-balance-wallet",
+    },
+    {
+      key: "fixed_costs",
+      label: "Vaste lasten",
+      description: "vast gepland",
+      amount: Math.max(Math.round(plan.flowSummary.fixedCostsBudget), 0),
+      icon: "home",
+    },
+    {
+      key: "subscriptions",
+      label: "Abonnementen",
+      description: "terugkerende kosten",
+      amount: Math.max(Math.round(plan.flowSummary.subscriptionsBudget), 0),
+      icon: "subscriptions",
+    },
+    {
+      key: "savings",
+      label: "Sparen",
+      description: "doel deze maand",
+      amount: Math.max(Math.round(plan.flowSummary.appliedSavingsTarget), 0),
+      icon: "savings",
+    },
+    {
+      key: "variable",
+      label: "Variabele ruimte",
+      description: "vrij te besteden",
+      amount: Math.max(Math.round(plan.flowSummary.variableBudget), 0),
+      icon: "shopping-bag",
+    },
+  ];
+}
+
+function getBudgetPressureIconName(categoryKey: BudgetCategoryKey) {
+  if (categoryKey === "fixed_costs") return "home" as const;
+  if (categoryKey === "subscriptions") return "subscriptions" as const;
+  if (categoryKey === "savings_target") return "savings" as const;
+  return getVariableCategoryIconName(categoryKey);
+}
+
+function buildBudgetPressureItems(
+  plan: BudgetPlanComputation | null,
+): BudgetPressureItem[] {
+  if (!plan) return [];
+
+  const severityWeight: Record<"critical" | "warning", number> = {
+    critical: 2,
+    warning: 1,
+  };
+
+  const seenCategory = new Set<BudgetCategoryKey>();
+  const mapped = plan.warnings
+    .filter(
+      (warning) =>
+        warning.severity === "critical" || warning.severity === "warning",
+    )
+    .sort((left, right) => {
+      const severityDiff =
+        severityWeight[right.severity] - severityWeight[left.severity];
+      if (severityDiff !== 0) return severityDiff;
+      return right.utilization - left.utilization;
+    })
+    .filter((warning) => {
+      if (seenCategory.has(warning.categoryKey)) return false;
+      seenCategory.add(warning.categoryKey);
+      return true;
+    })
+    .slice(0, 4);
+
+  return mapped.map((warning) => {
+    const label = getBudgetCategoryDisplayLabel(warning.categoryKey);
+    const title =
+      warning.utilization >= 1
+        ? `${label} boven tempo`
+        : warning.severity === "critical"
+          ? `${label} onder druk`
+          : `${label} loopt op`;
+
+    return {
+      id: `${warning.categoryKey}:${warning.severity}:${warning.message}`,
+      title,
+      description: warning.message,
+      severity: warning.severity === "critical" ? "critical" : "watch",
+      icon: getBudgetPressureIconName(warning.categoryKey),
+    };
+  });
+}
+
 export default function BudgetScreen() {
   const router = useRouter();
   const routeParams = useLocalSearchParams<{
@@ -810,7 +940,7 @@ export default function BudgetScreen() {
     const raw = Array.isArray(routeParams.segment)
       ? routeParams.segment[0]
       : routeParams.segment;
-    if (raw === "new" || raw === "week" || raw === "month" || raw === "manage") {
+    if (raw === "new" || raw === "month" || raw === "manage") {
       return raw as SegmentKey;
     }
     return null;
@@ -1034,7 +1164,6 @@ export default function BudgetScreen() {
     [budgetPlan],
   );
   const monthProgress = monthBudgetSnapshot.progress;
-  const focusWeekRiskTone = focusWeekSnapshot.tone;
   const monthRiskTone = monthBudgetSnapshot.tone;
 
   const editableBudgetRows = React.useMemo(() => {
@@ -1605,64 +1734,15 @@ export default function BudgetScreen() {
     };
   }, [budgetModeDraft, budgetPlan]);
 
-  const budgetHeroCopy = React.useMemo(() => {
-    if (segment === "new") {
-      return {
-        eyebrow: "Budget",
-        title: "Nog geen inhoud",
-        subtitle: "Deze tijdelijke tab is standaard geselecteerd.",
-      };
-    }
-
-    if (segment === "week") {
-      return {
-        eyebrow: focusWeek?.isCurrentWeek ? "Weeksturing" : "Weekruimte",
-        title:
-          focusWeek == null
-            ? "Nog geen weekdata"
-            : focusWeek.remaining >= 0
-              ? "Je ligt op koers"
-              : "Let op: je loopt achter",
-        subtitle: focusWeek
-          ? getWeekTempoMessage(focusWeek)
-          : "Bekijk het tempo van je huidige week.",
-      };
-    }
-
-    if (segment === "month") {
-      return {
-        eyebrow: "Maandsturing",
-        title:
-          monthlyRemaining == null
-            ? "Nog geen maanddata"
-            : monthlyRemaining >= 0
-              ? "Maand op schema"
-              : "Let op: maand staat onder druk",
-        subtitle:
-          monthSpent == null || !budgetPlan
-            ? "Maandsturing verschijnt zodra budgetdata beschikbaar is."
-            : getMonthVariableBudgetUsageText(monthBudgetSnapshot, fmt),
-      };
-    }
-
-    return {
-      eyebrow: "Budgetbeheer",
-      title: budgetPlan == null ? "Nog geen data" : "Budget beheren",
-      subtitle: budgetPlan
-        ? draftBudgetAllocationSummary.isOverAllocated
-          ? "Je planning ligt boven je inkomend budget."
-          : "Je planning past binnen je inkomend budget."
-        : "Pas je maandbudget, inkomstenbasis en verdeling aan zodra de data geladen is.",
-    };
-  }, [
-    budgetPlan,
-    draftBudgetAllocationSummary.isOverAllocated,
-    focusWeek,
-    monthBudgetSnapshot,
-    monthSpent,
-    monthlyRemaining,
-    segment,
-  ]);
+  const budgetHeroCopy = React.useMemo(
+    () => ({
+      eyebrow: "Budget",
+      title: "Grip op je budget",
+      subtitle:
+        "Zie in een oogopslag je weektempo, maandruimte en waar je kunt bijsturen.",
+    }),
+    [],
+  );
 
   const resolveWeekSpendBreakdown = React.useCallback(
     (week: BudgetWeekPlanRow | null) => {
@@ -1730,23 +1810,27 @@ export default function BudgetScreen() {
     [budgetPlan],
   );
 
-  const focusWeekSpendBreakdown = React.useMemo(
-    () => resolveWeekSpendBreakdown(focusWeek),
-    [focusWeek, resolveWeekSpendBreakdown],
-  );
-
-  const weekAttentionRows = React.useMemo(() => {
-    return buildWeekAttentionRows({
-      focusWeek,
-      spendBreakdown: focusWeekSpendBreakdown,
-      weekBudgetByMainCategory: resolveWeekBudgetByMainCategory(focusWeek),
-    });
-  }, [focusWeek, focusWeekSpendBreakdown, resolveWeekBudgetByMainCategory]);
-
   const selectedWeekBudgetByMainCategory = React.useMemo(() => {
     if (!selectedWeekDetail) return new Map<string, number>();
     return resolveWeekBudgetByMainCategory(selectedWeekDetail.week);
   }, [resolveWeekBudgetByMainCategory, selectedWeekDetail]);
+  const isWeekSummaryModal = selectedWeekDetail != null && segment === "new";
+  const selectedWeekSummaryItems = React.useMemo((): BudgetWeekBreakdownRow[] => {
+    if (!selectedWeekDetail) return [];
+
+    return selectedWeekDetail.spend.categories
+      .map((category) => {
+        const totalBudget = selectedWeekBudgetByMainCategory.get(category.key) || 0;
+        return {
+          key: category.key,
+          label: category.label,
+          iconName: getVariableCategoryIconName(category.key),
+          usedAmount: category.amount,
+          totalBudget,
+        };
+      })
+      .filter((item) => item.usedAmount > 0 || item.totalBudget > 0);
+  }, [selectedWeekBudgetByMainCategory, selectedWeekDetail]);
 
   const detailItems = React.useMemo(() => {
     if (!budgetPlan || !detailSection) return [];
@@ -2556,130 +2640,45 @@ export default function BudgetScreen() {
               ))}
             </View>
             <View style={styles.mainStack}>
-              {segment === "week" ? (
+              {segment === "new" ? (
                 <>
-                  <View style={styles.heroCard}>
-                <Text style={styles.eyebrow}>
-                  {focusWeek?.isCurrentWeek ? "Nog vrij te besteden" : "Weekruimte"}
-                </Text>
-                <Text style={styles.heroValue}>
-                  {focusWeek == null
-                    ? "Nog geen data"
-                    : fmt.format(Math.max(focusWeek.remaining, 0))}
-                </Text>
-                <View
-                  style={[
-                    styles.statusChip,
-                    getRiskStyle(focusWeekRiskTone).chip,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.statusChipText,
-                      getRiskStyle(focusWeekRiskTone).text,
-                    ]}
-                  >
-                    {focusWeekSnapshot.label}
-                  </Text>
-                </View>
-                <Text style={styles.heroSupport}>
-                  {focusWeek
-                    ? `${fmt.format(focusWeek.actual)} van ${fmt.format(focusWeek.budget)} gebruikt`
-                    : "Weekbudget verschijnt zodra er data is."}
-                </Text>
-                <RiskProgressBar
-                  progress={weekProgress}
-                  tone={focusWeekRiskTone}
-                  style={styles.progressTrack}
-                />
-                {focusWeek ? (
-                  <Text style={styles.heroMeta}>
-                    {formatBudgetWeekLabel(focusWeek)} · {formatWeekRangeLabel(focusWeek)}
-                  </Text>
-                ) : null}
-                {focusWeek ? (
-                  <Text style={styles.heroHint}>
-                    {getWeekTempoMessage(focusWeek)}
-                  </Text>
-                ) : null}
-                {focusWeek ? (
-                  <Pressable
-                    style={styles.inlineLinkButton}
-                    onPress={() => openWeekDetail(focusWeek.weekNumber)}
-                  >
-                    <Text style={styles.inlineLinkText}>Open weekdetail</Text>
-                  </Pressable>
-                ) : null}
-                  </View>
+                  <BudgetWeekRhythmCard
+                    title="Deze week"
+                    periodLabel={
+                      focusWeek ? formatWeekRangeLabel(focusWeek) : "Nog geen weekdata"
+                    }
+                    status={getBudgetWeekRhythmStatusLabel(focusWeekSnapshot)}
+                    remainingAmount={Math.max(focusWeekSnapshot.remaining || 0, 0)}
+                    spentAmount={Math.max(focusWeekSnapshot.spent || 0, 0)}
+                    targetAmount={Math.max(focusWeekSnapshot.budget || 0, 0)}
+                    progress={weekProgress}
+                    tone={focusWeekSnapshot.tone}
+                    onPress={
+                      focusWeek
+                        ? () => openWeekDetail(focusWeek.weekNumber)
+                        : undefined
+                    }
+                  />
 
-                  <View style={styles.card}>
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.sectionTitle}>Categorieen met aandacht</Text>
-                  <Text style={styles.sectionHelper}>Waar je deze week het eerst op stuurt</Text>
-                </View>
-                {weekAttentionRows.length ? (
-                  weekAttentionRows.slice(0, 4).map((row) => (
-                    <View key={row.categoryKey} style={styles.categoryRow}>
-                      <View style={styles.categoryListMain}>
-                        <View style={styles.categoryListIconBubble}>
-                          <AppIcon
-                            name={getVariableCategoryIconName(row.categoryKey)}
-                            size={18}
-                            color={FinColors.textPrimary}
-                            variant="outlined"
-                          />
-                        </View>
-                        <View style={styles.categoryMain}>
-                          <Text style={styles.categoryLabel}>{row.label}</Text>
-                          <Text style={styles.categoryMeta}>
-                            {fmt.format(row.weeklyActual)} van {fmt.format(row.weeklyBudget)}
-                          </Text>
-                        </View>
-                      </View>
-                      <View
-                        style={[
-                          styles.statusChip,
-                          getRiskStyle(row.tone).chip,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusChipText,
-                            getRiskStyle(row.tone).text,
-                          ]}
-                        >
-                          {row.statusLabel}
-                        </Text>
-                      </View>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.sectionHelper}>
-                    Nog geen variabele uitgaven in deze week.
-                  </Text>
-                )}
-                  </View>
+                  <BudgetMonthSummaryCard
+                    title="Deze maand"
+                    status={getBudgetMonthSummaryStatusLabel(monthBudgetSnapshot)}
+                    remainingAmount={Math.max(monthBudgetSnapshot.remaining || 0, 0)}
+                    usedAmount={Math.max(monthBudgetSnapshot.spent || 0, 0)}
+                    totalVariableAmount={Math.max(monthBudgetSnapshot.budget || 0, 0)}
+                    tone={monthBudgetSnapshot.tone}
+                  />
 
-                  {positiveLine ? (
-                    <View style={styles.positiveCard}>
-                      <AppIcon
-                        name="wb-sunny"
-                        size={18}
-                        color={FinColors.warningText}
-                      />
-                      <Text style={styles.positiveText}>{positiveLine}</Text>
-                    </View>
+                  {budgetPlan ? (
+                    <BudgetMonthBreakdownCard
+                      items={buildBudgetMonthBreakdownItems(budgetPlan)}
+                    />
+                  ) : null}
+
+                  {budgetPlan ? (
+                    <BudgetPressureList items={buildBudgetPressureItems(budgetPlan)} />
                   ) : null}
                 </>
-              ) : null}
-
-              {segment === "new" ? (
-                <View style={styles.card}>
-                  <Text style={styles.sectionTitle}>Nog geen inhoud</Text>
-                  <Text style={styles.supportText}>
-                    Deze tijdelijke tab is standaard geselecteerd en wordt later ingevuld.
-                  </Text>
-                </View>
               ) : null}
 
               {segment === "month" ? (
@@ -3489,10 +3488,22 @@ export default function BudgetScreen() {
         </View>
       </Modal>
 
+      <BudgetWeekBreakdownModal
+        visible={isWeekSummaryModal}
+        onClose={closeWeekDetail}
+        title={selectedWeekDetail ? formatBudgetWeekLabel(selectedWeekDetail.week) : "Deze week"}
+        periodLabel={
+          selectedWeekDetail ? formatWeekRangeLabel(selectedWeekDetail.week) : "Weekoverzicht"
+        }
+        totalSpent={Math.max(selectedWeekDetail?.week.actual || 0, 0)}
+        totalBudget={Math.max(selectedWeekDetail?.week.budget || 0, 0)}
+        items={selectedWeekSummaryItems}
+      />
+
       <Modal
         animationType="slide"
         transparent
-        visible={selectedWeekDetail != null}
+        visible={selectedWeekDetail != null && !isWeekSummaryModal}
         onRequestClose={closeWeekDetail}
       >
         <View style={styles.sheetBackdrop}>
