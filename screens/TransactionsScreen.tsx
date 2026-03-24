@@ -449,7 +449,7 @@ export default function TransactionsScreen({
         innerStyle={styles.heroInner}
         eyebrow="Transactie overzicht"
         title="Transacties"
-        subtitle="Recent overzicht van al je uitgaven en inkomsten, georganiseerd op tijd en categorie."
+        subtitle="Transacties per periode en categorie."
         titleStyle={styles.heroTitle}
         subtitleStyle={styles.heroCopy}
       />
