@@ -623,10 +623,6 @@ export default function TransactionsScreen({
         }
       />
 
-      <TouchableOpacity style={styles.fabButton} onPress={() => router.push("/csv-import")} activeOpacity={0.88}>
-        <AppIcon name="add" size={28} color={FinColors.bgCard} variant="outlined" />
-      </TouchableOpacity>
-
       {showQuickMenu ? (
         <FinanceQuickMenu
           activeKey="transactions"
@@ -1105,22 +1101,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     color: FinColors.textMuted,
-  },
-  fabButton: {
-    position: "absolute",
-    right: 22,
-    bottom: 172,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: FinColors.warningText,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
   },
   bottomNavShell: {
     position: "absolute",
