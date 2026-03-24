@@ -799,11 +799,13 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: "transparent",
+    overflow: "hidden",
   },
   rootWide: {
     alignItems: "center",
   },
   list: {
+    flex: 1,
     width: "100%",
     alignSelf: "stretch",
   },
