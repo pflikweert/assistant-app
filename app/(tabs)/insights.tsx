@@ -1,9 +1,9 @@
 import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
-import { MonthPickerSheet } from "@/components/month-picker-sheet";
 import {
   FinanceInsightCard,
   type FinanceInsightCardType,
 } from "@/components/ui/finance-insight-card";
+import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
 import { FinanceForecastSummaryCard } from "@/components/ui/finance-forecast-summary-card";
 import { FinanceMonthSelector } from "@/components/ui/finance-month-selector";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
@@ -602,14 +602,12 @@ export default function InsightsScreen() {
         </View>
       </ScrollView>
 
-      <MonthPickerSheet
+      <FinanceMonthSelectorModal
         visible={monthPickerOpen}
-        title="Kies maand"
-        helper="Historie plus 6 maanden vooruit"
-        options={monthOptions}
+        monthOptions={monthOptions}
         selectedKey={selectedMonth.key}
         onClose={() => setMonthPickerOpen(false)}
-        onSelect={(key) => {
+        onConfirm={(key) => {
           setSelectedMonthKey(key);
           setMonthPickerOpen(false);
         }}
