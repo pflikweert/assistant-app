@@ -102,6 +102,36 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
   - maak een nieuwe headercomponent alleen als de interaction of context echt fundamenteel afwijkt
   - houd topbarpositie en hero-offset consistent binnen dezelfde schermfamilie
 
+### Patroon: Modal Shell / Bottom Sheet
+
+- Naam: Gedeelde modal-shell voor selectie en beheer
+- Doel: modals, sheets en selectorflows hetzelfde laten aanvoelen als één app-familie
+- Waar toepasbaar in de app: maandselectie, filterselectie, detail-acties, utility flows, bevestigingsschermen
+- Shared implementation: gebruik `components/ui/finance-bottom-sheet-shell.tsx` als basis voor bottomsheets en selectormodals.
+- Structuur / opbouw:
+  - full-screen modal met gedimde backdrop
+  - afgeronde sheet vanaf de onderrand
+  - drag handle
+  - titel links, close-knop rechts
+  - body met scrollbare inhoud
+  - optionele footer met primaire CTA
+- Belangrijkste visuele regels:
+  - sheet-achtergrond is licht en zacht (`#f5f6f7` als default)
+  - close-knop en lichte rails gebruiken `#eff1f2`
+  - backdrop is donker genoeg om focus te geven, maar niet zwart
+  - modal mag premium aanvoelen zonder zware panelen of harde randen
+- Mobile-first aandachtspunten:
+  - inhoud moet scrollbaar blijven bij kleine schermhoogtes
+  - selecteerbare grids en quick actions moeten touch targets van voldoende formaat houden
+  - 3-koloms selectierijen blijven 3-koloms, ook op kleine telefoons
+- Web/native aandachtspunten:
+  - op web mag de backdrop subtiel bluren als ondersteuning
+  - op native moet de modal ook zonder blur dezelfde hiërarchie en rust houden
+- Componentrichtlijn:
+  - modal shell is de plek voor backdrop, sheet, handle, close en footer
+  - inhoudscomponenten bouwen bovenop deze shell en bepalen alleen hun eigen selectie- of layoutlogica
+  - nieuwe modalflows mogen geen eigen backdrop- of sheet-implementatie dupliceren als deze shell volstaat
+
 ### Patroon: Cards
 
 - Naam: Zachte informatiedragers

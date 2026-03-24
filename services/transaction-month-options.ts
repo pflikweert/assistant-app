@@ -1,5 +1,7 @@
 import { supabase } from "./supabase";
 
+export const ALL_MONTHS_KEY = "all-months";
+
 export type TransactionMonthOption = {
   key: string;
   label: string;

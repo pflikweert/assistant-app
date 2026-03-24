@@ -26,6 +26,10 @@ De focus is nu niet meer "opnieuw bouwen", maar:
   - repeat suppression moet rekening houden met activiteit (zoals laatste transactiedatum)
   - no-data en stabiele maand tonen altijd een menselijk fallback-inzicht
 - Voor `Insights`-informatieblokken werkt een vaste verticale ritmiek van `32px` beter voor rust en scanbaarheid.
+- De nieuwe gedeelde modal-shell is nu de standaard voor selectorflows en bottom-sheet modals:
+  - backdrop, sheet, handle, close-knop en footer horen centraal in de shell
+  - modals en pickerflows bouwen daarbovenop als gedeelde inhoudscomponent
+  - nieuwe modalvarianten mogen geen losse sheet- of backdropstyling meer dupliceren
 - Forecast-samenvatting werkt het duidelijkst als premium card met:
   - eindsaldo als hoofdsignaal
   - statuschip
@@ -49,6 +53,7 @@ Doel: één vaste app-basis waar alle schermen op landen.
 - backdrop- en hero-shells centraliseren
 - quick menu en bottom navigation één keer stylen
 - modal headers en detail headers hergebruiken
+- modal shells, pickerflows en bevestigingspanelen centraliseren
 - vaste contentkolom en screen padding gelijk trekken
 - hero/topbar-offset per shellfamilie gelijk trekken (gebruik `Transactions` als referentie voor hoofdschermen)
 

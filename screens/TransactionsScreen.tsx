@@ -5,6 +5,9 @@ import {
 } from "@/components/navigation/finance-quick-menu";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
+import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
+import { FinanceCircleIconButton } from "@/components/ui/finance-circle-icon-button";
+import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
@@ -19,6 +22,7 @@ import {
 import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import {
+  ALL_MONTHS_KEY,
   getCurrentMonthKey,
   getMonthOptionByKey,
   listTransactionMonthOptions,
@@ -30,8 +34,6 @@ import { useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
-  Modal,
-  Pressable,
   ScrollView,
   SectionList,
   StyleSheet,
@@ -44,7 +46,6 @@ import {
 
 const PAGE_SIZE = 20;
 const CONTENT_MAX_WIDTH = 1040;
-const ALL_MONTHS_KEY = "all-months";
 
 function normalizeSearch(value: string) {
   return value
@@ -76,13 +77,6 @@ function formatSectionDateLabel(value: string) {
     weekday: "long",
     day: "numeric",
     month: "long",
-  });
-}
-
-function formatMonthHeading(date = new Date()) {
-  return date.toLocaleDateString("nl-NL", {
-    month: "long",
-    year: "numeric",
   });
 }
 
@@ -140,6 +134,7 @@ export default function TransactionsScreen({
   const [searchInput, setSearchInput] = React.useState("");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [filterModalOpen, setFilterModalOpen] = React.useState(false);
+  const [periodModalOpen, setPeriodModalOpen] = React.useState(false);
   const fallbackMonthOption = React.useMemo(
     () => getMonthOptionByKey(getCurrentMonthKey())!,
     [],
@@ -366,16 +361,20 @@ export default function TransactionsScreen({
     if (counterpartyFilter) chips.push(counterpartyFilter);
     if (analysisCategoryFilter) chips.push(analysisCategoryFilter);
     if (categoryKeyFilter) chips.push(categoryKeyFilter.replace(/_/g, " "));
-    if (monthStartFilter) chips.push(formatMonthHeading(new Date(`${monthStartFilter}T00:00:00.000Z`)));
     return chips;
-  }, [analysisCategoryFilter, categoryKeyFilter, counterpartyFilter, monthStartFilter]);
+  }, [analysisCategoryFilter, categoryKeyFilter, counterpartyFilter]);
 
-  const activeFilterCount = activeFilterChips.length + (searchQuery ? 1 : 0);
+  const activeFilterCount =
+    activeFilterChips.length + (searchQuery ? 1 : 0) + (activeMonthKey !== ALL_MONTHS_KEY ? 1 : 0);
 
-  const monthHeading = React.useMemo(() => {
+  const periodLabel = React.useMemo(() => {
     if (selectedMonthOption) return selectedMonthOption.label;
     return "Alle maanden";
   }, [selectedMonthOption]);
+  const periodSummaryLabel = React.useMemo(() => {
+    if (activeMonthKey === ALL_MONTHS_KEY) return "Alle maanden";
+    return selectedMonthOption?.label || "Alle maanden";
+  }, [activeMonthKey, selectedMonthOption]);
   const totalPages = React.useMemo(
     () => Math.max(1, Math.ceil(totalCount / PAGE_SIZE)),
     [totalCount],
@@ -393,7 +392,9 @@ export default function TransactionsScreen({
     setSearchInput("");
     setSearchQuery("");
     setPage(0);
-    router.replace("/transactions");
+    setPeriodModalOpen(false);
+    setFilterModalOpen(false);
+    router.replace({ pathname: "/transactions" });
   }, [router]);
 
   const handlePageChange = React.useCallback((nextPage: number) => {
@@ -467,23 +468,43 @@ export default function TransactionsScreen({
       <View style={styles.contentMax}>
         <View style={styles.filterRow}>
           <TouchableOpacity
-            style={styles.filterLauncher}
-            onPress={() => setFilterModalOpen(true)}
+            style={styles.periodLauncher}
+            onPress={() => setPeriodModalOpen(true)}
             activeOpacity={0.9}
           >
-            <View style={styles.filterLauncherMain}>
-              <AppIcon name="tune" size={18} color={FinColors.textPrimary} variant="outlined" />
-              <Text style={styles.filterLauncherText}>Filter</Text>
-            </View>
-            <Text style={styles.filterLauncherMeta} numberOfLines={1}>
-              {monthHeading}
+            <AppIcon
+              name="calendar-today"
+              size={18}
+              color={FinColors.textPrimary}
+              variant="outlined"
+            />
+            <Text style={styles.periodLauncherText} numberOfLines={1}>
+              {periodLabel}
             </Text>
+            <AppIcon
+              name="expand-more"
+              size={18}
+              color={FinColors.textSecondary}
+              variant="outlined"
+            />
+          </TouchableOpacity>
+
+          <View style={styles.filterIconWrap}>
+            <FinanceCircleIconButton
+              icon="tune"
+              onPress={() => setFilterModalOpen(true)}
+              accessibilityLabel="Filters openen"
+              size={48}
+              iconSize={18}
+              iconColor={FinColors.textPrimary}
+              style={styles.filterIconButton}
+            />
             {activeFilterCount > 0 ? (
-              <View style={styles.filterLauncherBadge}>
-                <Text style={styles.filterLauncherBadgeText}>{activeFilterCount}</Text>
+              <View style={styles.filterIconBadge}>
+                <Text style={styles.filterIconBadgeText}>{activeFilterCount}</Text>
               </View>
             ) : null}
-          </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.searchWrap}>
@@ -513,11 +534,6 @@ export default function TransactionsScreen({
           </View>
         ) : null}
 
-        <View style={styles.sectionLead}>
-          <Text style={styles.sectionLeadLabel}>
-            {activeMonthKey === ALL_MONTHS_KEY ? "Laatste transacties" : `Deze maand — ${monthHeading}`}
-          </Text>
-        </View>
       </View>
     </View>
   );
@@ -650,157 +666,118 @@ export default function TransactionsScreen({
         />
       ) : null}
 
-      <Modal
+      <FinanceBottomSheetShell
         visible={filterModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setFilterModalOpen(false)}
-      >
-        <View style={styles.filterModalOverlay}>
-          <Pressable
-            style={styles.filterModalBackdrop}
-            onPress={() => setFilterModalOpen(false)}
-          />
-          <View style={styles.filterModalCard}>
-            <View style={styles.filterModalHandle} />
-            <View style={styles.filterModalHeaderRow}>
-              <View style={styles.filterModalHeaderMain}>
-                <Text style={styles.filterModalTitle}>Filters</Text>
-                <Text style={styles.filterModalSub}>
-                  Kies een periode of bekijk welke filters nu actief zijn.
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.filterModalCloseButton}
-                onPress={() => setFilterModalOpen(false)}
-              >
-                <AppIcon name="close" size={18} color={FinColors.textSecondary} variant="outlined" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              style={styles.filterModalScroll}
-              contentContainerStyle={styles.filterModalScrollContent}
-              showsVerticalScrollIndicator={false}
+        title="Filters"
+        subtitle="Filter alleen transacties, de periode kies je apart."
+        onClose={() => setFilterModalOpen(false)}
+        bodyStyle={styles.filterModalBody}
+        footerStyle={styles.filterModalFooter}
+        footer={
+          <View style={styles.filterModalActions}>
+            <TouchableOpacity
+              style={styles.filterModalSecondaryButton}
+              onPress={() => {
+                setFilterModalOpen(false);
+                handleResetFilters();
+              }}
             >
-              <View style={styles.filterModalSection}>
-                <Text style={styles.filterModalLabel}>Periode</Text>
-                <View style={styles.filterModalField}>
-                  <View>
-                    <Text style={styles.filterModalFieldLabel}>Selectie</Text>
-                    <Text style={styles.filterModalFieldValue}>{monthHeading}</Text>
-                  </View>
-                  <AppIcon
-                    name="calendar-today"
-                    size={18}
-                    color={FinColors.warningText}
-                    variant="outlined"
-                  />
-                </View>
+              <Text style={styles.filterModalSecondaryText}>Wis filters</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.filterModalPrimaryButton}
+              onPress={() => setFilterModalOpen(false)}
+            >
+              <Text style={styles.filterModalPrimaryText}>Sluiten</Text>
+            </TouchableOpacity>
+          </View>
+        }
+      >
+        <ScrollView
+          style={styles.filterModalScroll}
+          contentContainerStyle={styles.filterModalScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.filterModalSection}>
+            <Text style={styles.filterModalLabel}>Periode</Text>
+            <View style={styles.filterModalField}>
+              <View>
+                <Text style={styles.filterModalFieldLabel}>Geselecteerd</Text>
+                <Text style={styles.filterModalFieldValue}>{periodSummaryLabel}</Text>
               </View>
-
-              <View style={styles.filterModalSection}>
-                <Text style={styles.filterModalLabel}>Snelle periodes</Text>
-                <View style={styles.filterModalChipWrap}>
-                  <TouchableOpacity
-                    style={[
-                      styles.filterModalChip,
-                      activeMonthKey === ALL_MONTHS_KEY && styles.filterModalChipActive,
-                    ]}
-                    onPress={() => handleApplyMonthFilter(ALL_MONTHS_KEY)}
-                  >
-                    <Text
-                      style={[
-                        styles.filterModalChipText,
-                        activeMonthKey === ALL_MONTHS_KEY && styles.filterModalChipTextActive,
-                      ]}
-                    >
-                      Alle maanden
-                    </Text>
-                  </TouchableOpacity>
-                  {resolvedMonthOptions.slice(0, 8).map((option) => {
-                    const selected = option.key === activeMonthKey;
-                    return (
-                      <TouchableOpacity
-                        key={option.key}
-                        style={[
-                          styles.filterModalChip,
-                          selected && styles.filterModalChipActive,
-                        ]}
-                        onPress={() => handleApplyMonthFilter(option.key)}
-                      >
-                        <Text
-                          style={[
-                            styles.filterModalChipText,
-                            selected && styles.filterModalChipTextActive,
-                          ]}
-                        >
-                          {option.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {(activeFilterChips.length || searchQuery) ? (
-                <View style={styles.filterModalSection}>
-                  <Text style={styles.filterModalLabel}>Actieve filters</Text>
-                  <View style={styles.filterModalActiveWrap}>
-                    {activeFilterChips.map((chip) => (
-                      <View key={chip} style={styles.filterModalActiveChip}>
-                        <Text style={styles.filterModalActiveChipText}>{chip}</Text>
-                      </View>
-                    ))}
-                    {searchQuery ? (
-                      <View style={styles.filterModalActiveChip}>
-                        <Text style={styles.filterModalActiveChipText}>Zoek: {searchQuery}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              ) : null}
-
-              <View style={styles.filterModalSection}>
-                <Text style={styles.filterModalLabel}>Meer</Text>
-                <TouchableOpacity
-                  style={styles.filterModalLinkCard}
-                  onPress={() => {
-                    setFilterModalOpen(false);
-                    router.push("/category-budget-groups");
-                  }}
-                >
-                  <View>
-                    <Text style={styles.filterModalLinkTitle}>Categorie-indeling</Text>
-                    <Text style={styles.filterModalLinkText}>
-                      Beheer hoe categorieen zijn opgebouwd en gegroepeerd.
-                    </Text>
-                  </View>
-                  <AppIcon name="chevron-right" size={20} color={FinColors.textSecondary} variant="outlined" />
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-
-            <View style={styles.filterModalActions}>
-              <TouchableOpacity
-                style={styles.filterModalSecondaryButton}
-                onPress={() => {
-                  setFilterModalOpen(false);
-                  handleResetFilters();
-                }}
-              >
-                <Text style={styles.filterModalSecondaryText}>Wis alles</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.filterModalPrimaryButton}
-                onPress={() => setFilterModalOpen(false)}
-              >
-                <Text style={styles.filterModalPrimaryText}>Sluiten</Text>
-              </TouchableOpacity>
+              <AppIcon
+                name="calendar-today"
+                size={18}
+                color={FinColors.textMuted}
+                variant="outlined"
+              />
             </View>
           </View>
-        </View>
-      </Modal>
+
+          {(activeFilterChips.length || searchQuery) ? (
+            <View style={styles.filterModalSection}>
+              <Text style={styles.filterModalLabel}>Actieve filters</Text>
+              <View style={styles.filterModalActiveWrap}>
+                {activeFilterChips.map((chip) => (
+                  <View key={chip} style={styles.filterModalActiveChip}>
+                    <Text style={styles.filterModalActiveChipText}>{chip}</Text>
+                  </View>
+                ))}
+                {searchQuery ? (
+                  <View style={styles.filterModalActiveChip}>
+                    <Text style={styles.filterModalActiveChipText}>Zoek: {searchQuery}</Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.filterModalSection}>
+              <Text style={styles.filterModalLabel}>Actieve filters</Text>
+              <View style={styles.filterModalField}>
+                <View>
+                  <Text style={styles.filterModalFieldLabel}>Status</Text>
+                  <Text style={styles.filterModalFieldValue}>Geen actieve filters</Text>
+                </View>
+                <AppIcon
+                  name="check-circle-outline"
+                  size={18}
+                  color={FinColors.textMuted}
+                  variant="outlined"
+                />
+              </View>
+            </View>
+          )}
+
+          <View style={styles.filterModalSection}>
+            <Text style={styles.filterModalLabel}>Meer</Text>
+            <TouchableOpacity
+              style={styles.filterModalLinkCard}
+              onPress={() => {
+                setFilterModalOpen(false);
+                router.push("/category-budget-groups");
+              }}
+            >
+              <View>
+                <Text style={styles.filterModalLinkTitle}>Categorie-indeling</Text>
+                <Text style={styles.filterModalLinkText}>
+                  Beheer hoe categorieen zijn opgebouwd en gegroepeerd.
+                </Text>
+              </View>
+              <AppIcon name="chevron-right" size={20} color={FinColors.textSecondary} variant="outlined" />
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </FinanceBottomSheetShell>
+
+      <FinanceMonthSelectorModal
+        visible={periodModalOpen}
+        monthOptions={resolvedMonthOptions}
+        selectedKey={activeMonthKey}
+        allowAllMonths
+        allMonthsLabel="Alle maanden"
+        onClose={() => setPeriodModalOpen(false)}
+        onConfirm={handleApplyMonthFilter}
+      />
     </View>
   );
 }
@@ -868,14 +845,16 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     paddingTop: 18,
   },
-  filterLauncher: {
+  periodLauncher: {
+    flex: 1,
     minHeight: 54,
-    width: "100%",
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
+    borderColor: "rgba(17,17,17,0.10)",
     backgroundColor: FinColors.bgCard,
     paddingHorizontal: 18,
     flexDirection: "row",
@@ -883,24 +862,28 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
-  filterLauncherMain: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flexShrink: 1,
-  },
-  filterLauncherText: {
+  periodLauncherText: {
     fontSize: 14,
     fontWeight: "800",
     color: FinColors.textPrimary,
-  },
-  filterLauncherMeta: {
     flex: 1,
-    textAlign: "right",
-    fontSize: 12,
-    color: FinColors.textMuted,
   },
-  filterLauncherBadge: {
+  filterIconWrap: {
+    width: 48,
+    height: 48,
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterIconButton: {
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.10)",
+  },
+  filterIconBadge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
     minWidth: 24,
     height: 24,
     paddingHorizontal: 7,
@@ -909,7 +892,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  filterLauncherBadgeText: {
+  filterIconBadgeText: {
     fontSize: 11,
     fontWeight: "800",
     color: FinColors.textPrimary,

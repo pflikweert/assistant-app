@@ -1,9 +1,10 @@
 import { AppIcon } from "@/components/ui/app-icon";
-import { FinColors, Fonts } from "@/constants/theme";
+import { FinColors } from "@/constants/theme";
 import React from "react";
 import {
   Modal,
   Pressable,
+  Platform,
   StyleSheet,
   Text,
   type StyleProp,
@@ -48,7 +49,13 @@ export function FinanceBottomSheetShell({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
+        <Pressable
+          style={[
+            styles.backdrop,
+            Platform.OS === "web" ? ({ backdropFilter: "blur(14px)" } as any) : null,
+          ]}
+          onPress={onClose}
+        />
         <View style={[styles.sheet, sheetStyle]}>
           <View style={styles.handle} />
 
@@ -96,13 +103,13 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(17,17,17,0.28)",
+    backgroundColor: "rgba(17,17,17,0.42)",
   },
   sheet: {
     maxHeight: "92%",
     borderTopLeftRadius: 34,
     borderTopRightRadius: 34,
-    backgroundColor: FinColors.bgCard,
+    backgroundColor: "#f5f6f7",
     paddingHorizontal: 24,
     paddingTop: 12,
     paddingBottom: 18,
@@ -128,11 +135,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   title: {
-    fontFamily: Fonts.serif,
     fontSize: 29,
     lineHeight: 33,
     color: FinColors.textPrimary,
-    fontWeight: "700",
+    fontWeight: "800",
     letterSpacing: -0.6,
   },
   subtitle: {
@@ -146,7 +152,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: FinColors.bgElevated,
+    backgroundColor: "#eff1f2",
   },
   closeButtonPressed: {
     opacity: 0.86,

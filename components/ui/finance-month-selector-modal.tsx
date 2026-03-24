@@ -2,6 +2,7 @@ import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-sh
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
 import {
+  ALL_MONTHS_KEY,
   getCurrentMonthKey,
   getMonthOptionByKey,
   type TransactionMonthOption,
@@ -21,6 +22,14 @@ type FinanceMonthSelectorModalProps = {
   selectedKey: string;
   onClose: () => void;
   onConfirm: (monthKey: string) => void;
+  allowAllMonths?: boolean;
+  allMonthsLabel?: string;
+};
+
+type MonthGridCell = {
+  monthIndex: number;
+  optionKey: string;
+  option: TransactionMonthOption | null;
 };
 
 const MONTH_LABELS = Array.from({ length: 12 }, (_, index) => {
@@ -44,12 +53,12 @@ export function FinanceMonthSelectorModal({
   selectedKey,
   onClose,
   onConfirm,
+  allowAllMonths = false,
+  allMonthsLabel = "Alle maanden",
 }: FinanceMonthSelectorModalProps) {
-  const availableMonthKeys = React.useMemo(
-    () => new Set(monthOptions.map((option) => option.key)),
-    [monthOptions],
-  );
   const currentMonthKey = React.useMemo(() => getCurrentMonthKey(), []);
+  const currentMonthOption = React.useMemo(() => getMonthOptionByKey(currentMonthKey), [currentMonthKey]);
+  const isAllMonthsSelected = allowAllMonths && selectedKey === ALL_MONTHS_KEY;
 
   const minYear = React.useMemo(() => {
     if (!monthOptions.length) return new Date().getFullYear();
@@ -60,28 +69,29 @@ export function FinanceMonthSelectorModal({
     return Math.max(...monthOptions.map((option) => option.year));
   }, [monthOptions]);
 
-  const selectedMonth = React.useMemo(
-    () => getMonthOptionByKey(selectedKey) || getMonthOptionByKey(currentMonthKey),
-    [currentMonthKey, selectedKey],
-  );
+  const selectedMonth = React.useMemo(() => {
+    if (isAllMonthsSelected) return null;
+    return getMonthOptionByKey(selectedKey) || getMonthOptionByKey(currentMonthKey);
+  }, [currentMonthKey, isAllMonthsSelected, selectedKey]);
 
-  const [draftKey, setDraftKey] = React.useState(
-    selectedMonth?.key || currentMonthKey,
-  );
+  const [draftKey, setDraftKey] = React.useState(selectedKey);
   const [displayYear, setDisplayYear] = React.useState(
     selectedMonth?.year || new Date().getFullYear(),
   );
 
   React.useEffect(() => {
     if (!visible) return;
+    if (allowAllMonths && selectedKey === ALL_MONTHS_KEY) {
+      setDraftKey(ALL_MONTHS_KEY);
+      setDisplayYear(new Date().getFullYear());
+      return;
+    }
     const next = getMonthOptionByKey(selectedKey) || selectedMonth;
     if (!next) return;
     setDraftKey(next.key);
     setDisplayYear(next.year);
-  }, [selectedKey, selectedMonth, visible]);
+  }, [allowAllMonths, selectedKey, selectedMonth, visible]);
 
-  const draftMonth = getMonthOptionByKey(draftKey) || selectedMonth;
-  const currentMonthOption = getMonthOptionByKey(currentMonthKey);
   const previousMonthOption = React.useMemo(() => {
     if (!currentMonthOption) return null;
     const date = new Date(`${currentMonthOption.startIso}T12:00:00.000Z`);
@@ -95,6 +105,15 @@ export function FinanceMonthSelectorModal({
   const canGoToNextYear = displayYear < maxYear;
 
   const quickButtons = [
+    ...(allowAllMonths
+      ? [
+          {
+            key: ALL_MONTHS_KEY,
+            label: allMonthsLabel,
+            monthKey: ALL_MONTHS_KEY,
+          },
+        ]
+      : []),
     {
       key: "current",
       label: "Huidige maand",
@@ -107,6 +126,27 @@ export function FinanceMonthSelectorModal({
     },
   ] as const;
 
+  const monthRows = React.useMemo(() => {
+    const rows: MonthGridCell[][] = [];
+
+    for (let monthIndex = 0; monthIndex < 12; monthIndex += 3) {
+      rows.push(
+        Array.from({ length: 3 }, (_, offset) => {
+          const currentMonthIndex = monthIndex + offset;
+          const option = resolveMonthOption(displayYear, currentMonthIndex);
+          const optionKey = option?.key || getMonthKey(displayYear, currentMonthIndex);
+          return {
+            monthIndex: currentMonthIndex,
+            optionKey,
+            option,
+          };
+        }),
+      );
+    }
+
+    return rows;
+  }, [displayYear]);
+
   return (
     <FinanceBottomSheetShell
       visible={visible}
@@ -118,7 +158,7 @@ export function FinanceMonthSelectorModal({
         <Pressable
           style={({ pressed }) => [styles.confirmButton, pressed && styles.confirmButtonPressed]}
           onPress={() => {
-            onConfirm(draftMonth?.key || selectedKey);
+            onConfirm(draftKey || selectedKey);
             onClose();
           }}
         >
@@ -133,8 +173,8 @@ export function FinanceMonthSelectorModal({
       >
         <View style={styles.quickRow}>
           {quickButtons.map((button) => {
-            const isSelected = button.monthKey === draftMonth?.key;
-            const disabled = !button.monthKey || !availableMonthKeys.has(button.monthKey);
+            const isSelected = button.monthKey === draftKey;
+            const disabled = !button.monthKey;
 
             return (
               <Pressable
@@ -142,8 +182,12 @@ export function FinanceMonthSelectorModal({
                 disabled={disabled}
                 onPress={() => {
                   if (!button.monthKey) return;
-                  const option =
-                    getMonthOptionByKey(button.monthKey) || currentMonthOption;
+                  if (button.monthKey === ALL_MONTHS_KEY) {
+                    setDraftKey(ALL_MONTHS_KEY);
+                    setDisplayYear(new Date().getFullYear());
+                    return;
+                  }
+                  const option = getMonthOptionByKey(button.monthKey) || currentMonthOption;
                   if (!option) return;
                   setDraftKey(option.key);
                   setDisplayYear(option.year);
@@ -209,42 +253,47 @@ export function FinanceMonthSelectorModal({
         </View>
 
         <View style={styles.monthGrid}>
-          {Array.from({ length: 12 }, (_, monthIndex) => {
-            const option = resolveMonthOption(displayYear, monthIndex);
-            const monthKey = option?.key || getMonthKey(displayYear, monthIndex);
-            const isAvailable = availableMonthKeys.has(monthKey);
-            const isSelected = draftMonth?.key === monthKey;
+          {monthRows.map((row, rowIndex) => (
+            <View key={`month-row-${displayYear}-${rowIndex}`} style={styles.monthGridRow}>
+              {row.map(({ monthIndex, option, optionKey }) => {
+                const isSelected = draftKey === optionKey;
+                const isCurrentMonth = option?.isCurrentMonth || optionKey === currentMonthKey;
+                const isFutureMonth =
+                  Boolean(option) &&
+                  (option!.year > currentMonthOption?.year ||
+                    (option!.year === currentMonthOption?.year &&
+                      option!.month > (currentMonthOption?.month || 0)));
 
-            return (
-              <Pressable
-                key={monthKey}
-                disabled={!isAvailable}
-                onPress={() => {
-                  if (!isAvailable) return;
-                  const next = option || getMonthOptionByKey(monthKey);
-                  if (!next) return;
-                  setDraftKey(next.key);
-                  setDisplayYear(next.year);
-                }}
-                style={({ pressed }) => [
-                  styles.monthCell,
-                  isSelected && styles.monthCellSelected,
-                  !isAvailable && styles.monthCellDisabled,
-                  pressed && isAvailable && styles.monthCellPressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.monthCellText,
-                    isSelected && styles.monthCellTextSelected,
-                    !isAvailable && styles.monthCellTextDisabled,
-                  ]}
-                >
-                  {MONTH_LABELS[monthIndex]}
-                </Text>
-              </Pressable>
-            );
-          })}
+                return (
+                  <Pressable
+                    key={optionKey}
+                    onPress={() => {
+                      const next = option || getMonthOptionByKey(optionKey);
+                      if (!next) return;
+                      setDraftKey(next.key);
+                      setDisplayYear(next.year);
+                    }}
+                    style={({ pressed }) => [
+                      styles.monthCell,
+                      isSelected && styles.monthCellSelected,
+                      pressed && styles.monthCellPressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.monthCellText,
+                        isCurrentMonth && styles.monthCellTextCurrent,
+                        isFutureMonth && styles.monthCellTextFuture,
+                        isSelected && styles.monthCellTextSelected,
+                      ]}
+                    >
+                      {MONTH_LABELS[monthIndex]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
         </View>
       </ScrollView>
     </FinanceBottomSheetShell>
@@ -272,13 +321,13 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: FinColors.bgCard,
     borderWidth: 1,
-    borderColor: FinColors.border,
+    borderColor: "rgba(17,17,17,0.10)",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 14,
   },
   quickButtonSelected: {
-    backgroundColor: FinColors.bgElevated,
+    backgroundColor: FinColors.bgCard,
     borderColor: FinColors.textPrimary,
   },
   quickButtonDisabled: {
@@ -302,7 +351,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
     borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
+    backgroundColor: "#eff1f2",
     paddingHorizontal: 18,
     paddingVertical: 10,
   },
@@ -322,25 +371,26 @@ const styles = StyleSheet.create({
   yearLabel: {
     flex: 1,
     textAlign: "center",
-    fontFamily: Fonts.serif,
     fontSize: 21,
     lineHeight: 24,
-    fontWeight: "700",
+    fontWeight: "800",
     color: FinColors.textPrimary,
     letterSpacing: -0.4,
   },
   monthGrid: {
+    gap: 12,
+  },
+  monthGridRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: 12,
   },
   monthCell: {
-    width: "31.333%",
+    flex: 1,
     minHeight: 68,
     borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#f6f5f2",
+    backgroundColor: "transparent",
   },
   monthCellSelected: {
     backgroundColor: FinColors.yellow,
@@ -357,13 +407,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 18,
     fontWeight: "800",
-    color: FinColors.textSecondary,
+    color: "#5a5d5f",
+  },
+  monthCellTextCurrent: {
+    color: "#4f73b8",
+  },
+  monthCellTextFuture: {
+    color: "#c2c7cb",
   },
   monthCellTextSelected: {
     color: FinColors.textPrimary,
-  },
-  monthCellTextDisabled: {
-    color: FinColors.textMuted,
   },
   footer: {
     paddingTop: 6,

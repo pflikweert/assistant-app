@@ -44,6 +44,11 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
   - voeg geen schermspecifieke hero `paddingTop`-overrides toe tenzij er aantoonbaar een afwijkende shell nodig is
   - als een afwijking echt nodig is, documenteer die expliciet in `docs/UI_PATTERNS.md`
 - Utility-schermen met hero gebruiken onder de hero dezelfde gecentreerde contentkolom (`max-width`) als hoofdschermen; voorkom full-width content op web/desktop
+- Modals, sheets en selectorflows horen ook bij de shell:
+  - gebruik voor bottom-sheet en selectorflows de gedeelde modal-shell als basis
+  - centraliseer backdrop, sheet-radius, handle, close-knop, footer en scrollgedrag
+  - modal shells mogen per flow alleen inhoud en beperkte accentkleuren aanpassen
+  - nieuwe picker- of selectieflows mogen geen eigen losse sheet-rand of backdrop opnieuw uitvinden
 
 ## Shell-beslisregel
 
@@ -259,6 +264,7 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Als een UI-patroon al beschreven staat in `docs/UI_PATTERNS.md`, sluit daar dan eerst op aan voordat je een afwijkende componentstructuur kiest
 - Als een shell-element op meerdere schermen terugkomt, maak er een gedeelde component of style-module van en hergebruik die direct
 - Gebruik voor topbars en headers bij voorkeur `components/ui/finance-top-bar.tsx` als gedeelde basis, en pas alleen per scherm de title, right slot en children aan
+- Gebruik voor bottom-sheet modals en selectorflows bij voorkeur `components/ui/finance-bottom-sheet-shell.tsx` als gedeelde basis, en bouw content daarboven als losse gedeelde modalcomponent
 - Pas quick menu-, tabbar-, topbar- en achtergronddecoratie-layouts op één centrale plek aan zodat alle schermen mee bewegen
 - Ruim oude inline varianten op zodra een gedeelde component of module bestaat, zodat nieuwe schermen niet opnieuw dezelfde code krijgen
 - Maak componenten bewust breder inzetbaar: stop stijl, spacing en shellgedrag in de component zelf; schermen leveren vooral inhoud en uitzonderingen aan
