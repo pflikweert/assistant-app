@@ -6,9 +6,14 @@ import type {
 import Constants from "expo-constants";
 import { enrichTransactionAnalysis } from "./analysis";
 import {
-    createSupabaseCategorizationRepository,
-    normalizePattern,
+  createSupabaseCategorizationRepository,
+  normalizePattern,
 } from "./categorization-repository";
+import {
+  getTransactionCleanupSuccessMessage,
+  resolveTransactionCleanupScopeInfo,
+  type TransactionCleanupScope,
+} from "./transaction-data-cleanup";
 import {
     type CategorizationRunMode,
     resetCategorizationStatus,
@@ -1245,6 +1250,8 @@ export async function categorizeTransactions(
     console.warn("analysis enrichment failed", formatError(error));
   }
 
+  throwIfCategorizationStopped();
+
   try {
     await requestForecastRefresh({
       reason: "categorization_batch",
@@ -1298,7 +1305,7 @@ async function flushQueuedCategorization() {
       isStopRequested: false,
     }));
 
-    while (queuedTransactionIds.size > 0) {
+  while (queuedTransactionIds.size > 0) {
       if (stopRequested) {
         queuedTransactionIds.clear();
         updateCategorizationStatus((current) => ({
@@ -1355,8 +1362,33 @@ async function flushQueuedCategorization() {
       ruleCount += summary.rule;
       openAiCount += summary.openai;
       skippedCount += summary.skipped;
+      const pausedAfterBatch = pauseRequested && !stopRequested;
       const stoppedWithClearedQueue =
         stopRequested && queuedTransactionIds.size === 0;
+
+      if (pausedAfterBatch) {
+        updateCategorizationStatus((current) => ({
+          ...current,
+          phase: "paused",
+          queuedCount: queuedTransactionIds.size,
+          totalCount: Math.max(
+            processedCount + queuedTransactionIds.size,
+            totalCount,
+          ),
+          processedCount,
+          updatedCount,
+          ruleCount,
+          openAiCount,
+          skippedCount,
+          message: "Achtergrondcategorisatie is gepauzeerd.",
+          lastCompletedAt: current.lastCompletedAt,
+          lastError: null,
+          lastRunMode: current.mode,
+          isPauseRequested: true,
+          isStopRequested: false,
+        }));
+        break;
+      }
 
       updateCategorizationStatus((current) => ({
         ...current,
@@ -1566,8 +1598,12 @@ export function pauseBackgroundCategorization() {
   pauseRequested = true;
   updateCategorizationStatus((current) => ({
     ...current,
+    phase: "paused",
+    queuedCount: queuedTransactionIds.size,
     isPauseRequested: true,
-    message: "Pauzeren aangevraagd. Huidige batch wordt afgerond.",
+    isStopRequested: false,
+    message:
+      "Pauzeren aangevraagd. Huidige batch wordt afgerond en daarna stopt de wachtrij.",
   }));
 }
 
@@ -1621,6 +1657,7 @@ export function stopBackgroundCategorization() {
 
   updateCategorizationStatus((current) => ({
     ...current,
+    phase: "completed",
     queuedCount: 0,
     isStopRequested: true,
     isPauseRequested: false,
@@ -1671,27 +1708,47 @@ export function clearCategorizationClientState() {
   resetCategorizationStatus();
 }
 
-export async function clearAllTransactionData() {
+export async function clearTransactionData(
+  scope: TransactionCleanupScope = "all",
+): Promise<string> {
   try {
-    console.log("[clearAllTransactionData] Starting...");
+    console.log("[clearTransactionData] Starting...");
     stopBackgroundCategorization();
-    console.log("[clearAllTransactionData] Background categorization stopped");
+    console.log("[clearTransactionData] Background categorization stopped");
 
     const repo = createSupabaseCategorizationRepository();
-    console.log("[clearAllTransactionData] Repository created");
+    console.log("[clearTransactionData] Repository created");
 
-    await repo.clearAllTransactionData();
+    const scopeInfo = resolveTransactionCleanupScopeInfo(scope);
+    if (
+      scope === "current_month" &&
+      (!scopeInfo.startIso || !scopeInfo.endIso)
+    ) {
+      throw new Error("Kon de huidige maand niet bepalen voor opschonen.");
+    }
+    const deletedCount =
+      scope === "current_month"
+        ? await repo.clearTransactionDataInDateRange(
+            scopeInfo.startIso,
+            scopeInfo.endIso,
+          )
+        : await repo.clearAllTransactionData();
+    const message = getTransactionCleanupSuccessMessage(
+      scope,
+      deletedCount,
+    );
     console.log(
-      "[clearAllTransactionData] All transaction data cleared from DB",
+      `[clearTransactionData] Transaction data cleared from DB (${deletedCount})`,
     );
 
     resetCategorizationStatus({
       lastCompletedAt: new Date().toISOString(),
-      message: "Alle transactiegegevens gewist. Klaar voor import.",
+      message,
     });
-    console.log("[clearAllTransactionData] Status updated");
+    console.log("[clearTransactionData] Status updated");
+    return message;
   } catch (error) {
-    console.error("[clearAllTransactionData] Error:", error);
+    console.error("[clearTransactionData] Error:", error);
     const msg = formatError(error);
     updateCategorizationStatus((current) => ({
       ...current,
@@ -1702,6 +1759,14 @@ export async function clearAllTransactionData() {
   }
 }
 
+export async function clearAllTransactionData() {
+  return clearTransactionData("all");
+}
+
+export async function clearCurrentMonthTransactionData() {
+  return clearTransactionData("current_month");
+}
+
 export async function recategorizeSingleTransaction(
   transactionId: string,
 ): Promise<{
@@ -1710,6 +1775,7 @@ export async function recategorizeSingleTransaction(
   categoryName: string;
   confidence: number;
   reason: string;
+  model: string;
 } | null> {
   const repo = createSupabaseCategorizationRepository();
   const [allCategories, txs] = await Promise.all([
@@ -1746,5 +1812,81 @@ export async function recategorizeSingleTransaction(
     categoryName: category.name,
     confidence: clampConfidence(Number(item.confidence ?? 0)),
     reason: item.reason || "Predicted by model",
+    model: DEFAULT_MODEL,
   };
+}
+
+export type TransactionRuleMatch = {
+  ruleId: string;
+  categoryId: string;
+  categoryKey: string;
+  categoryName: string;
+  pattern: string;
+  patternType: string;
+  confidence: number;
+  scope: string;
+  userId: string | null;
+};
+
+export async function getTransactionRuleMatch(
+  transactionId: string,
+): Promise<TransactionRuleMatch | null> {
+  const repo = createSupabaseCategorizationRepository();
+  const [categories, rules, txs] = await Promise.all([
+    repo.getCategories(),
+    repo.getActiveRules(),
+    repo.getTransactionsByIds([transactionId]),
+  ]);
+
+  const tx = txs[0];
+  if (!tx || !categories.length || !rules.length) return null;
+
+  const matched = tryRuleMatch(tx, rules);
+  if (!matched) return null;
+
+  const category = categories.find((item) => item.id === matched.categoryId);
+  const rule = rules.find((item) => item.id === matched.ruleId);
+  if (!category || !rule) return null;
+
+  return {
+    ruleId: matched.ruleId,
+    categoryId: category.id,
+    categoryKey: category.key,
+    categoryName: category.name,
+    pattern: rule.pattern,
+    patternType: rule.pattern_type,
+    confidence: matched.confidence,
+    scope: rule.scope || "system",
+    userId: rule.user_id || null,
+  };
+}
+
+export async function resetTransactionRuleMatch(transactionId: string) {
+  const repo = createSupabaseCategorizationRepository();
+  const [detail, match] = await Promise.all([
+    repo.getTransactionsByIds([transactionId]),
+    getTransactionRuleMatch(transactionId),
+  ]);
+
+  if (!match) return false;
+  if (match.scope !== "user") return false;
+
+  const tx = detail[0] || null;
+  await repo.setCategoryRuleActive(match.ruleId, false);
+
+  if (tx?.category_source === "rule" && !tx.category_id_user) {
+    await repo.clearAutoCategories([transactionId]);
+  }
+
+  await requestForecastRefresh({
+    reason: "manual_category",
+    delayMs: 5000,
+  }).catch((error) => {
+    console.warn(
+      "[categorization] forecast refresh scheduling after rule reset failed",
+      error,
+    );
+  });
+
+  return true;
 }

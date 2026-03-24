@@ -29,22 +29,37 @@ export type CategorizationRepository = {
   ) => Promise<TransactionCategorizationRecord[]>;
   updateAutoCategory: (update: AutoCategorizationUpdate) => Promise<void>;
   clearAutoCategories: (transactionIds: string[]) => Promise<void>;
+  setCategoryRuleActive: (ruleId: string, isActive: boolean) => Promise<void>;
   insertAudit: (entry: CategorizationAuditEntry) => Promise<void>;
   incrementRuleHit: (ruleId: string) => Promise<void>;
-  setManualCategory: (
-    transactionId: string,
-    categoryId: string,
-    model: string,
-  ) => Promise<{
-    previousCategoryId: string | null;
-    counterparty: string | null;
-  }>;
+    setManualCategory: (
+      transactionId: string,
+      categoryId: string,
+      model: string,
+    ) => Promise<{
+      previousCategoryId: string | null;
+      counterparty: string | null;
+    }>;
+    setAutoCategory: (
+      transactionId: string,
+      categoryId: string,
+      confidence: number,
+      source: "rule" | "openai" | "fallback",
+      model: string,
+    ) => Promise<{
+      previousCategoryId: string | null;
+      counterparty: string | null;
+    }>;
   upsertCounterpartyRule: (
     normalizedPattern: string,
     rawPattern: string,
     categoryId: string,
   ) => Promise<void>;
-  clearAllTransactionData: () => Promise<void>;
+  clearAllTransactionData: () => Promise<number>;
+  clearTransactionDataInDateRange: (
+    startIso: string,
+    endIso: string,
+  ) => Promise<number>;
 };
 
 export { normalizePattern };
@@ -52,6 +67,73 @@ export { normalizePattern };
 function asNumber(value: unknown, fallback = 0): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+async function clearTransactionsForUser(
+  userId: string,
+  options?: { startIso?: string | null; endIso?: string | null; scopeLabel?: string },
+) {
+  const scopeLabel = options?.scopeLabel || "alle";
+  console.log(
+    `[clearTransactionData] Deleting ${scopeLabel} transaction data...`,
+  );
+
+  let countQuery = supabase
+    .from("transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+
+  if (options?.startIso) {
+    countQuery = countQuery.gte("date", options.startIso);
+  }
+  if (options?.endIso) {
+    countQuery = countQuery.lt("date", options.endIso);
+  }
+
+  const { count: scopedCount, error: scopedCountError } = await countQuery;
+
+  if (scopedCountError) {
+    console.error(
+      "[clearTransactionData] Error counting transactions:",
+      scopedCountError,
+    );
+    throw scopedCountError;
+  }
+
+  const transactionCount = scopedCount ?? 0;
+  console.log(
+    `[clearTransactionData] Found ${transactionCount} transactions to delete`,
+  );
+
+  if (transactionCount === 0) {
+    console.log("[clearTransactionData] No transactions to delete");
+    return 0;
+  }
+
+  let deleteQuery = supabase.from("transactions").delete().eq("user_id", userId);
+  if (options?.startIso) {
+    deleteQuery = deleteQuery.gte("date", options.startIso);
+  }
+  if (options?.endIso) {
+    deleteQuery = deleteQuery.lt("date", options.endIso);
+  }
+
+  const { error: deleteError } = await deleteQuery;
+
+  if (deleteError) {
+    console.error(
+      "[clearTransactionData] Error deleting transactions:",
+      deleteError,
+    );
+    throw deleteError;
+  }
+
+  console.log("[clearTransactionData] Transactions deleted");
+  console.log(
+    "[clearTransactionData] Categorization audit entries removed via cascade delete",
+  );
+
+  return transactionCount;
 }
 
 export function createSupabaseCategorizationRepository(): CategorizationRepository {
@@ -190,6 +272,28 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
       if (error) throw error;
     },
 
+    async setCategoryRuleActive(ruleId, isActive) {
+      const userId = await requireCurrentUserId();
+      const { data, error } = await supabase
+        .from("category_rules")
+        .select("user_id,scope")
+        .eq("id", ruleId)
+        .single();
+      if (error) throw error;
+      if (data?.user_id !== userId || String(data?.scope || "") !== "user") {
+        return;
+      }
+      const { error: updateError } = await supabase
+        .from("category_rules")
+        .update({
+          is_active: isActive,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId)
+        .eq("id", ruleId);
+      if (updateError) throw updateError;
+    },
+
     async insertAudit(entry) {
       const userId = await requireCurrentUserId();
       const { error } = await supabase.from("categorization_audit").insert({
@@ -260,6 +364,39 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
       return { previousCategoryId, counterparty };
     },
 
+    async setAutoCategory(transactionId, categoryId, confidence, source, model) {
+      const userId = await requireCurrentUserId();
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("category_id_user,category_id_auto,counterparty")
+        .eq("user_id", userId)
+        .eq("id", transactionId)
+        .single();
+      if (error) throw error;
+
+      const previousCategoryId = (data?.category_id_user ||
+        data?.category_id_auto ||
+        null) as string | null;
+      const counterparty = (data?.counterparty || null) as string | null;
+
+      const { error: updError } = await supabase
+        .from("transactions")
+        .update({
+          category_id_user: null,
+          category_id_auto: categoryId,
+          category_confidence: confidence,
+          category_source: source,
+          category_model: model,
+          categorized_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId)
+        .eq("id", transactionId);
+      if (updError) throw updError;
+
+      return { previousCategoryId, counterparty };
+    },
+
     async upsertCounterpartyRule(normalizedPattern, rawPattern, categoryId) {
       const userId = await requireCurrentUserId();
       const { data: existing, error: existingError } = await supabase
@@ -306,48 +443,16 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
 
     async clearAllTransactionData() {
       const userId = await requireCurrentUserId();
-      console.log("[clearAllTransactionData] Deleting all transaction data...");
+      return clearTransactionsForUser(userId, { scopeLabel: "alle" });
+    },
 
-      const { count: scopedCount, error: scopedCountError } = await supabase
-        .from("transactions")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId);
-
-      if (scopedCountError) {
-        console.error(
-          "[clearAllTransactionData] Error counting transactions:",
-          scopedCountError,
-        );
-        throw scopedCountError;
-      }
-
-      const transactionCount = scopedCount ?? 0;
-      console.log(
-        `[clearAllTransactionData] Found ${transactionCount} transactions to delete`,
-      );
-
-      if (transactionCount === 0) {
-        console.log("[clearAllTransactionData] No transactions to delete");
-        return;
-      }
-
-      const { error: deleteError } = await supabase
-        .from("transactions")
-        .delete()
-        .eq("user_id", userId);
-
-      if (deleteError) {
-        console.error(
-          "[clearAllTransactionData] Error deleting transactions:",
-          deleteError,
-        );
-        throw deleteError;
-      }
-
-      console.log("[clearAllTransactionData] Transactions deleted");
-      console.log(
-        "[clearAllTransactionData] Categorization audit entries removed via cascade delete",
-      );
+    async clearTransactionDataInDateRange(startIso, endIso) {
+      const userId = await requireCurrentUserId();
+      return clearTransactionsForUser(userId, {
+        startIso,
+        endIso,
+        scopeLabel: `${startIso} t/m ${endIso}`,
+      });
     },
   };
 }

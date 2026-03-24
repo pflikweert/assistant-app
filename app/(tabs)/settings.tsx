@@ -2,6 +2,7 @@ import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
 import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
+import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import {
   FinanceQuickMenu,
   type FinanceQuickMenuKey,
@@ -10,8 +11,8 @@ import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { useSession } from "@/app/_layout";
 import {
-    clearAllTransactionData,
     clearQueuedCategorizationQueue,
+    clearTransactionData,
     pauseBackgroundCategorization,
     resumeBackgroundCategorization,
     runRecategorizationForAllInBackground,
@@ -25,6 +26,10 @@ import {
   ensureForecastFresh,
   getForecastRefreshStatus,
 } from "@/services/forecast-refresh";
+import {
+  resolveTransactionCleanupScopeInfo,
+  type TransactionCleanupScope,
+} from "@/services/transaction-data-cleanup";
 import type { ForecastRefreshStatus } from "@/types/categorization";
 import type { Href } from "expo-router";
 import { useRouter } from "expo-router";
@@ -48,14 +53,60 @@ type RowProps = {
   rightElement?: React.ReactNode;
 };
 
-function ConfirmResetModal({
+function CleanupScopeSheet({
+  visible,
+  currentMonthLabel,
+  onSelect,
+  onCancel,
+}: {
+  visible: boolean;
+  currentMonthLabel: string;
+  onSelect: (scope: TransactionCleanupScope) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <FinanceBottomSheetShell
+      visible={visible}
+      title="Transacties opschonen"
+      subtitle="Kies of je alleen de huidige maand wilt verwijderen of alles."
+      onClose={onCancel}
+    >
+      <View style={styles.cleanupChoiceCard}>
+        <SettingsRow
+          iconName="event"
+          label="Huidige maand"
+          subtitle={`Verwijder alle transacties van ${currentMonthLabel}.`}
+          onPress={() => onSelect("current_month")}
+        />
+        <View style={styles.divider} />
+        <SettingsRow
+          iconName="delete-outline"
+          label="Alles"
+          subtitle="Verwijder alle transacties, categorisaties en auditlogs."
+          onPress={() => onSelect("all")}
+        />
+      </View>
+      <Text style={styles.cleanupHint}>
+        De huidige maand is de kalendermaand op dit moment.
+      </Text>
+    </FinanceBottomSheetShell>
+  );
+}
+
+function ConfirmCleanupModal({
   visible,
   isClearing,
+  title,
+  body,
+  confirmLabel,
   onConfirm,
   onCancel,
 }: {
   visible: boolean;
   isClearing: boolean;
+  title: string;
+  body: string;
+  confirmLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -64,7 +115,7 @@ function ConfirmResetModal({
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View style={styles.modalHeaderRow}>
-            <Text style={styles.modalTitle}>Alle data verwijderen</Text>
+            <Text style={styles.modalTitle}>{title}</Text>
             <TouchableOpacity
               style={styles.modalIconCloseButton}
               onPress={onCancel}
@@ -78,10 +129,7 @@ function ConfirmResetModal({
               />
             </TouchableOpacity>
           </View>
-          <Text style={styles.modalText}>
-            Dit zal alle transacties, categorisaties en auditlogs wissen. Dit
-            kan niet ongedaan gemaakt worden. Ben je zeker?
-          </Text>
+          <Text style={styles.modalText}>{body}</Text>
           <View style={styles.modalButtons}>
             <TouchableOpacity
               style={[styles.modalButton, styles.cancelButton]}
@@ -98,7 +146,7 @@ function ConfirmResetModal({
               {isClearing ? (
                 <ActivityIndicator size="small" color="white" />
               ) : (
-                <Text style={styles.deleteButtonText}>Verwijderen</Text>
+                <Text style={styles.deleteButtonText}>{confirmLabel}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -110,9 +158,11 @@ function ConfirmResetModal({
 
 function SuccessModal({
   visible,
+  message,
   onClose,
 }: {
   visible: boolean;
+  message: string;
   onClose: () => void;
 }) {
   return (
@@ -133,10 +183,7 @@ function SuccessModal({
               />
             </TouchableOpacity>
           </View>
-          <Text style={styles.modalText}>
-            Alle transactiegegevens zijn gewist. Je kan nu nieuwe transacties
-            importeren.
-          </Text>
+          <Text style={styles.modalText}>{message}</Text>
           <TouchableOpacity
             style={[styles.modalButton, styles.successButton]}
             onPress={onClose}
@@ -245,14 +292,23 @@ export default function SettingsScreen() {
   const { logout, user } = useSession();
   const [isClearing, setIsClearing] = React.useState(false);
   const [isSigningOut, setIsSigningOut] = React.useState(false);
+  const [showCleanupScopeSheet, setShowCleanupScopeSheet] =
+    React.useState(false);
   const [showConfirmModal, setShowConfirmModal] = React.useState(false);
   const [showSuccessModal, setShowSuccessModal] = React.useState(false);
   const [showErrorModal, setShowErrorModal] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = React.useState<string>("");
   const [isRefreshingForecast, setIsRefreshingForecast] = React.useState(false);
+  const [cleanupScope, setCleanupScope] =
+    React.useState<TransactionCleanupScope>("current_month");
   const [forecastRefreshStatus, setForecastRefreshStatus] =
     React.useState<ForecastRefreshStatus | null>(null);
   const backgroundStatus = useCategorizationStatus();
+  const cleanupScopeInfo = React.useMemo(
+    () => resolveTransactionCleanupScopeInfo(cleanupScope),
+    [cleanupScope],
+  );
 
   const isBusy =
     backgroundStatus.phase === "queued" || backgroundStatus.phase === "running";
@@ -309,13 +365,20 @@ export default function SettingsScreen() {
   }, [loadForecastStatus]);
 
   const handleResetPress = () => {
+    setShowCleanupScopeSheet(true);
+  };
+
+  const handleSelectCleanupScope = (scope: TransactionCleanupScope) => {
+    setCleanupScope(scope);
+    setShowCleanupScopeSheet(false);
     setShowConfirmModal(true);
   };
 
   const handleConfirmReset = async () => {
     setIsClearing(true);
     try {
-      await clearAllTransactionData();
+      const message = await clearTransactionData(cleanupScope);
+      setSuccessMessage(message);
       setShowConfirmModal(false);
       setShowSuccessModal(true);
     } catch (error) {
@@ -518,8 +581,8 @@ export default function SettingsScreen() {
             <View style={styles.divider} />
             <SettingsRow
               iconName="delete-outline"
-              label="Transacties resetten"
-              subtitle="Verwijder alle transactiegegevens en categorisaties"
+              label="Transacties opschonen"
+              subtitle="Kies tussen de huidige maand of alles"
               onPress={handleResetPress}
               rightElement={
                 isClearing ? (
@@ -660,14 +723,24 @@ export default function SettingsScreen() {
         }}
       />
 
-      <ConfirmResetModal
+      <CleanupScopeSheet
+        visible={showCleanupScopeSheet}
+        currentMonthLabel={cleanupScopeInfo.monthLabel || "de huidige maand"}
+        onSelect={handleSelectCleanupScope}
+        onCancel={() => setShowCleanupScopeSheet(false)}
+      />
+      <ConfirmCleanupModal
         visible={showConfirmModal}
         isClearing={isClearing}
+        title={cleanupScopeInfo.confirmationTitle}
+        body={cleanupScopeInfo.confirmationBody}
+        confirmLabel="Wissen"
         onConfirm={handleConfirmReset}
         onCancel={() => setShowConfirmModal(false)}
       />
       <SuccessModal
         visible={showSuccessModal}
+        message={successMessage}
         onClose={() => setShowSuccessModal(false)}
       />
       <ErrorModal
@@ -829,6 +902,19 @@ const styles = StyleSheet.create({
   rowSub: { fontSize: 12, color: FinColors.textMuted, marginTop: 4 },
   rowRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   rowValue: { fontSize: 14, color: FinColors.textSecondary, fontWeight: "500" },
+  cleanupChoiceCard: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 20,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  cleanupHint: {
+    marginTop: 14,
+    fontSize: 12,
+    lineHeight: 18,
+    color: FinColors.textMuted,
+  },
   divider: {
     height: 1,
     backgroundColor: FinColors.borderSubtle,

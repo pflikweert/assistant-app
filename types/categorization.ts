@@ -31,6 +31,8 @@ export type CategoryRuleRecord = {
   hit_count: number;
   is_active: boolean;
   is_system?: boolean;
+  scope?: string;
+  user_id?: string | null;
 };
 
 export type TransactionCategorizationRecord = {

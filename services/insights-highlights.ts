@@ -85,6 +85,86 @@ function sumVariableExpense(rows: InsightsSignalTransaction[]) {
   }, 0);
 }
 
+function buildMonthlyMagnitudeTotals(
+  rows: InsightsSignalTransaction[],
+  matcher: (row: InsightsSignalTransaction) => boolean,
+) {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    if (!matcher(row)) continue;
+    const key = getMonthKey(row.date);
+    if (!/^\d{4}-\d{2}$/.test(key)) continue;
+    totals.set(key, (totals.get(key) || 0) + Math.abs(row.amount));
+  }
+  return totals;
+}
+
+function getMonthKey(dateIso: string) {
+  return String(dateIso || "").slice(0, 7);
+}
+
+function hasCorrectionHint(rows: InsightsSignalTransaction[]) {
+  const haystack = rows
+    .map((row) => `${row.counterparty || ""} ${row.details || ""}`)
+    .join(" ")
+    .toLowerCase();
+  return [
+    "correctie",
+    "nabetaling",
+    "achterstall",
+    "terugwerkende kracht",
+    "aanvulling",
+    "compensatie",
+  ].some((hint) => haystack.includes(hint));
+}
+
+function getRecentHistoricalMonthValues(
+  totalsByMonth: Map<string, number>,
+  selectedMonthKey: string,
+  limit = 3,
+) {
+  return Array.from(totalsByMonth.entries())
+    .filter(([monthKey]) => monthKey < selectedMonthKey)
+    .sort((left, right) => right[0].localeCompare(left[0]))
+    .slice(0, limit)
+    .map(([, value]) => value);
+}
+
+function median(values: number[]) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid] || 0;
+  return ((sorted[mid - 1] || 0) + (sorted[mid] || 0)) / 2;
+}
+
+type RecurringBucketKey = "income_structural" | "fixed_costs" | "subscriptions";
+
+function getRecurringBucketLabel(bucket: RecurringBucketKey) {
+  if (bucket === "income_structural") return "Vaste inkomsten";
+  if (bucket === "fixed_costs") return "Vaste lasten";
+  return "Abonnementen";
+}
+
+function getRecurringBucketKey(bucket: RecurringBucketKey) {
+  if (bucket === "income_structural") return "recurring-income";
+  if (bucket === "fixed_costs") return "fixed-costs";
+  return "subscriptions";
+}
+
+function getRecurringBucketCtaPath(bucket: RecurringBucketKey) {
+  return `/transactions?analysisCategory=${bucket}`;
+}
+
+function getRecurringBucketMatcher(bucket: RecurringBucketKey) {
+  return (row: InsightsSignalTransaction) => {
+    if (bucket === "income_structural") {
+      return row.amount > 0 && row.analysisCategory === "income_structural";
+    }
+    return row.amount < 0 && row.analysisCategory === bucket;
+  };
+}
+
 function confidenceThresholdFor(type: Candidate["type"]) {
   return CONFIDENCE_THRESHOLD[type];
 }
@@ -187,6 +267,134 @@ function buildVariableTrendCandidate(input: {
       roundToBucket(variableDelta, 25),
     ].join("|"),
     family: "variable-trend",
+  };
+}
+
+function buildVariableTrendDownCandidate(input: {
+  selectedMonthKey: string;
+  currentMonthTransactions: InsightsSignalTransaction[];
+  previousMonthTransactions: InsightsSignalTransaction[];
+}): Candidate | null {
+  const { selectedMonthKey, currentMonthTransactions, previousMonthTransactions } =
+    input;
+
+  const currentVariable = sumVariableExpense(currentMonthTransactions);
+  const previousVariable = sumVariableExpense(previousMonthTransactions);
+  const variableDelta = previousVariable - currentVariable;
+
+  if (previousVariable <= 0) return null;
+  if (variableDelta <= 75) return null;
+  if (currentVariable >= previousVariable * 0.9) return null;
+
+  const ratio = currentVariable / previousVariable;
+  const confidence = clampConfidence(
+    72 +
+      Math.min(12, Math.round(variableDelta / 20) * 2) +
+      (ratio <= 0.75 ? 8 : ratio <= 0.85 ? 4 : 0),
+  );
+
+  return {
+    id: "variable-trend-down",
+    type: "trend",
+    title: "Variabele uitgaven lager",
+    description: `Je gaf ${fmt.format(variableDelta)} minder uit aan variabele posten dan vorige maand.`,
+    ctaLabel: "Bekijk",
+    ctaPath: "/transactions",
+    signalSource: "hard",
+    confidence,
+    meaningKey: "variable-spend-lower",
+    fingerprint: [
+      "variable-trend-down",
+      selectedMonthKey,
+      roundToBucket(currentVariable, 25),
+      roundToBucket(previousVariable, 25),
+      roundToBucket(variableDelta, 25),
+    ].join("|"),
+    family: "variable-trend-down",
+  };
+}
+
+function buildRecurringBucketCandidate(input: {
+  bucket: RecurringBucketKey;
+  selectedMonthKey: string;
+  currentMonthTransactions: InsightsSignalTransaction[];
+  previousMonthTransactions: InsightsSignalTransaction[];
+  lookbackTransactions: InsightsSignalTransaction[];
+}): Candidate | null {
+  const {
+    bucket,
+    selectedMonthKey,
+    currentMonthTransactions,
+    previousMonthTransactions,
+    lookbackTransactions,
+  } = input;
+
+  const matcher = getRecurringBucketMatcher(bucket);
+  const bucketLabel = getRecurringBucketLabel(bucket);
+  const isIncome = bucket === "income_structural";
+  const favorableDirection = isIncome ? "higher" : "lower";
+  const bucketKey = getRecurringBucketKey(bucket);
+
+  const allHistoricalTransactions = [...previousMonthTransactions, ...lookbackTransactions];
+  const historicalMonthTotals = buildMonthlyMagnitudeTotals(allHistoricalTransactions, matcher);
+  const currentTotal = buildMonthlyMagnitudeTotals(currentMonthTransactions, matcher).get(
+    selectedMonthKey,
+  ) || 0;
+  const recentHistoricalValues = getRecentHistoricalMonthValues(
+    historicalMonthTotals,
+    selectedMonthKey,
+    3,
+  );
+
+  const baseline = recentHistoricalValues.length ? median(recentHistoricalValues) : 0;
+  const delta = currentTotal - baseline;
+  const absDelta = Math.abs(delta);
+  const ratio = baseline > 0 ? currentTotal / baseline : currentTotal > 0 ? Infinity : 0;
+
+  if (currentTotal <= 0) return null;
+  if (baseline <= 0 && currentTotal < 100) return null;
+  if (baseline > 0 && absDelta < Math.max(75, baseline * 0.25)) return null;
+  if (baseline > 0 && ratio > 0.85 && ratio < 1.15) return null;
+
+  const isPositive = isIncome ? delta > 0 : delta < 0;
+  const hasHint = isIncome && hasCorrectionHint(currentMonthTransactions);
+  const confidence = clampConfidence(
+    (isPositive ? 82 : 74) +
+      Math.min(10, Math.round(Math.max(absDelta, currentTotal) / 50)) +
+      (hasHint ? 4 : 0) +
+      (recentHistoricalValues.length >= 2 ? 2 : 0),
+  );
+
+  const directionLabel = isPositive ? favorableDirection : isIncome ? "lower" : "higher";
+  const description = isIncome
+    ? isPositive
+      ? hasHint
+        ? `Je ${bucketLabel.toLowerCase()} liggen ${fmt.format(absDelta)} hoger dan normaal. Dat lijkt op een correctie of nabetaling.`
+        : `Je ${bucketLabel.toLowerCase()} liggen ${fmt.format(absDelta)} hoger dan normaal.`
+      : `Je ${bucketLabel.toLowerCase()} liggen ${fmt.format(absDelta)} lager dan normaal.`
+    : isPositive
+      ? `Je ${bucketLabel.toLowerCase()} liggen ${fmt.format(absDelta)} lager dan normaal.`
+      : `Je ${bucketLabel.toLowerCase()} liggen ${fmt.format(absDelta)} hoger dan normaal.`;
+
+  return {
+    id: `${bucketKey}-trend-${directionLabel}`,
+    type: isPositive ? "reassurance" : "attention",
+    title: `${bucketLabel} ${isPositive ? favorableDirection : isIncome ? "lager" : "hoger"} dan normaal`,
+    description,
+    ctaLabel: "Bekijk",
+    ctaPath: getRecurringBucketCtaPath(bucket),
+    signalSource: "hard",
+    confidence,
+    meaningKey: `${bucketKey}-trend`,
+    fingerprint: [
+      `${bucketKey}-trend`,
+      selectedMonthKey,
+      roundToBucket(currentTotal, 25),
+      roundToBucket(baseline, 25),
+      recentHistoricalValues.length,
+      hasHint ? "hint" : "plain",
+    ].join("|"),
+    family: `${bucketKey}-trend`,
   };
 }
 
@@ -422,6 +630,32 @@ export function selectInsightsHighlights(input: {
       currentMonthTransactions,
       previousMonthTransactions,
     }),
+    buildVariableTrendDownCandidate({
+      selectedMonthKey,
+      currentMonthTransactions,
+      previousMonthTransactions,
+    }),
+    buildRecurringBucketCandidate({
+      bucket: "income_structural",
+      selectedMonthKey,
+      currentMonthTransactions,
+      previousMonthTransactions,
+      lookbackTransactions,
+    }),
+    buildRecurringBucketCandidate({
+      bucket: "fixed_costs",
+      selectedMonthKey,
+      currentMonthTransactions,
+      previousMonthTransactions,
+      lookbackTransactions,
+    }),
+    buildRecurringBucketCandidate({
+      bucket: "subscriptions",
+      selectedMonthKey,
+      currentMonthTransactions,
+      previousMonthTransactions,
+      lookbackTransactions,
+    }),
     buildNewCostCandidate({
       selectedMonthKey,
       currentMonthTransactions,
@@ -455,19 +689,35 @@ export function selectInsightsHighlights(input: {
       );
 
   if (visible.length > 0) {
+    const reassurance = visible.filter((item) => item.type === "reassurance");
     const relevant = visible.filter(
       (item) => item.type === "attention" || item.type === "trend",
     );
-    const reassurance = visible.filter((item) => item.type === "reassurance");
 
     const result: Candidate[] = [];
+    for (const item of reassurance) {
+      if (result.length >= 3) break;
+      result.push(item);
+    }
+
     for (const item of relevant) {
       if (result.length >= 3) break;
       result.push(item);
     }
 
-    if (result.length < 3 && reassurance.length > 0) {
-      result.push(reassurance[0]);
+    if (result.length < 3) {
+      for (const item of reassurance) {
+        if (result.length >= 3) break;
+        if (result.some((existing) => existing.id === item.id)) continue;
+        result.push(item);
+      }
+    }
+
+    if (result.length < 3) {
+      result.push({
+        ...buildStableFallback(),
+        family: "stable-fallback",
+      });
     }
 
     return result.slice(0, 3).map(stripInternalFields);

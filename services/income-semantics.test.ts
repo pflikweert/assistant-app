@@ -93,4 +93,35 @@ describe("resolveIncomeSemantics", () => {
       countsAsIncome: true,
     });
   });
+
+  it("uses the salary category instead of salary text hints", () => {
+    const result = resolveIncomeSemantics({
+      amount: 2400,
+      counterparty: "Impres B.V.",
+      details: "Salaris maart",
+      categoryKey: "income_salary",
+      analysisCategory: "income_structural",
+    });
+
+    expect(result).toMatchObject({
+      kind: "salary",
+      budgetBucket: "salary",
+      analysisCategory: "income_structural",
+      forecastEligible: true,
+      countsAsIncome: true,
+    });
+  });
+
+  it("does not classify unlabeled salary text as salary without a salary category", () => {
+    const result = resolveIncomeSemantics({
+      amount: 2400,
+      counterparty: "Impres B.V.",
+      details: "Salaris maart",
+      categoryKey: null,
+      analysisCategory: "income_structural",
+    });
+
+    expect(result.kind).toBe("structural_other");
+    expect(result.budgetBucket).toBe("structuralOther");
+  });
 });

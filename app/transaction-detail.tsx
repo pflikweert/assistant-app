@@ -4,11 +4,16 @@ import {
 } from "@/components/transactions/finance-transactions-block";
 import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
 import { FinanceCircleIconButton } from "@/components/ui/finance-circle-icon-button";
-import { FinanceDetailCard } from "@/components/ui/finance-detail-card";
+import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinanceBudgetStatusToggle } from "@/components/ui/finance-budget-status-toggle";
 import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceModalTopBar } from "@/components/ui/finance-modal-top-bar";
+import {
+  FinanceCategoryGroupCard,
+  FinanceCategoryLeafRow,
+  FinanceFlatChoiceCard,
+} from "@/components/ui/finance-category-sheet";
 import { FinanceSubscriptionCallout } from "@/components/ui/finance-subscription-callout";
 import { FinanceQuickMenu } from "@/components/navigation/finance-quick-menu";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
@@ -17,24 +22,31 @@ import { FinColors } from "@/constants/theme";
 import { BUDGET_GROUP_LABELS } from "@/services/category-budget-groups";
 import { resolveTransactionCategoryIconName } from "@/services/category-icon";
 import {
-    bulkUpdateCategoryByCounterparty,
-    countCounterpartyTransactions,
-    getCounterpartyTransactions,
-    getTransactionCategories,
-    getTransactionDetail,
+  recategorizeSingleTransaction,
+} from "@/services/categorization";
+import {
+  bulkUpdateCategoryByCounterparty,
+  getCounterpartyTransactions,
+  getTransactionCategories,
+  getTransactionDetail,
     setTransactionBudgetExcluded,
     setTransactionManualCategory,
     type CounterpartyTxSummary,
     type TransactionDetail,
 } from "@/services/categorization-repository";
 import {
-    getCategoryPathLabel,
-    getLeafCategories,
+  getCategoryPathLabel,
+  getLeafCategories,
 } from "@/services/category-display";
 import {
-    getTransactionSubscriptionMatch,
-    linkTransactionToSubscription,
-    listTransactionSubscriptionProfileNames,
+  getTransactionRuleMatch,
+  resetTransactionRuleMatch,
+  type TransactionRuleMatch,
+} from "@/services/transaction-rule-management";
+import {
+  getTransactionSubscriptionMatch,
+  linkTransactionToSubscription,
+  listTransactionSubscriptionProfileNames,
     listSubscriptionProfiles,
     markTransactionAsNotSubscription,
     type TransactionSubscriptionMatchWithProfile,
@@ -63,6 +75,7 @@ const euroFormatter = new Intl.NumberFormat("nl-NL", {
   currency: "EUR",
 });
 const CONTENT_MAX_WIDTH = 1040;
+const CATEGORY_SCROLL_CONTEXT_OFFSET = Platform.OS === "web" ? 56 : -24;
 
 function parseSaldo(value: unknown): number | null {
   if (value == null) return null;
@@ -269,18 +282,11 @@ export default function TransactionDetailScreen() {
     (CounterpartyTxSummary & { subscriptionProfileName?: string | null })[]
   >([]);
   const [loading, setLoading] = React.useState(true);
-  const [showPicker, setShowPicker] = React.useState(false);
+  const [categorySheetOpen, setCategorySheetOpen] = React.useState(false);
+  const [categorySheetExpandedGroupId, setCategorySheetExpandedGroupId] =
+    React.useState<string | null>(null);
   const [savingCategory, setSavingCategory] = React.useState(false);
-  const [bulkPhase, setBulkPhase] = React.useState<
-    "idle" | "confirming" | "updating" | "done"
-  >("idle");
-  const [bulkScope, setBulkScope] = React.useState<"uncategorized" | "all">(
-    "uncategorized",
-  );
-  const [bulkCounts, setBulkCounts] = React.useState<{
-    uncategorized: number;
-    all: number;
-  } | null>(null);
+  const [aiRecategorizing, setAiRecategorizing] = React.useState(false);
   const [budgetExclusionToggling, setBudgetExclusionToggling] =
     React.useState(false);
   const [subscriptionProfiles, setSubscriptionProfiles] = React.useState<
@@ -294,6 +300,25 @@ export default function TransactionDetailScreen() {
     React.useState(false);
   const [setCategoryToSubscriptions, setSetCategoryToSubscriptions] =
     React.useState(true);
+  const [categoryRuleMatch, setCategoryRuleMatch] =
+    React.useState<TransactionRuleMatch | null>(null);
+  const [categoryRuleResetBusy, setCategoryRuleResetBusy] =
+    React.useState(false);
+  const [draftCategoryId, setDraftCategoryId] = React.useState<string | null>(
+    null,
+  );
+  const [draftApplyCategoryToCounterparty, setDraftApplyCategoryToCounterparty] =
+    React.useState(false);
+  const [draftLearnCategoryFromCounterparty, setDraftLearnCategoryFromCounterparty] =
+    React.useState(false);
+  const categorySheetScrollRef = React.useRef<ScrollView | null>(null);
+  const categoryGroupLayoutYRef = React.useRef(new Map<string, number>());
+  const categoryLeafLayoutYRef = React.useRef(new Map<string, number>());
+  const categorySheetScrolledRef = React.useRef(false);
+  const categoryScrollTargetRef = React.useRef<{
+    groupId: string;
+    leafId?: string | null;
+  } | null>(null);
 
   const blurActiveWebElement = React.useCallback(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
@@ -345,12 +370,41 @@ export default function TransactionDetailScreen() {
 
   const effectiveCategoryId =
     tx?.category_id_user || tx?.category_id_auto || null;
+
+  const categorySheetInitialGroupId = React.useMemo(() => {
+    if (!categoryGroups.length) return null;
+    if (!effectiveCategoryId) {
+      return categoryGroups[0]?.parent?.id || "__root";
+    }
+    const selectedGroup = categoryGroups.find((group) =>
+      group.leaves.some((cat) => cat.id === effectiveCategoryId),
+    );
+    return selectedGroup?.parent?.id || categoryGroups[0]?.parent?.id || "__root";
+  }, [categoryGroups, effectiveCategoryId]);
+
   const effectiveCategory = effectiveCategoryId
     ? categoryById.get(effectiveCategoryId) || null
     : null;
   const parentCategory = effectiveCategory?.parent_id
     ? categoryById.get(effectiveCategory.parent_id) || null
     : null;
+  const categoryAttributionLabel = React.useMemo(() => {
+    if (!tx) return null;
+    if (tx.category_id_user) return "Handmatig";
+    if (tx.category_source === "openai" && tx.category_confidence != null) {
+      return `AI ${Math.round(tx.category_confidence * 100)}%`;
+    }
+    if (tx.category_source === "rule" && tx.category_confidence != null) {
+      return `Regel ${Math.round(tx.category_confidence * 100)}%`;
+    }
+    if (tx.category_source === "fallback" && tx.category_confidence != null) {
+      return `Schatting ${Math.round(tx.category_confidence * 100)}%`;
+    }
+    if (tx.category_confidence != null) {
+      return `${Math.round(tx.category_confidence * 100)}%`;
+    }
+    return null;
+  }, [tx]);
   const activeSubscriptionProfiles = React.useMemo(
     () => subscriptionProfiles.filter((profile) => profile.isActive),
     [subscriptionProfiles],
@@ -385,21 +439,24 @@ export default function TransactionDetailScreen() {
   const loadData = React.useCallback(async () => {
     if (!transactionId) {
       setTx(null);
+      setCategoryRuleMatch(null);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const [detail, cats, profiles, match] = await Promise.all([
+      const [detail, cats, profiles, match, ruleMatch] = await Promise.all([
         getTransactionDetail(transactionId),
         getTransactionCategories(),
         listSubscriptionProfiles(),
         getTransactionSubscriptionMatch(transactionId),
+        getTransactionRuleMatch(transactionId),
       ]);
       setTx(detail);
       setCategories(cats);
       setSubscriptionProfiles(profiles);
       setSubscriptionMatch(match);
+      setCategoryRuleMatch(ruleMatch);
       if (detail?.counterparty) {
         const hist = await getCounterpartyTransactions(
           detail.counterparty,
@@ -428,53 +485,17 @@ export default function TransactionDetailScreen() {
     void loadData();
   }, [isFocused, loadData]);
 
-  // ── Manual category ─────────────────────────────────────────────────────
-  const handleManualCategory = React.useCallback(
-    async (categoryId: string) => {
-      if (!transactionId) return;
-      setSavingCategory(true);
-      try {
-        await setTransactionManualCategory(transactionId, categoryId, {
-          reason: "handmatige wijziging",
-          learnFromCounterparty: !isSubjectDrivenCounterparty(tx?.counterparty),
-        });
-        setShowPicker(false);
-        const detail = await getTransactionDetail(transactionId);
-        setTx(detail);
-        if (
-          detail?.counterparty &&
-          !isSubjectDrivenCounterparty(detail.counterparty)
-        ) {
-          const [uncatCount, allCount] = await Promise.all([
-            countCounterpartyTransactions(detail.counterparty, "uncategorized"),
-            countCounterpartyTransactions(detail.counterparty, "all"),
-          ]);
-          setBulkCounts({ uncategorized: uncatCount, all: allCount });
-          setBulkPhase("confirming");
-        } else {
-          setBulkPhase("idle");
-        }
-      } catch (e) {
-        console.warn("setCategory error", e);
-      } finally {
-        setSavingCategory(false);
-      }
-    },
-    [transactionId, tx?.counterparty],
-  );
-
-  // ── Bulk update ─────────────────────────────────────────────────────────
-  const handleBulkUpdate = React.useCallback(async () => {
-    if (!tx?.counterparty || !tx?.category_id_user || !transactionId) return;
-    setBulkPhase("updating");
-    try {
-      await bulkUpdateCategoryByCounterparty(
-        tx.counterparty,
-        tx.category_id_user,
-        bulkScope,
-      );
+  const refreshTransactionSnapshot = React.useCallback(async () => {
+    if (!transactionId) return;
+    const [detail, ruleMatch] = await Promise.all([
+      getTransactionDetail(transactionId),
+      getTransactionRuleMatch(transactionId),
+    ]);
+    setTx(detail);
+    setCategoryRuleMatch(ruleMatch);
+    if (detail?.counterparty) {
       const hist = await getCounterpartyTransactions(
-        tx.counterparty,
+        detail.counterparty,
         transactionId,
         6,
       );
@@ -487,12 +508,226 @@ export default function TransactionDetailScreen() {
           subscriptionProfileName: subscriptionNames[item.id] || null,
         })),
       );
-      setBulkPhase("done");
-    } catch (e) {
-      console.warn("bulk update error", e);
-      setBulkPhase("confirming");
     }
-  }, [tx, transactionId, bulkScope]);
+  }, [transactionId]);
+
+  const tryScrollCategoryTarget = React.useCallback(() => {
+    const target = categoryScrollTargetRef.current;
+    if (!target) return false;
+
+    const leafKey = target.leafId ? `${target.groupId}:${target.leafId}` : null;
+    const leafY = leafKey ? categoryLeafLayoutYRef.current.get(leafKey) : null;
+    const groupY = categoryGroupLayoutYRef.current.get(target.groupId);
+    const targetY =
+      leafY != null && groupY != null
+        ? groupY + leafY - CATEGORY_SCROLL_CONTEXT_OFFSET
+        : groupY != null
+          ? groupY - CATEGORY_SCROLL_CONTEXT_OFFSET
+          : leafY != null
+            ? leafY - CATEGORY_SCROLL_CONTEXT_OFFSET
+            : null;
+
+    if (targetY == null) return false;
+
+    categorySheetScrollRef.current?.scrollTo({
+      y: Math.max(targetY, 0),
+      animated: false,
+    });
+    categorySheetScrolledRef.current = true;
+    categoryScrollTargetRef.current = null;
+    return true;
+  }, []);
+
+  const scrollCategoryGroupIntoView = React.useCallback(
+    (groupId: string | null, leafId?: string | null) => {
+      if (!groupId) return;
+
+      categorySheetScrolledRef.current = false;
+      categoryScrollTargetRef.current = { groupId, leafId };
+      setCategorySheetExpandedGroupId(groupId);
+
+      requestAnimationFrame(() => {
+        void tryScrollCategoryTarget();
+      });
+    },
+    [tryScrollCategoryTarget],
+  );
+
+  // ── Manual category ─────────────────────────────────────────────────────
+  const handleApplyCategoryChanges = React.useCallback(async () => {
+    if (!transactionId) return;
+    const categoryId = draftCategoryId;
+    const shouldLearnFromCounterparty =
+      draftLearnCategoryFromCounterparty &&
+      !!tx?.counterparty &&
+      !isSubjectDrivenCounterparty(tx.counterparty);
+    const shouldUpdateCounterparty = draftApplyCategoryToCounterparty;
+    const currentCategoryId = tx?.category_id_user || tx?.category_id_auto || null;
+    const isNoOp =
+      categoryId === currentCategoryId &&
+      !shouldLearnFromCounterparty &&
+      !shouldUpdateCounterparty;
+
+    if (!categoryId || isNoOp) {
+      setCategorySheetOpen(false);
+      return;
+    }
+
+    setSavingCategory(true);
+    try {
+      await setTransactionManualCategory(transactionId, categoryId, {
+        reason: "handmatige wijziging",
+        learnFromCounterparty: shouldLearnFromCounterparty,
+      });
+      if (shouldUpdateCounterparty && tx?.counterparty) {
+        await bulkUpdateCategoryByCounterparty(tx.counterparty, categoryId, "all");
+      }
+      setCategorySheetOpen(false);
+      setDraftApplyCategoryToCounterparty(false);
+      setDraftLearnCategoryFromCounterparty(false);
+      await refreshTransactionSnapshot();
+    } catch (e) {
+      console.warn("setCategory error", e);
+    } finally {
+      setSavingCategory(false);
+    }
+  }, [
+    draftApplyCategoryToCounterparty,
+    draftCategoryId,
+    draftLearnCategoryFromCounterparty,
+    refreshTransactionSnapshot,
+    transactionId,
+    tx?.category_id_auto,
+    tx?.category_id_user,
+    tx?.counterparty,
+  ]);
+
+  const handleOpenCategorySheet = React.useCallback(() => {
+    blurActiveWebElement();
+    const currentCategoryId = tx?.category_id_user || tx?.category_id_auto || null;
+    setDraftCategoryId(currentCategoryId);
+    setDraftApplyCategoryToCounterparty(false);
+    setDraftLearnCategoryFromCounterparty(false);
+    scrollCategoryGroupIntoView(categorySheetInitialGroupId, currentCategoryId);
+    setCategorySheetOpen(true);
+  }, [
+    blurActiveWebElement,
+    categorySheetInitialGroupId,
+    scrollCategoryGroupIntoView,
+    tx?.category_id_auto,
+    tx?.category_id_user,
+  ]);
+
+  const handleCloseCategorySheet = React.useCallback(() => {
+    blurActiveWebElement();
+    setCategorySheetOpen(false);
+    setDraftApplyCategoryToCounterparty(false);
+    setDraftLearnCategoryFromCounterparty(false);
+  }, [blurActiveWebElement]);
+
+  const handleRunAiCategory = React.useCallback(async () => {
+    if (!transactionId || aiRecategorizing) return;
+    setAiRecategorizing(true);
+    try {
+      const result = await recategorizeSingleTransaction(transactionId);
+      if (!result) return;
+      setDraftCategoryId(result.categoryId);
+      const targetGroupId =
+        categoryGroups.find((group) =>
+          group.leaves.some((cat) => cat.id === result.categoryId),
+        )?.parent?.id || "__root";
+      scrollCategoryGroupIntoView(targetGroupId, result.categoryId);
+    } catch (error) {
+      console.warn("ai recategorize error", error);
+    } finally {
+      setAiRecategorizing(false);
+    }
+  }, [aiRecategorizing, categoryGroups, scrollCategoryGroupIntoView, transactionId]);
+
+  const handleResetCategoryRule = React.useCallback(async () => {
+    if (!transactionId || categoryRuleResetBusy || !categoryRuleMatch) return;
+    setCategoryRuleResetBusy(true);
+    try {
+      const reset = await resetTransactionRuleMatch(transactionId);
+      if (!reset) return;
+      const detail = await getTransactionDetail(transactionId);
+      setTx(detail);
+      setCategoryRuleMatch(null);
+      if (detail?.counterparty) {
+        const hist = await getCounterpartyTransactions(
+          detail.counterparty,
+          transactionId,
+          6,
+        );
+        const subscriptionNames = await listTransactionSubscriptionProfileNames(
+          hist.map((item) => item.id),
+        );
+        setHistory(
+          hist.map((item) => ({
+            ...item,
+            subscriptionProfileName: subscriptionNames[item.id] || null,
+          })),
+        );
+      }
+    } catch (error) {
+      console.warn("category rule reset error", error);
+    } finally {
+      setCategoryRuleResetBusy(false);
+    }
+  }, [categoryRuleMatch, categoryRuleResetBusy, transactionId]);
+
+  const registerCategoryGroupLayout = React.useCallback(
+    (groupId: string, y: number) => {
+      categoryGroupLayoutYRef.current.set(groupId, y);
+      if (
+        categoryScrollTargetRef.current?.groupId === groupId &&
+        categoryScrollTargetRef.current?.leafId == null
+      ) {
+        void tryScrollCategoryTarget();
+        return;
+      }
+      if (
+        !categorySheetOpen ||
+        categorySheetScrolledRef.current ||
+        categorySheetExpandedGroupId !== groupId
+      ) {
+        return;
+      }
+
+      categorySheetScrolledRef.current = true;
+      requestAnimationFrame(() => {
+        categorySheetScrollRef.current?.scrollTo({
+          y: Math.max(y - 16, 0),
+          animated: false,
+        });
+      });
+    },
+    [categorySheetExpandedGroupId, categorySheetOpen, tryScrollCategoryTarget],
+  );
+
+  const registerCategoryLeafLayout = React.useCallback(
+    (groupId: string, leafId: string, y: number) => {
+      categoryLeafLayoutYRef.current.set(`${groupId}:${leafId}`, y);
+      if (
+        categoryScrollTargetRef.current?.groupId === groupId &&
+        categoryScrollTargetRef.current?.leafId === leafId
+      ) {
+        void tryScrollCategoryTarget();
+      }
+    },
+    [tryScrollCategoryTarget],
+  );
+
+  React.useEffect(() => {
+    if (!categorySheetOpen) return;
+    categorySheetScrolledRef.current = false;
+    scrollCategoryGroupIntoView(categorySheetInitialGroupId, effectiveCategoryId);
+  }, [
+    categorySheetInitialGroupId,
+    categorySheetOpen,
+    effectiveCategoryId,
+    scrollCategoryGroupIntoView,
+  ]);
 
   // ── Reviewed toggle ─────────────────────────────────────────────────────
   const handleBudgetExcludedToggle = React.useCallback(
@@ -717,11 +952,16 @@ export default function TransactionDetailScreen() {
                 ) : (
                   <Text style={styles.mutedText}>Ongecategoriseerd</Text>
                 )}
+                {categoryAttributionLabel ? (
+                  <Text style={styles.categoryAttributionLabel}>
+                    {categoryAttributionLabel}
+                  </Text>
+                ) : null}
               </View>
               <FinanceCircleIconButton
                 icon="edit"
                 iconColor={FinColors.textPrimary}
-                onPress={() => setShowPicker((v) => !v)}
+                onPress={() => void handleOpenCategorySheet()}
                 disabled={savingCategory}
                 accessibilityLabel="Bewerk categorie"
                 style={styles.categoryEditButton}
@@ -745,46 +985,6 @@ export default function TransactionDetailScreen() {
             </View>
           </FinanceTextBlock>
 
-          {showPicker ? (
-            <FinanceDetailCard style={styles.pickerCard}>
-              {savingCategory ? (
-                <ActivityIndicator color={FinColors.green} style={{ margin: 16 }} />
-              ) : (
-                categoryGroups.map((group) => (
-                  <View key={group.parent?.id ?? "__root"}>
-                    <Text style={styles.pickerGroup}>
-                      {group.parent?.name ?? "Overige"}
-                    </Text>
-                    {group.leaves.map((cat) => (
-                      <TouchableOpacity
-                        key={cat.id}
-                        style={[
-                          styles.pickerItem,
-                          effectiveCategoryId === cat.id &&
-                            styles.pickerItemActive,
-                        ]}
-                        onPress={() => void handleManualCategory(cat.id)}
-                      >
-                        <Text
-                          style={[
-                            styles.pickerItemText,
-                            effectiveCategoryId === cat.id &&
-                              styles.pickerItemTextActive,
-                          ]}
-                        >
-                          {cat.name}
-                        </Text>
-                        {effectiveCategoryId === cat.id ? (
-                          <Text style={styles.checkmark}>✓</Text>
-                        ) : null}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ))
-              )}
-            </FinanceDetailCard>
-          ) : null}
-
         <FinanceBudgetStatusToggle
           excluded={tx.budget_excluded}
           onToggle={handleBudgetExcludedToggle}
@@ -803,78 +1003,6 @@ export default function TransactionDetailScreen() {
             actionLabel={linkedSubscriptionProfile ? "Bekijk abonnement" : "Koppel aan abonnement"}
             onPress={handleOpenSubscriptionAction}
           />
-        ) : null}
-
-        {bulkPhase !== "idle" && tx.counterparty ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              Bijwerken:{" "}
-              <Text style={styles.counterpartyInline}>{tx.counterparty}</Text>
-            </Text>
-            {bulkPhase === "confirming" && bulkCounts ? (
-              <>
-                <Text style={styles.mutedText}>
-                  Wil je ook andere transacties van deze tegenpartij bijwerken?
-                </Text>
-                <View style={styles.scopeRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.scopeBtn,
-                      bulkScope === "uncategorized" && styles.scopeBtnActive,
-                    ]}
-                    onPress={() => setBulkScope("uncategorized")}
-                  >
-                    <Text
-                      style={[
-                        styles.scopeBtnText,
-                        bulkScope === "uncategorized" &&
-                          styles.scopeBtnTextActive,
-                      ]}
-                    >
-                      Ongecategoriseerde ({bulkCounts.uncategorized})
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.scopeBtn,
-                      bulkScope === "all" && styles.scopeBtnActive,
-                    ]}
-                    onPress={() => setBulkScope("all")}
-                  >
-                    <Text
-                      style={[
-                        styles.scopeBtnText,
-                        bulkScope === "all" && styles.scopeBtnTextActive,
-                      ]}
-                    >
-                      Alle ({bulkCounts.all})
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.bulkActions}>
-                  <TouchableOpacity
-                    style={[styles.primaryBtn, { flex: 1 }]}
-                    onPress={() => void handleBulkUpdate()}
-                  >
-                    <Text style={styles.primaryBtnText}>Bijwerken</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.ghostBtn, { flex: 1 }]}
-                    onPress={() => setBulkPhase("idle")}
-                  >
-                    <Text style={styles.ghostBtnText}>Overslaan</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : bulkPhase === "updating" ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={FinColors.green} size="small" />
-                <Text style={styles.loadingText}>Transacties bijwerken…</Text>
-              </View>
-            ) : bulkPhase === "done" ? (
-              <Text style={styles.aiSameText}>✓ Transacties bijgewerkt</Text>
-            ) : null}
-          </View>
         ) : null}
 
         {tx.counterparty ? (
@@ -919,6 +1047,234 @@ export default function TransactionDetailScreen() {
           }
         }}
       />
+
+      <FinanceBottomSheetShell
+        visible={categorySheetOpen}
+        title="Categorie"
+        subtitle="Kies een categorie voor deze transactie."
+        onClose={handleCloseCategorySheet}
+        bodyStyle={styles.categorySheetBody}
+        footerStyle={styles.categorySheetFooter}
+        footer={
+          <TouchableOpacity
+            style={[
+              styles.categoryConfirmButton,
+              savingCategory && styles.categoryConfirmButtonDisabled,
+            ]}
+            disabled={savingCategory}
+            onPress={() => void handleApplyCategoryChanges()}
+          >
+            {savingCategory ? (
+              <ActivityIndicator color={FinColors.textPrimary} size="small" />
+            ) : (
+              <Text style={styles.categoryConfirmButtonText}>
+                Bevestig wijziging
+              </Text>
+            )}
+          </TouchableOpacity>
+        }
+      >
+        <View style={styles.categorySheetFixed}>
+          <Text style={styles.categorySheetHeading}>Kies categorie</Text>
+
+          <FinanceFlatChoiceCard
+            title="Laat AI opnieuw bepalen"
+            description="AI kiest opnieuw de categorie voor alleen deze transactie."
+            rightSlot={
+              <TouchableOpacity
+                style={[
+                  styles.categoryAiButton,
+                  aiRecategorizing && styles.categoryAiButtonDisabled,
+                ]}
+                disabled={aiRecategorizing}
+                onPress={() => void handleRunAiCategory()}
+              >
+                {aiRecategorizing ? (
+                  <ActivityIndicator color={FinColors.textPrimary} size="small" />
+                ) : (
+                  <Text style={styles.categoryAiButtonText}>Opnieuw bepalen</Text>
+                )}
+              </TouchableOpacity>
+            }
+          />
+
+          {tx.counterparty ? (
+            <FinanceFlatChoiceCard
+              title="Ook alle transacties van deze ontvangende partij"
+              description="Wijzig meteen bestaande transacties met dezelfde tegenpartij."
+              rightSlot={
+                <Switch
+                  value={draftApplyCategoryToCounterparty}
+                  onValueChange={setDraftApplyCategoryToCounterparty}
+                  trackColor={{
+                    false: "#f7f8f9",
+                    true: FinColors.greenBorder,
+                  }}
+                  thumbColor={
+                    draftApplyCategoryToCounterparty
+                      ? FinColors.green
+                      : FinColors.textMuted
+                  }
+                  disabled={savingCategory || aiRecategorizing}
+                />
+              }
+            />
+          ) : null}
+
+          {tx.counterparty ? (
+            <FinanceFlatChoiceCard
+              title="Ook toekomstige transacties hier op mappen"
+              description="Maakt een regel op basis van deze tegenpartij voor volgende transacties."
+              rightSlot={
+                <Switch
+                  value={draftLearnCategoryFromCounterparty}
+                  onValueChange={setDraftLearnCategoryFromCounterparty}
+                  trackColor={{
+                    false: "#f7f8f9",
+                    true: FinColors.greenBorder,
+                  }}
+                  thumbColor={
+                    draftLearnCategoryFromCounterparty
+                      ? FinColors.green
+                      : FinColors.textMuted
+                  }
+                  disabled={
+                    savingCategory ||
+                    aiRecategorizing ||
+                    !tx.counterparty ||
+                    isSubjectDrivenCounterparty(tx.counterparty)
+                  }
+                />
+              }
+            />
+          ) : null}
+
+          {categoryRuleMatch ? (
+            <FinanceFlatChoiceCard
+              title="Actieve regel"
+              description={`${categoryRuleMatch.pattern} → ${categoryRuleMatch.categoryName} • ${categoryRuleMatch.scope === "user" ? "Eigen regel" : "Systeemregel"} • Kans ${Math.round(categoryRuleMatch.confidence * 100)}%`}
+              rightSlot={
+                categoryRuleMatch.scope === "user" ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryRuleResetButton,
+                      categoryRuleResetBusy &&
+                        styles.categoryRuleResetButtonDisabled,
+                    ]}
+                    disabled={categoryRuleResetBusy}
+                    onPress={() => void handleResetCategoryRule()}
+                  >
+                    {categoryRuleResetBusy ? (
+                      <ActivityIndicator
+                        color={FinColors.textPrimary}
+                        size="small"
+                      />
+                    ) : (
+                      <Text style={styles.categoryRuleResetButtonText}>
+                        Reset
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null
+              }
+            />
+          ) : null}
+        </View>
+
+        <ScrollView
+          ref={categorySheetScrollRef}
+          style={styles.categorySheetScroll}
+          contentContainerStyle={styles.categorySheetContent}
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+        >
+          {categoryGroups.length ? (
+            categoryGroups.map((group) => {
+              const groupKey = group.parent?.id || "__root";
+              const isExpanded = categorySheetExpandedGroupId === groupKey;
+              const selectedLeaf = group.leaves.find(
+                (cat) => cat.id === draftCategoryId,
+              );
+              const representativeLeaf = selectedLeaf || group.leaves[0] || null;
+              const groupIconName = representativeLeaf
+                ? (resolveTransactionCategoryIconName(
+                    {
+                      category_id_auto: representativeLeaf.id,
+                      category_id_user: null,
+                    },
+                    categoryById,
+                  ) as AppIconName)
+                : ("folder" as AppIconName);
+
+              return (
+                <View
+                  key={groupKey}
+                  onLayout={(event) =>
+                    registerCategoryGroupLayout(groupKey, event.nativeEvent.layout.y)
+                  }
+                  style={styles.categoryGroupWrap}
+                >
+                  <FinanceCategoryGroupCard
+                    title={group.parent?.name ?? "Overige"}
+                    subtitle={
+                      selectedLeaf
+                        ? `${selectedLeaf.name} geselecteerd`
+                        : `${group.leaves.length} categorieën`
+                    }
+                    selected={Boolean(selectedLeaf)}
+                    expanded={isExpanded}
+                    iconName={groupIconName}
+                    onToggle={() =>
+                      setCategorySheetExpandedGroupId((current) =>
+                        current === groupKey ? null : groupKey,
+                      )
+                    }
+                  >
+                    {group.leaves.map((cat) => {
+                      const isSelected = draftCategoryId === cat.id;
+                      const leafIconName = resolveTransactionCategoryIconName(
+                        {
+                          category_id_auto: cat.id,
+                          category_id_user: null,
+                        },
+                        categoryById,
+                      ) as AppIconName;
+
+                      return (
+                        <View
+                          key={cat.id}
+                          onLayout={(event) =>
+                            registerCategoryLeafLayout(
+                              groupKey,
+                              cat.id,
+                              event.nativeEvent.layout.y,
+                            )
+                          }
+                        >
+                          <FinanceCategoryLeafRow
+                            label={cat.name}
+                            selected={isSelected}
+                            iconName={leafIconName}
+                            disabled={aiRecategorizing}
+                            onPress={() => {
+                              setDraftCategoryId(cat.id);
+                              setCategorySheetExpandedGroupId(groupKey);
+                            }}
+                          />
+                        </View>
+                      );
+                    })}
+                  </FinanceCategoryGroupCard>
+                </View>
+              );
+            })
+          ) : (
+            <Text style={styles.categorySheetEmptyText}>
+              Geen categorieën beschikbaar.
+            </Text>
+          )}
+        </ScrollView>
+      </FinanceBottomSheetShell>
 
       <Modal
         visible={subscriptionModalOpen}
@@ -1186,6 +1542,7 @@ const styles = StyleSheet.create({
   categoryPathWrap: {
     flex: 1,
     minWidth: 0,
+    gap: 4,
   },
   categoryDisplayRow: {
     flexDirection: "row",
@@ -1244,6 +1601,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: FinColors.textSecondary,
     flexShrink: 1,
+  },
+  categoryAttributionLabel: {
+    color: FinColors.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 2,
   },
   categoryMetaText: {
     color: FinColors.textSecondary,
@@ -1802,6 +2165,95 @@ const styles = StyleSheet.create({
   pickerItemText: { color: FinColors.textPrimary, fontSize: 14 },
   pickerItemTextActive: { color: FinColors.warningText, fontWeight: "600" },
   checkmark: { color: FinColors.warningText, fontSize: 16 },
+
+  // Category sheet
+  categorySheetBody: {
+    flex: 1,
+    minHeight: 0,
+    marginTop: 16,
+    paddingBottom: 0,
+    gap: 12,
+  },
+  categorySheetFixed: {
+    gap: 10,
+  },
+  categorySheetHeading: {
+    color: FinColors.textPrimary,
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    paddingHorizontal: 4,
+  },
+  categorySheetScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  categorySheetContent: {
+    gap: 10,
+    paddingBottom: 10,
+  },
+  categorySheetFooter: {
+    marginTop: 16,
+  },
+  categoryConfirmButton: {
+    minHeight: 56,
+    borderRadius: 999,
+    backgroundColor: FinColors.yellow,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  categoryConfirmButtonDisabled: {
+    opacity: 0.75,
+  },
+  categoryConfirmButtonText: {
+    color: FinColors.textPrimary,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  categoryAiButton: {
+    minWidth: 84,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: FinColors.yellow,
+    paddingHorizontal: 14,
+  },
+  categoryAiButtonDisabled: {
+    opacity: 0.75,
+  },
+  categoryAiButtonText: {
+    color: FinColors.textPrimary,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  categoryRuleResetButton: {
+    minWidth: 84,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: FinColors.warningBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: FinColors.warningBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  categoryRuleResetButtonDisabled: {
+    opacity: 0.74,
+  },
+  categoryRuleResetButtonText: {
+    color: FinColors.textPrimary,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  categorySheetEmptyText: {
+    color: FinColors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: 4,
+  },
 
   // Buttons
   primaryBtn: {

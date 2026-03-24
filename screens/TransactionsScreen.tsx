@@ -46,6 +46,16 @@ import {
 
 const PAGE_SIZE = 20;
 const CONTENT_MAX_WIDTH = 1040;
+const TRANSACTION_TYPE_FILTER_OPTIONS = [
+  { key: "all", label: "Alles" },
+  { key: "income", label: "Inkomsten" },
+  { key: "fixed_costs", label: "Vaste lasten" },
+  { key: "subscriptions", label: "Abonnementen" },
+  { key: "variable_costs", label: "Overige uitgaven" },
+] as const;
+
+type TransactionTypeFilterKey = (typeof TRANSACTION_TYPE_FILTER_OPTIONS)[number]["key"];
+type TransactionAnalysisMainGroupFilter = "income" | "expense";
 
 function normalizeSearch(value: string) {
   return value
@@ -106,6 +116,7 @@ type TxSection = {
 export default function TransactionsScreen({
   counterpartyFilter,
   analysisCategoryFilter,
+  analysisMainGroupFilter,
   monthStartFilter,
   monthEndExclusiveFilter,
   categoryKeyFilter,
@@ -113,6 +124,7 @@ export default function TransactionsScreen({
 }: {
   counterpartyFilter?: string;
   analysisCategoryFilter?: string;
+  analysisMainGroupFilter?: TransactionAnalysisMainGroupFilter;
   monthStartFilter?: string;
   monthEndExclusiveFilter?: string;
   categoryKeyFilter?: string;
@@ -179,6 +191,29 @@ export default function TransactionsScreen({
 
   const categoryFilterIdCsv = React.useMemo(() => categoryFilterIds.join(","), [categoryFilterIds]);
 
+  const selectedTypeFilterKey = React.useMemo<TransactionTypeFilterKey>(() => {
+    if (analysisMainGroupFilter === "income") return "income";
+    if (analysisMainGroupFilter === "expense") {
+      if (analysisCategoryFilter === "fixed_costs") return "fixed_costs";
+      if (analysisCategoryFilter === "subscriptions") return "subscriptions";
+      if (analysisCategoryFilter === "variable_costs") return "variable_costs";
+      return "all";
+    }
+
+    if (analysisCategoryFilter === "income_structural" || analysisCategoryFilter === "income_variable") {
+      return "income";
+    }
+    if (analysisCategoryFilter === "fixed_costs") return "fixed_costs";
+    if (analysisCategoryFilter === "subscriptions") return "subscriptions";
+    if (analysisCategoryFilter === "variable_costs") return "variable_costs";
+    return "all";
+  }, [analysisCategoryFilter, analysisMainGroupFilter]);
+
+  const analysisTypeLabel = React.useMemo(() => {
+    if (selectedTypeFilterKey === "all") return null;
+    return TRANSACTION_TYPE_FILTER_OPTIONS.find((option) => option.key === selectedTypeFilterKey)?.label || null;
+  }, [selectedTypeFilterKey]);
+
   const loadCategories = React.useCallback(async () => {
     try {
       const rows = await getTransactionCategories();
@@ -219,6 +254,7 @@ export default function TransactionsScreen({
         .eq("user_id", userId);
 
       if (counterpartyFilter) query = query.eq("counterparty", counterpartyFilter);
+      if (analysisMainGroupFilter) query = query.eq("analysis_main_group", analysisMainGroupFilter);
       if (analysisCategoryFilter) query = query.eq("analysis_category", analysisCategoryFilter);
       if (monthStartFilter) query = query.gte("date", monthStartFilter);
       if (monthEndExclusiveFilter) query = query.lt("date", monthEndExclusiveFilter);
@@ -289,11 +325,11 @@ export default function TransactionsScreen({
     } finally {
       setLoading(false);
     }
-  }, [analysisCategoryFilter, categoryFilterIdCsv, categoryFilterIds.length, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchQuery]);
+  }, [analysisCategoryFilter, analysisMainGroupFilter, categoryFilterIdCsv, categoryFilterIds.length, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchQuery]);
 
   React.useEffect(() => {
     setPage(0);
-  }, [analysisCategoryFilter, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchQuery]);
+  }, [analysisCategoryFilter, analysisMainGroupFilter, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchQuery]);
 
   React.useEffect(() => {
     const handle = setTimeout(() => setSearchQuery(searchInput.trim()), 180);
@@ -359,10 +395,10 @@ export default function TransactionsScreen({
   const activeFilterChips = React.useMemo(() => {
     const chips: string[] = [];
     if (counterpartyFilter) chips.push(counterpartyFilter);
-    if (analysisCategoryFilter) chips.push(analysisCategoryFilter);
+    if (analysisTypeLabel) chips.push(analysisTypeLabel);
     if (categoryKeyFilter) chips.push(categoryKeyFilter.replace(/_/g, " "));
     return chips;
-  }, [analysisCategoryFilter, categoryKeyFilter, counterpartyFilter]);
+  }, [analysisTypeLabel, categoryKeyFilter, counterpartyFilter]);
 
   const activeFilterCount =
     activeFilterChips.length + (searchQuery ? 1 : 0) + (activeMonthKey !== ALL_MONTHS_KEY ? 1 : 0);
@@ -397,6 +433,52 @@ export default function TransactionsScreen({
     router.replace({ pathname: "/transactions" });
   }, [router]);
 
+  const buildTransactionRouteParams = React.useCallback(
+    (input: {
+      monthKey?: string | null;
+      analysisMainGroup?: TransactionAnalysisMainGroupFilter | null;
+      analysisCategory?: string | null;
+    }) => {
+      const nextParams: Record<string, string> = {};
+      if (counterpartyFilter) nextParams.counterparty = counterpartyFilter;
+      if (categoryKeyFilter) nextParams.categoryKey = categoryKeyFilter;
+
+      const resolvedAnalysisMainGroup =
+        input.analysisMainGroup === undefined ? analysisMainGroupFilter || null : input.analysisMainGroup;
+      const resolvedAnalysisCategory =
+        input.analysisCategory === undefined ? analysisCategoryFilter || null : input.analysisCategory;
+
+      if (resolvedAnalysisMainGroup) {
+        nextParams.analysisMainGroup = resolvedAnalysisMainGroup;
+      }
+      if (resolvedAnalysisCategory) {
+        nextParams.analysisCategory = resolvedAnalysisCategory;
+      }
+
+      const resolvedMonthKey =
+        input.monthKey === undefined ? activeMonthKey : input.monthKey;
+      if (resolvedMonthKey && resolvedMonthKey !== ALL_MONTHS_KEY) {
+        const option =
+          resolvedMonthOptions.find((item) => item.key === resolvedMonthKey) ||
+          getMonthOptionByKey(resolvedMonthKey);
+        if (option) {
+          nextParams.monthStart = option.startIso;
+          nextParams.monthEndExclusive = option.endIso;
+        }
+      }
+
+      return nextParams;
+    },
+    [
+      analysisCategoryFilter,
+      analysisMainGroupFilter,
+      categoryKeyFilter,
+      counterpartyFilter,
+      activeMonthKey,
+      resolvedMonthOptions,
+    ],
+  );
+
   const handlePageChange = React.useCallback((nextPage: number) => {
     const boundedPage = Math.max(0, Math.min(nextPage, Math.max(totalPages - 1, 0)));
     if (boundedPage === page) return;
@@ -428,30 +510,34 @@ export default function TransactionsScreen({
   const handleApplyMonthFilter = React.useCallback((monthKey: string) => {
     setPage(0);
     setFilterModalOpen(false);
+    router.replace({
+      pathname: "/transactions",
+      params: buildTransactionRouteParams({ monthKey }),
+    });
+  }, [buildTransactionRouteParams, router]);
 
-    const nextParams: Record<string, string> = {};
-    if (counterpartyFilter) nextParams.counterparty = counterpartyFilter;
-    if (analysisCategoryFilter) nextParams.analysisCategory = analysisCategoryFilter;
-    if (categoryKeyFilter) nextParams.categoryKey = categoryKeyFilter;
+  const handleApplyTypeFilter = React.useCallback(
+    (typeKey: TransactionTypeFilterKey) => {
+      setPage(0);
+      setFilterModalOpen(false);
 
-    if (monthKey !== ALL_MONTHS_KEY) {
-      const option =
-        resolvedMonthOptions.find((item) => item.key === monthKey) ||
-        getMonthOptionByKey(monthKey);
-      if (option) {
-        nextParams.monthStart = option.startIso;
-        nextParams.monthEndExclusive = option.endIso;
-      }
-    }
+      const nextAnalysisParams =
+        typeKey === "all"
+          ? { analysisMainGroup: null, analysisCategory: null }
+          : typeKey === "income"
+            ? { analysisMainGroup: "income" as const, analysisCategory: null }
+            : {
+                analysisMainGroup: "expense" as const,
+                analysisCategory: typeKey,
+              };
 
-    router.replace({ pathname: "/transactions", params: nextParams });
-  }, [
-    analysisCategoryFilter,
-    categoryKeyFilter,
-    counterpartyFilter,
-    resolvedMonthOptions,
-    router,
-  ]);
+      router.replace({
+        pathname: "/transactions",
+        params: buildTransactionRouteParams(nextAnalysisParams),
+      });
+    },
+    [buildTransactionRouteParams, router],
+  );
 
   const header = (
     <View style={styles.headerBlock}>
@@ -460,7 +546,7 @@ export default function TransactionsScreen({
         innerStyle={styles.heroInner}
         eyebrow="Transactie overzicht"
         title="Transacties"
-        subtitle="Transacties per periode en categorie."
+        subtitle="Transacties per periode en type."
         titleStyle={styles.heroTitle}
         subtitleStyle={styles.heroCopy}
       />
@@ -698,6 +784,32 @@ export default function TransactionsScreen({
           contentContainerStyle={styles.filterModalScrollContent}
           showsVerticalScrollIndicator={false}
         >
+          <View style={styles.filterModalSection}>
+            <Text style={styles.filterModalLabel}>Snel kiezen</Text>
+            <View style={styles.filterModalChipWrap}>
+              {TRANSACTION_TYPE_FILTER_OPTIONS.map((option) => {
+                const isActive = selectedTypeFilterKey === option.key;
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[styles.filterModalChip, isActive && styles.filterModalChipActive]}
+                    onPress={() => handleApplyTypeFilter(option.key)}
+                    activeOpacity={0.9}
+                  >
+                    <Text
+                      style={[
+                        styles.filterModalChipText,
+                        isActive && styles.filterModalChipTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           <View style={styles.filterModalSection}>
             <Text style={styles.filterModalLabel}>Periode</Text>
             <View style={styles.filterModalField}>
@@ -1201,6 +1313,12 @@ const styles = StyleSheet.create({
     borderColor: FinColors.borderSubtle,
   },
   filterModalScroll: {
+    marginTop: 18,
+  },
+  filterModalBody: {
+    minHeight: 0,
+  },
+  filterModalFooter: {
     marginTop: 18,
   },
   filterModalScrollContent: {

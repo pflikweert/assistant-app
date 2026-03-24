@@ -212,6 +212,62 @@ describe("buildInsightsUpcomingMoments", () => {
     expect(result[0]?.subtitle).toBe("Vaste lasten zorgverzekering");
   });
 
+  it("kiest voor vaste lasten bij dezelfde tegenpartij als ook een salaris-signaal bestaat", () => {
+    const selectedMonth = buildMonthOption("2026-03");
+    const result = buildInsightsUpcomingMoments({
+      forecast: buildForecast({}),
+      timelineEvents: [
+        timelineEvent({
+          eventKey: "income-1",
+          eventDate: "2026-03-25",
+          eventType: "income",
+          label: "Impres B.V.",
+          amount: 2400,
+          source: "income_source",
+          confidence: "high",
+        }),
+        timelineEvent({
+          eventKey: "fixed-1",
+          eventDate: "2026-03-27",
+          eventType: "fixed_cost",
+          label: "BELASTINGDIENST",
+          amount: -75,
+          source: "recurring_history",
+          confidence: "high",
+        }),
+      ],
+      referenceSignals: [
+        signal({
+          counterparty: "Impres B.V.",
+          amount: 2400,
+          analysisCategory: "income_structural",
+          categoryKey: "income_salary",
+          categoryLabel: "Salaris",
+        }),
+        signal({
+          counterparty: "BELASTINGDIENST",
+          amount: -75,
+          analysisCategory: "fixed_costs",
+          categoryLabel: "Wegenbelasting",
+        }),
+        signal({
+          counterparty: "BELASTINGDIENST",
+          amount: 2400,
+          analysisCategory: "income_structural",
+          categoryKey: "income_salary",
+          categoryLabel: "Salaris",
+        }),
+      ],
+      selectedMonth,
+      now: new Date("2026-03-11T12:00:00.000Z"),
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result[1]?.title).toBe("BELASTINGDIENST");
+    expect(result[1]?.subtitle).toBe("Wegenbelasting");
+    expect(result[1]?.amountLabel).toContain("75");
+  });
+
   it("slaat generieke fallback-momenten over en toont dan alleen saldo of niets", () => {
     const selectedMonth = buildMonthOption("2026-03");
     const result = buildInsightsUpcomingMoments({

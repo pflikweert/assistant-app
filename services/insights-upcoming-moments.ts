@@ -86,7 +86,7 @@ function confidenceCopy(confidence: "high" | "medium") {
 
 type ReferenceSignal = Pick<
   InsightsSignalTransaction,
-  "counterparty" | "details" | "categoryKey" | "categoryLabel" | "analysisCategory"
+  "counterparty" | "details" | "categoryKey" | "categoryLabel" | "analysisCategory" | "amount"
 > & {
   date: string;
 };
@@ -109,7 +109,7 @@ function isGenericMomentLabel(label: string) {
 }
 
 function buildSignalLookup(signals: InsightsSignalTransaction[] | null | undefined) {
-  const lookup = new Map<string, ReferenceSignal>();
+  const lookup = new Map<string, ReferenceSignal[]>();
 
   for (const signal of signals || []) {
     const record: ReferenceSignal = {
@@ -118,6 +118,7 @@ function buildSignalLookup(signals: InsightsSignalTransaction[] | null | undefin
       categoryKey: signal.categoryKey,
       categoryLabel: signal.categoryLabel,
       analysisCategory: signal.analysisCategory,
+      amount: signal.amount,
       date: signal.date,
     };
 
@@ -128,11 +129,17 @@ function buildSignalLookup(signals: InsightsSignalTransaction[] | null | undefin
     ].filter(Boolean);
 
     for (const key of candidateKeys) {
-      const existing = lookup.get(key);
-      if (!existing || record.date > existing.date) {
-        lookup.set(key, record);
-      }
+      const existing = lookup.get(key) || [];
+      existing.push(record);
+      lookup.set(key, existing);
     }
+  }
+
+  for (const [key, values] of lookup.entries()) {
+    lookup.set(
+      key,
+      [...values].sort((left, right) => right.date.localeCompare(left.date)),
+    );
   }
 
   return lookup;
@@ -140,16 +147,38 @@ function buildSignalLookup(signals: InsightsSignalTransaction[] | null | undefin
 
 function resolveSignalForEvent(
   event: ForecastTimelineEventRecord,
-  lookup: Map<string, ReferenceSignal>,
+  lookup: Map<string, ReferenceSignal[]>,
 ) {
   const keys = [
     normalizedComparisonLabel(event.label),
     normalizedComparisonLabel(event.label.split("|")[0]),
   ].filter(Boolean);
 
+  const isIncomeEvent = event.eventType === "income";
+  const isExpenseEvent = event.eventType === "fixed_cost" || event.eventType === "subscription";
+
   for (const key of keys) {
     const found = lookup.get(key);
-    if (found) return found;
+    if (!found) continue;
+
+    const compatible = found.find((signal) => {
+      if (isIncomeEvent) {
+        return signal.amount > 0 && signal.analysisCategory?.startsWith("income") === true;
+      }
+      if (isExpenseEvent) {
+        return (
+          signal.amount < 0 &&
+          (signal.analysisCategory === "fixed_costs" ||
+            signal.analysisCategory === "subscriptions")
+        );
+      }
+      if (event.eventType === "savings_transfer") {
+        return signal.amount < 0 && signal.analysisCategory === "savings_transfer";
+      }
+      return true;
+    });
+
+    if (compatible) return compatible;
   }
 
   return null;
@@ -166,15 +195,14 @@ function buildMomentSubtitle(
   const categoryLabel = cleanDetails(signal?.categoryLabel);
   const categoryKey = normalizeText(signal?.categoryKey);
   const signalType = signal?.analysisCategory || null;
-  const labelNorm = normalizeText(event.label);
-
-  if (
-    signalType === "income_structural" ||
+  const isFixedCostSignal = signalType === "fixed_costs";
+  const isSubscriptionSignal = signalType === "subscriptions";
+  const isSalaryCategory =
     categoryKey.includes("salary") ||
-    categoryKey.includes("loon") ||
-    labelNorm.includes("salaris") ||
-    labelNorm.includes("loon")
-  ) {
+    normalizeText(categoryLabel).includes("salaris") ||
+    normalizeText(categoryLabel).includes("loon");
+
+  if (signalType === "income_structural" && isSalaryCategory) {
     return "Verwacht salaris";
   }
 
@@ -186,12 +214,12 @@ function buildMomentSubtitle(
     return "Verwachte spaarboeking";
   }
 
-  if (signalType === "subscriptions") {
+  if (isSubscriptionSignal) {
     if (categoryLabel) return categoryLabel;
     return "Verwacht abonnement";
   }
 
-  if (signalType === "fixed_costs") {
+  if (isFixedCostSignal) {
     if (categoryLabel) {
       const normalized = normalizeText(categoryLabel);
       if (normalized.includes("verzekering")) {

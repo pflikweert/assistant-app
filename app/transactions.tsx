@@ -11,12 +11,14 @@ export default function TransactionsEntry() {
   const {
     counterparty,
     analysisCategory,
+    analysisMainGroup,
     monthStart,
     monthEndExclusive,
     categoryKey,
   } = useLocalSearchParams<{
     counterparty?: string;
     analysisCategory?: string;
+    analysisMainGroup?: "income" | "expense";
     monthStart?: string;
     monthEndExclusive?: string;
     categoryKey?: string;
@@ -26,6 +28,7 @@ export default function TransactionsEntry() {
     <TransactionsScreen
       counterpartyFilter={normalizeParam(counterparty)}
       analysisCategoryFilter={normalizeParam(analysisCategory)}
+      analysisMainGroupFilter={normalizeParam(analysisMainGroup) as "income" | "expense" | undefined}
       monthStartFilter={normalizeParam(monthStart)}
       monthEndExclusiveFilter={normalizeParam(monthEndExclusive)}
       categoryKeyFilter={normalizeParam(categoryKey)}

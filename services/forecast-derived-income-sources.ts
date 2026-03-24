@@ -218,7 +218,9 @@ export function mergeForecastIncomeSources(
       source_label:
         derivedIsNewer && source.source_label ? source.source_label : existing.source_label,
       expected_income: round2(
-        Math.max(existing.expected_income || 0, source.expected_income || 0),
+        derivedIsNewer
+          ? (source.expected_income || 0)
+          : (existing.expected_income || 0),
       ),
       income_bucket:
         source.income_bucket ??

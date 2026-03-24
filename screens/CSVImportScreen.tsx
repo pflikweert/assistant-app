@@ -35,6 +35,7 @@ import {
   parseTransactionImport,
   TransactionImportRecord,
 } from "@/services/import/transaction-import-parser";
+import { findMatchingImportedTransaction } from "@/services/import/transaction-import-match";
 import { supabase } from "@/services/supabase";
 import { normalizeTransactionDetails } from "@/services/transaction-details";
 
@@ -299,23 +300,18 @@ export default function CSVImportScreen() {
       );
       const { data: existing, error: selErr } = await supabase
         .from("transactions")
-        .select("id,details,counterparty")
+        .select("id,details,counterparty,metadata")
         .eq("user_id", userId)
         .eq("bank_account_id", bankAccountId)
         .eq("date", tx.date)
         .eq("amount", tx.amount)
         .limit(25);
       if (selErr) throw selErr;
-      const existingMatch =
-        existing?.find(
-          (row) =>
-            normalizeTransactionDetails(row.details) === normalizedDetails &&
-            String(row.counterparty || "").trim() ===
-              String(tx.counterparty || "").trim(),
-        ) ||
-        existing?.find(
-          (row) => normalizeTransactionDetails(row.details) === normalizedDetails,
-        );
+      const existingMatch = findMatchingImportedTransaction(existing, {
+        details: normalizedDetails,
+        counterparty: tx.counterparty,
+        metadata: tx.metadata,
+      });
       const payload: any = {
         user_id: userId,
         bank_account_id: bankAccountId,

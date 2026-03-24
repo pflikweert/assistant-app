@@ -52,7 +52,6 @@ export type IncomeSemantics = {
   groupLabel: string | null;
 };
 
-const SALARY_HINTS = ["salaris", "loon", "salary"];
 const CHILD_BUDGET_HINTS = [
   "kindgebonden budget",
   "voorschot kit kgb",
@@ -149,7 +148,6 @@ function resolveIncomeSemanticsFromInput(input: {
   const isBelastingdienst = normalizeText(input.counterparty || "").includes(
     "belastingdienst",
   );
-  const hasSalaryHint = includesAny(haystack, SALARY_HINTS);
   const hasChildBudgetHint =
     includesAny(haystack, CHILD_BUDGET_HINTS) || haystack.includes(" kgb ");
   const hasGovernmentBenefitHint = includesAny(
@@ -160,7 +158,7 @@ function resolveIncomeSemanticsFromInput(input: {
   const hasHealthRefundHint = includesAny(haystack, HEALTH_REFUND_HINTS);
   const hasRoadTaxHint = includesAny(haystack, ROAD_TAX_HINTS);
 
-  if (categoryKey.includes("income_salary") || hasSalaryHint) {
+  if (categoryKey.includes("income_salary") || budgetGroup === "salary") {
     return {
       kind: "salary",
       budgetBucket: "salary",

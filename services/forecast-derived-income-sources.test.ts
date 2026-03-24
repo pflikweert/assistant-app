@@ -167,4 +167,52 @@ describe("mergeForecastIncomeSources", () => {
       ]),
     );
   });
+
+  it("prefers the newest derived salary amount over an older persisted outlier", () => {
+    const merged = mergeForecastIncomeSources(
+      [
+        {
+          source_key: "werkgever bv",
+          source_label: "Werkgever BV",
+          expected_income: 3104,
+          income_bucket: "salary",
+          income_frequency: "monthly",
+          income_day_of_month: 25,
+          last_detected_at: "2026-01-25T12:00:00.000Z",
+          reference_transaction_id: "tx-old",
+          reference_category_id: null,
+          reference_category_path: "Salaris",
+          reference_label: "Salaris januari",
+          reference_source_type: "transaction",
+        },
+      ],
+      [
+        {
+          source_key: "werkgever bv",
+          source_label: "Werkgever BV",
+          expected_income: 2400,
+          income_bucket: "salary",
+          income_frequency: "monthly",
+          income_day_of_month: 25,
+          last_detected_at: "2026-03-25T12:00:00.000Z",
+          reference_transaction_id: "tx-new",
+          reference_category_id: null,
+          reference_category_path: "Salaris",
+          reference_label: "Salaris maart",
+          reference_source_type: "transaction",
+        },
+      ],
+    );
+
+    expect(merged).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source_key: "werkgever bv",
+          expected_income: 2400,
+          income_bucket: "salary",
+          reference_transaction_id: "tx-new",
+        }),
+      ]),
+    );
+  });
 });
