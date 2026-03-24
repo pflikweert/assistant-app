@@ -13,7 +13,9 @@ function resolveAmountColor(tone: InsightsUpcomingMoment["amountTone"]) {
   return FinColors.textPrimary;
 }
 
-export function FinanceUpcomingMomentsCard({ items }: FinanceUpcomingMomentsCardProps) {
+export function FinanceUpcomingMomentsCard({
+  items,
+}: FinanceUpcomingMomentsCardProps) {
   if (!items.length) {
     return (
       <View style={styles.emptyCard}>
@@ -30,7 +32,10 @@ export function FinanceUpcomingMomentsCard({ items }: FinanceUpcomingMomentsCard
       {items.map((item, index) => (
         <View
           key={item.id}
-          style={[styles.row, index < items.length - 1 ? styles.rowWithDivider : null]}
+          style={[
+            styles.row,
+            index < items.length - 1 ? styles.rowWithDivider : null,
+          ]}
         >
           <View style={styles.dateCol}>
             <Text style={styles.month}>{item.monthLabel}</Text>
@@ -47,7 +52,12 @@ export function FinanceUpcomingMomentsCard({ items }: FinanceUpcomingMomentsCard
           </View>
 
           <View style={styles.amountCol}>
-            <Text style={[styles.amount, { color: resolveAmountColor(item.amountTone) }]}>
+            <Text
+              style={[
+                styles.amount,
+                { color: resolveAmountColor(item.amountTone) },
+              ]}
+            >
               {item.amountLabel}
             </Text>
           </View>
@@ -60,16 +70,12 @@ export function FinanceUpcomingMomentsCard({ items }: FinanceUpcomingMomentsCard
 const styles = StyleSheet.create({
   card: {
     borderRadius: 26,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
+    backgroundColor: "#f3f3f5",
     overflow: "hidden",
   },
   emptyCard: {
     borderRadius: 26,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
+    backgroundColor: "#f3f3f5",
     paddingHorizontal: 16,
     paddingVertical: 18,
     gap: 6,
@@ -94,7 +100,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   rowWithDivider: {
-    borderBottomWidth: 1,
+    borderBottomWidth: 0,
     borderBottomColor: FinColors.borderSubtle,
   },
   dateCol: {

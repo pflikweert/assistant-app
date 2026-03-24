@@ -1,11 +1,11 @@
 import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { MonthPickerSheet } from "@/components/month-picker-sheet";
-import { AppIcon } from "@/components/ui/app-icon";
 import {
   FinanceInsightCard,
   type FinanceInsightCardType,
 } from "@/components/ui/finance-insight-card";
 import { FinanceForecastSummaryCard } from "@/components/ui/finance-forecast-summary-card";
+import { FinanceMonthSelector } from "@/components/ui/finance-month-selector";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceSectionHeader } from "@/components/ui/finance-section-header";
@@ -35,7 +35,6 @@ import {
 } from "@/services/insights-forecast-card";
 import {
   buildInsightsMonthContextSummary,
-  formatAttentionCountLabel,
   type InsightsForecastSummary,
 } from "@/services/insights-month-context";
 import { buildInsightsUpcomingMoments } from "@/services/insights-upcoming-moments";
@@ -50,14 +49,7 @@ import type { BudgetPlanComputation } from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 
 type InsightSignals = {
   all: InsightsSignalTransaction[];
@@ -137,7 +129,6 @@ export default function InsightsScreen() {
     [],
   );
 
-  const [loading, setLoading] = React.useState(true);
   const [monthOptions, setMonthOptions] = React.useState<TransactionMonthOption[]>([
     fallbackMonthOption,
   ]);
@@ -456,62 +447,57 @@ export default function InsightsScreen() {
   );
 
   const refreshInsights = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const userId = await requireCurrentUserId();
-      const [forecastSummary, budgetSummary, insightSignals, highlightHistory] =
-        await Promise.all([
-          loadForecastSummary(userId),
-          loadBudgetSummary(),
-          loadInsightSignals(userId),
-          loadInsightsHighlightHistory(userId, selectedMonth.key),
+    const userId = await requireCurrentUserId();
+    const [forecastSummary, budgetSummary, insightSignals, highlightHistory] =
+      await Promise.all([
+        loadForecastSummary(userId),
+        loadBudgetSummary(),
+        loadInsightSignals(userId),
+        loadInsightsHighlightHistory(userId, selectedMonth.key),
       ]);
 
-      setForecast(forecastSummary);
-      setBudgetPlan(budgetSummary);
-      setInsightSignals(insightSignals);
-      const nextTimelineEvents = await listForecastTimelineEvents({
-        userId,
-        monthStart: selectedMonth.startIso,
-      }).catch((error) => {
-        console.warn("[insights] timeline events load error", error);
-        return [] as ForecastTimelineEventRecord[];
-      });
-      setTimelineEvents(nextTimelineEvents);
-      const nextHighlights = selectInsightsHighlights({
-        selectedMonthKey: selectedMonth.key,
-        selectedMonthLabel: selectedMonth.label,
-        forecast: forecastSummary,
-        budgetPlan: budgetSummary,
-        currentMonthTransactions: insightSignals.currentMonth,
-        previousMonthTransactions: insightSignals.previousMonth,
-        lookbackTransactions: insightSignals.lookback,
-        latestTransactionDateIso: resolveLatestTransactionDate(
-          insightSignals.currentMonth,
-        ),
-        history: highlightHistory,
-      });
+    setForecast(forecastSummary);
+    setBudgetPlan(budgetSummary);
+    setInsightSignals(insightSignals);
+    const nextTimelineEvents = await listForecastTimelineEvents({
+      userId,
+      monthStart: selectedMonth.startIso,
+    }).catch((error) => {
+      console.warn("[insights] timeline events load error", error);
+      return [] as ForecastTimelineEventRecord[];
+    });
+    setTimelineEvents(nextTimelineEvents);
+    const nextHighlights = selectInsightsHighlights({
+      selectedMonthKey: selectedMonth.key,
+      selectedMonthLabel: selectedMonth.label,
+      forecast: forecastSummary,
+      budgetPlan: budgetSummary,
+      currentMonthTransactions: insightSignals.currentMonth,
+      previousMonthTransactions: insightSignals.previousMonth,
+      lookbackTransactions: insightSignals.lookback,
+      latestTransactionDateIso: resolveLatestTransactionDate(
+        insightSignals.currentMonth,
+      ),
+      history: highlightHistory,
+    });
 
-      setHighlights(nextHighlights);
+    setHighlights(nextHighlights);
 
-      const recordableHighlights = nextHighlights.filter((item) => item.type !== "neutral");
-      if (recordableHighlights.length > 0) {
-        try {
-          await recordInsightsHighlightHistory(
-            userId,
-            selectedMonth.key,
-            recordableHighlights.map((item) => ({
-              meaningKey: item.meaningKey,
-              fingerprint: item.fingerprint,
-              signalSource: item.signalSource,
-            })),
-          );
-        } catch (error) {
-          console.warn("[insights] highlight history write failed", error);
-        }
+    const recordableHighlights = nextHighlights.filter((item) => item.type !== "neutral");
+    if (recordableHighlights.length > 0) {
+      try {
+        await recordInsightsHighlightHistory(
+          userId,
+          selectedMonth.key,
+          recordableHighlights.map((item) => ({
+            meaningKey: item.meaningKey,
+            fingerprint: item.fingerprint,
+            signalSource: item.signalSource,
+          })),
+        );
+      } catch (error) {
+        console.warn("[insights] highlight history write failed", error);
       }
-    } finally {
-      setLoading(false);
     }
   }, [
     loadBudgetSummary,
@@ -548,82 +534,39 @@ export default function InsightsScreen() {
         <FinanceHeroShell
           eyebrow="Maandcontext"
           title="Inzichten"
-          subtitle={loading ? "We halen je maandbeeld op." : monthContext.contextLine}
+          subtitle="Een rustig overzicht van je maand en vooruitblik."
         >
           <View style={styles.heroMetaRow}>
-            <View style={styles.monthBadge}>
-              <Text style={styles.monthLabel}>{selectedMonth.label}</Text>
-            </View>
-            <FinanceStatusChip
-              tone={monthContext.statusTone}
-              label={monthContext.statusLabel}
-            />
-          </View>
-
-          <View style={styles.summaryCard}>
-            {loading ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator size="small" color={FinColors.textSecondary} />
-                <Text style={styles.loadingText}>Maandcontext wordt opgebouwd...</Text>
-              </View>
-            ) : (
-              <>
-                <Text style={styles.summaryTitle}>Wat dit betekent</Text>
-                <Text style={styles.summaryText}>{monthContext.summaryLine}</Text>
-                {monthContext.attentionCount > 0 ? (
-                  <Text style={styles.summaryMeta}>
-                    Open aandacht: {formatAttentionCountLabel(monthContext.attentionCount)}.
-                  </Text>
-                ) : null}
-              </>
+            {monthContext.statusLabel === "Krap" ? null : (
+              <FinanceStatusChip
+                tone={monthContext.statusTone}
+                label={monthContext.statusLabel}
+              />
             )}
           </View>
         </FinanceHeroShell>
 
         <View style={styles.contentMax}>
-          <View style={styles.monthSelectorRow}>
-            <Pressable
-              style={[
-                styles.monthSelectorNavButton,
-                !canGoToOlderMonth && styles.monthSelectorNavButtonDisabled,
-              ]}
-              onPress={() => {
-                if (!canGoToOlderMonth) return;
-                const nextOption = monthOptions[selectedMonthIndex + 1];
-                if (nextOption) setSelectedMonthKey(nextOption.key);
-              }}
-              disabled={!canGoToOlderMonth}
-            >
-              <Text style={styles.monthSelectorNavButtonText}>‹</Text>
-            </Pressable>
+          <FinanceMonthSelector
+            label={selectedMonth.label}
+            canGoToOlderMonth={canGoToOlderMonth}
+            canGoToNewerMonth={canGoToNewerMonth}
+            onPressLabel={() => setMonthPickerOpen(true)}
+            onGoToOlderMonth={() => {
+              if (!canGoToOlderMonth) return;
+              const nextOption = monthOptions[selectedMonthIndex + 1];
+              if (nextOption) setSelectedMonthKey(nextOption.key);
+            }}
+            onGoToNewerMonth={() => {
+              if (!canGoToNewerMonth) return;
+              const nextOption = monthOptions[selectedMonthIndex - 1];
+              if (nextOption) setSelectedMonthKey(nextOption.key);
+            }}
+          />
 
-            <Pressable
-              style={styles.monthSelectorBadge}
-              onPress={() => setMonthPickerOpen(true)}
-            >
-              <Text style={styles.monthSelectorBadgeText}>{selectedMonth.label}</Text>
-              <AppIcon
-                name="expand-more"
-                size={18}
-                color={FinColors.textSecondary}
-                variant="outlined"
-              />
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.monthSelectorNavButton,
-                !canGoToNewerMonth && styles.monthSelectorNavButtonDisabled,
-              ]}
-              onPress={() => {
-                if (!canGoToNewerMonth) return;
-                const nextOption = monthOptions[selectedMonthIndex - 1];
-                if (nextOption) setSelectedMonthKey(nextOption.key);
-              }}
-              disabled={!canGoToNewerMonth}
-            >
-              <Text style={styles.monthSelectorNavButtonText}>›</Text>
-            </Pressable>
+          <View style={styles.sectionBlock}>
+            <FinanceSectionHeader title="Forecast" />
+            <FinanceForecastSummaryCard model={forecastCard} />
           </View>
 
           {highlights.length > 0 ? (
@@ -649,11 +592,6 @@ export default function InsightsScreen() {
               </View>
             </View>
           ) : null}
-
-          <View style={styles.sectionBlock}>
-            <FinanceSectionHeader title="Forecast" />
-            <FinanceForecastSummaryCard model={forecastCard} />
-          </View>
 
           {forecast && selectedMonth.key >= getCurrentMonthKey() ? (
             <View style={styles.sectionBlock}>
@@ -700,62 +638,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     gap: 10,
     flexWrap: "wrap",
-  },
-  monthBadge: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  monthLabel: {
-    fontSize: 13,
-    lineHeight: 16,
-    color: FinColors.textSecondary,
-    fontWeight: "700",
-    textTransform: "capitalize",
-  },
-  summaryCard: {
-    marginTop: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: "rgba(255,255,255,0.72)",
-    padding: 14,
-    gap: 6,
-  },
-  summaryTitle: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "800",
-    letterSpacing: 1.1,
-    textTransform: "uppercase",
-    color: FinColors.textMuted,
-  },
-  summaryText: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: FinColors.textPrimary,
-    fontWeight: "600",
-  },
-  summaryMeta: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: FinColors.textSecondary,
-  },
-  loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  loadingText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: FinColors.textSecondary,
   },
   contentMax: {
     width: "100%",
@@ -764,51 +649,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 16,
     gap: 32,
-  },
-  monthSelectorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  monthSelectorNavButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  monthSelectorNavButtonDisabled: {
-    opacity: 0.42,
-  },
-  monthSelectorNavButtonText: {
-    fontSize: 20,
-    lineHeight: 22,
-    fontWeight: "700",
-    color: FinColors.textSecondary,
-  },
-  monthSelectorBadge: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  monthSelectorBadgeText: {
-    fontSize: 14,
-    lineHeight: 18,
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-    textTransform: "capitalize",
   },
   sectionBlock: {
     gap: 12,
