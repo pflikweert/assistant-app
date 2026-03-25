@@ -40,4 +40,16 @@ describe("getApiBaseUrl", () => {
 
     expect(getApiBaseUrl()).toBe("https://budio.nl");
   });
+
+  it("prefers the browser origin over a configured production base url on web", () => {
+    vi.stubEnv("APP_BASE_URL", "https://budio.nl");
+    vi.stubGlobal("window", {
+      location: {
+        hostname: "www.budio.nl",
+        origin: "https://www.budio.nl",
+      },
+    });
+
+    expect(getApiBaseUrl()).toBe("https://www.budio.nl");
+  });
 });

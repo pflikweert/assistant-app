@@ -60,6 +60,7 @@
     "eslint-config-expo": "~10.0.0",
     "react-test-renderer": "^19.1.0",
     "typescript": "~5.9.2",
+    "vercel": "^50.37.0",
     "vitest": "^3.2.4"
   },
   "private": true
