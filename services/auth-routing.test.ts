@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getAuthRedirectPath, isAuthRoute } from "./auth-routing";
+import {
+  getAuthRedirectPath,
+  isAuthRoute,
+  isRecoveryRoute,
+} from "./auth-routing";
 
 describe("isAuthRoute", () => {
   it("recognizes auth group routes", () => {
@@ -15,6 +19,17 @@ describe("isAuthRoute", () => {
   it("returns false for app routes", () => {
     expect(isAuthRoute(["(tabs)", "index"])).toBe(false);
     expect(isAuthRoute(["csv-import"])).toBe(false);
+  });
+});
+
+describe("isRecoveryRoute", () => {
+  it("recognizes the recovery reset screen", () => {
+    expect(isRecoveryRoute(["auth", "reset-password"])).toBe(true);
+  });
+
+  it("returns false for the other auth routes", () => {
+    expect(isRecoveryRoute(["auth", "login"])).toBe(false);
+    expect(isRecoveryRoute(["auth", "forgot-password"])).toBe(false);
   });
 });
 
@@ -65,6 +80,16 @@ describe("getAuthRedirectPath", () => {
         loading: false,
         isAuthenticated: true,
         segments: ["csv-import"],
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps authenticated users on the recovery reset screen", () => {
+    expect(
+      getAuthRedirectPath({
+        loading: false,
+        isAuthenticated: true,
+        segments: ["auth", "reset-password"],
       }),
     ).toBeNull();
   });
