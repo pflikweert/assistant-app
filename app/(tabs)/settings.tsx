@@ -686,8 +686,8 @@ export default function SettingsScreen() {
             ) : null}
           </View>
 
-          {/* About */}
-          <SectionHeader title="About" />
+          {/* Over Budio */}
+          <SectionHeader title="Over Budio" />
           <View style={styles.card}>
             <SettingsRow iconName="info-outline" label="Versie" value="1.0.0" />
             <View style={styles.divider} />

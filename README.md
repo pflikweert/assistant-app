@@ -1,6 +1,6 @@
-# Welcome to your Expo app 👋
+# Budio
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Budio is een mobiele finance-app voor overzicht, sturing en voorspelling van persoonlijke geldstromen.
 
 ## Get started
 
@@ -25,6 +25,8 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    This starts Expo web and a small local API server on `http://localhost:3001`.
    Set `APP_BASE_URL=http://localhost:3001` in your local `.env` so the app
    points at that server.
+
+   In production, the canonical web URL is `https://budio.nl`.
 
 In the output, you'll find options to open the app in a
 
@@ -88,6 +90,13 @@ supabase db push    # run pending migrations against your linked project
 Once the table exists, importing a CSV will map the bank‑specific column names
 into the generic fields and store the remaining columns under `metadata`.
 Existing rows are updated if they match on `date+details+amount`.
+
+For auth e-mails and password reset links:
+
+- set the Supabase Auth site URL to `https://budio.nl`
+- add `https://budio.nl/**` to the redirect allowlist
+- configure Resend as the mail provider in Supabase or the connected mail layer
+- keep the local development redirect on `http://localhost:3001` for web and the Expo scheme for native
 
 ## Local development auth bypass
 

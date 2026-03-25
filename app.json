@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "assistant",
-    "slug": "assistant",
+    "name": "Budio",
+    "slug": "budio",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "assistant",
+    "scheme": "budio",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {

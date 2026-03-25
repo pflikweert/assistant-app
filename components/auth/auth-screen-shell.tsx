@@ -41,7 +41,7 @@ export function AuthScreenShell({
             <View style={styles.brandMarkLineShort} />
             <View style={styles.brandMarkLineLong} />
           </View>
-          <Text style={styles.brandText}>Mijn Financien</Text>
+          <Text style={styles.brandText}>Budio</Text>
         </View>
       </View>
       <ScrollView

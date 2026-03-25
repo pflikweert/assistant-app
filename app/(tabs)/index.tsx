@@ -362,7 +362,7 @@ export default function DashboardScreen() {
       <FinanceScreenBackdrop tone="warm" />
       <FinanceTopBar
         shellStyle={styles.topBar}
-        title="Mijn Financiën"
+        title="Budio"
         rightSlot={<FinanceAvatarBadge />}
       />
 

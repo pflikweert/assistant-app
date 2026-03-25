@@ -14,6 +14,10 @@ export default {
         process.env.APP_BASE_URL ||
         process.env.EXPO_PUBLIC_SITE_URL ||
         process.env.SITE_URL,
+      SITE_URL:
+        process.env.EXPO_PUBLIC_SITE_URL ||
+        process.env.SITE_URL ||
+        process.env.APP_PUBLIC_URL,
       DEV_AUTH_BYPASS: process.env.DEV_AUTH_BYPASS,
       DEV_AUTH_USER_ID: process.env.DEV_AUTH_USER_ID,
       DEV_AUTH_USER_EMAIL: process.env.DEV_AUTH_USER_EMAIL,
