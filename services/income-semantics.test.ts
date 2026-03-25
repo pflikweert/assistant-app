@@ -112,6 +112,45 @@ describe("resolveIncomeSemantics", () => {
     });
   });
 
+  it("classifies savings-account interest as a non-forecast income signal", () => {
+    const result = resolveIncomeSemantics({
+      amount: 4.21,
+      counterparty: "Rabobank",
+      details: "Rentebijschrijving spaarrente",
+      categoryKey: "income_savings_interest",
+      analysisCategory: "income_variable",
+    });
+
+    expect(result).toMatchObject({
+      kind: "savings_interest",
+      budgetBucket: "windfall",
+      analysisCategory: "income_variable",
+      forecastEligible: false,
+      countsAsIncome: true,
+      shortLabel: "Spaarrente",
+    });
+  });
+
+  it("treats internal transfers between own accounts as non-income", () => {
+    const result = resolveIncomeSemantics({
+      amount: 500,
+      counterparty: "Rabobank",
+      details: "Overboeking eigen rekening | tb = eigen rekening",
+      categoryKey: "savings_investing_internal_transfer",
+      budgetGroup: "savings",
+      analysisCategory: "income_variable",
+    });
+
+    expect(result).toMatchObject({
+      kind: "internal_transfer",
+      budgetBucket: null,
+      analysisCategory: "income_variable",
+      forecastEligible: false,
+      countsAsIncome: false,
+      shortLabel: "Eigen overboeking",
+    });
+  });
+
   it("does not classify unlabeled salary text as salary without a salary category", () => {
     const result = resolveIncomeSemantics({
       amount: 2400,

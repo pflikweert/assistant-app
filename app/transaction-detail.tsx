@@ -83,103 +83,26 @@ function parseSaldo(value: unknown): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
-function readMetadataString(
-  metadata: Record<string, unknown>,
-  keys: string[],
-): string | null {
-  for (const key of keys) {
-    const value = metadata[key];
-    if (value == null) continue;
-    const text = String(value).trim();
-    if (text) return text;
+function formatMaskedAccountSuffix(masked: string | null | undefined): string | null {
+  const trimmed = String(masked || "").trim();
+  if (!trimmed) return null;
+
+  const digitsOnly = trimmed.replace(/\D/g, "");
+  if (digitsOnly.length >= 4) {
+    return `**** ${digitsOnly.slice(-4)}`;
   }
-  return null;
+
+  return trimmed.replace(/\s+/g, "") || null;
 }
 
-function formatPaymentAccount(value: string): string {
-  const compact = value.replace(/\s+/g, "").toUpperCase();
-  const ibanLike = /^[A-Z]{2}\d{2}[A-Z0-9]{8,30}$/.test(compact);
-  if (!ibanLike) return value;
+function resolvePaymentMethodFromLinkedAccount(tx: TransactionDetail): string {
+  const linkedAccount = tx.linked_bank_account;
+  if (!linkedAccount) return "Onbekend";
 
-  const bankCode = compact.slice(4, 8);
-  const bankNames: Record<string, string> = {
-    INGB: "ING",
-    RABO: "Rabobank",
-    ABNA: "ABN AMRO",
-    SNSB: "SNS",
-    ASN: "ASN Bank",
-    KNAB: "Knab",
-    TRIO: "Triodos",
-    BUNQ: "bunq",
-  };
-  const bankName = bankNames[bankCode];
-  const last4 = compact.slice(-4);
-  return bankName
-    ? `${bankName} betaalrekening (**** ${last4})`
-    : `Betaalrekening (**** ${last4})`;
-}
-
-function resolvePaymentMethodFromMetadata(
-  metadata: Record<string, unknown>,
-): string | null {
-  const bankName = readMetadataString(metadata, [
-    "Naam rekening",
-    "Rekening naam",
-    "Naam bank",
-    "Bank",
-    "Account name",
-  ]);
-  const method = readMetadataString(metadata, [
-    "Betaalmethode",
-    "Betaal methode",
-    "Betaalpas",
-    "Betaalwijze",
-    "Methode",
-    "Kanaal",
-  ]);
-  const maskedCard = readMetadataString(metadata, [
-    "Pasnummer",
-    "Pas nr",
-    "Pasnr",
-    "Kaartnummer",
-    "Card",
-    "Card last4",
-    "Laatste 4 cijfers",
-  ]);
-  const accountRef = readMetadataString(metadata, [
-    "IBAN/BBAN",
-    "IBAN",
-    "Rekening",
-    "Rekeningnummer",
-    "Rekening nummer",
-    "Account",
-    "Account number",
-    "Accountnummer",
-  ]);
-  const tegenRekeningRef = readMetadataString(metadata, [
-    "Tegenrekening IBAN/BBAN",
-  ]);
-  const resolvedAccount = accountRef || tegenRekeningRef;
-  const accountLabel = resolvedAccount
-    ? formatPaymentAccount(resolvedAccount)
-    : null;
-
-  const suffix = maskedCard
-    ? maskedCard.startsWith("(")
-      ? ` ${maskedCard}`
-      : ` (${maskedCard})`
-    : accountLabel
-      ? accountLabel.startsWith("(")
-        ? ` ${accountLabel}`
-        : ` (${accountLabel})`
-      : "";
-
-  if (bankName && method) return `${bankName} ${method}${suffix}`;
-  if (method) return `${method}${suffix}`;
-  if (bankName && accountLabel) return `${bankName} (${accountLabel})`;
-  if (accountLabel) return accountLabel;
-  if (bankName) return bankName;
-  return null;
+  const accountName = String(linkedAccount.name || "").trim() || "Betaalrekening";
+  const maskedSuffix = formatMaskedAccountSuffix(linkedAccount.account_masked);
+  if (!maskedSuffix) return accountName;
+  return `${accountName} (${maskedSuffix})`;
 }
 
 function normalizeRouteParam(value?: string | string[]) {
@@ -932,8 +855,7 @@ export default function TransactionDetailScreen() {
   const saldoNaTrn = parseSaldo(tx.metadata["Saldo na trn"]);
   const omschrijving = tx.details.split("|")[0]?.trim() || tx.details;
   const transactionDateLabel = formatTransactionDateLabel(tx.date);
-  const paymentMethodLabel =
-    resolvePaymentMethodFromMetadata(tx.metadata) || "Onbekend";
+  const paymentMethodLabel = resolvePaymentMethodFromLinkedAccount(tx);
   const categoryIconName = resolveTransactionCategoryIconName(
     {
       category_id_auto: tx.category_id_auto,

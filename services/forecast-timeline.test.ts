@@ -4,6 +4,7 @@ import {
   buildForecastTimelineProjection,
   buildScheduledDateForMonth,
   frequencyAppliesInMonth,
+  resolveCommittedForecastEventDate,
   resolveExpectedDayOfMonth,
 } from "./forecast-timeline";
 
@@ -28,6 +29,75 @@ describe("buildScheduledDateForMonth", () => {
     expect(
       buildScheduledDateForMonth(new Date("2026-02-01T00:00:00.000Z"), 31),
     ).toBe("2026-02-28");
+  });
+});
+
+describe("resolveCommittedForecastEventDate", () => {
+  it("keeps a future committed income on the planned date", () => {
+    expect(
+      resolveCommittedForecastEventDate({
+        scheduledDate: "2026-04-25",
+        referenceDate: new Date("2026-03-31T00:00:00.000Z"),
+        monthStart: new Date("2026-04-01T00:00:00.000Z"),
+        monthEndExclusive: new Date("2026-05-01T00:00:00.000Z"),
+      }),
+    ).toBe("2026-04-25");
+  });
+
+  it("rolls an overdue committed income forward to tomorrow in the current month", () => {
+    expect(
+      resolveCommittedForecastEventDate({
+        scheduledDate: "2026-03-25",
+        referenceDate: new Date("2026-03-26T00:00:00.000Z"),
+        monthStart: new Date("2026-03-01T00:00:00.000Z"),
+        monthEndExclusive: new Date("2026-04-01T00:00:00.000Z"),
+      }),
+    ).toBe("2026-03-27");
+  });
+
+  it("rolls an overdue fixed expense forward to tomorrow in the current month", () => {
+    expect(
+      resolveCommittedForecastEventDate({
+        scheduledDate: "2026-03-10",
+        referenceDate: new Date("2026-03-12T00:00:00.000Z"),
+        monthStart: new Date("2026-03-01T00:00:00.000Z"),
+        monthEndExclusive: new Date("2026-04-01T00:00:00.000Z"),
+      }),
+    ).toBe("2026-03-13");
+  });
+
+  it("rolls an overdue subscription forward to tomorrow in the current month", () => {
+    expect(
+      resolveCommittedForecastEventDate({
+        scheduledDate: "2026-03-18",
+        referenceDate: new Date("2026-03-19T00:00:00.000Z"),
+        monthStart: new Date("2026-03-01T00:00:00.000Z"),
+        monthEndExclusive: new Date("2026-04-01T00:00:00.000Z"),
+      }),
+    ).toBe("2026-03-20");
+  });
+
+  it("stops carrying forward at the end of the month", () => {
+    expect(
+      resolveCommittedForecastEventDate({
+        scheduledDate: "2026-03-25",
+        referenceDate: new Date("2026-03-31T00:00:00.000Z"),
+        monthStart: new Date("2026-03-01T00:00:00.000Z"),
+        monthEndExclusive: new Date("2026-04-01T00:00:00.000Z"),
+      }),
+    ).toBeNull();
+  });
+
+  it("returns no event when the committed post is already observed this month", () => {
+    expect(
+      resolveCommittedForecastEventDate({
+        scheduledDate: "2026-03-25",
+        referenceDate: new Date("2026-03-26T00:00:00.000Z"),
+        monthStart: new Date("2026-03-01T00:00:00.000Z"),
+        monthEndExclusive: new Date("2026-04-01T00:00:00.000Z"),
+        alreadyObservedThisMonth: true,
+      }),
+    ).toBeNull();
   });
 });
 

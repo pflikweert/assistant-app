@@ -84,7 +84,19 @@ editor.
 supabase login
 
 # from the project root
-supabase db push    # run pending migrations against your linked project
+npm run db:push     # runs migration compatibility checks + push
+```
+
+Voor een snelle controle zonder toepassen:
+
+```bash
+npm run db:push:dry
+```
+
+Nieuwe migration aanmaken met compatibele bestandsnaam:
+
+```bash
+npm run migration:new -- <korte-omschrijving>
 ```
 
 Once the table exists, importing a CSV will map the bank‑specific column names

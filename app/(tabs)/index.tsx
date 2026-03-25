@@ -7,14 +7,14 @@ import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SquareAccentBlock } from "@/components/ui/square-accent-block";
 import { FinanceBudgetProgressBar } from "@/components/ui/finance-budget-progress-bar";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSurfaces } from "@/constants/theme";
 import {
   getMonthVariableBudgetUsageText,
   getMonthVariableBudgetSnapshot,
   getWeekBudgetSnapshot,
   getWeekTempoMessage,
 } from "@/services/budget-risk";
-import { computeBudgetPlan } from "@/services/budget-plan";
+import { loadBudgetPlanForSurface } from "@/services/budget-plan-surface";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
 import {
@@ -22,6 +22,10 @@ import {
   getCategoryPathLabel,
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
+import {
+  parseRunningBalance,
+  resolveLatestKnownBalanceSnapshot,
+} from "@/services/latest-known-balance";
 import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import type {
@@ -236,15 +240,6 @@ export default function DashboardScreen() {
       const rows: DashboardTx[] = data.map((row: any) => {
         const metadata = row.metadata || {};
         const rawSeq = String(metadata["Volgnr"] || "").replace(/^0+/, "");
-        const rawBalance = metadata["Saldo na trn"];
-
-        let runningBalance: number | null = null;
-        if (rawBalance != null) {
-          const parsed = parseFloat(
-            String(rawBalance).replace(/\./g, "").replace(",", "."),
-          );
-          runningBalance = Number.isNaN(parsed) ? null : parsed;
-        }
 
         return {
           id: row.id,
@@ -252,7 +247,7 @@ export default function DashboardScreen() {
           date: row.date,
           amount: row.amount,
           seq: Number.parseInt(rawSeq || "0", 10) || 0,
-          runningBalance,
+          runningBalance: parseRunningBalance(metadata),
           category_id_auto: row.category_id_auto || null,
           category_id_user: row.category_id_user || null,
         };
@@ -284,8 +279,12 @@ export default function DashboardScreen() {
 
       setTransactions(recentRows);
 
-      const balanceRows = rows.filter((row) => row.runningBalance != null);
-      const latestBalance = balanceRows[0]?.runningBalance ?? null;
+      const latestBalance = resolveLatestKnownBalanceSnapshot(
+        (data || []) as {
+          date?: string | null;
+          metadata?: Record<string, unknown> | null;
+        }[],
+      ).balance;
 
       setBalance(latestBalance);
     } catch (error) {
@@ -302,7 +301,10 @@ export default function DashboardScreen() {
 
     budgetLoadInFlight.current = true;
     try {
-      const plan = await computeBudgetPlan(new Date(), "default");
+      const { plan } = await loadBudgetPlanForSurface({
+        referenceDate: new Date(),
+        planKey: "default",
+      });
       setBudgetPlan(plan);
     } catch (error) {
       if (isMissingRelationError(error)) {
@@ -740,17 +742,13 @@ const styles = StyleSheet.create({
     alignItems: "stretch",
   },
   surfaceCard: {
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 30,
     padding: 22,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
   },
   weekCard: {
+    ...FinSurfaces.topLevelCard,
     gap: 14,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#f3f4f4",
     borderRadius: 28,
   },
   weekCardWide: {
@@ -1006,12 +1004,10 @@ const styles = StyleSheet.create({
     color: FinColors.warningText,
   },
   txCard: {
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 30,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
   },
   txRow: {
     flexDirection: "row",

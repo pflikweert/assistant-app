@@ -1,4 +1,4 @@
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSurfaces } from "@/constants/theme";
 import { normalizePattern } from "@/services/categorization-repository";
 import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { FinanceQuickMenu } from "@/components/navigation/finance-quick-menu";
@@ -2234,10 +2234,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   heroCard: {
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 28,
-    borderWidth: 1,
-    borderColor: FinColors.border,
     padding: 18,
     gap: 14,
     overflow: "hidden",
@@ -2425,10 +2423,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   sectionCard: {
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: FinColors.border,
     padding: 16,
     gap: 14,
     overflow: "hidden",
@@ -2495,14 +2491,11 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   profileCard: {
+    ...FinSurfaces.topLevelCard,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgBase,
+    backgroundColor: FinColors.bgCard,
     padding: 14,
     gap: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: FinColors.yellow,
   },
   profileTopRow: {
     flexDirection: "row",
@@ -2935,10 +2928,8 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   footerCard: {
+    ...FinSurfaces.topLevelCard,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: FinColors.border,
-    backgroundColor: FinColors.bgCard,
     padding: 16,
     gap: 14,
   },

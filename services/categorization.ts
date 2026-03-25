@@ -22,6 +22,10 @@ import {
 import { getLeafCategories } from "./category-display";
 import { requestForecastRefresh } from "./forecast-refresh";
 import { postOpenAIChatCompletion } from "./openai-proxy";
+import {
+  resolveOwnAccountTransferHeuristicMatch,
+} from "./own-account-transfer-heuristics";
+import { listBankAccountHashes } from "./bank-accounts";
 const appEnv = ((Constants.expoConfig?.extra as Record<
   string,
   string | undefined
@@ -42,6 +46,7 @@ const OPENAI_CACHE_MAX_ENTRIES = 1500;
 const OPENAI_CACHE_STORAGE_KEY = "categorization_openai_cache_v1";
 
 const queuedTransactionIds = new Set<string>();
+let queuedBatchOwnerUserId: string | null = null;
 
 let isBackgroundFlushRunning = false;
 let isPendingSweepRunning = false;
@@ -51,6 +56,7 @@ let stopRequested = false;
 
 type CategorizationRunOptions = {
   force?: boolean;
+  scheduleForecastRefresh?: boolean;
 };
 
 type CategorizationResult = {
@@ -509,6 +515,31 @@ function tryBelastingdienstHeuristicMatch(
   return null;
 }
 
+async function resolveDeterministicHeuristicMatch(
+  tx: TransactionCategorizationRecord,
+  categoriesByKey: Map<string, CategoryRecord>,
+  ownAccountHashes: ReadonlySet<string> | null,
+): Promise<{
+  categoryId: string;
+  confidence: number;
+  model: string;
+  reason: string;
+} | null> {
+  const belastingdienstMatch = tryBelastingdienstHeuristicMatch(
+    tx,
+    categoriesByKey,
+  );
+  if (belastingdienstMatch) return belastingdienstMatch;
+
+  return resolveOwnAccountTransferHeuristicMatch({
+    details: tx.details,
+    counterparty: tx.counterparty,
+    metadata: tx.metadata || null,
+    categoriesByKey,
+    ownAccountHashes,
+  });
+}
+
 function doesRuleAllowHaystack(
   patternType: string,
   source: RuleHaystackSource,
@@ -828,7 +859,7 @@ async function requestOpenAICategories(
       {
         role: "system",
         content:
-          "You classify Dutch bank transactions. Always pick exactly one category_key from the provided list. Focus on the actual purchase subject in the transaction details, then the true merchant. Ignore technical payment-route text such as Google Pay, Apple Pay, terminal ids, approval codes, card/pass details, and location-only fragments unless they are the only clue. For deferred/aggregator payment providers (for example Klarna, PayPal, Riverty, AfterPay), do NOT classify by provider name alone: use subject/details per transaction, because each payment can belong to a different category. Return strict JSON only and always include a short reason string for every item. The reason must always be written in Dutch.",
+          "You classify Dutch bank transactions. Always pick exactly one category_key from the provided list. Focus on the actual purchase subject in the transaction details, then the true merchant. Ignore technical payment-route text such as Google Pay, Apple Pay, terminal ids, approval codes, card/pass details, and location-only fragments unless they are the only clue. For deferred/aggregator payment providers (for example Klarna, PayPal, Riverty, AfterPay), do NOT classify by provider name alone: use subject/details per transaction, because each payment can belong to a different category. For own-account transfers (for example details containing 'eigen rekening', 'overboeking eigen rekening', 'naar eigen rekening', or 'tb = eigen rekening'), classify as a savings/internal-transfer category (prefer 'savings_investing_internal_transfer' or 'savings_transfer' when available), not as peer-to-peer payments. Use peer-to-peer categories only for transfers to other people. Return strict JSON only and always include a short reason string for every item. The reason must always be written in Dutch.",
       },
       {
         role: "user",
@@ -1033,6 +1064,7 @@ export async function categorizeTransactions(
     categoriesById.has(rule.category_id),
   );
   const categoriesByKey = new Map(selectableCategories.map((c) => [c.key, c]));
+  const ownAccountHashes = new Set(await listBankAccountHashes());
 
   const pendingTransactions = transactions.filter(
     (tx) => !tx.category_id_user && (options.force || !tx.category_id_auto),
@@ -1053,9 +1085,10 @@ export async function categorizeTransactions(
   const unresolved: TransactionCategorizationRecord[] = [];
 
   for (const tx of pendingTransactions) {
-    const heuristicMatch = tryBelastingdienstHeuristicMatch(
+    const heuristicMatch = await resolveDeterministicHeuristicMatch(
       tx,
       categoriesByKey,
+      ownAccountHashes,
     );
     if (heuristicMatch) {
       results.push({
@@ -1252,13 +1285,15 @@ export async function categorizeTransactions(
 
   throwIfCategorizationStopped();
 
-  try {
-    await requestForecastRefresh({
-      reason: "categorization_batch",
-      delayMs: 5000,
-    });
-  } catch (error) {
-    console.warn("cashflow forecast refresh scheduling failed", formatError(error));
+  if (options.scheduleForecastRefresh !== false) {
+    try {
+      await requestForecastRefresh({
+        reason: "categorization_batch",
+        eager: true,
+      });
+    } catch (error) {
+      console.warn("cashflow forecast refresh scheduling failed", formatError(error));
+    }
   }
 
   const cleared = staleOtherAutoIds.length;
@@ -1292,6 +1327,7 @@ async function flushQueuedCategorization() {
       ...current,
       phase: "running",
       totalCount: Math.max(current.totalCount, totalCount),
+      batchOwnerUserId: queuedBatchOwnerUserId,
       queuedCount: queuedTransactionIds.size,
       processedCount,
       updatedCount,
@@ -1311,6 +1347,7 @@ async function flushQueuedCategorization() {
         updateCategorizationStatus((current) => ({
           ...current,
           phase: "completed",
+          batchOwnerUserId: queuedBatchOwnerUserId,
           queuedCount: 0,
           processedCount,
           updatedCount,
@@ -1331,6 +1368,7 @@ async function flushQueuedCategorization() {
         updateCategorizationStatus((current) => ({
           ...current,
           phase: "paused",
+          batchOwnerUserId: queuedBatchOwnerUserId,
           queuedCount: queuedTransactionIds.size,
           processedCount,
           updatedCount,
@@ -1356,6 +1394,7 @@ async function flushQueuedCategorization() {
       );
       const summary = await categorizeTransactions(batchIds, {
         force: forceQueuedRecategorization,
+        scheduleForecastRefresh: false,
       });
       processedCount += summary.considered;
       updatedCount += summary.updated;
@@ -1396,6 +1435,7 @@ async function flushQueuedCategorization() {
           queuedTransactionIds.size > 0 && !stoppedWithClearedQueue
             ? "running"
             : "completed",
+        batchOwnerUserId: queuedBatchOwnerUserId,
         queuedCount: queuedTransactionIds.size,
         totalCount: Math.max(
           processedCount + queuedTransactionIds.size,
@@ -1421,6 +1461,20 @@ async function flushQueuedCategorization() {
         isStopRequested:
           !stoppedWithClearedQueue && queuedTransactionIds.size > 0,
       }));
+
+      if (queuedTransactionIds.size === 0 && !stoppedWithClearedQueue) {
+        try {
+          await requestForecastRefresh({
+            reason: "categorization_batch",
+            eager: true,
+          });
+        } catch (error) {
+          console.warn(
+            "background cashflow forecast refresh scheduling failed",
+            formatError(error),
+          );
+        }
+      }
     }
   } catch (error) {
     if (stopRequested || (error as OpenAIRequestError)?.code === "stopped") {
@@ -1429,6 +1483,7 @@ async function flushQueuedCategorization() {
       updateCategorizationStatus((current) => ({
         ...current,
         phase: "completed",
+        batchOwnerUserId: queuedBatchOwnerUserId,
         queuedCount: 0,
         processedCount,
         updatedCount,
@@ -1450,6 +1505,7 @@ async function flushQueuedCategorization() {
     updateCategorizationStatus((current) => ({
       ...current,
       phase: "error",
+      batchOwnerUserId: queuedBatchOwnerUserId,
       queuedCount: queuedTransactionIds.size,
       processedCount,
       updatedCount,
@@ -1475,9 +1531,16 @@ async function flushQueuedCategorization() {
 function queueTransactionsForCategorization(
   transactionIds: string[],
   mode: CategorizationRunMode,
+  batchOwnerUserId: string | null = null,
 ) {
   if (mode === "recategorize-all") {
     forceQueuedRecategorization = true;
+  }
+
+  if (mode === "import") {
+    queuedBatchOwnerUserId = batchOwnerUserId;
+  } else if (!queuedTransactionIds.size) {
+    queuedBatchOwnerUserId = null;
   }
 
   for (const id of transactionIds) {
@@ -1489,6 +1552,7 @@ function queueTransactionsForCategorization(
       ...current,
       phase: "completed",
       mode,
+      batchOwnerUserId: queuedBatchOwnerUserId,
       queuedCount: 0,
       message:
         mode === "recategorize-all"
@@ -1505,6 +1569,7 @@ function queueTransactionsForCategorization(
     phase: isBackgroundFlushRunning ? current.phase : "queued",
     mode,
     lastRunMode: mode,
+    batchOwnerUserId: queuedBatchOwnerUserId,
     queuedCount: queuedTransactionIds.size,
     totalCount: isBackgroundFlushRunning
       ? Math.max(current.totalCount, queuedTransactionIds.size)
@@ -1527,8 +1592,11 @@ function queueTransactionsForCategorization(
   }, 0);
 }
 
-export function runCategorizationInBackground(transactionIds: string[]) {
-  queueTransactionsForCategorization(transactionIds, "import");
+export function runCategorizationInBackground(
+  transactionIds: string[],
+  batchOwnerUserId: string | null = null,
+) {
+  queueTransactionsForCategorization(transactionIds, "import", batchOwnerUserId);
 }
 
 export function runPendingCategorizationInBackground(
@@ -1692,6 +1760,7 @@ export function clearQueuedCategorizationQueue() {
 
 export function clearCategorizationClientState() {
   queuedTransactionIds.clear();
+  queuedBatchOwnerUserId = null;
   isBackgroundFlushRunning = false;
   isPendingSweepRunning = false;
   forceQueuedRecategorization = false;
@@ -1778,9 +1847,10 @@ export async function recategorizeSingleTransaction(
   model: string;
 } | null> {
   const repo = createSupabaseCategorizationRepository();
-  const [allCategories, txs] = await Promise.all([
+  const [allCategories, txs, ownAccountHashValues] = await Promise.all([
     repo.getCategories(),
     repo.getTransactionsByIds([transactionId]),
+    listBankAccountHashes(),
   ]);
 
   const tx = txs[0];
@@ -1793,6 +1863,28 @@ export async function recategorizeSingleTransaction(
     ? leafCategories
     : getLeafCategories(allCategories);
   const categoriesByKey = new Map(selectableCategories.map((c) => [c.key, c]));
+  const ownAccountHashes = new Set(ownAccountHashValues);
+
+  const ownAccountTransferMatch = await resolveDeterministicHeuristicMatch(
+    tx,
+    categoriesByKey,
+    ownAccountHashes,
+  );
+  if (ownAccountTransferMatch) {
+    const category = selectableCategories.find(
+      (item) => item.id === ownAccountTransferMatch.categoryId,
+    );
+    if (!category) return null;
+
+    return {
+      categoryId: category.id,
+      categoryKey: category.key,
+      categoryName: category.name,
+      confidence: ownAccountTransferMatch.confidence,
+      reason: ownAccountTransferMatch.reason,
+      model: ownAccountTransferMatch.model,
+    };
+  }
 
   const items = await requestOpenAICategoriesWithRetry(
     DEFAULT_MODEL,
@@ -1880,7 +1972,7 @@ export async function resetTransactionRuleMatch(transactionId: string) {
 
   await requestForecastRefresh({
     reason: "manual_category",
-    delayMs: 5000,
+    eager: true,
   }).catch((error) => {
     console.warn(
       "[categorization] forecast refresh scheduling after rule reset failed",

@@ -1,7 +1,13 @@
 import { buildInsightsForecastCard } from "@/services/insights-forecast-card";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import type { TransactionMonthOption } from "@/services/transaction-month-options";
+import type { BudgetPlanComputation } from "@/types/categorization";
 import { describe, expect, it } from "vitest";
+
+const fmt = new Intl.NumberFormat("nl-NL", {
+  style: "currency",
+  currency: "EUR",
+});
 
 function getCurrentMonthKey(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -49,6 +55,8 @@ function buildForecast(
   return {
     monthStart: input.monthStart ?? "2026-03-01",
     forecastReferenceDate: input.forecastReferenceDate ?? "2026-03-10",
+    currentBalanceAnchor: input.currentBalanceAnchor ?? null,
+    currentBalanceAnchorDate: input.currentBalanceAnchorDate ?? null,
     cashRiskFlag: input.cashRiskFlag ?? "none",
     riskFlag: input.riskFlag ?? "none",
     expectedEndBalance: input.expectedEndBalance ?? 600,
@@ -59,6 +67,8 @@ function buildForecast(
     expectedIncomeTotal: input.expectedIncomeTotal ?? 3600,
     remainingExpectedIncomeTotal: input.remainingExpectedIncomeTotal ?? 2400,
     remainingExpectedExpenseTotal: input.remainingExpectedExpenseTotal ?? 1250,
+    remainingExpectedSavingsOutflowTotal:
+      input.remainingExpectedSavingsOutflowTotal ?? 180,
     upcomingCommittedIncomeTotal: input.upcomingCommittedIncomeTotal ?? 2400,
     upcomingCommittedExpenseTotal: input.upcomingCommittedExpenseTotal ?? 860,
     expectedFixedCosts: input.expectedFixedCosts ?? 1200,
@@ -67,10 +77,26 @@ function buildForecast(
   };
 }
 
+function buildBudgetPlan(input?: {
+  variableSpent?: number;
+  weeklyRemaining?: number[];
+}): BudgetPlanComputation {
+  return {
+    monthToDateExpenses: {
+      variableCosts: input?.variableSpent ?? 0,
+    },
+    weeklyVariablePlan: (input?.weeklyRemaining ?? []).map((remaining) => ({
+      isPastWeek: false,
+      remaining,
+    })),
+  } as unknown as BudgetPlanComputation;
+}
+
 describe("buildInsightsForecastCard", () => {
   it("toont fallback bij onvoldoende data", () => {
     const result = buildInsightsForecastCard({
       forecast: null,
+      budgetPlan: null,
       selectedMonth: buildMonthOption(getCurrentMonthKey()),
     });
 
@@ -84,6 +110,7 @@ describe("buildInsightsForecastCard", () => {
         expectedEndBalance: 980,
         lowestExpectedBalance: 380,
       }),
+      budgetPlan: null,
       selectedMonth: buildMonthOption(getCurrentMonthKey()),
     });
 
@@ -98,6 +125,7 @@ describe("buildInsightsForecastCard", () => {
         lowestExpectedBalance: 90,
         cashRiskFlag: "cash_gap_warning",
       }),
+      budgetPlan: null,
       selectedMonth: buildMonthOption(getCurrentMonthKey()),
     });
 
@@ -111,6 +139,7 @@ describe("buildInsightsForecastCard", () => {
         expectedEndBalance: -40,
         riskFlag: "deficit_warning",
       }),
+      budgetPlan: null,
       selectedMonth: buildMonthOption(getCurrentMonthKey()),
     });
 
@@ -122,9 +151,31 @@ describe("buildInsightsForecastCard", () => {
     const previousKey = getPreviousMonthKey(getCurrentMonthKey());
     const result = buildInsightsForecastCard({
       forecast: buildForecast({ expectedEndBalance: 350 }),
+      budgetPlan: null,
       selectedMonth: buildMonthOption(previousKey),
     });
 
     expect(result.title).toBe("Eindsaldo deze maand");
+  });
+
+  it("gebruikt dezelfde resterende-maand berekening als de modal", () => {
+    const result = buildInsightsForecastCard({
+      forecast: buildForecast({
+        currentBalanceAnchor: 100,
+        currentBalanceAnchorDate: "2026-03-25",
+        expectedEndBalance: 130,
+        remainingExpectedIncomeTotal: 80,
+        remainingExpectedExpenseTotal: 50,
+        remainingExpectedSavingsOutflowTotal: 0,
+        expectedVariableCosts: 30,
+      }),
+      budgetPlan: buildBudgetPlan({
+        variableSpent: 0,
+        weeklyRemaining: [10],
+      }),
+      selectedMonth: buildMonthOption(getCurrentMonthKey()),
+    });
+
+    expect(result.amountLabel).toBe(fmt.format(150));
   });
 });

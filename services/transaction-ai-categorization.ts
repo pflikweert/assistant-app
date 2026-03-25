@@ -67,7 +67,7 @@ export async function recategorizeTransactionWithAI(
 
   await requestForecastRefresh({
     reason: "manual_category",
-    delayMs: 5000,
+    eager: true,
   }).catch((error) => {
     console.warn(
       "[transaction-ai-categorization] forecast refresh scheduling failed",

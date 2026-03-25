@@ -1,5 +1,5 @@
 import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSurfaces } from "@/constants/theme";
 import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
@@ -481,15 +481,15 @@ export default function SettingsScreen() {
             <SettingsRow
               iconName="upload-file"
               label="Transacties importeren"
-              subtitle="Upload een Rabobank CSV"
+              subtitle="Upload een export van je bank"
               onPress={() => router.push("/csv-import")}
             />
             <View style={styles.divider} />
             <SettingsRow
               iconName="manage-accounts"
               label="Rekeningen beheren"
-              subtitle="Bankrekeningen toevoegen of verwijderen"
-              onPress={() => {}}
+              subtitle="Bankrekeningen toevoegen, bewerken of verwijderen"
+              onPress={() => router.push("/bankrekeningen")}
             />
             <View style={styles.divider} />
             <SettingsRow
@@ -798,12 +798,10 @@ const styles = StyleSheet.create({
 
   // Profile
   profileCard: {
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 24,
     padding: 20,
     marginBottom: 4,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
     gap: 14,
   },
   profileTopRow: {
@@ -870,13 +868,9 @@ const styles = StyleSheet.create({
 
   // Card
   card: {
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 22,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    boxShadow: "0px 10px 18px rgba(17,17,17,0.04)",
-    elevation: 2,
   },
 
   // Row
@@ -931,11 +925,9 @@ const styles = StyleSheet.create({
   },
 
   statusCard: {
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 22,
     padding: 18,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
   },
   statusHeader: {
     flexDirection: "row",

@@ -1,5 +1,9 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { requireCurrentUserId } from "@/services/current-user";
+import {
+  isBankAccountIncludedInBudget,
+  listBankAccountBudgetFlags,
+} from "@/services/bank-accounts";
 import { createBudgetPlanRequestDescriptors } from "@/services/forecast-budget-plan-requests";
 import {
   deriveIncomeSourcesFromTransactions,
@@ -19,6 +23,7 @@ import {
   buildForecastTimelineProjection,
   buildScheduledDateForMonth,
   frequencyAppliesInMonth,
+  resolveCommittedForecastEventDate,
   resolveExpectedDayOfMonth,
   type ForecastTimelineEvent,
 } from "@/services/forecast-timeline";
@@ -53,6 +58,7 @@ type ForecastTx = {
   recurring_type: RecurringType | null;
   category_id_auto: string | null;
   category_id_user: string | null;
+  bank_account_id: string | null;
   budget_excluded: boolean;
   metadata: Record<string, unknown>;
 };
@@ -303,6 +309,7 @@ async function fetchTransactionsInRange(
   endIso: string,
   userId: string,
 ): Promise<ForecastTx[]> {
+  const budgetFlags = await listBankAccountBudgetFlags(userId);
   const rows: ForecastTx[] = [];
   let offset = 0;
 
@@ -311,7 +318,7 @@ async function fetchTransactionsInRange(
     const { data, error } = await supabase
       .from("transactions")
       .select(
-        "id,date,amount,details,counterparty,analysis_main_group,analysis_category,recurring,recurring_type,category_id_auto,category_id_user,budget_excluded,metadata",
+        "id,date,amount,details,counterparty,bank_account_id,analysis_main_group,analysis_category,recurring,recurring_type,category_id_auto,category_id_user,budget_excluded,metadata",
       )
       .eq("user_id", userId)
       .gte("date", startIso)
@@ -321,23 +328,33 @@ async function fetchTransactionsInRange(
 
     if (error) throw error;
 
-    const page = ((data || []) as Record<string, unknown>[]).map((row) => ({
-      id: String(row.id || ""),
-      date: String(row.date || ""),
-      amount: asNumber(row.amount, 0),
-      details: String(row.details || ""),
-      counterparty: row.counterparty ? String(row.counterparty) : null,
-      analysis_main_group: (row.analysis_main_group ||
-        null) as ForecastTx["analysis_main_group"],
-      analysis_category: (row.analysis_category ||
-        null) as ForecastTx["analysis_category"],
-      recurring: Boolean(row.recurring),
-      recurring_type: (row.recurring_type || null) as RecurringType | null,
-      category_id_auto: row.category_id_auto ? String(row.category_id_auto) : null,
-      category_id_user: row.category_id_user ? String(row.category_id_user) : null,
-      budget_excluded: Boolean(row.budget_excluded),
-      metadata: (row.metadata || {}) as Record<string, unknown>,
-    }));
+    const page = ((data || []) as Record<string, unknown>[])
+      .map((row) => {
+        const bankAccountId = row.bank_account_id ? String(row.bank_account_id) : null;
+        if (!isBankAccountIncludedInBudget(bankAccountId, budgetFlags)) {
+          return null;
+        }
+
+        return {
+          id: String(row.id || ""),
+          date: String(row.date || ""),
+          amount: asNumber(row.amount, 0),
+          details: String(row.details || ""),
+          counterparty: row.counterparty ? String(row.counterparty) : null,
+          bank_account_id: bankAccountId,
+          analysis_main_group: (row.analysis_main_group ||
+            null) as ForecastTx["analysis_main_group"],
+          analysis_category: (row.analysis_category ||
+            null) as ForecastTx["analysis_category"],
+          recurring: Boolean(row.recurring),
+          recurring_type: (row.recurring_type || null) as RecurringType | null,
+          category_id_auto: row.category_id_auto ? String(row.category_id_auto) : null,
+          category_id_user: row.category_id_user ? String(row.category_id_user) : null,
+          budget_excluded: Boolean(row.budget_excluded),
+          metadata: (row.metadata || {}) as Record<string, unknown>,
+        };
+      })
+      .filter((row): row is ForecastTx => Boolean(row));
 
     rows.push(...page);
 
@@ -611,13 +628,19 @@ function buildRecurringHistoryEvents(params: {
     const alreadyObservedThisMonth = similarRows.some(
       (row) => row.date >= monthStartIso && row.date < monthEndIso,
     );
-    if (alreadyObservedThisMonth) continue;
 
     const preferredDay =
       resolveExpectedDayOfMonth(similarRows.map((row) => row.date).slice(0, 6)) ??
       toUtcDate(latest.date).getUTCDate();
     const scheduledDate = buildScheduledDateForMonth(monthStart, preferredDay);
-    if (scheduledDate <= referenceIso) continue;
+    const eventDate = resolveCommittedForecastEventDate({
+      alreadyObservedThisMonth,
+      scheduledDate,
+      referenceDate,
+      monthStart,
+      monthEndExclusive,
+    });
+    if (!eventDate) continue;
 
     const amount = weightedRecentAverage(
       similarRows.slice(0, 3).map((row) => Math.abs(row.amount)),
@@ -626,7 +649,7 @@ function buildRecurringHistoryEvents(params: {
     const reference = buildForecastReferenceContext(latest, categoryMap, "transaction");
 
     events.set(key, {
-      date: scheduledDate,
+      date: eventDate,
       label: labelForTransaction(latest),
       amount:
         direction === "income"
@@ -699,7 +722,6 @@ function mergeIncomeSourceEvents(params: {
   for (const source of incomeSources) {
     const key = normalizePattern(source.source_key);
     if (!key || source.expected_income <= 0) continue;
-    if (observedIncomeKeys.has(key)) continue;
 
     const anchorDate = new Date(source.last_detected_at);
     if (
@@ -713,10 +735,17 @@ function mergeIncomeSourceEvents(params: {
       monthStart,
       source.income_day_of_month ?? anchorDate.getUTCDate(),
     );
-    if (scheduledDate <= referenceIso) continue;
+    const eventDate = resolveCommittedForecastEventDate({
+      alreadyObservedThisMonth: observedIncomeKeys.has(key),
+      scheduledDate,
+      referenceDate,
+      monthStart,
+      monthEndExclusive,
+    });
+    if (!eventDate) continue;
 
     next.set(key, {
-      date: scheduledDate,
+      date: eventDate,
       label: source.source_label || source.source_key,
       amount: source.expected_income,
       kind: "income",
@@ -781,13 +810,20 @@ function mergeSubscriptionProfileEvents(params: {
     if (profile.billingCycle !== "monthly") continue;
 
     const key = normalizePattern(profile.normalizedName || profile.name);
-    if (!key || observedThisMonth.has(key) || next.has(key)) continue;
+    if (!key || next.has(key)) continue;
 
     const scheduledDate = buildScheduledDateForMonth(
       monthStart,
       profile.expectedDayOfMonth ?? 1,
     );
-    if (scheduledDate <= referenceIso) continue;
+    const eventDate = resolveCommittedForecastEventDate({
+      alreadyObservedThisMonth: observedThisMonth.has(key),
+      scheduledDate,
+      referenceDate,
+      monthStart,
+      monthEndExclusive,
+    });
+    if (!eventDate) continue;
     const referenceTx = latestByDescriptor.get(key) || null;
     const reference = referenceTx
       ? buildForecastReferenceContext(referenceTx, categoryMap, "transaction")
@@ -800,7 +836,7 @@ function mergeSubscriptionProfileEvents(params: {
         };
 
     next.set(key, {
-      date: scheduledDate,
+      date: eventDate,
       label: profile.name,
       amount: -Math.abs(profile.expectedAmount),
       kind: "subscription",

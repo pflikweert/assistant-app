@@ -278,6 +278,10 @@ function hasFutureDate(
   );
 }
 
+function hasRelevantTimelineAmount(amount: number) {
+  return Number.isFinite(amount) && Math.abs(amount) >= 1;
+}
+
 function buildFromTimelineEvents(input: {
   timelineEvents: ForecastTimelineEventRecord[];
   referenceSignals: InsightsSignalTransaction[] | null | undefined;
@@ -287,7 +291,12 @@ function buildFromTimelineEvents(input: {
   const { timelineEvents, referenceSignals, referenceIso, selectedMonth } = input;
   const signalLookup = buildSignalLookup(referenceSignals);
   const futureEvents = timelineEvents
-    .filter((event) => hasFutureDate(event.eventDate, referenceIso, selectedMonth))
+    .filter(
+      (event) =>
+        hasFutureDate(event.eventDate, referenceIso, selectedMonth) &&
+        (event.eventType === "milestone_lowest_balance" ||
+          hasRelevantTimelineAmount(event.amount)),
+    )
     .sort((left, right) => {
       if (left.eventDate !== right.eventDate) return left.eventDate.localeCompare(right.eventDate);
       return left.eventKey.localeCompare(right.eventKey);

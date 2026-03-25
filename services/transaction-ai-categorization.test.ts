@@ -80,7 +80,7 @@ describe("recategorizeTransactionWithAI", () => {
     });
     expect(requestForecastRefreshMock).toHaveBeenCalledWith({
       reason: "manual_category",
-      delayMs: 5000,
+      eager: true,
     });
   });
 

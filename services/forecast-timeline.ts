@@ -123,6 +123,47 @@ export function buildScheduledDateForMonth(
   );
 }
 
+export function resolveCommittedForecastEventDate(params: {
+  scheduledDate: string;
+  referenceDate: Date;
+  monthStart: Date;
+  monthEndExclusive: Date;
+  alreadyObservedThisMonth?: boolean;
+}) {
+  const {
+    scheduledDate,
+    referenceDate,
+    monthStart,
+    monthEndExclusive,
+    alreadyObservedThisMonth = false,
+  } = params;
+  if (alreadyObservedThisMonth) {
+    return null;
+  }
+  const referenceIso = dateToIso(referenceDate);
+
+  if (scheduledDate > referenceIso) {
+    return scheduledDate;
+  }
+
+  const referenceMonthStart = startOfMonth(referenceDate);
+  if (dateToIso(referenceMonthStart) !== dateToIso(monthStart)) {
+    return null;
+  }
+
+  const nextDayIso = dateToIso(
+    new Date(
+      Date.UTC(
+        referenceDate.getUTCFullYear(),
+        referenceDate.getUTCMonth(),
+        referenceDate.getUTCDate() + 1,
+      ),
+    ),
+  );
+
+  return nextDayIso < dateToIso(monthEndExclusive) ? nextDayIso : null;
+}
+
 export function buildForecastTimelineProjection(params: {
   currentBalanceAnchor: number | null;
   referenceDate: Date;

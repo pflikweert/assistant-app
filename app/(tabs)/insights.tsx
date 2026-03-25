@@ -15,9 +15,8 @@ import { FinanceStatusChip } from "@/components/ui/finance-status-chip";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { FinanceUpcomingMomentsCard } from "@/components/ui/finance-upcoming-moments-card";
 import { FinColors } from "@/constants/theme";
-import { computeBudgetPlan } from "@/services/budget-plan";
+import { loadBudgetPlanForSurface } from "@/services/budget-plan-surface";
 import { requireCurrentUserId } from "@/services/current-user";
-import { ensureForecastFresh } from "@/services/forecast-refresh";
 import {
   listForecastTimelineEvents,
   type ForecastTimelineEventRecord,
@@ -36,9 +35,19 @@ import {
   type InsightsForecastCardModel,
 } from "@/services/insights-forecast-card";
 import {
+  loadLatestKnownBalanceSnapshot,
+  type LatestKnownBalanceSnapshot,
+} from "@/services/latest-known-balance";
+import {
   buildInsightsMonthContextSummary,
   type InsightsForecastSummary,
 } from "@/services/insights-month-context";
+import {
+  getInsightsDisplayExpectedEndBalance,
+  getInsightsRemainingMonthNetTotal,
+  getInsightsRemainingPlannedExpenseTotal,
+  getInsightsRemainingVariableExpenseEstimate,
+} from "@/services/insights-remaining-month";
 import { buildInsightsCategorySummary } from "@/services/insights-category-summary";
 import { buildInsightsUpcomingMoments } from "@/services/insights-upcoming-moments";
 import { supabase } from "@/services/supabase";
@@ -60,6 +69,11 @@ type InsightSignals = {
   previousMonth: InsightsSignalTransaction[];
   lookback: InsightsSignalTransaction[];
 };
+
+const eur = new Intl.NumberFormat("nl-NL", {
+  style: "currency",
+  currency: "EUR",
+});
 
 function isMissingColumnError(error: unknown) {
   const code = String((error as { code?: string } | null)?.code || "");
@@ -124,6 +138,27 @@ function resolveLatestTransactionDate(rows: InsightsSignalTransaction[]) {
   return latest;
 }
 
+function formatAmount(value: number | null) {
+  if (value == null) return "Onbekend";
+  return eur.format(value);
+}
+
+function formatSignedAmount(value: number | null) {
+  if (value == null) return "Onbekend";
+  const prefix = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${prefix}${eur.format(Math.abs(value))}`;
+}
+
+function formatSheetDate(value: string | null) {
+  if (!value) return null;
+  const parsed = new Date(`${value}T12:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("nl-NL", {
+    day: "numeric",
+    month: "long",
+  });
+}
+
 export default function InsightsScreen() {
   const router = useRouter();
   const isFocused = useIsFocused();
@@ -154,8 +189,14 @@ export default function InsightsScreen() {
   const [timelineEvents, setTimelineEvents] = React.useState<
     ForecastTimelineEventRecord[]
   >([]);
+  const [latestKnownBalance, setLatestKnownBalance] =
+    React.useState<LatestKnownBalanceSnapshot>({
+      balance: null,
+      date: null,
+    });
   const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
   const [allCategoriesOpen, setAllCategoriesOpen] = React.useState(false);
+  const [remainingMonthOpen, setRemainingMonthOpen] = React.useState(false);
 
   const selectedMonth = React.useMemo(
     () =>
@@ -186,9 +227,11 @@ export default function InsightsScreen() {
     () =>
       buildInsightsForecastCard({
         forecast,
+        budgetPlan,
         selectedMonth,
+        currentBalanceOverride: latestKnownBalance.balance,
       }),
-    [forecast, selectedMonth],
+    [budgetPlan, forecast, latestKnownBalance.balance, selectedMonth],
   );
   const categorySummary = React.useMemo(
     () =>
@@ -219,6 +262,22 @@ export default function InsightsScreen() {
       }),
     [forecast, insightSignals.all, selectedMonth, timelineEvents],
   );
+  const remainingVariableExpenseEstimate = React.useMemo(() => {
+    return getInsightsRemainingVariableExpenseEstimate({ forecast, budgetPlan });
+  }, [budgetPlan, forecast]);
+  const remainingPlannedExpenseTotal = React.useMemo(() => {
+    return getInsightsRemainingPlannedExpenseTotal({ forecast, budgetPlan });
+  }, [budgetPlan, forecast]);
+  const remainingMonthNetTotal = React.useMemo(() => {
+    return getInsightsRemainingMonthNetTotal({ forecast, budgetPlan });
+  }, [budgetPlan, forecast]);
+  const remainingMonthExpectedEndBalance = React.useMemo(() => {
+    return getInsightsDisplayExpectedEndBalance({
+      forecast,
+      budgetPlan,
+      currentBalanceOverride: latestKnownBalance.balance,
+    });
+  }, [budgetPlan, forecast, latestKnownBalance.balance]);
 
   const loadMonthOptions = React.useCallback(async () => {
     try {
@@ -233,8 +292,13 @@ export default function InsightsScreen() {
     }
   }, [fallbackMonthOption, selectedMonthKey]);
 
-  const loadForecastSummary = React.useCallback(
-    async (userId: string): Promise<InsightsForecastSummary | null> => {
+  const loadBudgetSurface = React.useCallback(
+    async (
+      userId: string,
+    ): Promise<{
+      forecast: InsightsForecastSummary | null;
+      plan: BudgetPlanComputation | null;
+    }> => {
       try {
         const reason = selectedMonth.isCurrentMonth
           ? "insights_open"
@@ -242,125 +306,22 @@ export default function InsightsScreen() {
             ? "historical_month_open"
             : "future_month_open";
 
-        await ensureForecastFresh({
-          reason,
+        const result = await loadBudgetPlanForSurface({
           referenceDate: getReferenceDate(selectedMonth),
-        }).catch(() => null);
+          planKey: "default",
+          timelineReference: new Date(),
+          forecastReason: reason,
+          userId,
+        });
 
-        const fetchLatest = async () =>
-          supabase
-            .from("monthly_cashflow_forecasts")
-            .select(
-              "month_start,forecast_reference_date,cash_risk_flag,risk_flag,expected_end_of_month_balance,lowest_expected_balance,lowest_expected_balance_date,next_expected_event_date,next_expected_event_label,expected_income_total,remaining_expected_income_total,remaining_expected_expense_total,upcoming_committed_income_total,upcoming_committed_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs",
-            )
-            .eq("user_id", userId)
-            .eq("month_start", selectedMonth.startIso)
-            .maybeSingle();
-
-        const fetchLegacy = async () =>
-          supabase
-            .from("monthly_cashflow_forecasts")
-            .select("month_start,risk_flag,expected_end_of_month_balance")
-            .eq("user_id", userId)
-            .eq("month_start", selectedMonth.startIso)
-            .maybeSingle();
-
-        let result: any = await fetchLatest();
-        if (result.error && isMissingColumnError(result.error)) {
-          result = await fetchLegacy();
-        }
-
-        if (result.error) {
-          if (isMissingRelationError(result.error)) {
-            return null;
-          }
-          throw result.error;
-        }
-
-        if (!result.data) {
-          return null;
-        }
-
-        const row = result.data as Record<string, unknown>;
-        return {
-          monthStart: String(row.month_start || selectedMonth.startIso),
-          forecastReferenceDate: row.forecast_reference_date
-            ? String(row.forecast_reference_date)
-            : null,
-          cashRiskFlag:
-            row.cash_risk_flag === "cash_gap_warning" ? "cash_gap_warning" : "none",
-          riskFlag: row.risk_flag === "deficit_warning" ? "deficit_warning" : "none",
-          expectedEndBalance:
-            row.expected_end_of_month_balance == null
-              ? null
-              : Number(row.expected_end_of_month_balance),
-          lowestExpectedBalance:
-            row.lowest_expected_balance == null
-              ? null
-              : Number(row.lowest_expected_balance),
-          lowestExpectedBalanceDate: row.lowest_expected_balance_date
-            ? String(row.lowest_expected_balance_date)
-            : null,
-          nextExpectedEventDate: row.next_expected_event_date
-            ? String(row.next_expected_event_date)
-            : null,
-          nextExpectedEventLabel: row.next_expected_event_label
-            ? String(row.next_expected_event_label)
-            : null,
-          expectedIncomeTotal:
-            row.expected_income_total == null
-              ? null
-              : Number(row.expected_income_total),
-          remainingExpectedIncomeTotal:
-            row.remaining_expected_income_total == null
-              ? null
-              : Number(row.remaining_expected_income_total),
-          remainingExpectedExpenseTotal:
-            row.remaining_expected_expense_total == null
-              ? null
-              : Number(row.remaining_expected_expense_total),
-          upcomingCommittedIncomeTotal:
-            row.upcoming_committed_income_total == null
-              ? null
-              : Number(row.upcoming_committed_income_total),
-          upcomingCommittedExpenseTotal:
-            row.upcoming_committed_expense_total == null
-              ? null
-              : Number(row.upcoming_committed_expense_total),
-          expectedFixedCosts:
-            row.expected_fixed_costs == null
-              ? null
-              : Number(row.expected_fixed_costs),
-          expectedSubscriptions:
-            row.expected_subscriptions == null
-              ? null
-              : Number(row.expected_subscriptions),
-          expectedVariableCosts:
-            row.expected_variable_costs == null
-              ? null
-              : Number(row.expected_variable_costs),
-        };
-      } catch (error) {
-        console.error("[insights] forecast summary load error", error);
-        return null;
-      }
-    },
-    [selectedMonth],
-  );
-
-  const loadBudgetSummary = React.useCallback(
-    async (): Promise<BudgetPlanComputation | null> => {
-      try {
-        const referenceDate = getReferenceDate(selectedMonth);
-        const plan = await computeBudgetPlan(referenceDate, "default", new Date());
-        return plan;
+        return result;
       } catch (error) {
         if (isMissingRelationError(error)) {
-          return null;
+          return { forecast: null, plan: null };
         }
 
-        console.error("[insights] budget summary load error", error);
-        return null;
+        console.error("[insights] budget surface load error", error);
+        return { forecast: null, plan: null };
       }
     },
     [selectedMonth],
@@ -471,16 +432,24 @@ export default function InsightsScreen() {
 
   const refreshInsights = React.useCallback(async () => {
     const userId = await requireCurrentUserId();
-    const [forecastSummary, budgetSummary, insightSignals, highlightHistory] =
+    const [budgetSurface, insightSignals, highlightHistory] =
       await Promise.all([
-        loadForecastSummary(userId),
-        loadBudgetSummary(),
+        loadBudgetSurface(userId),
         loadInsightSignals(userId),
         loadInsightsHighlightHistory(userId, selectedMonth.key),
       ]);
+    const forecastSummary = budgetSurface.forecast;
+    const budgetSummary = budgetSurface.plan;
+    const liveBalanceSnapshot = await loadLatestKnownBalanceSnapshot(userId).catch(
+      (error) => {
+        console.warn("[insights] latest balance load error", error);
+        return { balance: null, date: null } satisfies LatestKnownBalanceSnapshot;
+      },
+    );
 
     setForecast(forecastSummary);
     setBudgetPlan(budgetSummary);
+    setLatestKnownBalance(liveBalanceSnapshot);
     setInsightSignals(insightSignals);
     const nextTimelineEvents = await listForecastTimelineEvents({
       userId,
@@ -523,8 +492,7 @@ export default function InsightsScreen() {
       }
     }
   }, [
-    loadBudgetSummary,
-    loadForecastSummary,
+    loadBudgetSurface,
     loadInsightSignals,
     selectedMonth.key,
     selectedMonth.startIso,
@@ -618,7 +586,23 @@ export default function InsightsScreen() {
 
           {forecast && selectedMonth.key >= getCurrentMonthKey() ? (
             <View style={styles.sectionBlock}>
-              <FinanceSectionHeader title="Komende momenten" />
+              <FinanceSectionHeader
+                title="Komende momenten"
+                rightSlot={
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setRemainingMonthOpen(true)}
+                    style={({ pressed }) => [
+                      styles.remainingMonthButton,
+                      pressed ? styles.remainingMonthButtonPressed : null,
+                    ]}
+                  >
+                    <Text style={styles.remainingMonthButtonText}>
+                      Resterende maand
+                    </Text>
+                  </Pressable>
+                }
+              />
               <FinanceUpcomingMomentsCard items={upcomingMoments} />
             </View>
           ) : null}
@@ -669,6 +653,171 @@ export default function InsightsScreen() {
             model={allCategoriesSummary}
             showHeader={false}
           />
+        </ScrollView>
+      </FinanceBottomSheetShell>
+
+      <FinanceBottomSheetShell
+        visible={remainingMonthOpen}
+        title="Resterende maand"
+        subtitle={`Van nu tot het einde van ${selectedMonth.monthLabel}`}
+        onClose={() => setRemainingMonthOpen(false)}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.remainingMonthSheet}
+        >
+          <Text style={styles.remainingMonthIntro}>
+            We rekenen vanaf je laatste bekende saldo en laten daarna zien wat er
+            deze maand waarschijnlijk nog bijkomt en afgaat.
+          </Text>
+
+          <View style={styles.remainingMonthAnchorCard}>
+            <Text style={styles.remainingMonthSectionEyebrow}>
+              Waar je nu staat
+            </Text>
+            <Text style={styles.remainingMonthAnchorValue}>
+              {formatAmount(
+                latestKnownBalance.balance ?? forecast?.currentBalanceAnchor ?? null,
+              )}
+            </Text>
+            <Text style={styles.remainingMonthAnchorMeta}>
+              {latestKnownBalance.date || forecast?.currentBalanceAnchorDate
+                ? `Laatste bekende saldo op ${formatSheetDate(
+                    latestKnownBalance.date ?? forecast?.currentBalanceAnchorDate ?? null,
+                  )}`
+                : "Laatste bekende saldo in je forecast"}
+            </Text>
+          </View>
+
+          <View style={styles.remainingMonthCard}>
+            <Text style={styles.remainingMonthSectionEyebrow}>
+              Wat er nog aankomt
+            </Text>
+            <View style={styles.remainingMonthRow}>
+              <View style={styles.remainingMonthLabelWrap}>
+                <Text style={styles.remainingMonthLabel}>Nog te ontvangen</Text>
+                <Text style={styles.remainingMonthSubLabel}>
+                  Inkomsten die deze maand nog binnen kunnen komen
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.remainingMonthValue,
+                  styles.remainingMonthValueIncome,
+                ]}
+              >
+                {formatSignedAmount(forecast?.remainingExpectedIncomeTotal ?? null)}
+              </Text>
+            </View>
+            <View style={styles.remainingMonthDivider} />
+            <View style={styles.remainingMonthRow}>
+              <View style={styles.remainingMonthLabelWrap}>
+                <Text style={styles.remainingMonthLabel}>
+                  Nog vaste lasten en abonnementen
+                </Text>
+                <Text style={styles.remainingMonthSubLabel}>
+                  Verwachte betalingen die redelijk voorspelbaar zijn
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.remainingMonthValue,
+                  styles.remainingMonthValueExpense,
+                ]}
+              >
+                {formatSignedAmount(
+                  remainingPlannedExpenseTotal == null
+                    ? null
+                    : -remainingPlannedExpenseTotal,
+                )}
+              </Text>
+            </View>
+            <View style={styles.remainingMonthDivider} />
+            <View style={styles.remainingMonthRow}>
+              <View style={styles.remainingMonthLabelWrap}>
+                <Text style={styles.remainingMonthLabel}>
+                  Nog variabele uitgaven
+                </Text>
+                <Text style={styles.remainingMonthSubLabel}>
+                  Schatting op basis van je budgettempo voor de rest van deze maand
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.remainingMonthValue,
+                  styles.remainingMonthValueExpense,
+                ]}
+              >
+                {formatSignedAmount(
+                  remainingVariableExpenseEstimate == null
+                    ? null
+                    : -remainingVariableExpenseEstimate,
+                )}
+              </Text>
+            </View>
+            <View style={styles.remainingMonthDivider} />
+            <View style={styles.remainingMonthRow}>
+              <View style={styles.remainingMonthLabelWrap}>
+                <Text style={styles.remainingMonthLabel}>Nog opzij te zetten</Text>
+                <Text style={styles.remainingMonthSubLabel}>
+                  Geplande spaaroverboekingen voor de rest van deze maand
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.remainingMonthValue,
+                  styles.remainingMonthValueExpense,
+                ]}
+              >
+                {formatSignedAmount(
+                  forecast == null
+                    ? null
+                    : -(forecast.remainingExpectedSavingsOutflowTotal ?? 0),
+                )}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.remainingMonthNetCard}>
+            <Text style={styles.remainingMonthSectionEyebrow}>
+              Netto effect rest van de maand
+            </Text>
+            <Text
+              style={[
+                styles.remainingMonthNetValue,
+                remainingMonthNetTotal != null && remainingMonthNetTotal >= 0
+                  ? styles.remainingMonthValueIncome
+                  : styles.remainingMonthValueExpense,
+              ]}
+            >
+              {formatSignedAmount(remainingMonthNetTotal)}
+            </Text>
+            <Text style={styles.remainingMonthNetMeta}>
+              Dit is wat er vanaf nu per saldo waarschijnlijk nog bijkomt of afgaat.
+            </Text>
+          </View>
+
+          <View style={styles.remainingMonthHighlight}>
+            <Text style={styles.remainingMonthHighlightLabel}>
+              Verwacht saldo eind {selectedMonth.monthLabel}
+            </Text>
+            <Text style={styles.remainingMonthHighlightValue}>
+              {formatAmount(remainingMonthExpectedEndBalance)}
+            </Text>
+            <Text style={styles.remainingMonthHighlightMeta}>
+              {`${formatAmount(
+                latestKnownBalance.balance ?? forecast?.currentBalanceAnchor ?? null,
+              )} nu ${
+                remainingMonthNetTotal != null && remainingMonthNetTotal >= 0
+                  ? "+"
+                  : "-"
+              } ${formatAmount(
+                remainingMonthNetTotal == null
+                  ? null
+                  : Math.abs(remainingMonthNetTotal),
+              )} verwachte mutatie`}
+            </Text>
+          </View>
         </ScrollView>
       </FinanceBottomSheetShell>
     </View>
@@ -730,7 +879,158 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: FinColors.textPrimary,
   },
+  remainingMonthButton: {
+    minHeight: 34,
+    borderRadius: 17,
+    backgroundColor: "#f0f1f2",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  remainingMonthButtonPressed: {
+    opacity: 0.88,
+  },
+  remainingMonthButtonText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
   sheetScroll: {
     paddingBottom: 12,
+  },
+  remainingMonthSheet: {
+    gap: 12,
+    paddingBottom: 8,
+  },
+  remainingMonthIntro: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
+  },
+  remainingMonthAnchorCard: {
+    borderRadius: 28,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    gap: 6,
+    boxShadow: "0px 8px 16px rgba(17,17,17,0.04)",
+    elevation: 1,
+  },
+  remainingMonthCard: {
+    borderRadius: 26,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+    boxShadow: "0px 8px 16px rgba(17,17,17,0.04)",
+    elevation: 1,
+  },
+  remainingMonthRow: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  remainingMonthDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: FinColors.borderSubtle,
+  },
+  remainingMonthSectionEyebrow: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: FinColors.textMuted,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  remainingMonthAnchorValue: {
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: -1,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  remainingMonthAnchorMeta: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: FinColors.textSecondary,
+  },
+  remainingMonthLabelWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  remainingMonthLabel: {
+    fontSize: 13,
+    lineHeight: 16,
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+  },
+  remainingMonthSubLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: FinColors.textSecondary,
+  },
+  remainingMonthValue: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+    textAlign: "right",
+  },
+  remainingMonthValueIncome: {
+    color: "#567300",
+  },
+  remainingMonthValueExpense: {
+    color: FinColors.textPrimary,
+  },
+  remainingMonthNetCard: {
+    borderRadius: 26,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    gap: 6,
+    boxShadow: "0px 8px 16px rgba(17,17,17,0.04)",
+    elevation: 1,
+  },
+  remainingMonthNetValue: {
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: "800",
+    letterSpacing: -0.8,
+  },
+  remainingMonthNetMeta: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: FinColors.textSecondary,
+  },
+  remainingMonthHighlight: {
+    borderRadius: 26,
+    backgroundColor: FinColors.yellow,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    gap: 4,
+  },
+  remainingMonthHighlightLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: "rgba(17,17,17,0.62)",
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  remainingMonthHighlightValue: {
+    fontSize: 28,
+    lineHeight: 32,
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+    letterSpacing: -0.8,
+  },
+  remainingMonthHighlightMeta: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: "rgba(17,17,17,0.62)",
   },
 });

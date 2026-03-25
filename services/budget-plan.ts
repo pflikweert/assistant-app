@@ -12,6 +12,10 @@ import {
 } from "@/services/budget-lock-utils";
 import { requireCurrentUserId } from "@/services/current-user";
 import {
+  isBankAccountIncludedInBudget,
+  listBankAccountBudgetFlags,
+} from "@/services/bank-accounts";
+import {
     getBudgetCategoryOverrides,
     getBudgetPlanSettings,
     getMonthlyBudgetValues,
@@ -67,6 +71,7 @@ type BudgetTx = {
   amount: number;
   details: string;
   counterparty: string | null;
+  bank_account_id: string | null;
   analysis_main_group: AnalysisMainGroup | null;
   analysis_category: AnalysisCategory | null;
   category_id_auto: string | null;
@@ -1801,6 +1806,7 @@ function computeWeeklyVariablePlan(
   const rows: BudgetWeekPlanRow[] = [];
 
   ranges.forEach((range, index) => {
+    const baseBudget = roundEuro(baseWeeklyBudgetByIndex[index] || 0);
     const budget = rebalance.budgets[index] || 0;
     const actual = weekActuals[index];
     const rebalanceActual = weekActualsForRebalance[index];
@@ -1814,7 +1820,9 @@ function computeWeeklyVariablePlan(
       label: range.label,
       startDate: dateToIso(range.start),
       endDateExclusive: dateToIso(range.endExclusive),
+      baseBudget,
       budget,
+      guardrailBudgetFloor: null,
       actual,
       remaining,
       utilization,
@@ -1823,7 +1831,9 @@ function computeWeeklyVariablePlan(
         timelineReferenceDay < range.endExclusive,
       isPastWeek: timelineReferenceDay >= range.endExclusive,
       wasRebalanced:
-        index > 0 && Math.abs(budget - baseWeeklyBudgetByIndex[index]) >= 1,
+        index > 0 && Math.abs(budget - baseBudget) >= 1,
+      rebalanceMode:
+        index > 0 && Math.abs(budget - baseBudget) >= 1 ? "hard" : "none",
       overrunAmount,
       daysInCurrentMonth: range.daysInCurrentMonth,
       daysInPreviousMonth: range.daysInPreviousMonth,
@@ -1920,6 +1930,8 @@ async function fetchTransactionsInRange(
   endIso: string,
   userId?: string,
 ): Promise<BudgetTx[]> {
+  const resolvedUserId = userId || (await requireCurrentUserId());
+  const budgetFlags = await listBankAccountBudgetFlags(resolvedUserId);
   const rows: BudgetTx[] = [];
   let offset = 0;
 
@@ -1928,39 +1940,47 @@ async function fetchTransactionsInRange(
     let query = supabase
       .from("transactions")
       .select(
-        "id,date,amount,details,counterparty,analysis_main_group,analysis_category,category_id_auto,category_id_user,budget_excluded",
+        "id,date,amount,details,counterparty,bank_account_id,analysis_main_group,analysis_category,category_id_auto,category_id_user,budget_excluded",
       )
       .gte("date", startIso)
       .lt("date", endIso)
       .order("date", { ascending: false })
       .range(offset, to);
 
-    if (userId) {
-      query = query.eq("user_id", userId);
-    }
+    query = query.eq("user_id", resolvedUserId);
 
     const { data, error } = await query;
 
     if (error) throw error;
 
-    const page = ((data || []) as Record<string, unknown>[]).map((row) => ({
-      id: String(row.id || ""),
-      date: String(row.date || ""),
-      amount: asNumber(row.amount, 0),
-      details: String(row.details || ""),
-      counterparty: row.counterparty ? String(row.counterparty) : null,
-      analysis_main_group: (row.analysis_main_group ||
-        null) as AnalysisMainGroup | null,
-      analysis_category: (row.analysis_category ||
-        null) as AnalysisCategory | null,
-      category_id_auto: row.category_id_auto
-        ? String(row.category_id_auto)
-        : null,
-      category_id_user: row.category_id_user
-        ? String(row.category_id_user)
-        : null,
-      budget_excluded: Boolean(row.budget_excluded),
-    }));
+    const page = ((data || []) as Record<string, unknown>[])
+      .map((row) => {
+        const bankAccountId = row.bank_account_id ? String(row.bank_account_id) : null;
+        if (!isBankAccountIncludedInBudget(bankAccountId, budgetFlags)) {
+          return null;
+        }
+
+        return {
+          id: String(row.id || ""),
+          date: String(row.date || ""),
+          amount: asNumber(row.amount, 0),
+          details: String(row.details || ""),
+          counterparty: row.counterparty ? String(row.counterparty) : null,
+          bank_account_id: bankAccountId,
+          analysis_main_group: (row.analysis_main_group ||
+            null) as AnalysisMainGroup | null,
+          analysis_category: (row.analysis_category ||
+            null) as AnalysisCategory | null,
+          category_id_auto: row.category_id_auto
+            ? String(row.category_id_auto)
+            : null,
+          category_id_user: row.category_id_user
+            ? String(row.category_id_user)
+            : null,
+          budget_excluded: Boolean(row.budget_excluded),
+        };
+      })
+      .filter((row): row is BudgetTx => Boolean(row));
 
     rows.push(...page);
 
@@ -3072,6 +3092,7 @@ export async function computeBudgetPlan(
     usedOpenAISavingsTarget,
     monthlyBudgetTotal,
     weeklyBudgetTotal,
+    projectedMonthNet: round2(projectedMonthNet),
     flowSummary,
     weeklyVariablePlan,
     weeklyBudgetBreakdown,

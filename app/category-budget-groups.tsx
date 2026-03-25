@@ -1,6 +1,6 @@
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSurfaces } from "@/constants/theme";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import {
   BUDGET_GROUP_LABELS,
@@ -635,10 +635,8 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   heroCard: {
+    ...FinSurfaces.topLevelCard,
     borderRadius: 28,
-    backgroundColor: FinColors.bgCard,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
     padding: 22,
   },
   heroTitle: {
@@ -694,10 +692,8 @@ const styles = StyleSheet.create({
   },
   controlsCard: {
     marginTop: 16,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 24,
-    backgroundColor: FinColors.bgCard,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
     padding: 16,
   },
   searchWrap: {
@@ -768,10 +764,8 @@ const styles = StyleSheet.create({
   emptyCard: {
     marginTop: 18,
     alignItems: "center",
+    ...FinSurfaces.topLevelCard,
     borderRadius: 20,
-    backgroundColor: FinColors.bgCard,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
     padding: 24,
   },
   emptyTitle: {
@@ -799,10 +793,8 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   sectionCard: {
+    ...FinSurfaces.topLevelCard,
     borderRadius: 24,
-    backgroundColor: FinColors.bgCard,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
     paddingHorizontal: 16,
   },
   categoryRow: {

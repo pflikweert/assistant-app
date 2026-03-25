@@ -55,13 +55,16 @@ function createWeekStub(params: {
     daysInPreviousMonth: 0,
     daysInNextMonth: 0,
     crossesMonthBoundary: false,
+    baseBudget: params.budget,
     budget: params.budget,
+    guardrailBudgetFloor: null,
     actual: params.actual,
     remaining: params.remaining,
     utilization: params.utilization,
     isCurrentWeek: true,
     isPastWeek: false,
     wasRebalanced: false,
+    rebalanceMode: "none",
     overrunAmount: params.remaining < 0 ? Math.abs(params.remaining) : 0,
   } as BudgetWeekPlanRow;
 }

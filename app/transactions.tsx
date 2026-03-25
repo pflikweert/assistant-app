@@ -15,6 +15,7 @@ export default function TransactionsEntry() {
     monthStart,
     monthEndExclusive,
     categoryKey,
+    bankAccountId,
   } = useLocalSearchParams<{
     counterparty?: string;
     analysisCategory?: string;
@@ -22,6 +23,7 @@ export default function TransactionsEntry() {
     monthStart?: string;
     monthEndExclusive?: string;
     categoryKey?: string;
+    bankAccountId?: string;
   }>();
 
   return (
@@ -32,6 +34,7 @@ export default function TransactionsEntry() {
       monthStartFilter={normalizeParam(monthStart)}
       monthEndExclusiveFilter={normalizeParam(monthEndExclusive)}
       categoryKeyFilter={normalizeParam(categoryKey)}
+      bankAccountIdFilter={normalizeParam(bankAccountId)}
     />
   );
 }

@@ -1,6 +1,8 @@
 import type { FinanceStatusTone } from "@/components/ui/finance-status-chip";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
+import { getInsightsDisplayExpectedEndBalance } from "@/services/insights-remaining-month";
 import type { TransactionMonthOption } from "@/services/transaction-month-options";
+import type { BudgetPlanComputation } from "@/types/categorization";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -88,13 +90,22 @@ function buildExplanation(forecast: InsightsForecastSummary | null) {
 
 export function buildInsightsForecastCard(input: {
   forecast: InsightsForecastSummary | null;
+  budgetPlan: BudgetPlanComputation | null;
   selectedMonth: TransactionMonthOption;
+  currentBalanceOverride?: number | null;
 }): InsightsForecastCardModel {
-  const { forecast, selectedMonth } = input;
+  const { forecast, budgetPlan, selectedMonth, currentBalanceOverride } = input;
   const isHistoricalMonth = selectedMonth.key < getCurrentMonthKey();
   const title = isHistoricalMonth ? "Eindsaldo deze maand" : "Verwacht eindsaldo";
+  const displayExpectedEndBalance = isHistoricalMonth
+    ? forecast?.expectedEndBalance ?? null
+    : getInsightsDisplayExpectedEndBalance({
+        forecast,
+        budgetPlan,
+        currentBalanceOverride,
+      });
 
-  if (!forecast || forecast.expectedEndBalance == null) {
+  if (!forecast || displayExpectedEndBalance == null) {
     return {
       title,
       amountLabel: "Nog niet beschikbaar",
@@ -107,10 +118,13 @@ export function buildInsightsForecastCard(input: {
     };
   }
 
-  const status = resolveStatus(forecast);
+  const status = resolveStatus({
+    ...forecast,
+    expectedEndBalance: displayExpectedEndBalance,
+  });
   return {
     title,
-    amountLabel: fmt.format(forecast.expectedEndBalance),
+    amountLabel: fmt.format(displayExpectedEndBalance),
     statusLabel: status.label,
     statusTone: status.tone,
     lowestBalanceLabel:

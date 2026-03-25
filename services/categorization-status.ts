@@ -5,6 +5,7 @@ export type CategorizationRunMode = "import" | "pending" | "recategorize-all";
 export type CategorizationStatus = {
   phase: "idle" | "queued" | "running" | "paused" | "completed" | "error";
   mode: CategorizationRunMode | null;
+  batchOwnerUserId: string | null;
   queuedCount: number;
   totalCount: number;
   processedCount: number;
@@ -26,6 +27,7 @@ function createInitialCategorizationStatus(): CategorizationStatus {
   return {
     phase: "idle",
     mode: null,
+    batchOwnerUserId: null,
     queuedCount: 0,
     totalCount: 0,
     processedCount: 0,

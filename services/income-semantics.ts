@@ -33,6 +33,8 @@ export type IncomeSemanticsKind =
   | "child_budget"
   | "structural_government"
   | "structural_other"
+  | "internal_transfer"
+  | "savings_interest"
   | "variable_income"
   | "tax_refund"
   | "expense_refund";
@@ -80,6 +82,21 @@ const HEALTH_REFUND_HINTS = [
   "zorgverzekeringswet",
 ];
 const ROAD_TAX_HINTS = ["wegenbelasting", "motorrijtuig", "mrb"];
+const INTERNAL_TRANSFER_HINTS = [
+  "eigen rekening",
+  "overboeking eigen rekening",
+  "tussen eigen rekeningen",
+  "interne overboeking",
+  "tb eigen rekening",
+  "naar eigen rekening",
+];
+const SAVINGS_INTEREST_HINTS = [
+  "spaarrente",
+  "rentebijschrijving",
+  "rente over saldo",
+  "rente spaar",
+  "credit interest",
+];
 
 function normalizeText(value: string | null | undefined) {
   return String(value || "")
@@ -112,6 +129,17 @@ function isHealthInsuranceCategory(categoryKey: string) {
 
 function isRoadTaxCategory(categoryKey: string) {
   return categoryKey.startsWith("auto_transport_road_tax");
+}
+
+function isSavingsInterestCategory(categoryKey: string) {
+  return categoryKey.startsWith("income_savings_interest");
+}
+
+function isInternalTransferCategory(categoryKey: string) {
+  return (
+    categoryKey === "savings_transfer" ||
+    categoryKey.startsWith("savings_investing_internal_transfer")
+  );
 }
 
 function resolveIncomeSemanticsFromInput(input: {
@@ -157,6 +185,8 @@ function resolveIncomeSemanticsFromInput(input: {
   const hasTaxRefundHint = includesAny(haystack, TAX_REFUND_HINTS);
   const hasHealthRefundHint = includesAny(haystack, HEALTH_REFUND_HINTS);
   const hasRoadTaxHint = includesAny(haystack, ROAD_TAX_HINTS);
+  const hasInternalTransferHint = includesAny(haystack, INTERNAL_TRANSFER_HINTS);
+  const hasSavingsInterestHint = includesAny(haystack, SAVINGS_INTEREST_HINTS);
 
   if (categoryKey.includes("income_salary") || budgetGroup === "salary") {
     return {
@@ -246,6 +276,36 @@ function resolveIncomeSemanticsFromInput(input: {
       expenseOffsetBucket: null,
       shortLabel: "Overheidsinkomen",
       groupLabel: "Structureel inkomen",
+    };
+  }
+
+  if (isSavingsInterestCategory(categoryKey) || hasSavingsInterestHint) {
+    return {
+      kind: "savings_interest",
+      budgetBucket: "windfall",
+      analysisCategory: "income_variable",
+      forecastEligible: false,
+      countsAsIncome: true,
+      expenseOffsetBucket: null,
+      shortLabel: "Spaarrente",
+      groupLabel: "Rente-inkomsten",
+    };
+  }
+
+  if (
+    budgetGroup === "savings" ||
+    isInternalTransferCategory(categoryKey) ||
+    hasInternalTransferHint
+  ) {
+    return {
+      kind: "internal_transfer",
+      budgetBucket: null,
+      analysisCategory: "income_variable",
+      forecastEligible: false,
+      countsAsIncome: false,
+      expenseOffsetBucket: null,
+      shortLabel: "Eigen overboeking",
+      groupLabel: "Interne overboekingen",
     };
   }
 

@@ -36,6 +36,8 @@ function buildForecast(input: Partial<InsightsForecastSummary>): InsightsForecas
   return {
     monthStart: input.monthStart ?? "2026-03-01",
     forecastReferenceDate: input.forecastReferenceDate ?? "2026-03-10",
+    currentBalanceAnchor: input.currentBalanceAnchor ?? 531.82,
+    currentBalanceAnchorDate: input.currentBalanceAnchorDate ?? "2026-03-25",
     cashRiskFlag: input.cashRiskFlag ?? "none",
     riskFlag: input.riskFlag ?? "none",
     expectedEndBalance: input.expectedEndBalance ?? 900,
@@ -46,6 +48,8 @@ function buildForecast(input: Partial<InsightsForecastSummary>): InsightsForecas
     expectedIncomeTotal: input.expectedIncomeTotal ?? 2400,
     remainingExpectedIncomeTotal: input.remainingExpectedIncomeTotal ?? 2400,
     remainingExpectedExpenseTotal: input.remainingExpectedExpenseTotal ?? 860,
+    remainingExpectedSavingsOutflowTotal:
+      input.remainingExpectedSavingsOutflowTotal ?? 150,
     upcomingCommittedIncomeTotal: input.upcomingCommittedIncomeTotal ?? 2400,
     upcomingCommittedExpenseTotal: input.upcomingCommittedExpenseTotal ?? 860,
     expectedFixedCosts: input.expectedFixedCosts ?? 900,
@@ -119,6 +123,56 @@ describe("buildInsightsUpcomingMoments", () => {
     });
 
     expect(result.length).toBeLessThanOrEqual(4);
+  });
+
+  it("filtert timeline-events met nulbedrag uit komende momenten", () => {
+    const selectedMonth = buildMonthOption("2026-03");
+    const result = buildInsightsUpcomingMoments({
+      forecast: buildForecast({}),
+      timelineEvents: [
+        timelineEvent({
+          eventKey: "income-zero-1",
+          eventDate: "2026-03-26",
+          eventType: "income",
+          label: "Creditrente",
+          amount: 0.42,
+          source: "income_source",
+          confidence: "medium",
+        }),
+        timelineEvent({
+          eventKey: "income-zero-2",
+          eventDate: "2026-03-26",
+          eventType: "income",
+          label: "Google Ireland Limited",
+          amount: 0.91,
+          source: "income_source",
+          confidence: "medium",
+        }),
+        timelineEvent({
+          eventKey: "income-real-1",
+          eventDate: "2026-03-27",
+          eventType: "income",
+          label: "Impres B.V.",
+          amount: 2456,
+          source: "income_source",
+          confidence: "high",
+        }),
+      ],
+      referenceSignals: [
+        signal({
+          counterparty: "Impres B.V.",
+          amount: 2456,
+          analysisCategory: "income_structural",
+          categoryKey: "income_salary",
+          categoryLabel: "Salaris",
+        }),
+      ],
+      selectedMonth,
+      now: new Date("2026-03-11T12:00:00.000Z"),
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.title).toBe("Impres B.V.");
   });
 
   it("gebruikt timeline-events met titel uit label en subtitel uit signaal", () => {

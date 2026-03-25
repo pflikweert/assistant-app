@@ -33,6 +33,8 @@ function buildForecast(options: {
   return {
     monthStart: "2026-03-01",
     forecastReferenceDate: null,
+    currentBalanceAnchor: null,
+    currentBalanceAnchorDate: null,
     riskFlag: options.riskFlag ?? "none",
     cashRiskFlag: options.cashRiskFlag ?? "none",
     expectedEndBalance: options.expectedEndBalance ?? null,
@@ -43,6 +45,7 @@ function buildForecast(options: {
     expectedIncomeTotal: null,
     remainingExpectedIncomeTotal: null,
     remainingExpectedExpenseTotal: null,
+    remainingExpectedSavingsOutflowTotal: null,
     upcomingCommittedIncomeTotal: null,
     upcomingCommittedExpenseTotal: null,
     expectedFixedCosts: null,

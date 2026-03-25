@@ -1,959 +1,573 @@
 import { useNavigation } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
-import React, { useState } from "react";
+import { useRouter } from "expo-router";
+import React from "react";
 import {
   ActivityIndicator,
   Alert,
+  findNodeHandle,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
   View,
 } from "react-native";
-// @ts-ignore
-import { FinColors } from "@/constants/theme";
-import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
-import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
-import { runCategorizationInBackground } from "@/services/categorization";
-import {
-  ACCOUNT_TYPES,
-  type BankAccount,
-  type BankAccountType,
-  createBankAccount,
-  findBankAccountByHash,
-  hashAccountNumber,
-  listBankAccounts,
-  maskAccountNumber,
-  normalizeAccountNumber,
-} from "@/services/bank-accounts";
-import { requireCurrentUserId } from "@/services/current-user";
-import {
-  ImportSource,
-  parseTransactionImport,
-  TransactionImportRecord,
-} from "@/services/import/transaction-import-parser";
-import { findMatchingImportedTransaction } from "@/services/import/transaction-import-match";
-import { supabase } from "@/services/supabase";
-import { normalizeTransactionDetails } from "@/services/transaction-details";
 
-type PreviewRow = { date: string; description: string; amount: string };
+import { AppIcon } from "@/components/ui/app-icon";
+import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
+import { FinancePrimaryCtaButton } from "@/components/ui/finance-primary-cta-button";
+import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceStepIndicator } from "@/components/ui/finance-step-indicator";
+import { FinColors, FinSurfaces } from "@/constants/theme";
+import { IMPORT_FLOW_STEPS } from "@/components/import/import-flow-steps";
+import {
+  buildImportDraft,
+  clearCurrentImportDraft,
+  clearCurrentImportRunResult,
+  setCurrentImportDraft,
+} from "@/services/import/import-flow-state";
+import {
+  eventHasDraggedFiles,
+  extractDroppedFile,
+  isDropInsideUploadCard,
+} from "@/services/import/import-web-drop";
+import { resolveImportSource } from "@/services/import/import-source";
+import { parseTransactionImport } from "@/services/import/transaction-import-parser";
+
+type ImportStatus =
+  | "idle"
+  | "choosing"
+  | "uploading"
+  | "processing"
+  | "error";
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
 
 export default function CSVImportScreen() {
   const navigation = useNavigation();
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [total, setTotal] = useState<number | null>(null);
-  const [processed, setProcessed] = useState(0);
-  const [insertedCount, setInsertedCount] = useState(0);
-  const [updatedCount, setUpdatedCount] = useState(0);
-  const [preview, setPreview] = useState<PreviewRow[]>([]);
-  const [pendingRowCount, setPendingRowCount] = useState<number | null>(null);
-  const [pendingContent, setPendingContent] = useState<string | null>(null);
-  const [importSource, setImportSource] = useState<ImportSource>("csv");
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [newAccountName, setNewAccountName] = useState("");
-  const [newAccountNumber, setNewAccountNumber] = useState("");
-  const [newAccountType, setNewAccountType] =
-    useState<BankAccountType>("checking");
-  const [newAccountProvider, setNewAccountProvider] = useState("");
-  const [creatingAccount, setCreatingAccount] = useState(false);
-  const [detectedAccountNumber, setDetectedAccountNumber] =
-    useState<string | null>(null);
-  const selectedAccount = React.useMemo(
-    () => bankAccounts.find((account) => account.id === selectedAccountId) ?? null,
-    [bankAccounts, selectedAccountId],
-  );
+  const router = useRouter();
 
-  // Prevent leaving during import
+  const [status, setStatus] = React.useState<ImportStatus>("idle");
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [isChoosing, setIsChoosing] = React.useState(false);
+  const [isDragging, setIsDragging] = React.useState(false);
+  const uploadCardRef = React.useRef<React.ElementRef<typeof View> | null>(null);
+  const isBusy = status === "choosing" || status === "uploading" || status === "processing";
+
+  const getUploadCardElement = React.useCallback(() => {
+    if (Platform.OS !== "web") return null;
+    const fromRef = uploadCardRef.current as any;
+    if (fromRef && typeof fromRef.getBoundingClientRect === "function") {
+      return fromRef as {
+        getBoundingClientRect: () => {
+          left: number;
+          right: number;
+          top: number;
+          bottom: number;
+        };
+      };
+    }
+    const maybeNode = findNodeHandle(uploadCardRef.current as any) as any;
+    if (maybeNode && typeof maybeNode.getBoundingClientRect === "function") {
+      return maybeNode as {
+        getBoundingClientRect: () => {
+          left: number;
+          right: number;
+          top: number;
+          bottom: number;
+        };
+      };
+    }
+    return null;
+  }, []);
+
   React.useEffect(() => {
-    const unsub = navigation.addListener("beforeRemove", (e: any) => {
-      if (loading) {
-        e.preventDefault();
-        Alert.alert("Importing", "Please wait until the import finishes.");
+    const unsub = navigation.addListener("beforeRemove", (event: any) => {
+      if (isBusy || isChoosing) {
+        event.preventDefault();
+        Alert.alert(
+          "Even wachten",
+          "Budio verwerkt het bestand nog. Wacht heel even tot de samenvatting klaar is.",
+        );
       }
     });
     return unsub;
-  }, [navigation, loading]);
+  }, [isBusy, isChoosing, navigation]);
 
-  const loadBankAccounts = React.useCallback(async () => {
-    try {
-      const rows = await listBankAccounts();
-      setBankAccounts(rows);
-      setSelectedAccountId((current) => {
-        if (current) return current;
-        if (rows.length === 1) return rows[0].id;
-        return current;
+  const processFile = React.useCallback(
+    async (input: {
+      fileName: string | null;
+      mimeType: string | null;
+      textContent?: string | null;
+      base64Content?: string | null;
+    }) => {
+      setStatus("processing");
+      setErrorMessage(null);
+      clearCurrentImportDraft();
+      clearCurrentImportRunResult();
+
+      try {
+        const source = resolveImportSource(input);
+        const content = source === "pdf" ? input.base64Content : input.textContent;
+        if (!content) {
+          throw new Error("We konden dit bestand niet uitlezen.");
+        }
+
+        const rows = parseTransactionImport(source, content);
+        if (!rows.length) {
+          throw new Error("We konden geen bruikbare transacties vinden.");
+        }
+
+        const draft = buildImportDraft(source, input.fileName, rows);
+        setCurrentImportDraft(draft);
+      } catch (error) {
+        clearCurrentImportDraft();
+        setStatus("error");
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "We konden dit bestand niet verwerken.",
+        );
+        return;
+      }
+      router.push("/rekeningen-koppelen");
+    },
+    [router],
+  );
+
+  const processWebFile = React.useCallback(
+    async (file: File) => {
+      setErrorMessage(null);
+      setStatus("uploading");
+      setIsChoosing(false);
+      setIsDragging(false);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const textContent = new TextDecoder("utf-8").decode(bytes);
+      const base64Content = toBase64(bytes);
+      await processFile({
+        fileName: file.name || null,
+        mimeType: file.type || null,
+        textContent,
+        base64Content,
       });
-    } catch (error) {
-      console.warn("[csv-import] bank account load error", error);
-    }
-  }, []);
+    },
+    [processFile],
+  );
 
   React.useEffect(() => {
-    void loadBankAccounts();
-  }, [loadBankAccounts]);
+    if (Platform.OS !== "web") return;
 
-  const detectAccountFromRecord = React.useCallback(async (record: TransactionImportRecord | null) => {
-    if (!record) {
-      setDetectedAccountNumber(null);
-      return;
-    }
-    const candidate =
-      record.metadata["Tegenrekening IBAN/BBAN"] ||
-      record.metadata["IBAN"] ||
-      record.metadata["Rekeningnummer"] ||
-      record.metadata["Rekening"] ||
-      record.metadata["Rekening nummer"] ||
-      record.counterparty;
-    const normalized = normalizeAccountNumber(candidate);
-    if (!normalized) {
-      setDetectedAccountNumber(null);
-      return;
-    }
-    setDetectedAccountNumber(normalized);
-    setNewAccountNumber(normalized);
-    setNewAccountName((current) => current || `Import ${normalized.slice(-4)}`);
-    try {
-      const hash = await hashAccountNumber(normalized);
-      const existing = await findBankAccountByHash(hash);
-      if (existing) {
-        setSelectedAccountId(existing.id);
+    const handleDragEnter = (event: any) => {
+      if (!eventHasDraggedFiles(event)) return;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      if (isBusy) {
+        setIsDragging(false);
+        return;
       }
-    } catch (error) {
-      console.warn("[csv-import] detect account", error);
-    }
-  }, []);
-
-  const handleAddBankAccount = async () => {
-    const name = newAccountName.trim();
-    if (!name) {
-      Alert.alert("Naam verplicht", "Geef de rekening een herkenbare naam.");
-      return;
-    }
-    setCreatingAccount(true);
-    try {
-      const created = await createBankAccount({
-        name,
-        accountNumber: newAccountNumber || null,
-        accountType: newAccountType,
-        provider: newAccountProvider.trim() || null,
-      });
-      await loadBankAccounts();
-      setSelectedAccountId(created.id);
-      setNewAccountName("");
-      setNewAccountNumber("");
-      setNewAccountProvider("");
-      setDetectedAccountNumber(null);
-    } catch (error: any) {
-      const msg = error?.message || "Kon de rekening niet opslaan.";
-      Alert.alert("Error", msg);
-    } finally {
-      setCreatingAccount(false);
-    }
-  };
-
-
-  const toBase64 = (bytes: Uint8Array): string => {
-    let binary = "";
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, i + chunkSize);
-      binary += String.fromCharCode(...chunk);
-    }
-    return btoa(binary);
-  };
-
-  const buildPreview = (
-    source: ImportSource,
-    content: string,
-  ): {
-    previewRows: PreviewRow[];
-    rowCount: number;
-    sampleRecord: TransactionImportRecord | null;
-  } => {
-    const rows = parseTransactionImport(source, content);
-    const sampleRecord = rows[0] || null;
-    return {
-      rowCount: rows.length,
-      previewRows: rows.slice(0, 5).map((r) => ({
-        date: r.date || "—",
-        description: r.details || r.counterparty || "—",
-        amount: Number.isFinite(r.amount) ? String(r.amount) : "—",
-      })),
-      sampleRecord,
+      setIsDragging(isDropInsideUploadCard(event, getUploadCardElement()));
     };
-  };
 
-  const pickFile = async () => {
-    setMessage(null);
-    setSuccess(false);
-    setTotal(null);
-    setProcessed(0);
-    setInsertedCount(0);
-    setUpdatedCount(0);
-    setPreview([]);
-    setPendingRowCount(null);
-    setPendingContent(null);
-
-    if (Platform.OS === "web") {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept =
-        importSource === "pdf"
-          ? ".pdf,application/pdf"
-          : ".csv,text/csv";
-      input.onchange = async (e: any) => {
-        const file = e.target?.files?.[0];
-        if (!file) return;
-        const content =
-          importSource === "pdf"
-            ? toBase64(new Uint8Array(await file.arrayBuffer()))
-            : await file.text();
-
-        const { previewRows, rowCount, sampleRecord } = buildPreview(
-          importSource,
-          content,
-        );
-        setPreview(previewRows);
-        setPendingRowCount(rowCount);
-        setPendingContent(content);
-        setMessage(null);
-        void detectAccountFromRecord(sampleRecord);
-      };
-      input.click();
-      return;
-    }
-    try {
-      const pickerType =
-        importSource === "pdf"
-          ? ["application/pdf", ".pdf"]
-          : ["text/csv", ".csv"];
-      const res: any = await DocumentPicker.getDocumentAsync({ type: pickerType });
-      if (res.type === "cancel") return;
-      if (res?.uri) {
-        const content = await FileSystem.readAsStringAsync(res.uri, {
-          encoding:
-            importSource === "pdf"
-              ? "base64"
-              : "utf8",
-        });
-        const { previewRows, rowCount, sampleRecord } = buildPreview(
-          importSource,
-          content,
-        );
-        setPreview(previewRows);
-        setPendingRowCount(rowCount);
-        setPendingContent(content);
-        setMessage(null);
-        void detectAccountFromRecord(sampleRecord);
+    const handleDragOver = (event: any) => {
+      if (!eventHasDraggedFiles(event)) return;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      if (isBusy) {
+        setIsDragging(false);
+        return;
       }
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
-  };
+      setIsDragging(isDropInsideUploadCard(event, getUploadCardElement()));
+    };
 
-  const doImport = async () => {
-    if (!pendingContent) return;
-    if (!selectedAccount) {
-      Alert.alert(
-        "Selecteer een rekening",
-        "Kies of maak eerst een rekening aan voordat je importeert.",
-      );
-      return;
-    }
-    setLoading(true);
-    setSuccess(false);
-    setMessage("Importeren...");
-    await Promise.resolve();
-    try {
-      await handleImportContent(pendingContent, selectedAccount.id);
-    } catch (err: any) {
-      const msg = err?.message || String(err);
-      setMessage(`Import failed: ${msg}`);
-      Alert.alert("Error", msg);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const handleDragLeave = (event: any) => {
+      if (!eventHasDraggedFiles(event)) return;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      const isInside = isDropInsideUploadCard(event, getUploadCardElement());
+      if (!isInside) {
+        setIsDragging(false);
+      }
+    };
 
-  async function handleImportContent(content: string, bankAccountId: string) {
-    const userId = await requireCurrentUserId();
-    const rows = parseTransactionImport(importSource, content);
-    setTotal(rows.length);
-    setProcessed(0);
-    setInsertedCount(0);
-    setUpdatedCount(0);
-    let imported = 0;
-    let insertedRows = 0;
-    let updated = 0;
-    const importedIds: string[] = [];
+    const handleDrop = (event: any) => {
+      event.preventDefault?.();
+      event.stopPropagation?.();
 
-    for (const tx of rows) {
-      const normalizedDetails = normalizeTransactionDetails(tx.details);
-      setMessage(
-        `Verwerken ${imported + 1} / ${rows.length}... (${insertedRows} nieuw, ${updated} bijgewerkt)`,
-      );
-      const { data: existing, error: selErr } = await supabase
-        .from("transactions")
-        .select("id,details,counterparty,metadata")
-        .eq("user_id", userId)
-        .eq("bank_account_id", bankAccountId)
-        .eq("date", tx.date)
-        .eq("amount", tx.amount)
-        .limit(25);
-      if (selErr) throw selErr;
-      const existingMatch = findMatchingImportedTransaction(existing, {
-        details: normalizedDetails,
-        counterparty: tx.counterparty,
-        metadata: tx.metadata,
+      if (!eventHasDraggedFiles(event)) {
+        setIsDragging(false);
+        return;
+      }
+
+      const isInside = isDropInsideUploadCard(event, getUploadCardElement());
+      setIsDragging(false);
+      if (!isInside || isBusy) return;
+
+      const file = extractDroppedFile(event);
+      if (!file) {
+        setStatus("error");
+        setErrorMessage("We konden dit bestand niet inlezen.");
+        return;
+      }
+
+      void processWebFile(file).catch((error) => {
+        setStatus("error");
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "We konden dit bestand niet verwerken.",
+        );
       });
-      const payload: any = {
-        user_id: userId,
-        bank_account_id: bankAccountId,
-        date: tx.date,
-        details: normalizedDetails,
-        counterparty: tx.counterparty,
-        amount: tx.amount,
-        currency: tx.currency,
-        type: tx.type,
-        metadata: {
-          ...(tx.metadata || {}),
-          source: importSource,
-        },
-      };
-      if (existingMatch?.id) {
-        const { error: updErr } = await supabase
-          .from("transactions")
-          .update(payload)
-          .eq("user_id", userId)
-          .eq("bank_account_id", bankAccountId)
-          .eq("id", existingMatch.id);
-        if (updErr) throw updErr;
-        importedIds.push(existingMatch.id);
-        updated += 1;
-        setUpdatedCount(updated);
-      } else {
-        const { data: insertedRow, error: insErr } = await supabase
-          .from("transactions")
-          .insert(payload)
-          .select("id")
-          .single();
-        if (insErr) throw insErr;
-        if (insertedRow?.id) importedIds.push(insertedRow.id);
-        insertedRows += 1;
-        setInsertedCount(insertedRows);
+    };
+
+    window.addEventListener("dragenter", handleDragEnter);
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("dragleave", handleDragLeave);
+    window.addEventListener("drop", handleDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", handleDragEnter);
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("dragleave", handleDragLeave);
+      window.removeEventListener("drop", handleDrop);
+      setIsDragging(false);
+    };
+  }, [getUploadCardElement, isBusy, processWebFile]);
+
+  const pickFile = React.useCallback(async () => {
+    if (isBusy) return;
+
+    setIsChoosing(true);
+    setErrorMessage(null);
+    setStatus("choosing");
+    setIsDragging(false);
+
+    try {
+      if (Platform.OS === "web") {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".csv,.pdf,application/pdf,text/csv";
+        let settled = false;
+
+        const finishAsCancel = () => {
+          if (settled) return;
+          settled = true;
+          setIsChoosing(false);
+          setStatus("idle");
+        };
+
+        const handleWindowFocus = () => {
+          setTimeout(() => {
+            if (!settled) {
+              finishAsCancel();
+            }
+          }, 250);
+          window.removeEventListener("focus", handleWindowFocus);
+        };
+
+        window.addEventListener("focus", handleWindowFocus);
+        (input as any).oncancel = finishAsCancel;
+        input.onchange = async (event: any) => {
+          const file = event.target?.files?.[0];
+          if (!file) {
+            finishAsCancel();
+            return;
+          }
+          settled = true;
+          setIsChoosing(false);
+          await processWebFile(file);
+        };
+        input.click();
+        return;
       }
-      imported++;
-      setProcessed(imported);
+
+      const res: any = await DocumentPicker.getDocumentAsync({
+        type: ["application/pdf", "text/csv", ".pdf", ".csv"],
+      });
+
+      if (res?.type === "cancel" || res?.canceled) {
+        setIsChoosing(false);
+        setStatus("idle");
+        return;
+      }
+
+      const fileName = res?.name || null;
+      const mimeType = res?.mimeType || null;
+      setStatus("uploading");
+      await processFile({
+        fileName,
+        mimeType,
+        textContent: await FileSystem.readAsStringAsync(res.uri, {
+          encoding: "utf8",
+        }).catch(() => null),
+        base64Content: await FileSystem.readAsStringAsync(res.uri, {
+          encoding: "base64",
+        }).catch(() => null),
+      });
+      setIsChoosing(false);
+    } catch (error) {
+      setStatus("error");
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "We konden het bestand niet kiezen.",
+      );
+      setIsChoosing(false);
     }
-    setSuccess(true);
-    setMessage(
-      `${imported} transacties verwerkt: ${insertedRows} nieuw, ${updated} bijgewerkt. Categorisatie is op de achtergrond gestart.`,
-    );
-    runCategorizationInBackground(importedIds);
-    setPendingContent(null);
-  }
+  }, [isBusy, processFile, processWebFile]);
 
+  const statusTitle =
+    status === "choosing"
+      ? "Bestand kiezen"
+      : status === "uploading"
+        ? "Bestand wordt ingelezen"
+      : status === "processing"
+        ? "Bestand wordt verwerkt"
+      : status === "error"
+        ? "Dit bestand lukt nog niet"
+        : "Nog geen bestand gekozen";
 
-  const pct = total ? Math.round((processed / total) * 100) : 0;
+  const statusText =
+    status === "choosing"
+      ? "De bestandskiezer staat open. Kies een bestand om door te gaan."
+      : status === "uploading"
+        ? "Je bestand is gekozen. Budio leest het nu in."
+      : status === "processing"
+        ? "Budio leest je bestand in en maakt de transacties klaar."
+      : status === "error"
+        ? errorMessage || "Kies een Rabobank-bestand als CSV of PDF."
+        : "Kies een bestand van je bank. Daarna laten we zien welke rekeningen erin staan.";
+  const showStatusCard =
+    status === "choosing" || status === "uploading" || status === "processing";
+  const showErrorCard = status === "error";
 
   return (
     <View style={styles.root}>
       <FinanceScreenBackdrop tone="warm" />
       <FinanceDetailTopBar title="Importeren" onBack={() => navigation.goBack()} />
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Import Bank Transactions</Text>
-        <Text style={styles.subtitle}>
-          Upload a Rabobank CSV/PDF export to sync your transactions.
-        </Text>
-
-        <View style={styles.sourceSwitchRow}>
-          {(["csv", "pdf"] as ImportSource[]).map((source) => {
-            const selected = importSource === source;
-            return (
-              <TouchableOpacity
-                key={source}
-                style={[styles.sourceSwitchBtn, selected && styles.sourceSwitchBtnSelected]}
-                onPress={() => {
-                  setImportSource(source);
-                  setPendingContent(null);
-                  setPendingRowCount(null);
-                  setPreview([]);
-                  setDetectedAccountNumber(null);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.sourceSwitchText,
-                    selected && styles.sourceSwitchTextSelected,
-                  ]}
-                >
-                  {source.toUpperCase()}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <View style={styles.accountSection}>
-          <Text style={styles.sectionTitle}>Rekeningcontext</Text>
-          {bankAccounts.length ? (
-            <View style={styles.accountListRow}>
-              {bankAccounts.map((account) => {
-                const isSelected = account.id === selectedAccountId;
-                return (
-                  <TouchableOpacity
-                    key={account.id}
-                    style={[
-                      styles.accountPill,
-                      isSelected && styles.accountPillSelected,
-                    ]}
-                    onPress={() => setSelectedAccountId(account.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.accountPillName,
-                        isSelected && styles.accountPillNameSelected,
-                      ]}
-                    >
-                      {account.name}
-                    </Text>
-                    <Text style={styles.accountPillMeta}>
-                      {account.account_type} ·{" "}
-                      {account.account_masked ?? account.currency}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ) : (
-            <Text style={styles.hintText}>
-              Geen rekeningen gevonden, voeg hieronder een rekening toe.
-            </Text>
-          )}
-          {selectedAccount && (
-            <Text style={styles.selectedAccountText}>
-              Geselecteerd: {selectedAccount.name} ·{" "}
-              {selectedAccount.account_masked ?? selectedAccount.currency}
-            </Text>
-          )}
-          {!selectedAccount && detectedAccountNumber && (
-            <Text style={styles.detectedLabel}>
-              {importSource.toUpperCase()} bevat rekening {maskAccountNumber(detectedAccountNumber)}.
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.accountForm}>
-          <Text style={styles.sectionTitle}>Nieuwe rekening toevoegen</Text>
-          <TextInput
-            value={newAccountName}
-            onChangeText={setNewAccountName}
-            placeholder="Naam voor deze rekening"
-            style={styles.textInput}
+        <View style={styles.contentMax}>
+          <FinanceStepIndicator
+            steps={IMPORT_FLOW_STEPS}
+            currentStepKey="choose-file"
           />
-          <TextInput
-            value={newAccountNumber}
-            onChangeText={setNewAccountNumber}
-            placeholder="IBAN of rekeningnummer"
-            style={styles.textInput}
-          />
-          <TextInput
-            value={newAccountProvider}
-            onChangeText={setNewAccountProvider}
-            placeholder="Provider (optioneel)"
-            style={styles.textInput}
-          />
-          <Text style={styles.fieldLabel}>Type</Text>
-          <View style={styles.accountTypeList}>
-            {ACCOUNT_TYPES.map((type) => (
-              <TouchableOpacity
-                key={type}
-                style={[
-                  styles.accountTypePill,
-                  newAccountType === type && styles.accountTypePillSelected,
-                ]}
-                onPress={() => setNewAccountType(type)}
-              >
-                <Text
-                  style={[
-                    styles.accountTypeText,
-                    newAccountType === type && styles.accountTypeTextSelected,
-                  ]}
-                >
-                  {type}
-                </Text>
-              </TouchableOpacity>
-            ))}
+
+          <View style={styles.introCard}>
+            <Text style={styles.introTitle}>Kies een bestand van je bank</Text>
+            <Text style={styles.introText}>
+              Budio herkent het bestand automatisch. Daarna controleer je eerst welke rekeningen erin staan.
+            </Text>
           </View>
-          <TouchableOpacity
-            style={[
-              styles.createAccountBtn,
-              creatingAccount && styles.importBtnDisabled,
-            ]}
-            disabled={creatingAccount}
-            onPress={handleAddBankAccount}
-          >
-            <Text style={styles.createAccountBtnText}>
-              {creatingAccount ? "Rekening opslaan..." : "Rekening toevoegen"}
-            </Text>
-          </TouchableOpacity>
-        </View>
 
-
-
-      {/* Upload card */}
-      <TouchableOpacity
-        style={[styles.uploadCard, pendingContent && styles.uploadCardReady]}
-        onPress={loading ? undefined : pickFile}
-        activeOpacity={0.75}
-      >
-        <View style={styles.uploadIconWrap}>
-          <Text style={{ fontSize: 28, color: FinColors.green }}>↑</Text>
-        </View>
-        <Text style={styles.uploadLabel}>Upload Rabobank CSV/PDF</Text>
-        <Text style={styles.uploadHint}>
-          {pendingContent
-            ? "File selected — review below"
-            : `Tap to select a ${importSource === "pdf" ? ".pdf" : ".csv"} file`}
-        </Text>
-        <View style={styles.uploadBtn}>
-          <Text style={styles.uploadBtnText}>
-            {pendingContent
-              ? "Change file"
-              : `Select ${importSource.toUpperCase()} file`}
-          </Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* Preview table */}
-      {preview.length > 0 && (
-        <View style={styles.previewCard}>
-          <Text style={styles.previewTitle}>Preview</Text>
-          {pendingRowCount != null ? (
-            <Text style={styles.previewSummary}>
-              {pendingRowCount} rijen gevonden in {importSource.toUpperCase()}
-            </Text>
+          {showErrorCard ? (
+            <View style={styles.errorCard}>
+              <Text style={styles.errorTitle}>Dit bestand lukt nog niet</Text>
+              <Text style={styles.errorText}>{statusText}</Text>
+            </View>
           ) : null}
-          {/* Header */}
-          <View style={[styles.previewRow, styles.previewHeaderRow]}>
-            <Text
-              style={[styles.previewCell, styles.previewHeader, { flex: 1.2 }]}
-            >
-              Date
-            </Text>
-            <Text
-              style={[styles.previewCell, styles.previewHeader, { flex: 3 }]}
-            >
-              Description
-            </Text>
-            <Text
-              style={[
-                styles.previewCell,
-                styles.previewHeader,
-                { flex: 1.5, textAlign: "right" },
-              ]}
-            >
-              Amount
-            </Text>
-          </View>
-          {preview.map((row, i) => (
-            <View
-              key={i}
-              style={[styles.previewRow, i % 2 === 0 && styles.previewRowAlt]}
-            >
-              <Text style={[styles.previewCell, { flex: 1.2 }]}>
-                {row.date}
-              </Text>
-              <Text style={[styles.previewCell, { flex: 3 }]} numberOfLines={1}>
-                {row.description}
-              </Text>
-              <Text
-                style={[styles.previewCell, { flex: 1.5, textAlign: "right" }]}
-              >
-                {row.amount}
-              </Text>
-            </View>
-          ))}
-          <Text style={styles.previewNote}>
-            Eerste {preview.length} rijen van{" "}
-            {pendingRowCount ?? preview.length}
-          </Text>
-        </View>
-      )}
 
-      {/* Progress */}
-      {loading && total != null && (
-        <View style={styles.progressCard}>
-          <View style={styles.progressHeader}>
-            <ActivityIndicator color={FinColors.green} size="small" />
-            <Text style={styles.progressText}>{message}</Text>
-          </View>
-          <View style={styles.progressBarBg}>
-            <View
-              style={[styles.progressBarFill, { width: `${pct}%` as any }]}
+          <View
+            ref={uploadCardRef}
+            style={[
+              styles.uploadCard,
+              isBusy && styles.uploadCardProcessing,
+              isDragging && styles.uploadCardDragActive,
+            ]}
+          >
+            <View style={styles.uploadIconWrap}>
+              {status === "uploading" || status === "processing" || isChoosing ? (
+                <ActivityIndicator color={FinColors.warningText} />
+              ) : (
+                <AppIcon
+                  name="upload-file"
+                  size={30}
+                  color={FinColors.warningText}
+                  variant="outlined"
+                />
+              )}
+            </View>
+            <Text style={styles.uploadTitle}>Sleep je bestand hierheen</Text>
+            <Text style={styles.uploadHint}>
+              Gebruik een Rabobank-export als CSV of PDF.
+            </Text>
+            <FinancePrimaryCtaButton
+              label={
+                status === "choosing"
+                  ? "Bestand kiezen..."
+                  : status === "uploading"
+                    ? "Bestand inlezen..."
+                    : status === "processing"
+                      ? "Bestand verwerken..."
+                      : "Bestand kiezen"
+              }
+              onPress={pickFile}
+              disabled={isBusy}
+              style={styles.uploadButton}
             />
           </View>
-          <View style={styles.progressStatsRow}>
-            <Text style={styles.progressStatText}>Nieuw: {insertedCount}</Text>
-            <Text style={styles.progressStatText}>
-              Bijgewerkt: {updatedCount}
+
+          {showStatusCard ? (
+            <View style={styles.statusCard}>
+              <Text style={styles.statusTitle}>{statusTitle}</Text>
+              <Text style={styles.statusText}>{statusText}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.privacyRow}>
+            <AppIcon name="lock" size={14} color={FinColors.textMuted} variant="outlined" />
+            <Text style={styles.privacyText}>
+              PRIVACY FIRST · JE DATA BLIJFT VERSLEUTELD
             </Text>
           </View>
-          <Text style={styles.progressPct}>{pct}%</Text>
         </View>
-      )}
-
-      {/* Success */}
-      {success && (
-        <View style={styles.successCard}>
-          <Text style={styles.successIcon}>✓</Text>
-          <Text style={styles.successText}>{message}</Text>
-        </View>
-      )}
-
-      {/* Error (non-success message) */}
-      {message && !loading && !success && (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorText}>{message}</Text>
-        </View>
-      )}
-
-      {/* Import button */}
-      {pendingContent && !loading && (
-        <TouchableOpacity style={styles.importBtn} onPress={doImport}>
-          <Text style={styles.importBtnText}>Import Transactions</Text>
-        </TouchableOpacity>
-      )}
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "transparent" },
-  scroll: { flex: 1, backgroundColor: "transparent" },
-  content: { padding: 24, paddingTop: 12, gap: 16 },
-  title: {
-    fontSize: 24,
+  root: {
+    flex: 1,
+    backgroundColor: FinColors.bgBase,
+    overflow: "hidden",
+  },
+  scroll: {
+    flex: 1,
+  },
+  content: {
+    paddingBottom: 28,
+  },
+  contentMax: {
+    width: "100%",
+    maxWidth: 1040,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingTop: 32,
+    gap: 14,
+  },
+  introCard: {
+    ...FinSurfaces.topLevelCard,
+    borderRadius: 28,
+    padding: 20,
+    gap: 8,
+  },
+  introTitle: {
+    fontSize: 25,
+    lineHeight: 31,
     fontWeight: "800",
     color: FinColors.textPrimary,
-    marginBottom: 4,
+    letterSpacing: -0.5,
   },
-  subtitle: {
-    fontSize: 13,
-    color: FinColors.textMuted,
-    marginBottom: 8,
-    lineHeight: 20,
+  introText: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: FinColors.textSecondary,
   },
-  sourceSwitchRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 4,
-  },
-  sourceSwitchBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    borderRadius: 999,
-    paddingVertical: 11,
-    alignItems: "center",
-    backgroundColor: FinColors.bgCard,
-  },
-  sourceSwitchBtnSelected: {
-    borderColor: FinColors.warningBorder,
-    backgroundColor: FinColors.warningBg,
-  },
-  sourceSwitchText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: FinColors.textMuted,
-  },
-  sourceSwitchTextSelected: {
-    color: FinColors.warningText,
-  },
-
-  accountSection: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    marginBottom: 12,
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-  },
-  accountListRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  accountPill: {
-    backgroundColor: FinColors.bgElevated,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    minWidth: 130,
-  },
-  accountPillSelected: {
-    borderColor: FinColors.green,
-    backgroundColor: FinColors.greenBg,
-  },
-  accountPillName: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: FinColors.textPrimary,
-  },
-  accountPillNameSelected: {
-    color: FinColors.green,
-  },
-  accountPillMeta: {
-    fontSize: 11,
-    color: FinColors.textMuted,
-  },
-  hintText: {
-    fontSize: 12,
-    color: FinColors.textMuted,
-  },
-  selectedAccountText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: FinColors.textPrimary,
-  },
-  detectedLabel: {
-    fontSize: 11,
-    color: FinColors.textMuted,
-  },
-
   uploadCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 26,
-    borderWidth: 2,
-    borderColor: FinColors.borderSubtle,
+    borderRadius: 28,
+    borderWidth: 1,
     borderStyle: "dashed",
-    padding: 28,
+    borderColor: FinColors.borderSubtle,
+    paddingVertical: 34,
+    paddingHorizontal: 20,
     alignItems: "center",
-    gap: 8,
+    gap: 12,
   },
-  uploadCardReady: {
-    borderColor: FinColors.warningBorder,
+  uploadCardProcessing: {
+    opacity: 0.96,
+  },
+  uploadCardDragActive: {
+    borderColor: FinColors.warningText,
     backgroundColor: FinColors.warningBg,
   },
   uploadIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: FinColors.warningBg,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 4,
+    backgroundColor: FinColors.bgElevated,
   },
-  uploadLabel: {
-    fontSize: 15,
-    fontWeight: "700",
+  uploadTitle: {
+    fontSize: 19,
+    lineHeight: 24,
     color: FinColors.textPrimary,
+    fontWeight: "800",
   },
-  uploadHint: { fontSize: 12, color: FinColors.textMuted, textAlign: "center" },
-  uploadBtn: {
-    marginTop: 8,
-    backgroundColor: FinColors.bgInput,
-    paddingHorizontal: 20,
-    paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  uploadBtnText: {
+  uploadHint: {
     fontSize: 13,
-    fontWeight: "600",
-    color: FinColors.textPrimary,
-  },
-
-  previewCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 24,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  previewTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-    marginBottom: 10,
-  },
-  previewSummary: {
-    fontSize: 12,
+    lineHeight: 19,
     color: FinColors.textSecondary,
-    marginBottom: 10,
+    textAlign: "center",
+    maxWidth: 260,
   },
-  previewRow: { flexDirection: "row", paddingVertical: 7 },
-  previewRowAlt: { backgroundColor: "rgba(17,17,17,0.03)", borderRadius: 8 },
-  previewHeaderRow: {
-    borderBottomWidth: 1,
-    borderBottomColor: FinColors.borderSubtle,
-    marginBottom: 4,
+  uploadButton: {
+    marginTop: 10,
+    minWidth: 196,
   },
-  previewCell: { fontSize: 11, color: FinColors.textSecondary },
-  previewHeader: {
-    fontWeight: "700",
-    color: FinColors.textMuted,
-    fontSize: 10,
-    textTransform: "uppercase",
+  statusCard: {
+    ...FinSurfaces.topLevelCard,
+    borderRadius: 20,
+    padding: 14,
+    gap: 6,
   },
-  previewNote: {
-    fontSize: 10,
-    color: FinColors.textMuted,
-    marginTop: 8,
-    textAlign: "right",
-  },
-  accountForm: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 24,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    marginBottom: 12,
-    gap: 10,
-  },
-  textInput: {
-    backgroundColor: FinColors.bgInput,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
+  statusTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
     color: FinColors.textPrimary,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+  },
+  statusText: {
     fontSize: 13,
+    lineHeight: 19,
+    color: FinColors.textSecondary,
   },
-  fieldLabel: {
-    fontSize: 12,
-    color: FinColors.textMuted,
-  },
-  accountTypeList: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 4,
-  },
-  accountTypePill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgBase,
-  },
-  accountTypePillSelected: {
-    borderColor: FinColors.warningBorder,
-    backgroundColor: FinColors.warningBg,
-  },
-  accountTypeText: {
-    fontSize: 12,
-    color: FinColors.textPrimary,
-  },
-  accountTypeTextSelected: {
-    color: FinColors.warningText,
-  },
-  createAccountBtn: {
-    marginTop: 8,
-    backgroundColor: FinColors.yellow,
-    borderRadius: 999,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  createAccountBtnText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-  },
-  importBtnDisabled: {
-    opacity: 0.6,
-  },
-
-  progressCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 24,
-    padding: 16,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  progressHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
-  progressText: { fontSize: 12, color: FinColors.textSecondary, flex: 1 },
-  progressBarBg: {
-    height: 4,
-    backgroundColor: FinColors.bgInput,
-    borderRadius: 4,
-  },
-  progressBarFill: {
-    height: 4,
-    backgroundColor: FinColors.warningText,
-    borderRadius: 4,
-  },
-  progressPct: {
-    fontSize: 11,
-    color: FinColors.warningText,
-    fontWeight: "700",
-    textAlign: "right",
-  },
-  progressStatsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  progressStatText: {
-    fontSize: 11,
-    color: FinColors.textMuted,
-    fontWeight: "600",
-  },
-
-  successCard: {
-    backgroundColor: FinColors.warningBg,
-    borderRadius: 24,
-    padding: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderWidth: 1,
-    borderColor: FinColors.warningBorder,
-  },
-  successIcon: { fontSize: 20, color: FinColors.warningText },
-  successText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: FinColors.warningText,
-    flex: 1,
-  },
-
   errorCard: {
     backgroundColor: FinColors.redBg,
-    borderRadius: 24,
+    borderRadius: 20,
     padding: 14,
+    gap: 6,
     borderWidth: 1,
-    borderColor: "rgba(248,113,113,0.3)",
+    borderColor: "rgba(197,93,76,0.24)",
   },
-  errorText: { fontSize: 13, color: FinColors.red },
-
-  importBtn: {
-    backgroundColor: FinColors.textPrimary,
-    borderRadius: 999,
-    paddingVertical: 16,
+  errorTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+    color: FinColors.red,
+  },
+  errorText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: FinColors.red,
+  },
+  privacyRow: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingTop: 6,
   },
-  importBtnText: { fontSize: 15, fontWeight: "700", color: FinColors.bgBase },
+  privacyText: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: FinColors.textMuted,
+    fontWeight: "700",
+    letterSpacing: 0.9,
+    textTransform: "uppercase",
+  },
 });

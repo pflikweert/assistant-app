@@ -730,8 +730,25 @@ function mapCsvRow(row: CsvRow): TransactionImportRecord | null {
 
   // Preserve raw account hints for account detection during import preview.
   metadata["Tegenrekening IBAN/BBAN"] = row["Tegenrekening IBAN/BBAN"] || "";
-  metadata.IBAN = row.IBAN || "";
-  metadata.Rekeningnummer = row.Rekeningnummer || row["Rekening nummer"] || "";
+  metadata.IBAN =
+    row.IBAN ||
+    row["IBAN/BBAN"] ||
+    row["IBAN / BBAN"] ||
+    row["Rekening IBAN/BBAN"] ||
+    row["Rekening IBAN / BBAN"] ||
+    "";
+  metadata["IBAN/BBAN"] = row["IBAN/BBAN"] || row["IBAN / BBAN"] || "";
+  metadata["IBAN / BBAN"] = row["IBAN / BBAN"] || row["IBAN/BBAN"] || "";
+  metadata["Rekening IBAN/BBAN"] =
+    row["Rekening IBAN/BBAN"] || row["Rekening IBAN / BBAN"] || "";
+  metadata["Rekening IBAN / BBAN"] =
+    row["Rekening IBAN / BBAN"] || row["Rekening IBAN/BBAN"] || "";
+  metadata.Rekeningnummer =
+    row.Rekeningnummer ||
+    row["Rekening nummer"] ||
+    row["IBAN/BBAN"] ||
+    row["IBAN / BBAN"] ||
+    "";
   metadata["Rekening nummer"] = row["Rekening nummer"] || "";
   metadata.Rekening = row.Rekening || "";
 

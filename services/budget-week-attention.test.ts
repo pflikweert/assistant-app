@@ -20,13 +20,16 @@ function createWeekStub(): BudgetWeekPlanRow {
     daysInPreviousMonth: 0,
     daysInNextMonth: 0,
     crossesMonthBoundary: false,
+    baseBudget: 250,
     budget: 250,
+    guardrailBudgetFloor: null,
     actual: 160,
     remaining: 90,
     utilization: 0.64,
     isCurrentWeek: true,
     isPastWeek: false,
     wasRebalanced: false,
+    rebalanceMode: "none",
     overrunAmount: 0,
   };
 }

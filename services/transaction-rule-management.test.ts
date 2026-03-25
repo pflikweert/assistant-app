@@ -149,7 +149,7 @@ describe("transaction-rule-management", () => {
     expect(repoMock.clearAutoCategories).toHaveBeenCalledWith(["tx-1"]);
     expect(requestForecastRefreshMock).toHaveBeenCalledWith({
       reason: "manual_category",
-      delayMs: 5000,
+      eager: true,
     });
   });
 });

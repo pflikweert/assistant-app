@@ -12,6 +12,8 @@ export type InsightsMonthStatusTone = "good" | "watch" | "critical" | "neutral";
 export type InsightsForecastSummary = {
   monthStart: string;
   forecastReferenceDate: string | null;
+  currentBalanceAnchor: number | null;
+  currentBalanceAnchorDate: string | null;
   cashRiskFlag: "none" | "cash_gap_warning";
   riskFlag: "none" | "deficit_warning";
   expectedEndBalance: number | null;
@@ -22,6 +24,7 @@ export type InsightsForecastSummary = {
   expectedIncomeTotal: number | null;
   remainingExpectedIncomeTotal: number | null;
   remainingExpectedExpenseTotal: number | null;
+  remainingExpectedSavingsOutflowTotal: number | null;
   upcomingCommittedIncomeTotal: number | null;
   upcomingCommittedExpenseTotal: number | null;
   expectedFixedCosts: number | null;

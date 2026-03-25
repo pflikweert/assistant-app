@@ -3,6 +3,10 @@ import { FinColors } from "@/constants/theme";
 import { clearCategorizationClientState } from "@/services/categorization";
 import { getAuthRedirectPath } from "@/services/auth-routing";
 import {
+  clearCurrentImportDraft,
+  clearCurrentImportRunResult,
+} from "@/services/import/import-flow-state";
+import {
   createDevSession,
   clearSupabaseSessionStorage,
   getSession,
@@ -86,6 +90,8 @@ function SessionProvider({ children }: { children: React.ReactNode }) {
       loggingOutRef.current = true;
       try {
         clearCategorizationClientState();
+        clearCurrentImportDraft();
+        clearCurrentImportRunResult();
         setSession(null);
         clearIdleMarker();
 
@@ -151,6 +157,8 @@ function SessionProvider({ children }: { children: React.ReactNode }) {
     const { data: listener } = onAuthStateChange((event, sess) => {
       if (event === "SIGNED_OUT") {
         clearCategorizationClientState();
+        clearCurrentImportDraft();
+        clearCurrentImportRunResult();
         void clearSupabaseSessionStorage();
         setSession(null);
         clearIdleMarker();
@@ -208,6 +216,8 @@ function SessionProvider({ children }: { children: React.ReactNode }) {
           lastActiveAtRef.current = Date.now();
         } else {
           clearCategorizationClientState();
+          clearCurrentImportDraft();
+          clearCurrentImportRunResult();
           clearIdleMarker();
           await clearSupabaseSessionStorage();
         }
@@ -322,6 +332,30 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="csv-import"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="rekeningen-koppelen"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="import-control"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="import-afronden"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="bankrekeningen"
           options={{
             headerShown: false,
           }}

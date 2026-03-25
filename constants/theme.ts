@@ -81,3 +81,17 @@ export const Fonts = Platform.select({
     mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   },
 });
+
+export const FinSurfaces = {
+  topLevelCard: {
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 0,
+    borderColor: "transparent",
+    boxShadow: "0px 6px 12px rgba(17,17,17,0.03)",
+    shadowColor: "#111111",
+    shadowOpacity: 0.03,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 1,
+  },
+} as const;

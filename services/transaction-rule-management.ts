@@ -205,7 +205,7 @@ export async function resetTransactionRuleMatch(transactionId: string) {
 
   await requestForecastRefresh({
     reason: "manual_category",
-    delayMs: 5000,
+    eager: true,
   }).catch((error) => {
     console.warn(
       "[transaction-rule-management] forecast refresh scheduling after rule reset failed",

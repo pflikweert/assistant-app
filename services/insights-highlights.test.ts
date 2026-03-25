@@ -38,6 +38,8 @@ function forecast(input?: Partial<InsightsForecastSummary>): InsightsForecastSum
   return {
     monthStart: "2026-03-01",
     forecastReferenceDate: input?.forecastReferenceDate ?? "2026-03-10",
+    currentBalanceAnchor: input?.currentBalanceAnchor ?? 531.82,
+    currentBalanceAnchorDate: input?.currentBalanceAnchorDate ?? "2026-03-25",
     cashRiskFlag: input?.cashRiskFlag ?? "none",
     riskFlag: input?.riskFlag ?? "none",
     expectedEndBalance: input?.expectedEndBalance ?? 320,
@@ -48,6 +50,8 @@ function forecast(input?: Partial<InsightsForecastSummary>): InsightsForecastSum
     expectedIncomeTotal: input?.expectedIncomeTotal ?? null,
     remainingExpectedIncomeTotal: input?.remainingExpectedIncomeTotal ?? null,
     remainingExpectedExpenseTotal: input?.remainingExpectedExpenseTotal ?? null,
+    remainingExpectedSavingsOutflowTotal:
+      input?.remainingExpectedSavingsOutflowTotal ?? null,
     upcomingCommittedIncomeTotal: input?.upcomingCommittedIncomeTotal ?? null,
     upcomingCommittedExpenseTotal: input?.upcomingCommittedExpenseTotal ?? null,
     expectedFixedCosts: input?.expectedFixedCosts ?? null,

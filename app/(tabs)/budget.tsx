@@ -28,9 +28,9 @@ import {
   shouldPersistCategoryOnBudgetSave,
 } from "@/services/budget-lock-utils";
 import {
-  computeBudgetPlan,
   resolveIncludedIncomePreview,
 } from "@/services/budget-plan";
+import { loadBudgetPlanForSurface } from "@/services/budget-plan-surface";
 import {
   getBudgetCategoryDisplayLabel,
   VARIABLE_BUDGET_BREAKDOWN_KEYS,
@@ -999,7 +999,11 @@ export default function BudgetScreen() {
         referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
       }
 
-      const plan = await computeBudgetPlan(referenceDate, "default", new Date());
+      const { plan } = await loadBudgetPlanForSurface({
+        referenceDate,
+        planKey: "default",
+        timelineReference: new Date(),
+      });
       setBudgetPlan(plan);
     } catch (error) {
       console.warn("[budget] load error", error);

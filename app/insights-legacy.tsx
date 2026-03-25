@@ -5,7 +5,7 @@ import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSurfaces } from "@/constants/theme";
 import { upsertBudgetPlanSettings } from "@/services/budget-plan-repository";
 import {
   getMonthVariableBudgetSnapshot,
@@ -4278,10 +4278,8 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   heroCard: {
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 28,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
     padding: 22,
     gap: 14,
   },

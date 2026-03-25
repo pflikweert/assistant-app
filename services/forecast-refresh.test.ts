@@ -67,6 +67,7 @@ vi.mock("@/services/supabase", () => ({
 
 let ensureForecastFresh: typeof import("./forecast-refresh").ensureForecastFresh;
 let markForecastDirty: typeof import("./forecast-refresh").markForecastDirty;
+let requestForecastRefresh: typeof import("./forecast-refresh").requestForecastRefresh;
 let shouldRefreshForecast: typeof import("./forecast-refresh").shouldRefreshForecast;
 
 describe("forecast-refresh", () => {
@@ -75,6 +76,7 @@ describe("forecast-refresh", () => {
     ({
       ensureForecastFresh,
       markForecastDirty,
+      requestForecastRefresh,
       shouldRefreshForecast,
     } = await import("./forecast-refresh"));
     fromMock.mockClear();
@@ -156,6 +158,43 @@ describe("forecast-refresh", () => {
       user_id: "user-123",
       is_dirty: false,
       last_reason: "insights_open",
+    });
+  });
+
+  it("can start an eager background recompute immediately after marking dirty", async () => {
+    responseQueue.push(
+      { data: null, error: null },
+      {
+        data: {
+          is_dirty: true,
+          dirty_at: "2026-03-17T08:00:00.000Z",
+          last_computed_at: "2026-03-16T09:00:00.000Z",
+          last_reason: "categorization_batch",
+          last_error: null,
+          updated_at: "2026-03-17T08:00:00.000Z",
+        },
+        error: null,
+      },
+      { data: null, error: null },
+      { data: null, error: null },
+    );
+    recomputeMock.mockResolvedValue({
+      monthStart: "2026-03-01",
+    });
+
+    await requestForecastRefresh({
+      reason: "categorization_batch",
+      eager: true,
+      referenceDate: new Date("2026-03-17T12:00:00.000Z"),
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(recomputeMock).toHaveBeenCalledTimes(1);
+    expect(queryLog[0]?.upserts[0]?.payload).toMatchObject({
+      user_id: "user-123",
+      is_dirty: true,
+      last_reason: "categorization_batch",
     });
   });
 

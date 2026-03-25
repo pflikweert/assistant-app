@@ -41,6 +41,7 @@ export type TransactionCategorizationRecord = {
   counterparty: string | null;
   amount: number;
   date: string;
+  metadata?: Record<string, unknown> | null;
   category_id_auto: string | null;
   category_id_user: string | null;
   analysis_main_group?: AnalysisMainGroup | null;
@@ -447,13 +448,16 @@ export type BudgetWeekPlanRow = {
   daysInPreviousMonth: number;
   daysInNextMonth: number;
   crossesMonthBoundary: boolean;
+  baseBudget: number;
   budget: number;
+  guardrailBudgetFloor: number | null;
   actual: number;
   remaining: number;
   utilization: number;
   isCurrentWeek: boolean;
   isPastWeek: boolean;
   wasRebalanced: boolean;
+  rebalanceMode: "none" | "guarded" | "hard";
   overrunAmount: number;
 };
 
@@ -520,6 +524,7 @@ export type BudgetPlanComputation = {
   usedOpenAISavingsTarget: boolean;
   monthlyBudgetTotal: number;
   weeklyBudgetTotal: number;
+  projectedMonthNet: number;
   flowSummary: BudgetFlowSummary;
   weeklyVariablePlan: BudgetWeekPlanRow[];
   weeklyBudgetBreakdown: BudgetWeekBudgetBreakdown[];

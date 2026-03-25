@@ -23,6 +23,7 @@ export type RequestForecastRefreshOptions = {
   referenceDate?: Date;
   reason: ForecastRefreshReason;
   delayMs?: number;
+  eager?: boolean;
 };
 
 type ScheduledRefresh = {
@@ -278,6 +279,18 @@ export async function requestForecastRefresh(
   const existing = scheduledRefreshes.get(userId);
   if (existing) {
     clearTimeout(existing.timer);
+  }
+
+  if (options.eager) {
+    scheduledRefreshes.delete(userId);
+    void ensureForecastFresh({
+      referenceDate,
+      reason: options.reason,
+      force: true,
+    }).catch((error) => {
+      console.warn("[forecast-refresh] eager recompute failed", error);
+    });
+    return;
   }
 
   const timer = setTimeout(() => {

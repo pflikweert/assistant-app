@@ -545,6 +545,12 @@ export type TransactionDetail = {
   created_at: string | null;
   is_reviewed: boolean;
   budget_excluded: boolean;
+  bank_account_id: string | null;
+  linked_bank_account: {
+    id: string;
+    name: string;
+    account_masked: string | null;
+  } | null;
 };
 
 export type CounterpartyTxSummary = {
@@ -564,7 +570,7 @@ export async function getTransactionDetail(
   const { data, error } = await supabase
     .from("transactions")
     .select(
-      "id,date,details,counterparty,amount,currency,type,metadata,category_id_auto,category_id_user,category_confidence,category_source,category_model,categorized_at,created_at,is_reviewed,budget_excluded",
+      "id,date,details,counterparty,amount,currency,type,metadata,category_id_auto,category_id_user,category_confidence,category_source,category_model,categorized_at,created_at,is_reviewed,budget_excluded,bank_account_id",
     )
     .eq("user_id", userId)
     .eq("id", id)
@@ -572,6 +578,29 @@ export async function getTransactionDetail(
   if (error) throw error;
   if (!data) return null;
   const d = data as any;
+  const bankAccountId = d.bank_account_id ? String(d.bank_account_id) : null;
+  let linkedBankAccount: TransactionDetail["linked_bank_account"] = null;
+
+  if (bankAccountId) {
+    const { data: bankAccountData, error: bankAccountError } = await supabase
+      .from("bank_accounts")
+      .select("id,name,account_masked")
+      .eq("user_id", userId)
+      .eq("id", bankAccountId)
+      .maybeSingle();
+    if (bankAccountError) throw bankAccountError;
+
+    if (bankAccountData) {
+      linkedBankAccount = {
+        id: String(bankAccountData.id),
+        name: String(bankAccountData.name || ""),
+        account_masked: bankAccountData.account_masked
+          ? String(bankAccountData.account_masked)
+          : null,
+      };
+    }
+  }
+
   return {
     id: String(d.id),
     date: String(d.date || ""),
@@ -591,6 +620,8 @@ export async function getTransactionDetail(
     created_at: d.created_at || null,
     is_reviewed: Boolean(d.is_reviewed),
     budget_excluded: Boolean(d.budget_excluded),
+    bank_account_id: bankAccountId,
+    linked_bank_account: linkedBankAccount,
   };
 }
 
