@@ -48,3 +48,4 @@ app-example
 
 # local bank import fixtures (do not commit personal PDF exports)
 tmp/import-fixtures/*.pdf
+.vercel

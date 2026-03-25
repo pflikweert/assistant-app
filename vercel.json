@@ -2,5 +2,18 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "devCommand": "npm run dev:web",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "destination": "https://www.budio.nl/:path*",
+      "permanent": true,
+      "has": [
+        {
+          "type": "host",
+          "value": "budio.nl"
+        }
+      ]
+    }
+  ]
 }
