@@ -607,6 +607,23 @@ export default function TransactionsScreen({
           />
         </View>
 
+        <TouchableOpacity
+          style={styles.importShortcut}
+          onPress={() => router.push("/csv-import")}
+          activeOpacity={0.9}
+        >
+          <View style={styles.importShortcutIcon}>
+            <AppIcon name="upload-file" size={18} color={FinColors.textPrimary} variant="outlined" />
+          </View>
+          <View style={styles.importShortcutCopy}>
+            <Text style={styles.importShortcutTitle}>Transacties importeren</Text>
+            <Text style={styles.importShortcutText}>
+              CSV of PDF uploaden en direct verwerken.
+            </Text>
+          </View>
+          <AppIcon name="chevron-right" size={18} color={FinColors.textSecondary} variant="outlined" />
+        </TouchableOpacity>
+
         {activeFilterCount > 0 ? (
           <View style={styles.activeFiltersRow}>
             {activeFilterChips.map((chip) => (
@@ -1029,6 +1046,42 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     color: FinColors.textPrimary,
     fontSize: 14,
+  },
+  importShortcut: {
+    marginTop: 12,
+    minHeight: 64,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.08)",
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  importShortcutIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: FinColors.yellowSoft,
+  },
+  importShortcutCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  importShortcutTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  importShortcutText: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: FinColors.textSecondary,
   },
   activeFiltersRow: {
     flexDirection: "row",

@@ -18,7 +18,7 @@ import {
 type MenuItem = {
   label: string;
   iconName: AppIconName;
-  path: "/" | "/transactions" | "/insights" | "/budget";
+  path: "/" | "/transactions" | "/insights" | "/budget" | "/csv-import";
 };
 
 type SecondaryMenuItem = {
@@ -42,6 +42,10 @@ const SETTINGS_ITEMS: SecondaryMenuItem[] = [
 const SUPPORT_ITEMS: SecondaryMenuItem[] = [
   { label: "Klantenservice", iconName: "support-agent", path: "/settings" },
   { label: "Algemene Voorwaarden", iconName: "description", path: "/settings" },
+];
+
+const IMPORT_ITEMS: MenuItem[] = [
+  { label: "Importeren", iconName: "upload-file", path: "/csv-import" },
 ];
 
 function normalizePath(pathname: string): string {
@@ -222,6 +226,36 @@ export function HeaderDropdownMenuBase({
                 <Text style={styles.sectionLabel}>INSTELLINGEN</Text>
                 <View style={styles.secondaryList}>
                   {SETTINGS_ITEMS.map((item) => (
+                    <Pressable
+                      key={item.path}
+                      style={({ pressed }) => [styles.secondaryItem, pressed && styles.itemPressed]}
+                      onPress={() => handleNavigate(item.path)}
+                      accessibilityRole="button"
+                    >
+                      <View style={styles.secondaryLeft}>
+                        <AppIcon
+                          name={item.iconName}
+                          size={18}
+                          color={FinColors.textSecondary}
+                          variant="outlined"
+                        />
+                        <Text style={styles.secondaryLabel}>{item.label}</Text>
+                      </View>
+                      <AppIcon
+                        name="chevron-right"
+                        size={18}
+                        color={FinColors.textSecondary}
+                        variant="outlined"
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>IMPORT</Text>
+                <View style={styles.secondaryList}>
+                  {IMPORT_ITEMS.map((item) => (
                     <Pressable
                       key={item.path}
                       style={({ pressed }) => [styles.secondaryItem, pressed && styles.itemPressed]}
