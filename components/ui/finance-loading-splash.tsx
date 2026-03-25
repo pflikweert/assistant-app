@@ -1,5 +1,5 @@
-import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
+import BudioIcon from "@/assets/images/budio-yellow-icon.svg";
 import React from "react";
 import {
   ActivityIndicator,
@@ -30,8 +30,8 @@ export function FinanceLoadingSplash({
 
       <View style={styles.card}>
         <View style={styles.badgeRow}>
-          <View style={styles.badge}>
-            <AppIcon name="sync" size={20} color={FinColors.warningText} />
+          <View accessible accessibilityLabel="Budio" style={styles.badge}>
+            <BudioIcon width={44} height={44} />
           </View>
           <View style={styles.chip}>
             <Text style={styles.chipText}>Synchroniseren</Text>
@@ -104,7 +104,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: FinColors.yellowSoft,
     alignItems: "center",
     justifyContent: "center",
   },

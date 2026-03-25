@@ -689,7 +689,7 @@ export default function SettingsScreen() {
           {/* Over Budio */}
           <SectionHeader title="Over Budio" />
           <View style={styles.card}>
-            <SettingsRow iconName="info-outline" label="Versie" value="1.0.0" />
+            <SettingsRow iconName="info-outline" label="Versie" value="0.1" />
             <View style={styles.divider} />
             <SettingsRow
               iconName="support-agent"

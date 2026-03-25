@@ -1,8 +1,17 @@
 import React from "react";
 import renderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
+import { Pressable } from "react-native";
 
 import AuthErrorMessage, { getAuthErrorMessage } from "./AuthErrorMessage";
+
+vi.mock("expo-router", () => {
+  return {
+    Link: ({ children }: { children: React.ReactNode }) => (
+      <>{children}</>
+    ),
+  };
+});
 
 describe("AuthErrorMessage", () => {
   it("toont juiste foutmelding voor verlopen link", () => {
@@ -25,7 +34,7 @@ describe("AuthErrorMessage", () => {
       );
     });
 
-    const button = tree!.root.findByProps({ title: "Vraag nieuw wachtwoord aan" });
+    const button = tree!.root.findByType(Pressable);
     act(() => {
       button.props.onPress();
     });

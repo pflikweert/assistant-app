@@ -630,7 +630,7 @@ export default function TransactionsScreen({
       <FinanceTopBar
         shellStyle={styles.topBar}
         innerStyle={styles.topBarInner}
-        title="Mijn Financiën"
+        title="Budio"
         rightSlot={<FinanceAvatarBadge />}
       />
 

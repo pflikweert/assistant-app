@@ -7,25 +7,50 @@ import type { Href } from "expo-router";
 import React from "react";
 import { ActivityIndicator, Pressable, Text, TextInput } from "react-native";
 import { getAuthRedirectUrl } from "@/services/auth-url";
+import { getAuthRegistrationErrorMessage } from "@/services/auth-error-messages";
+import { getEmailFeedback } from "@/services/auth-email-validation";
+import {
+  getPasswordFeedback,
+  getPasswordRequirementsText,
+} from "@/services/auth-password-validation";
 
 export default function RegisterScreen() {
   const { register } = useSession();
+  const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [nameTouched, setNameTouched] = React.useState(false);
+  const [emailTouched, setEmailTouched] = React.useState(false);
+  const [passwordTouched, setPasswordTouched] = React.useState(false);
+  const [confirmTouched, setConfirmTouched] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const nameValid = name.trim().length > 0;
+  const nameHint = nameTouched && !nameValid ? "Vul je naam in." : null;
+  const { emailValid, emailHint: rawEmailHint } = getEmailFeedback(email);
+  const {
+    passwordValid,
+    confirmValid,
+    passwordsMatch,
+    passwordHint,
+    confirmHint,
+  } = getPasswordFeedback(password, confirmPassword);
+  const emailHint = emailTouched && !emailValid ? rawEmailHint : null;
+  const passwordInlineHint = passwordTouched ? passwordHint : null;
+  const confirmInlineHint = confirmTouched ? confirmHint : null;
 
   const disabled =
     submitting ||
-    !email.trim() ||
-    password.length < 8 ||
-    confirmPassword.length < 8;
+    !nameValid ||
+    !emailValid ||
+    !passwordValid ||
+    !confirmValid;
 
   const handleRegister = async () => {
     if (disabled) return;
-    if (password !== confirmPassword) {
+    if (!passwordsMatch) {
       setError("Wachtwoorden komen niet overeen.");
       setSuccess(null);
       return;
@@ -41,9 +66,10 @@ export default function RegisterScreen() {
         email.trim(),
         password,
         emailRedirectTo,
+        name.trim(),
       );
       if (registerError) {
-        setError(registerError.message || "Registratie mislukt.");
+        setError(getAuthRegistrationErrorMessage(registerError));
         return;
       }
 
@@ -53,11 +79,7 @@ export default function RegisterScreen() {
           : "Account aangemaakt. Controleer je e-mail om het account te bevestigen.",
       );
     } catch (registerError) {
-      setError(
-        registerError instanceof Error
-          ? registerError.message
-          : "Registratie mislukt.",
-      );
+      setError(getAuthRegistrationErrorMessage(registerError));
     } finally {
       setSubmitting(false);
     }
@@ -77,26 +99,60 @@ export default function RegisterScreen() {
     >
       <TextInput
         style={authScreenStyles.input}
+        placeholder="Je naam"
+        placeholderTextColor="#7E8A9A"
+        autoCapitalize="words"
+        autoComplete="name"
+        value={name}
+        onChangeText={(value) => {
+          setName(value);
+          setNameTouched(true);
+          if (error) setError(null);
+          if (success) setSuccess(null);
+        }}
+        editable={!submitting}
+      />
+      {nameHint ? (
+        <Text style={authScreenStyles.inlineHint}>{nameHint}</Text>
+      ) : null}
+      <TextInput
+        style={authScreenStyles.input}
         placeholder="E-mail"
         placeholderTextColor="#7E8A9A"
         autoCapitalize="none"
         autoComplete="email"
         keyboardType="email-address"
         value={email}
-        onChangeText={setEmail}
+        onChangeText={(value) => {
+          setEmail(value);
+          setEmailTouched(true);
+          if (error) setError(null);
+          if (success) setSuccess(null);
+        }}
         editable={!submitting}
       />
+      {emailHint ? (
+        <Text style={authScreenStyles.inlineHint}>{emailHint}</Text>
+      ) : null}
       <TextInput
         style={authScreenStyles.input}
-        placeholder="Wachtwoord (minimaal 8 tekens)"
+        placeholder="Wachtwoord"
         placeholderTextColor="#7E8A9A"
         autoCapitalize="none"
         autoComplete="new-password"
         secureTextEntry
         value={password}
-        onChangeText={setPassword}
+        onChangeText={(value) => {
+          setPassword(value);
+          setPasswordTouched(true);
+          if (error) setError(null);
+          if (success) setSuccess(null);
+        }}
         editable={!submitting}
       />
+      {passwordInlineHint ? (
+        <Text style={authScreenStyles.inlineHint}>{passwordInlineHint}</Text>
+      ) : null}
       <TextInput
         style={authScreenStyles.input}
         placeholder="Herhaal wachtwoord"
@@ -105,11 +161,19 @@ export default function RegisterScreen() {
         autoComplete="new-password"
         secureTextEntry
         value={confirmPassword}
-        onChangeText={setConfirmPassword}
+        onChangeText={(value) => {
+          setConfirmPassword(value);
+          setConfirmTouched(true);
+          if (error) setError(null);
+          if (success) setSuccess(null);
+        }}
         editable={!submitting}
       />
+      {confirmInlineHint ? (
+        <Text style={authScreenStyles.inlineHint}>{confirmInlineHint}</Text>
+      ) : null}
       <Text style={authScreenStyles.helperText}>
-        Gebruik een uniek wachtwoord. MFA kunnen we hierna als extra stap toevoegen.
+        {getPasswordRequirementsText()}
       </Text>
       {error ? <Text style={authScreenStyles.errorText}>{error}</Text> : null}
       {success ? (

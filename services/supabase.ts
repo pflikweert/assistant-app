@@ -196,11 +196,24 @@ export async function registerWithEmail(
   email: string,
   password: string,
   emailRedirectTo?: string,
+  displayName?: string,
 ) {
+  const options = {
+    ...(emailRedirectTo ? { emailRedirectTo } : {}),
+    ...(displayName?.trim()
+      ? {
+          data: {
+            name: displayName.trim(),
+            full_name: displayName.trim(),
+          },
+        }
+      : {}),
+  };
+
   return supabase.auth.signUp({
     email,
     password,
-    options: emailRedirectTo ? { emailRedirectTo } : undefined,
+    options: Object.keys(options).length ? options : undefined,
   });
 }
 

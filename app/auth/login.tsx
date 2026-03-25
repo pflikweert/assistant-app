@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { getAuthSignInErrorMessage } from "@/services/auth-error-messages";
 
 export default function LoginScreen() {
   const { login, loading } = useSession();
@@ -32,14 +33,10 @@ export default function LoginScreen() {
     try {
       const { error: loginError } = await login(email.trim(), password);
       if (loginError) {
-        setError(loginError.message || "Inloggen mislukt.");
+        setError(getAuthSignInErrorMessage(loginError));
       }
     } catch (loginError) {
-      setError(
-        loginError instanceof Error
-          ? loginError.message
-          : "Inloggen mislukt.",
-      );
+      setError(getAuthSignInErrorMessage(loginError));
     } finally {
       setSubmitting(false);
     }

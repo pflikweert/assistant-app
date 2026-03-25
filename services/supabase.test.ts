@@ -1,16 +1,17 @@
 /* eslint-disable import/first */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { deleteItemAsyncMock, signOutMock } = vi.hoisted(() => ({
+const { deleteItemAsyncMock, signOutMock, signUpMock } = vi.hoisted(() => ({
   deleteItemAsyncMock: vi.fn(),
   signOutMock: vi.fn(),
+  signUpMock: vi.fn(),
 }));
 
 vi.mock("@supabase/supabase-js", () => ({
   createClient: vi.fn(() => ({
     auth: {
       signInWithPassword: vi.fn(),
-      signUp: vi.fn(),
+      signUp: signUpMock,
       resetPasswordForEmail: vi.fn(),
       updateUser: vi.fn(),
       signOut: signOutMock,
@@ -49,12 +50,17 @@ vi.mock("react-native", () => ({
   },
 }));
 
-import { clearSupabaseSessionStorage, logout } from "./supabase";
+import {
+  clearSupabaseSessionStorage,
+  logout,
+  registerWithEmail,
+} from "./supabase";
 
 describe("supabase auth cleanup", () => {
   beforeEach(() => {
     signOutMock.mockReset();
     deleteItemAsyncMock.mockReset();
+    signUpMock.mockReset();
   });
 
   it("removes persisted auth storage when clearing the session cache", async () => {
@@ -74,5 +80,25 @@ describe("supabase auth cleanup", () => {
       "assistant.supabase.auth.token",
     );
   });
-});
 
+  it("passes the display name to Supabase auth metadata on registration", async () => {
+    await registerWithEmail(
+      "naam@voorbeeld.nl",
+      "SterkWachtwoord1",
+      "https://www.budio.nl/auth/login",
+      "Pieter Flikweert",
+    );
+
+    expect(signUpMock).toHaveBeenCalledWith({
+      email: "naam@voorbeeld.nl",
+      password: "SterkWachtwoord1",
+      options: {
+        emailRedirectTo: "https://www.budio.nl/auth/login",
+        data: {
+          name: "Pieter Flikweert",
+          full_name: "Pieter Flikweert",
+        },
+      },
+    });
+  });
+});

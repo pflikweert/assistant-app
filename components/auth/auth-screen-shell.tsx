@@ -1,6 +1,8 @@
 import { FinColors, Fonts } from "@/constants/theme";
+import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import type { Href } from "expo-router";
 import { Link } from "expo-router";
+import { Image } from "expo-image";
 import React from "react";
 import {
   KeyboardAvoidingView,
@@ -36,13 +38,12 @@ export function AuthScreenShell({
       <View style={[styles.backgroundGlowTop, styles.noPointerEvents]} />
       <View style={[styles.backgroundGlowBottom, styles.noPointerEvents]} />
       <View style={styles.topBar}>
-        <View style={styles.brandWrap}>
-          <View style={styles.brandMark}>
-            <View style={styles.brandMarkLineShort} />
-            <View style={styles.brandMarkLineLong} />
-          </View>
-          <Text style={styles.brandText}>Budio</Text>
-        </View>
+        <Image
+          source={require("../../assets/images/budio-logo.png")}
+          style={styles.brandLogo}
+          contentFit="contain"
+          accessibilityLabel="Budio"
+        />
       </View>
       <ScrollView
         style={styles.scroll}
@@ -50,17 +51,18 @@ export function AuthScreenShell({
         keyboardShouldPersistTaps="handled"
         showsHorizontalScrollIndicator={false}
       >
+        <FinanceHeroShell
+          eyebrow="Veilige toegang"
+          title={title}
+          subtitle={subtitle}
+          shellStyle={styles.heroShell}
+          innerStyle={styles.heroInner}
+          titleStyle={styles.heroTitle}
+          subtitleStyle={styles.heroSubtitle}
+          subtitleLineStyle={styles.heroSubtitleLine}
+        />
+        <View style={styles.heroGap} />
         <View style={styles.contentInner}>
-          <View style={styles.hero}>
-            <View style={styles.eyebrowRow}>
-              <View style={styles.eyebrowDot} />
-              <Text style={styles.eyebrow}>Veilige toegang</Text>
-            </View>
-            <Text style={styles.title}>{title}</Text>
-            <View style={styles.subtitleWrap}>
-              <Text style={styles.subtitle}>{subtitle}</Text>
-            </View>
-          </View>
           <View style={styles.body}>{children}</View>
           {links.length ? (
             <View style={styles.links}>
@@ -159,6 +161,12 @@ export const authScreenStyles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
+  inlineHint: {
+    color: "#B45B5B",
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: 6,
+  },
 });
 
 const styles = StyleSheet.create({
@@ -202,96 +210,55 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(246,245,242,0.78)",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(17,17,17,0.06)",
-    justifyContent: "flex-end",
-    paddingBottom: 18,
+    justifyContent: "center",
     boxShadow: "0px 8px 16px rgba(17,17,17,0.08)",
   },
-  brandWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  brandMark: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(242,201,76,0.16)",
-    gap: 3,
-  },
-  brandMarkLineShort: {
-    width: 12,
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: "#876700",
-  },
-  brandMarkLineLong: {
-    width: 16,
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: "#876700",
-  },
-  brandText: {
-    color: FinColors.textPrimary,
-    fontSize: 22,
-    lineHeight: 26,
-    fontWeight: "700",
-    fontFamily: Fonts?.sans,
+  brandLogo: {
+    width: 126,
+    height: 56,
   },
   content: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 104,
     paddingBottom: 32,
     overflow: "hidden",
   },
   contentInner: {
     width: "100%",
-    maxWidth: 460,
+    maxWidth: 1040,
     alignSelf: "center",
     overflow: "hidden",
     gap: 28,
   },
-  hero: {
-    gap: 18,
+  heroShell: {
+    backgroundColor: FinColors.bgElevated,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(17,17,17,0.05)",
+    marginHorizontal: -24,
+    alignSelf: "stretch",
   },
-  eyebrowRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+  heroInner: {
+    maxWidth: 1040,
+    paddingHorizontal: 24,
+    paddingTop: 102,
+    paddingBottom: 24,
   },
-  eyebrowDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: "#8A7300",
-  },
-  eyebrow: {
-    color: FinColors.textSecondary,
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 2.2,
-  },
-  title: {
-    color: FinColors.textPrimary,
+  heroTitle: {
     fontSize: 52,
-    lineHeight: 56,
-    fontWeight: "800",
-    letterSpacing: -1.6,
+    lineHeight: 54,
+    fontWeight: "900",
+    letterSpacing: -1.8,
     fontFamily: Fonts?.sans,
   },
-  subtitleWrap: {
-    borderLeftWidth: 2,
-    borderLeftColor: "rgba(138,115,0,0.28)",
-    paddingLeft: 16,
-    maxWidth: 360,
+  heroSubtitle: {
+    fontSize: 18,
+    lineHeight: 26,
   },
-  subtitle: {
-    color: FinColors.textSecondary,
-    fontSize: 16,
-    lineHeight: 27,
+  heroSubtitleLine: {
+    borderLeftColor: "rgba(138,115,0,0.28)",
+  },
+  heroGap: {
+    height: 32,
   },
   body: {
     gap: 14,

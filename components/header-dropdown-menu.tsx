@@ -281,9 +281,9 @@ export function HeaderDropdownMenuBase({
 
             <View style={styles.footer}>
               <View style={styles.brandRow}>
-                <Text style={styles.brand}>MijnFinanciën</Text>
+                <Text style={styles.brand}>Budio</Text>
                 <View style={styles.brandDot} />
-                <Text style={styles.version}>Versie 2.4.0</Text>
+                <Text style={styles.version}>Versie 0.1</Text>
               </View>
 
               <Pressable

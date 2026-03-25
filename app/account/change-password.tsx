@@ -16,6 +16,7 @@ import {
   View,
   Pressable,
 } from "react-native";
+import { getPasswordUpdateErrorMessage } from "@/services/auth-password-errors";
 
 export default function ChangePasswordScreen() {
   const router = useRouter();
@@ -54,9 +55,7 @@ export default function ChangePasswordScreen() {
       Alert.alert("Succes", "Je wachtwoord is gewijzigd.");
     } catch (updateError) {
       setError(
-        updateError instanceof Error
-          ? updateError.message
-          : "Wachtwoord wijzigen mislukt.",
+        getPasswordUpdateErrorMessage(updateError, "Wachtwoord wijzigen mislukt."),
       );
     } finally {
       setLoading(false);

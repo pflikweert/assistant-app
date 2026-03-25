@@ -24,12 +24,33 @@ describe("isAuthRoute", () => {
 
 describe("isRecoveryRoute", () => {
   it("recognizes the recovery reset screen", () => {
-    expect(isRecoveryRoute(["auth", "reset-password"])).toBe(true);
+    expect(
+      isRecoveryRoute({
+        segments: ["auth", "reset-password"],
+      }),
+    ).toBe(true);
+  });
+
+  it("recognizes the recovery reset screen from pathname", () => {
+    expect(
+      isRecoveryRoute({
+        segments: ["(tabs)", "index"],
+        pathname: "/auth/reset-password",
+      }),
+    ).toBe(true);
   });
 
   it("returns false for the other auth routes", () => {
-    expect(isRecoveryRoute(["auth", "login"])).toBe(false);
-    expect(isRecoveryRoute(["auth", "forgot-password"])).toBe(false);
+    expect(
+      isRecoveryRoute({
+        segments: ["auth", "login"],
+      }),
+    ).toBe(false);
+    expect(
+      isRecoveryRoute({
+        segments: ["auth", "forgot-password"],
+      }),
+    ).toBe(false);
   });
 });
 
@@ -90,6 +111,17 @@ describe("getAuthRedirectPath", () => {
         loading: false,
         isAuthenticated: true,
         segments: ["auth", "reset-password"],
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps authenticated users on the recovery reset screen when pathname is available", () => {
+    expect(
+      getAuthRedirectPath({
+        loading: false,
+        isAuthenticated: true,
+        segments: ["(tabs)", "index"],
+        pathname: "/auth/reset-password",
       }),
     ).toBeNull();
   });

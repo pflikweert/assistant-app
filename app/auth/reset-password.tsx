@@ -18,6 +18,11 @@ import {
 } from "@/components/auth/auth-screen-shell";
 import AuthErrorMessage from "@/components/auth/AuthErrorMessage";
 import { getApiBaseUrl } from "@/services/api-base";
+import { getPasswordUpdateErrorMessage } from "@/services/auth-password-errors";
+import {
+  getPasswordFeedback,
+  getPasswordRequirementsText,
+} from "@/services/auth-password-validation";
 import { supabase } from "@/services/supabase";
 
 export default function ResetPasswordScreen() {
@@ -26,11 +31,12 @@ export default function ResetPasswordScreen() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  const error =
+  const errorParam =
     typeof params.error === "string" ? params.error : undefined;
   const errorCode =
     typeof params.error_code === "string" ? params.error_code : undefined;
@@ -38,62 +44,92 @@ export default function ResetPasswordScreen() {
     typeof params.error_description === "string"
       ? params.error_description
       : undefined;
+  const {
+    passwordValid,
+    confirmValid,
+    passwordsMatch,
+    passwordHint,
+    confirmHint,
+  } = getPasswordFeedback(password, confirm);
 
   const disabled =
     loading ||
     sessionLoading ||
     !session ||
-    password.length < 8 ||
-    confirm.length < 8;
+    !passwordValid ||
+    !confirmValid;
 
   useEffect(() => {
     let mounted = true;
-    const getSessionFromUrl = (supabase.auth as any).getSessionFromUrl;
-    if (typeof getSessionFromUrl !== "function") {
-      setSession(null);
-      setSessionError("invalid_token");
-      setSessionLoading(false);
-      return () => {
-        mounted = false;
-      };
-    }
+    let resolved = false;
 
-    getSessionFromUrl({ storeSession: true })
-      .then(({ data }: { data: { session: Session | null } }) => {
-        if (!mounted) return;
+    const resolveSession = (
+      nextSession: Session | null,
+      nextError: string | null,
+    ) => {
+      if (!mounted || resolved) return;
+      resolved = true;
+      setSession(nextSession);
+      setSessionError(nextError);
+      setSessionLoading(false);
+    };
+
+    const timeout = setTimeout(async () => {
+      if (!mounted || resolved) return;
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!mounted || resolved) return;
         if (data.session) {
-          setSession(data.session);
-          setSessionError(null);
-        } else {
-          setSession(null);
-          setSessionError("invalid_token");
+          resolveSession(data.session, null);
+          return;
         }
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setSession(null);
-        setSessionError("invalid_token");
-      })
-      .finally(() => {
-        if (!mounted) return;
-        setSessionLoading(false);
-      });
+      } catch {
+        // Fall through to the invalid-token state below.
+      }
+
+      resolveSession(null, "invalid_token");
+    }, 1500);
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (event, currentSession) => {
+        if (!mounted || resolved) return;
+        if (
+          (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") &&
+          currentSession
+        ) {
+          resolveSession(currentSession, null);
+        }
+      },
+    );
+
+    void (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!mounted || resolved) return;
+        if (data.session) {
+          resolveSession(data.session, null);
+        }
+      } catch {
+        // We keep waiting for the auth-state event or the timeout fallback.
+      }
+    })();
+
     return () => {
       mounted = false;
+      clearTimeout(timeout);
+      authListener.subscription.unsubscribe();
     };
   }, []);
 
   const handleSubmit = async () => {
     if (disabled) return;
+    setError(null);
     if (!session) {
-      Alert.alert(
-        "Onjuiste link",
-        "De resetlink is verlopen of ongeldig. Vraag een nieuwe link aan.",
-      );
+      setError("De resetlink is verlopen of ongeldig. Vraag een nieuwe link aan.");
       return;
     }
-    if (password !== confirm) {
-      Alert.alert("Wachtwoorden komen niet overeen.");
+    if (!passwordsMatch) {
+      setError("Wachtwoorden komen niet overeen.");
       return;
     }
     setLoading(true);
@@ -138,9 +174,12 @@ export default function ResetPasswordScreen() {
       );
       router.replace("/auth/login" as Href);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Wachtwoord resetten mislukt.";
-      Alert.alert("Fout", message);
+      setError(
+        getPasswordUpdateErrorMessage(
+          err,
+          "Wachtwoord resetten mislukt.",
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -163,7 +202,7 @@ export default function ResetPasswordScreen() {
   }
 
   const recoveryError =
-    error ||
+    errorParam ||
     errorCode ||
     (!session && !sessionLoading && sessionError ? sessionError : undefined);
 
@@ -198,9 +237,15 @@ export default function ResetPasswordScreen() {
         placeholderTextColor="#8F8A83"
         secureTextEntry
         value={password}
-        onChangeText={setPassword}
+        onChangeText={(value) => {
+          setPassword(value);
+          if (error) setError(null);
+        }}
         editable={!loading}
       />
+      {passwordHint ? (
+        <Text style={authScreenStyles.inlineHint}>{passwordHint}</Text>
+      ) : null}
       <Text style={authScreenStyles.fieldLabel}>Bevestig wachtwoord</Text>
       <TextInput
         style={authScreenStyles.input}
@@ -208,12 +253,19 @@ export default function ResetPasswordScreen() {
         placeholderTextColor="#8F8A83"
         secureTextEntry
         value={confirm}
-        onChangeText={setConfirm}
+        onChangeText={(value) => {
+          setConfirm(value);
+          if (error) setError(null);
+        }}
         editable={!loading}
       />
+      {confirmHint ? (
+        <Text style={authScreenStyles.inlineHint}>{confirmHint}</Text>
+      ) : null}
       <Text style={authScreenStyles.helperText}>
-        Gebruik minimaal 8 tekens. Je huidige wachtwoord is hier niet nodig.
+        {getPasswordRequirementsText()} Je huidige wachtwoord is hier niet nodig.
       </Text>
+      {error ? <Text style={authScreenStyles.errorText}>{error}</Text> : null}
       <Pressable
         style={[
           authScreenStyles.button,

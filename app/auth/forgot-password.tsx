@@ -7,6 +7,7 @@ import type { Href } from "expo-router";
 import React from "react";
 import { ActivityIndicator, Pressable, Text, TextInput } from "react-native";
 import { getAuthRedirectUrl } from "@/services/auth-url";
+import { getEmailFeedback } from "@/services/auth-email-validation";
 
 export default function ForgotPasswordScreen() {
   const { requestPasswordReset } = useSession();
@@ -14,8 +15,9 @@ export default function ForgotPasswordScreen() {
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const { emailValid, emailHint } = getEmailFeedback(email);
 
-  const disabled = submitting || !email.trim();
+  const disabled = submitting || !emailValid;
 
   const handleRequestReset = async () => {
     if (disabled) return;
@@ -68,9 +70,16 @@ export default function ForgotPasswordScreen() {
         autoComplete="email"
         keyboardType="email-address"
         value={email}
-        onChangeText={setEmail}
+        onChangeText={(value) => {
+          setEmail(value);
+          if (error) setError(null);
+          if (success) setSuccess(null);
+        }}
         editable={!submitting}
       />
+      {emailHint ? (
+        <Text style={authScreenStyles.inlineHint}>{emailHint}</Text>
+      ) : null}
       {error ? <Text style={authScreenStyles.errorText}>{error}</Text> : null}
       {success ? (
         <Text style={authScreenStyles.successText}>{success}</Text>

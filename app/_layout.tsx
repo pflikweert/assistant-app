@@ -26,6 +26,7 @@ import {
   Stack,
   useRootNavigationState,
   useRouter,
+  usePathname,
   useSegments,
   useLocalSearchParams,
 } from "expo-router";
@@ -276,6 +277,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const { loading, user } = useSession();
   const rootNavigationState = useRootNavigationState();
   const router = useRouter();
+  const pathname = usePathname();
   const segments = useSegments();
   const searchParams = useLocalSearchParams();
   const recoveryFlow =
@@ -285,6 +287,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     loading,
     isAuthenticated: Boolean(user),
     segments,
+    pathname,
     recoveryFlow,
   });
 
