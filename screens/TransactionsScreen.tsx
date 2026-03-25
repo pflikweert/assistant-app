@@ -1050,20 +1050,20 @@ export default function TransactionsScreen({
             )}
           </View>
 
-          {(activeFilterChips.length || searchQuery) ? (
+          {activeFilterChips.length ? (
             <View style={styles.filterModalSection}>
               <Text style={styles.filterModalLabel}>Actieve filters</Text>
               <View style={styles.filterModalActiveWrap}>
                 {activeFilterChips.map((chip) => (
-                  <View key={chip} style={styles.filterModalActiveChip}>
-                    <Text style={styles.filterModalActiveChipText}>{chip}</Text>
+                  <View
+                    key={`${chip.key}:${chip.label}`}
+                    style={styles.filterModalActiveChip}
+                  >
+                    <Text style={styles.filterModalActiveChipText}>
+                      {chip.label}
+                    </Text>
                   </View>
                 ))}
-                {searchQuery ? (
-                  <View style={styles.filterModalActiveChip}>
-                    <Text style={styles.filterModalActiveChipText}>Zoek: {searchQuery}</Text>
-                  </View>
-                ) : null}
               </View>
             </View>
           ) : (
