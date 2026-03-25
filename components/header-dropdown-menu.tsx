@@ -253,7 +253,7 @@ export function HeaderDropdownMenuBase({
               </View>
 
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>IMPORT</Text>
+                <Text style={styles.sectionLabel}>TRANSACTIES</Text>
                 <View style={styles.secondaryList}>
                   {IMPORT_ITEMS.map((item) => (
                     <Pressable
