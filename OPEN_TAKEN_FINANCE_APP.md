@@ -40,6 +40,37 @@ De focus is nu niet meer "opnieuw bouwen", maar:
   - gebruik echte transactielabels, categorieën en budgetgroepcontext
   - liever een nette empty state dan generieke gokcopy
   - keep forecast/timeline reads schema-safe zolang referentievelden niet overal gegarandeerd beschikbaar zijn
+- Web drag & drop in utility-schermen (zoals import) is op Expo Web niet betrouwbaar via alleen React Native `onDrop` op een `View`:
+  - gebruik globale DOM listeners op web (`dragenter`, `dragover`, `dragleave`, `drop`)
+  - blokkeer browsernavigatie altijd met `preventDefault` + `stopPropagation`
+  - accepteer drop alleen binnen het bedoelde doelvlak via hit-test
+- In `Transacties` toont het bankrekeningfilter alleen actieve rekeningen:
+  - gearchiveerde rekeningen verschijnen niet als filteroptie
+  - historische transacties blijven zichtbaar via `Alles` en periode/type/categorie-filters
+- Testbestanden horen niet in `app/` bij Expo Router:
+  - bestanden onder `app/` kunnen als route gebundeld worden
+  - Vitest tests voor routewrappers daarom buiten `app/` plaatsen (bijv. onder `services/`)
+
+## Learnings uit sessie 2026-03-25
+
+- In `Budget > Deze maand` werkt de detailmodal stabieler en consistenter met gedeelde transactierijen:
+  - summarypills tonen hele euro's met `Math.floor`
+  - transactielijst gebruikt `TransactionListRow`
+  - `budget_excluded = true` transacties blijven buiten dit overzicht
+- In transactierijen is leeshiërarchie belangrijk:
+  - ontvanger bovenaan
+  - omschrijving op tweede regel
+  - meta/datum in subtiele stijl
+- In `Transacties` geeft een compacte header meer rust:
+  - zoekveld lager
+  - actieve filterchips kleiner
+  - per chip een directe `x`-actie om alleen die filter te verwijderen
+  - importactie als icoon naast filter, zonder extra grote importkaart
+- In `Transaction Detail > Categorie wijzigen` werkt een duidelijke keuze-flow beter op kleine schermen:
+  - moduskeuze `Via AI` of `Handmatig`
+  - optieblokken inklapbaar met `Toon opties` / `Verberg opties` (standaard verborgen)
+  - compact categoriezoekveld staat vast bovenaan en scrolt niet mee
+  - `Via AI` past bij bevestigen dezelfde opties toe als handmatig (bulk op tegenpartij + toekomstige regel)
 
 ## Redesign Roadmap
 
@@ -185,11 +216,21 @@ Exit-criteria:
 
 ### Daarna oppakken
 
+- `Rekeningen koppelen` daadwerkelijk uitbouwen:
+  - per gevonden rekening een echte matchflow tonen
+  - nieuwe rekening aanmaken vanuit een gedeelde sheet
+  - `Import controleren` als echte finale bevestigingsstap met importactie
 - Herverdeling-preview in `Budget > Beheer` voordat de gebruiker opslaat
 - `Wat is veranderd`-laag in `Insights`
 - extra coach- of advieskaarten in `Budget` en `Insights`
 - verdere verfijning van `Komende momenten` als gedeeld patroon zodra forecast reference-data app-breed stabiel is
 - extra schermtests voor de geharmoniseerde flows
+- `Bankrekeningen` verder verfijnen:
+  - aparte instelling `Tonen in overzicht` toevoegen als later onderscheid nodig is tussen `Alleen overzicht` en `Verborgen`
+  - bulkacties of filters toevoegen voor grotere rekeninglijsten
+- Spaar-/interne-overboekingsherkenning verdiepen:
+  - interne overboekingen bij voorkeur koppelen op echte rekeningrelatie (bron/doel) in plaats van alleen detailtekst
+  - gerichte recategorisatie-run voorbereiden zodra rekeningkoppeling hiervoor als betrouwbare bron beschikbaar is
 
 ### Nog niet af
 

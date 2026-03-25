@@ -1,6 +1,6 @@
 import React from "react";
 import renderer, { act } from "react-test-renderer";
-import { Text } from "react-native";
+import { Pressable, Text } from "react-native";
 import { describe, expect, it, vi } from "vitest";
 
 import { BudgetWeekBreakdownModal } from "./budget-week-breakdown-modal";
@@ -29,6 +29,23 @@ vi.mock("@/components/budget-category-progress-row", () => ({
 
 vi.mock("@/components/ui/app-icon", () => ({
   AppIcon: ({ name }: { name: string }) => <Text>{name}</Text>,
+}));
+
+vi.mock("@/components/transactions/transaction-list-row", () => ({
+  TransactionListRow: ({
+    title,
+    dateLabel,
+    onPress,
+  }: {
+    title: string;
+    dateLabel?: string;
+    onPress: () => void;
+  }) => (
+    <Pressable onPress={onPress}>
+      <Text>{title}</Text>
+      <Text>{dateLabel}</Text>
+    </Pressable>
+  ),
 }));
 
 function flattenText(value: unknown): string[] {
@@ -110,6 +127,7 @@ describe("BudgetWeekBreakdownModal", () => {
           }}
           loadingCategoryKeys={[]}
           categoryErrors={{}}
+          categoryById={new Map()}
           onOpenTransaction={onOpenTransaction}
         />,
       );

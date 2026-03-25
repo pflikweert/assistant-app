@@ -16,7 +16,7 @@ import { BudgetMonthSummaryCard } from "@/components/budget-month-summary-card";
 import { BudgetWeekRhythmCard } from "@/components/budget-week-rhythm-card";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSurfaces } from "@/constants/theme";
 import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
@@ -2239,6 +2239,7 @@ export default function BudgetScreen() {
               : null,
           }))
           .filter((row) => {
+            if (row.budgetExcluded) return false;
             const effectiveCategoryId = row.category_id_user || row.category_id_auto;
             if (effectiveCategoryId && categoryIdsForBucket.has(effectiveCategoryId)) {
               return true;
@@ -2655,6 +2656,7 @@ export default function BudgetScreen() {
               : null,
           }))
           .filter((row) => {
+            if (row.budgetExcluded) return false;
             const effectiveCategoryId = row.category_id_user || row.category_id_auto;
             if (
               effectiveCategoryId &&
@@ -3708,6 +3710,7 @@ export default function BudgetScreen() {
         transactionsByCategory={summaryBreakdownTransactionsByCategory}
         loadingCategoryKeys={summaryBreakdownLoadingCategoryKeys}
         categoryErrors={summaryBreakdownCategoryErrors}
+        categoryById={categoryById}
         onOpenTransaction={openInlineTransactionDetail}
       />
 
@@ -4467,13 +4470,9 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   heroCard: {
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 28,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
     padding: 22,
-    boxShadow: "0px 10px 18px rgba(17,17,17,0.04)",
-    elevation: 2,
   },
   eyebrow: {
     fontSize: 12,
@@ -4539,14 +4538,10 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.red,
   },
   card: {
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
     padding: 18,
     gap: 14,
-    boxShadow: "0px 8px 14px rgba(17,17,17,0.03)",
-    elevation: 1,
   },
   actionCard: {
     gap: 10,

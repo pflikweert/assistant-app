@@ -146,8 +146,8 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
   },
   rowTitle: {
-    fontSize: 16,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: "800",
     color: FinColors.textPrimary,
   },

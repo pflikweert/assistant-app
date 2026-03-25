@@ -10,11 +10,12 @@ import { FinanceCircleIconButton } from "@/components/ui/finance-circle-icon-but
 import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { AppIcon } from "@/components/ui/app-icon";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSurfaces } from "@/constants/theme";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
 import { requireCurrentUserId } from "@/services/current-user";
+import { listBankAccounts, type BankAccount } from "@/services/bank-accounts";
 import {
   buildCategoryRecordMap,
   getCategoryPathLabel,
@@ -90,6 +91,14 @@ function formatSectionDateLabel(value: string) {
   });
 }
 
+function buildBankAccountFilterMeta(account: BankAccount) {
+  const parts = [account.provider || null, account.account_masked || null].filter(
+    Boolean,
+  );
+
+  return parts.join(" · ");
+}
+
 type Tx = {
   id: string;
   description: string;
@@ -120,6 +129,7 @@ export default function TransactionsScreen({
   monthStartFilter,
   monthEndExclusiveFilter,
   categoryKeyFilter,
+  bankAccountIdFilter,
   showQuickMenu = true,
 }: {
   counterpartyFilter?: string;
@@ -128,6 +138,7 @@ export default function TransactionsScreen({
   monthStartFilter?: string;
   monthEndExclusiveFilter?: string;
   categoryKeyFilter?: string;
+  bankAccountIdFilter?: string;
   showQuickMenu?: boolean;
 } = {}) {
   const router = useRouter();
@@ -154,6 +165,11 @@ export default function TransactionsScreen({
   const [monthOptions, setMonthOptions] = React.useState<TransactionMonthOption[]>([
     fallbackMonthOption,
   ]);
+  const [bankAccounts, setBankAccounts] = React.useState<BankAccount[]>([]);
+  const activeBankAccounts = React.useMemo(
+    () => bankAccounts.filter((account) => account.is_active),
+    [bankAccounts],
+  );
 
   const categoryById = React.useMemo(() => buildCategoryRecordMap(categories), [categories]);
   const activeMonthKey = React.useMemo(() => {
@@ -174,6 +190,14 @@ export default function TransactionsScreen({
       fallbackMonthOption
     );
   }, [activeMonthKey, fallbackMonthOption, resolvedMonthOptions]);
+  const bankAccountById = React.useMemo(
+    () => new Map(activeBankAccounts.map((account) => [account.id, account])),
+    [activeBankAccounts],
+  );
+  const selectedBankAccount = React.useMemo(() => {
+    if (!bankAccountIdFilter) return null;
+    return bankAccountById.get(bankAccountIdFilter) || null;
+  }, [bankAccountById, bankAccountIdFilter]);
 
   const categoryFilterIds = React.useMemo(() => {
     const normalizedFilter = String(categoryKeyFilter || "").trim().toLowerCase();
@@ -235,6 +259,16 @@ export default function TransactionsScreen({
     }
   }, [counterpartyFilter, fallbackMonthOption]);
 
+  const loadBankAccounts = React.useCallback(async () => {
+    try {
+      const accounts = await listBankAccounts();
+      setBankAccounts(accounts);
+    } catch (error) {
+      console.warn("loadBankAccounts error", error);
+      setBankAccounts([]);
+    }
+  }, []);
+
   const loadPage = React.useCallback(async (pageNumber: number) => {
     setLoading(true);
     try {
@@ -253,6 +287,7 @@ export default function TransactionsScreen({
         .select("id,details,counterparty,date,amount,metadata,category_id_auto,category_id_user,category_confidence,category_source", { count: "exact" })
         .eq("user_id", userId);
 
+      if (bankAccountIdFilter) query = query.eq("bank_account_id", bankAccountIdFilter);
       if (counterpartyFilter) query = query.eq("counterparty", counterpartyFilter);
       if (analysisMainGroupFilter) query = query.eq("analysis_main_group", analysisMainGroupFilter);
       if (analysisCategoryFilter) query = query.eq("analysis_category", analysisCategoryFilter);
@@ -325,11 +360,11 @@ export default function TransactionsScreen({
     } finally {
       setLoading(false);
     }
-  }, [analysisCategoryFilter, analysisMainGroupFilter, categoryFilterIdCsv, categoryFilterIds.length, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchQuery]);
+  }, [analysisCategoryFilter, analysisMainGroupFilter, bankAccountIdFilter, categoryFilterIdCsv, categoryFilterIds.length, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchQuery]);
 
   React.useEffect(() => {
     setPage(0);
-  }, [analysisCategoryFilter, analysisMainGroupFilter, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchQuery]);
+  }, [analysisCategoryFilter, analysisMainGroupFilter, bankAccountIdFilter, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchQuery]);
 
   React.useEffect(() => {
     const handle = setTimeout(() => setSearchQuery(searchInput.trim()), 180);
@@ -340,7 +375,8 @@ export default function TransactionsScreen({
     if (!isFocused) return;
     void loadCategories();
     void loadMonthOptions();
-  }, [isFocused, loadCategories, loadMonthOptions]);
+    void loadBankAccounts();
+  }, [isFocused, loadBankAccounts, loadCategories, loadMonthOptions]);
 
   React.useEffect(() => {
     if (!isFocused) return;
@@ -393,15 +429,42 @@ export default function TransactionsScreen({
   }, [filteredTransactions]);
 
   const activeFilterChips = React.useMemo(() => {
-    const chips: string[] = [];
-    if (counterpartyFilter) chips.push(counterpartyFilter);
-    if (analysisTypeLabel) chips.push(analysisTypeLabel);
-    if (categoryKeyFilter) chips.push(categoryKeyFilter.replace(/_/g, " "));
+    const chips: {
+      key: "counterparty" | "type" | "category" | "bank-account" | "month" | "search";
+      label: string;
+    }[] = [];
+    if (counterpartyFilter) {
+      chips.push({ key: "counterparty", label: counterpartyFilter });
+    }
+    if (analysisTypeLabel) chips.push({ key: "type", label: analysisTypeLabel });
+    if (categoryKeyFilter) {
+      chips.push({ key: "category", label: categoryKeyFilter.replace(/_/g, " ") });
+    }
+    if (bankAccountIdFilter && selectedBankAccount) {
+      chips.push({
+        key: "bank-account",
+        label: `Rekening: ${selectedBankAccount?.name || "Rekening"}`,
+      });
+    }
+    if (activeMonthKey !== ALL_MONTHS_KEY && selectedMonthOption) {
+      chips.push({ key: "month", label: selectedMonthOption.label });
+    }
+    if (searchQuery) {
+      chips.push({ key: "search", label: `Zoek: ${searchQuery}` });
+    }
     return chips;
-  }, [analysisTypeLabel, categoryKeyFilter, counterpartyFilter]);
+  }, [
+    analysisTypeLabel,
+    activeMonthKey,
+    bankAccountIdFilter,
+    categoryKeyFilter,
+    counterpartyFilter,
+    searchQuery,
+    selectedMonthOption,
+    selectedBankAccount,
+  ]);
 
-  const activeFilterCount =
-    activeFilterChips.length + (searchQuery ? 1 : 0) + (activeMonthKey !== ALL_MONTHS_KEY ? 1 : 0);
+  const activeFilterCount = activeFilterChips.length;
 
   const periodLabel = React.useMemo(() => {
     if (selectedMonthOption) return selectedMonthOption.label;
@@ -438,10 +501,20 @@ export default function TransactionsScreen({
       monthKey?: string | null;
       analysisMainGroup?: TransactionAnalysisMainGroupFilter | null;
       analysisCategory?: string | null;
+      bankAccountId?: string | null;
+      counterparty?: string | null;
+      categoryKey?: string | null;
     }) => {
       const nextParams: Record<string, string> = {};
-      if (counterpartyFilter) nextParams.counterparty = counterpartyFilter;
-      if (categoryKeyFilter) nextParams.categoryKey = categoryKeyFilter;
+      const resolvedCounterparty =
+        input.counterparty === undefined
+          ? counterpartyFilter || null
+          : input.counterparty;
+      if (resolvedCounterparty) nextParams.counterparty = resolvedCounterparty;
+
+      const resolvedCategoryKey =
+        input.categoryKey === undefined ? categoryKeyFilter || null : input.categoryKey;
+      if (resolvedCategoryKey) nextParams.categoryKey = resolvedCategoryKey;
 
       const resolvedAnalysisMainGroup =
         input.analysisMainGroup === undefined ? analysisMainGroupFilter || null : input.analysisMainGroup;
@@ -453,6 +526,12 @@ export default function TransactionsScreen({
       }
       if (resolvedAnalysisCategory) {
         nextParams.analysisCategory = resolvedAnalysisCategory;
+      }
+
+      const resolvedBankAccountId =
+        input.bankAccountId === undefined ? bankAccountIdFilter || null : input.bankAccountId;
+      if (resolvedBankAccountId) {
+        nextParams.bankAccountId = resolvedBankAccountId;
       }
 
       const resolvedMonthKey =
@@ -472,6 +551,7 @@ export default function TransactionsScreen({
     [
       analysisCategoryFilter,
       analysisMainGroupFilter,
+      bankAccountIdFilter,
       categoryKeyFilter,
       counterpartyFilter,
       activeMonthKey,
@@ -539,6 +619,58 @@ export default function TransactionsScreen({
     [buildTransactionRouteParams, router],
   );
 
+  const handleApplyBankAccountFilter = React.useCallback(
+    (nextBankAccountId: string | null) => {
+      setPage(0);
+      setFilterModalOpen(false);
+      router.replace({
+        pathname: "/transactions",
+        params: buildTransactionRouteParams({ bankAccountId: nextBankAccountId }),
+      });
+    },
+    [buildTransactionRouteParams, router],
+  );
+
+  const handleRemoveActiveFilter = React.useCallback(
+    (
+      filterKey:
+        | "counterparty"
+        | "type"
+        | "category"
+        | "bank-account"
+        | "month"
+        | "search",
+    ) => {
+      if (filterKey === "search") {
+        setSearchInput("");
+        setSearchQuery("");
+        setPage(0);
+        return;
+      }
+
+      const overrides: Parameters<typeof buildTransactionRouteParams>[0] = {};
+      if (filterKey === "counterparty") {
+        overrides.counterparty = null;
+      } else if (filterKey === "type") {
+        overrides.analysisMainGroup = null;
+        overrides.analysisCategory = null;
+      } else if (filterKey === "category") {
+        overrides.categoryKey = null;
+      } else if (filterKey === "bank-account") {
+        overrides.bankAccountId = null;
+      } else if (filterKey === "month") {
+        overrides.monthKey = ALL_MONTHS_KEY;
+      }
+
+      setPage(0);
+      router.replace({
+        pathname: "/transactions",
+        params: buildTransactionRouteParams(overrides),
+      });
+    },
+    [buildTransactionRouteParams, router],
+  );
+
   const header = (
     <View style={styles.headerBlock}>
       <FinanceHeroShell
@@ -575,21 +707,32 @@ export default function TransactionsScreen({
             />
           </TouchableOpacity>
 
-          <View style={styles.filterIconWrap}>
+          <View style={styles.filterActionsRow}>
+            <View style={styles.filterIconWrap}>
+              <FinanceCircleIconButton
+                icon="tune"
+                onPress={() => setFilterModalOpen(true)}
+                accessibilityLabel="Filters openen"
+                size={48}
+                iconSize={18}
+                iconColor={FinColors.textPrimary}
+                style={styles.filterIconButton}
+              />
+              {activeFilterCount > 0 ? (
+                <View style={styles.filterIconBadge}>
+                  <Text style={styles.filterIconBadgeText}>{activeFilterCount}</Text>
+                </View>
+              ) : null}
+            </View>
             <FinanceCircleIconButton
-              icon="tune"
-              onPress={() => setFilterModalOpen(true)}
-              accessibilityLabel="Filters openen"
+              icon="upload-file"
+              onPress={() => router.push("/csv-import")}
+              accessibilityLabel="Transacties importeren"
               size={48}
               iconSize={18}
               iconColor={FinColors.textPrimary}
               style={styles.filterIconButton}
             />
-            {activeFilterCount > 0 ? (
-              <View style={styles.filterIconBadge}>
-                <Text style={styles.filterIconBadgeText}>{activeFilterCount}</Text>
-              </View>
-            ) : null}
           </View>
         </View>
 
@@ -607,29 +750,18 @@ export default function TransactionsScreen({
           />
         </View>
 
-        <TouchableOpacity
-          style={styles.importShortcut}
-          onPress={() => router.push("/csv-import")}
-          activeOpacity={0.9}
-        >
-          <View style={styles.importShortcutIcon}>
-            <AppIcon name="upload-file" size={18} color={FinColors.textPrimary} variant="outlined" />
-          </View>
-          <View style={styles.importShortcutCopy}>
-            <Text style={styles.importShortcutTitle}>Transacties importeren</Text>
-            <Text style={styles.importShortcutText}>
-              CSV of PDF uploaden en direct verwerken.
-            </Text>
-          </View>
-          <AppIcon name="chevron-right" size={18} color={FinColors.textSecondary} variant="outlined" />
-        </TouchableOpacity>
-
         {activeFilterCount > 0 ? (
           <View style={styles.activeFiltersRow}>
             {activeFilterChips.map((chip) => (
-              <View key={chip} style={styles.activeChip}>
-                <Text style={styles.activeChipText}>{chip}</Text>
-              </View>
+              <TouchableOpacity
+                key={`${chip.key}:${chip.label}`}
+                style={styles.activeChip}
+                onPress={() => handleRemoveActiveFilter(chip.key)}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.activeChipText}>{chip.label}</Text>
+                <Text style={styles.activeChipRemove}>×</Text>
+              </TouchableOpacity>
             ))}
             <TouchableOpacity style={styles.clearLink} onPress={handleResetFilters}>
               <Text style={styles.clearLinkText}>Wis alles</Text>
@@ -843,6 +975,81 @@ export default function TransactionsScreen({
             </View>
           </View>
 
+          <View style={styles.filterModalSection}>
+            <Text style={styles.filterModalLabel}>Bankrekening</Text>
+            {activeBankAccounts.length ? (
+              <View style={styles.filterModalAccountList}>
+                <TouchableOpacity
+                  style={[
+                    styles.filterModalAccountRow,
+                    !bankAccountIdFilter && styles.filterModalAccountRowActive,
+                  ]}
+                  onPress={() => handleApplyBankAccountFilter(null)}
+                  activeOpacity={0.9}
+                >
+                  <View style={styles.filterModalAccountMain}>
+                    <Text
+                      style={[
+                        styles.filterModalAccountTitle,
+                        !bankAccountIdFilter && styles.filterModalAccountTitleActive,
+                      ]}
+                    >
+                      Alles
+                    </Text>
+                    <Text style={styles.filterModalAccountMeta}>
+                      Toon transacties van alle rekeningen
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {activeBankAccounts.map((account) => {
+                  const isActive = bankAccountIdFilter === account.id;
+                  const metaLabel = buildBankAccountFilterMeta(account);
+                  return (
+                    <TouchableOpacity
+                      key={account.id}
+                      style={[
+                        styles.filterModalAccountRow,
+                        isActive && styles.filterModalAccountRowActive,
+                      ]}
+                      onPress={() => handleApplyBankAccountFilter(account.id)}
+                      activeOpacity={0.9}
+                    >
+                      <View style={styles.filterModalAccountMain}>
+                        <Text
+                          style={[
+                            styles.filterModalAccountTitle,
+                            isActive && styles.filterModalAccountTitleActive,
+                          ]}
+                        >
+                          {account.name}
+                        </Text>
+                        {metaLabel ? (
+                          <Text style={styles.filterModalAccountMeta}>{metaLabel}</Text>
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.filterModalField}>
+                <View>
+                  <Text style={styles.filterModalFieldLabel}>Status</Text>
+                  <Text style={styles.filterModalFieldValue}>
+                    Geen actieve rekeningen gevonden
+                  </Text>
+                </View>
+                <AppIcon
+                  name="account-balance"
+                  size={18}
+                  color={FinColors.textMuted}
+                  variant="outlined"
+                />
+              </View>
+            )}
+          </View>
+
           {(activeFilterChips.length || searchQuery) ? (
             <View style={styles.filterModalSection}>
               <Text style={styles.filterModalLabel}>Actieve filters</Text>
@@ -1004,6 +1211,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  filterActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
   filterIconButton: {
     backgroundColor: FinColors.bgCard,
     borderWidth: 1,
@@ -1028,7 +1240,7 @@ const styles = StyleSheet.create({
   },
   searchWrap: {
     marginTop: 16,
-    minHeight: 60,
+    minHeight: 52,
     borderRadius: 999,
     backgroundColor: "#d6dadd",
     borderWidth: 1,
@@ -1038,50 +1250,14 @@ const styles = StyleSheet.create({
   searchIcon: {
     position: "absolute",
     left: 18,
-    top: 20,
+    top: 16,
   },
   searchInput: {
     paddingLeft: 52,
     paddingRight: 18,
-    paddingVertical: 18,
-    color: FinColors.textPrimary,
-    fontSize: 14,
-  },
-  importShortcut: {
-    marginTop: 12,
-    minHeight: 64,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: "rgba(17,17,17,0.08)",
-    backgroundColor: FinColors.bgCard,
-    paddingHorizontal: 16,
     paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  importShortcutIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: FinColors.yellowSoft,
-  },
-  importShortcutCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  importShortcutTitle: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "800",
     color: FinColors.textPrimary,
-  },
-  importShortcutText: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: FinColors.textSecondary,
+    fontSize: 13,
   },
   activeFiltersRow: {
     flexDirection: "row",
@@ -1091,16 +1267,25 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   activeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: "#f8efc6",
     borderWidth: 1,
     borderColor: "#e2cc7e",
   },
   activeChipText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "700",
+    color: "#6f5c00",
+  },
+  activeChipRemove: {
+    fontSize: 12,
+    lineHeight: 12,
+    fontWeight: "800",
     color: "#6f5c00",
   },
   clearLink: {
@@ -1142,12 +1327,10 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     marginTop: 20,
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 24,
     paddingHorizontal: 18,
     paddingVertical: 22,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
     alignItems: "center",
     width: "100%",
     maxWidth: CONTENT_MAX_WIDTH,
@@ -1484,6 +1667,40 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12,
     lineHeight: 17,
+    color: FinColors.textSecondary,
+  },
+  filterModalAccountList: {
+    gap: 10,
+  },
+  filterModalAccountRow: {
+    minHeight: 64,
+    borderRadius: 20,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    justifyContent: "center",
+  },
+  filterModalAccountRowActive: {
+    backgroundColor: FinColors.yellowSoft,
+    borderColor: FinColors.yellow,
+  },
+  filterModalAccountMain: {
+    gap: 3,
+  },
+  filterModalAccountTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  filterModalAccountTitleActive: {
+    color: FinColors.textPrimary,
+  },
+  filterModalAccountMeta: {
+    fontSize: 12,
+    lineHeight: 16,
     color: FinColors.textSecondary,
   },
   filterModalActions: {

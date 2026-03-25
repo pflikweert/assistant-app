@@ -187,6 +187,7 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - focus op scanbaarheid, zoeken en snelle correctie
 - toon categorie, status en abonnementskoppeling duidelijk
 - gebruik filters en maandkeuze zonder overload
+- bankrekeningfilters tonen alleen actieve rekeningen; gearchiveerde rekeningen verschijnen niet als filteroptie
 
 ### Budget
 
@@ -215,6 +216,10 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - toon context eerst
 - zet snelle correctie van categorie en abonnement bovenaan
 - verberg technische metadata pas op tweede niveau
+- bij `Categorie wijzigen`:
+  - bied een duidelijke keuze tussen `Via AI` en `Handmatig`
+  - zorg dat `Via AI` bij bevestigen dezelfde geselecteerde opties kan toepassen als handmatig
+  - houd het categoriezoekveld compact en vast bovenaan (niet meescrollen)
 
 ### Subscriptions
 
@@ -231,6 +236,10 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Normalizeer import- en details-strings consequent, vooral legacy `|`-varianten
 - Wees voorzichtig met semantische betekenissen zoals `variabel budget`, `trend`, `budgetplan`, `op schema`, `let op` en `boven tempo`
 - Gebruik bij forecast- en insight-vertaling geen fuzzy matching als de echte categorie-, referentie- of transactiedata beschikbaar is
+- Voor web drag & drop in Expo Router / React Native Web:
+  - vertrouw niet blind op alleen RN `onDrop` props op `View`
+  - gebruik waar nodig DOM-listeners op web met expliciete `preventDefault`/`stopPropagation`
+  - accepteer bestanden alleen binnen het bedoelde dropdoel (hit-test)
 
 ## Insight-Signalen En AI-Invloeden
 
@@ -302,6 +311,7 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Test web-compatibiliteit als styling of navigation wrappers veranderen
 - Houd lint en tests groen voor de bestanden die je aanpast
 - Doe handmatige verificatie als een wijziging saldo, forecast of importgedrag raakt
+- Plaats Vitest testbestanden niet onder `app/` (Expo Router map), maar in een niet-route map zoals `services/` of `components/`
 
 ## Werkstijl
 

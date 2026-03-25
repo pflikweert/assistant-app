@@ -1,4 +1,8 @@
-import { createSupabaseCategorizationRepository } from "@/services/categorization-repository";
+import {
+  bulkUpdateCategoryByCounterparty,
+  createSupabaseCategorizationRepository,
+  normalizePattern,
+} from "@/services/categorization-repository";
 import { requestForecastRefresh } from "@/services/forecast-refresh";
 import { recategorizeSingleTransaction } from "@/services/categorization";
 
@@ -11,8 +15,14 @@ export type TransactionAiCategorizationResult = {
   model: string;
 };
 
+type RecategorizeWithAiOptions = {
+  applyToCounterparty?: boolean;
+  learnFromCounterparty?: boolean;
+};
+
 export async function recategorizeTransactionWithAI(
   transactionId: string,
+  options: RecategorizeWithAiOptions = {},
 ): Promise<TransactionAiCategorizationResult | null> {
   const prediction = await recategorizeSingleTransaction(transactionId);
   if (!prediction) return null;
@@ -35,6 +45,25 @@ export async function recategorizeTransactionWithAI(
     confidence: prediction.confidence,
     reason: prediction.reason,
   });
+
+  if (options.applyToCounterparty && update.counterparty) {
+    await bulkUpdateCategoryByCounterparty(
+      update.counterparty,
+      prediction.categoryId,
+      "all",
+    );
+  }
+
+  if (options.learnFromCounterparty && update.counterparty) {
+    const normalizedPattern = normalizePattern(update.counterparty);
+    if (normalizedPattern) {
+      await repo.upsertCounterpartyRule(
+        normalizedPattern,
+        update.counterparty,
+        prediction.categoryId,
+      );
+    }
+  }
 
   await requestForecastRefresh({
     reason: "manual_category",

@@ -1,12 +1,20 @@
 import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
+import { TransactionListRow } from "@/components/transactions/transaction-list-row";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinColors } from "@/constants/theme";
+import type { CategoryRecord } from "@/types/categorization";
 import React from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
+});
+const wholeEuroFmt = new Intl.NumberFormat("nl-NL", {
+  style: "currency",
+  currency: "EUR",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
 });
 
 export type BudgetWeekBreakdownRow = {
@@ -20,8 +28,13 @@ export type BudgetWeekBreakdownRow = {
 export type BudgetWeekBreakdownTransaction = {
   id: string;
   title: string;
+  counterparty?: string | null;
   date: string;
   amount: number;
+  categoryAutoId?: string | null;
+  categoryUserId?: string | null;
+  category_id_auto?: string | null;
+  category_id_user?: string | null;
 };
 
 type BudgetWeekBreakdownModalProps = {
@@ -37,6 +50,7 @@ type BudgetWeekBreakdownModalProps = {
   transactionsByCategory: Record<string, BudgetWeekBreakdownTransaction[]>;
   loadingCategoryKeys: string[];
   categoryErrors: Record<string, string>;
+  categoryById: Map<string, CategoryRecord>;
   onOpenTransaction: (transactionId: string) => void;
 };
 
@@ -47,6 +61,10 @@ function formatTransactionDate(value: string) {
     day: "numeric",
     month: "short",
   });
+}
+
+function formatWholeEuroDown(value: number) {
+  return wholeEuroFmt.format(Math.floor(Math.max(value, 0)));
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -66,6 +84,7 @@ export function BudgetWeekBreakdownModal({
   transactionsByCategory,
   loadingCategoryKeys,
   categoryErrors,
+  categoryById,
   onOpenTransaction,
 }: BudgetWeekBreakdownModalProps) {
   const totalRemaining = Math.max(totalBudget - totalSpent, 0);
@@ -86,15 +105,21 @@ export function BudgetWeekBreakdownModal({
       <View style={styles.summaryCard}>
         <View style={styles.summaryPill}>
           <Text style={styles.summaryPillLabel}>Budget</Text>
-          <Text style={styles.summaryPillValue}>{fmt.format(totalBudget)}</Text>
+          <Text style={styles.summaryPillValue}>
+            {formatWholeEuroDown(totalBudget)}
+          </Text>
         </View>
         <View style={styles.summaryPill}>
           <Text style={styles.summaryPillLabel}>Gebruikt</Text>
-          <Text style={styles.summaryPillValue}>{fmt.format(totalSpent)}</Text>
+          <Text style={styles.summaryPillValue}>
+            {formatWholeEuroDown(totalSpent)}
+          </Text>
         </View>
         <View style={[styles.summaryPill, styles.summaryPillAccent]}>
           <Text style={styles.summaryPillLabelAccent}>Resterend</Text>
-          <Text style={styles.summaryPillValueAccent}>{fmt.format(totalRemaining)}</Text>
+          <Text style={styles.summaryPillValueAccent}>
+            {formatWholeEuroDown(totalRemaining)}
+          </Text>
         </View>
       </View>
 
@@ -189,36 +214,40 @@ export function BudgetWeekBreakdownModal({
                     ) : null}
 
                     {!isLoading && !error
-                      ? transactions.map((transaction) => (
-                          <Pressable
-                            key={transaction.id}
-                            onPress={() => onOpenTransaction(transaction.id)}
-                            style={({ pressed }) => [
-                              styles.transactionRow,
-                              pressed ? styles.transactionRowPressed : null,
-                            ]}
-                          >
-                            <View style={styles.transactionMain}>
-                              <Text style={styles.transactionTitle} numberOfLines={1}>
-                                {transaction.title}
-                              </Text>
-                              <Text style={styles.transactionMetaText}>
-                                {formatTransactionDate(transaction.date)}
-                              </Text>
-                            </View>
-                            <View style={styles.transactionRight}>
-                              <Text style={styles.transactionAmount}>
-                                {fmt.format(Math.abs(transaction.amount))}
-                              </Text>
-                              <AppIcon
-                                name="chevron-right"
-                                size={14}
-                                color={FinColors.textSecondary}
-                                variant="outlined"
-                              />
-                            </View>
-                          </Pressable>
-                        ))
+                      ? transactions.map((transaction, index) => {
+                          const receiverLabel =
+                            String(transaction.counterparty || "").trim() ||
+                            transaction.title;
+                          const descriptionLabel =
+                            String(transaction.counterparty || "").trim()
+                              ? transaction.title
+                              : undefined;
+
+                          return (
+                            <TransactionListRow
+                              key={transaction.id}
+                              title={receiverLabel}
+                              subtitle={descriptionLabel}
+                              meta={formatTransactionDate(transaction.date)}
+                              amount={transaction.amount}
+                              showRunningBalance={false}
+                              categoryAutoId={
+                                transaction.categoryAutoId ??
+                                transaction.category_id_auto ??
+                                null
+                              }
+                              categoryUserId={
+                                transaction.categoryUserId ??
+                                transaction.category_id_user ??
+                                null
+                              }
+                              categoryById={categoryById}
+                              showDivider={index < transactions.length - 1}
+                              onPress={() => onOpenTransaction(transaction.id)}
+                              style={styles.transactionListRow}
+                            />
+                          );
+                        })
                       : null}
                   </View>
                 ) : null}
@@ -296,15 +325,15 @@ const styles = StyleSheet.create({
     color: "#594a00",
   },
   summaryPillValue: {
-    fontSize: 24,
-    lineHeight: 28,
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: "800",
     color: FinColors.textPrimary,
     letterSpacing: -0.4,
   },
   summaryPillValueAccent: {
-    fontSize: 24,
-    lineHeight: 28,
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: "900",
     color: "#594a00",
     letterSpacing: -0.4,
@@ -406,48 +435,18 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     gap: 8,
   },
-  transactionLoadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  transactionRow: {
+  transactionListRow: {
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#e5e4e1",
     backgroundColor: "#f7f7f7",
     paddingHorizontal: 10,
     paddingVertical: 9,
+  },
+  transactionLoadingRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  transactionRowPressed: {
-    opacity: 0.86,
-  },
-  transactionMain: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  transactionRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    flexShrink: 0,
-  },
-  transactionTitle: {
-    fontSize: 13,
-    lineHeight: 17,
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-  },
-  transactionAmount: {
-    fontSize: 13,
-    lineHeight: 17,
-    color: FinColors.textPrimary,
-    fontWeight: "700",
+    gap: 8,
   },
   transactionMetaText: {
     fontSize: 12,

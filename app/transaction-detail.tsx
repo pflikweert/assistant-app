@@ -18,12 +18,10 @@ import { FinanceSubscriptionCallout } from "@/components/ui/finance-subscription
 import { FinanceQuickMenu } from "@/components/navigation/finance-quick-menu";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceTextBlock } from "@/components/ui/finance-text-block";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSurfaces } from "@/constants/theme";
 import { BUDGET_GROUP_LABELS } from "@/services/category-budget-groups";
 import { resolveTransactionCategoryIconName } from "@/services/category-icon";
-import {
-  recategorizeSingleTransaction,
-} from "@/services/categorization";
+import { recategorizeTransactionWithAI } from "@/services/transaction-ai-categorization";
 import {
   bulkUpdateCategoryByCounterparty,
   getCounterpartyTransactions,
@@ -66,6 +64,7 @@ import {
     StyleSheet,
     Switch,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
 } from "react-native";
@@ -254,6 +253,16 @@ function normalizeSubscriptionText(value: string | null | undefined) {
     .trim();
 }
 
+function normalizeCategorySearchText(value: string | null | undefined) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function isLikelySubscriptionPspTransaction(
   counterparty: string | null,
   details: string,
@@ -286,7 +295,6 @@ export default function TransactionDetailScreen() {
   const [categorySheetExpandedGroupId, setCategorySheetExpandedGroupId] =
     React.useState<string | null>(null);
   const [savingCategory, setSavingCategory] = React.useState(false);
-  const [aiRecategorizing, setAiRecategorizing] = React.useState(false);
   const [budgetExclusionToggling, setBudgetExclusionToggling] =
     React.useState(false);
   const [subscriptionProfiles, setSubscriptionProfiles] = React.useState<
@@ -304,6 +312,11 @@ export default function TransactionDetailScreen() {
     React.useState<TransactionRuleMatch | null>(null);
   const [categoryRuleResetBusy, setCategoryRuleResetBusy] =
     React.useState(false);
+  const [categoryChangeMode, setCategoryChangeMode] = React.useState<
+    "ai" | "manual"
+  >("ai");
+  const [showCategoryOptions, setShowCategoryOptions] = React.useState(false);
+  const [categorySearchInput, setCategorySearchInput] = React.useState("");
   const [draftCategoryId, setDraftCategoryId] = React.useState<string | null>(
     null,
   );
@@ -367,6 +380,30 @@ export default function TransactionDetailScreen() {
         ),
       );
   }, [leafCategories, categoryById]);
+  const normalizedCategorySearch = React.useMemo(
+    () => normalizeCategorySearchText(categorySearchInput),
+    [categorySearchInput],
+  );
+  const filteredCategoryGroups = React.useMemo(() => {
+    if (!normalizedCategorySearch) return categoryGroups;
+
+    return categoryGroups
+      .map((group) => {
+        const parentName = group.parent?.name || "Overige";
+        const groupMatch = normalizeCategorySearchText(parentName).includes(
+          normalizedCategorySearch,
+        );
+        const leaves = groupMatch
+          ? group.leaves
+          : group.leaves.filter((leaf) =>
+              normalizeCategorySearchText(leaf.name).includes(
+                normalizedCategorySearch,
+              ),
+            );
+        return { ...group, leaves };
+      })
+      .filter((group) => group.leaves.length > 0);
+  }, [categoryGroups, normalizedCategorySearch]);
 
   const effectiveCategoryId =
     tx?.category_id_user || tx?.category_id_auto || null;
@@ -556,6 +593,33 @@ export default function TransactionDetailScreen() {
   // ── Manual category ─────────────────────────────────────────────────────
   const handleApplyCategoryChanges = React.useCallback(async () => {
     if (!transactionId) return;
+    if (categoryChangeMode === "ai") {
+      const shouldLearnFromCounterparty =
+        draftLearnCategoryFromCounterparty &&
+        !!tx?.counterparty &&
+        !isSubjectDrivenCounterparty(tx.counterparty);
+      const shouldUpdateCounterparty = draftApplyCategoryToCounterparty;
+      setSavingCategory(true);
+      try {
+        const result = await recategorizeTransactionWithAI(transactionId, {
+          applyToCounterparty: shouldUpdateCounterparty,
+          learnFromCounterparty: shouldLearnFromCounterparty,
+        });
+        if (result?.categoryId) {
+          setDraftCategoryId(result.categoryId);
+        }
+        setCategorySheetOpen(false);
+        setDraftApplyCategoryToCounterparty(false);
+        setDraftLearnCategoryFromCounterparty(false);
+        await refreshTransactionSnapshot();
+      } catch (e) {
+        console.warn("ai recategorize apply error", e);
+      } finally {
+        setSavingCategory(false);
+      }
+      return;
+    }
+
     const categoryId = draftCategoryId;
     const shouldLearnFromCounterparty =
       draftLearnCategoryFromCounterparty &&
@@ -592,6 +656,7 @@ export default function TransactionDetailScreen() {
       setSavingCategory(false);
     }
   }, [
+    categoryChangeMode,
     draftApplyCategoryToCounterparty,
     draftCategoryId,
     draftLearnCategoryFromCounterparty,
@@ -608,6 +673,9 @@ export default function TransactionDetailScreen() {
     setDraftCategoryId(currentCategoryId);
     setDraftApplyCategoryToCounterparty(false);
     setDraftLearnCategoryFromCounterparty(false);
+    setCategoryChangeMode("ai");
+    setShowCategoryOptions(false);
+    setCategorySearchInput("");
     scrollCategoryGroupIntoView(categorySheetInitialGroupId, currentCategoryId);
     setCategorySheetOpen(true);
   }, [
@@ -618,31 +686,33 @@ export default function TransactionDetailScreen() {
     tx?.category_id_user,
   ]);
 
+  const handleSelectManualCategoryMode = React.useCallback(() => {
+    setCategoryChangeMode("manual");
+    const selectedCategoryId = draftCategoryId || effectiveCategoryId;
+    const targetGroupId =
+      categoryGroups.find((group) =>
+        group.leaves.some((cat) => cat.id === selectedCategoryId),
+      )?.parent?.id ||
+      categorySheetInitialGroupId ||
+      "__root";
+    scrollCategoryGroupIntoView(targetGroupId, selectedCategoryId);
+  }, [
+    categoryGroups,
+    categorySheetInitialGroupId,
+    draftCategoryId,
+    effectiveCategoryId,
+    scrollCategoryGroupIntoView,
+  ]);
+
   const handleCloseCategorySheet = React.useCallback(() => {
     blurActiveWebElement();
     setCategorySheetOpen(false);
+    setCategoryChangeMode("ai");
+    setShowCategoryOptions(false);
+    setCategorySearchInput("");
     setDraftApplyCategoryToCounterparty(false);
     setDraftLearnCategoryFromCounterparty(false);
   }, [blurActiveWebElement]);
-
-  const handleRunAiCategory = React.useCallback(async () => {
-    if (!transactionId || aiRecategorizing) return;
-    setAiRecategorizing(true);
-    try {
-      const result = await recategorizeSingleTransaction(transactionId);
-      if (!result) return;
-      setDraftCategoryId(result.categoryId);
-      const targetGroupId =
-        categoryGroups.find((group) =>
-          group.leaves.some((cat) => cat.id === result.categoryId),
-        )?.parent?.id || "__root";
-      scrollCategoryGroupIntoView(targetGroupId, result.categoryId);
-    } catch (error) {
-      console.warn("ai recategorize error", error);
-    } finally {
-      setAiRecategorizing(false);
-    }
-  }, [aiRecategorizing, categoryGroups, scrollCategoryGroupIntoView, transactionId]);
 
   const handleResetCategoryRule = React.useCallback(async () => {
     if (!transactionId || categoryRuleResetBusy || !categoryRuleMatch) return;
@@ -1075,30 +1145,56 @@ export default function TransactionDetailScreen() {
         }
       >
         <View style={styles.categorySheetFixed}>
-          <Text style={styles.categorySheetHeading}>Kies categorie</Text>
-
-          <FinanceFlatChoiceCard
-            title="Laat AI opnieuw bepalen"
-            description="AI kiest opnieuw de categorie voor alleen deze transactie."
-            rightSlot={
-              <TouchableOpacity
+          <Text style={styles.categorySheetHeading}>Hoe wil je aanpassen?</Text>
+          <View style={styles.categoryModeSwitchRow}>
+            <TouchableOpacity
+              style={[
+                styles.categoryModeButton,
+                categoryChangeMode === "ai" && styles.categoryModeButtonActive,
+              ]}
+              onPress={() => setCategoryChangeMode("ai")}
+            >
+              <Text
                 style={[
-                  styles.categoryAiButton,
-                  aiRecategorizing && styles.categoryAiButtonDisabled,
+                  styles.categoryModeButtonText,
+                  categoryChangeMode === "ai" &&
+                    styles.categoryModeButtonTextActive,
                 ]}
-                disabled={aiRecategorizing}
-                onPress={() => void handleRunAiCategory()}
               >
-                {aiRecategorizing ? (
-                  <ActivityIndicator color={FinColors.textPrimary} size="small" />
-                ) : (
-                  <Text style={styles.categoryAiButtonText}>Opnieuw bepalen</Text>
-                )}
-              </TouchableOpacity>
-            }
-          />
+                Via AI
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.categoryModeButton,
+                categoryChangeMode === "manual" &&
+                  styles.categoryModeButtonActive,
+              ]}
+              onPress={handleSelectManualCategoryMode}
+            >
+              <Text
+                style={[
+                  styles.categoryModeButtonText,
+                  categoryChangeMode === "manual" &&
+                    styles.categoryModeButtonTextActive,
+                ]}
+              >
+                Handmatig
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-          {tx.counterparty ? (
+          <TouchableOpacity
+            style={styles.categoryOptionsToggle}
+            onPress={() => setShowCategoryOptions((current) => !current)}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.categoryOptionsToggleText}>
+              {showCategoryOptions ? "Verberg opties" : "Toon opties"}
+            </Text>
+          </TouchableOpacity>
+
+          {showCategoryOptions && tx.counterparty ? (
             <FinanceFlatChoiceCard
               title="Ook alle transacties van deze ontvangende partij"
               description="Wijzig meteen bestaande transacties met dezelfde tegenpartij."
@@ -1115,13 +1211,13 @@ export default function TransactionDetailScreen() {
                       ? FinColors.green
                       : FinColors.textMuted
                   }
-                  disabled={savingCategory || aiRecategorizing}
+                  disabled={savingCategory}
                 />
               }
             />
           ) : null}
 
-          {tx.counterparty ? (
+          {showCategoryOptions && tx.counterparty ? (
             <FinanceFlatChoiceCard
               title="Ook toekomstige transacties hier op mappen"
               description="Maakt een regel op basis van deze tegenpartij voor volgende transacties."
@@ -1140,7 +1236,6 @@ export default function TransactionDetailScreen() {
                   }
                   disabled={
                     savingCategory ||
-                    aiRecategorizing ||
                     !tx.counterparty ||
                     isSubjectDrivenCounterparty(tx.counterparty)
                   }
@@ -1149,7 +1244,7 @@ export default function TransactionDetailScreen() {
             />
           ) : null}
 
-          {categoryRuleMatch ? (
+          {showCategoryOptions && categoryRuleMatch ? (
             <FinanceFlatChoiceCard
               title="Actieve regel"
               description={`${categoryRuleMatch.pattern} → ${categoryRuleMatch.categoryName} • ${categoryRuleMatch.scope === "user" ? "Eigen regel" : "Systeemregel"} • Kans ${Math.round(categoryRuleMatch.confidence * 100)}%`}
@@ -1179,6 +1274,28 @@ export default function TransactionDetailScreen() {
               }
             />
           ) : null}
+
+          {categoryChangeMode === "manual" ? (
+            <View style={styles.categorySearchWrap}>
+              <AppIcon
+                name="search"
+                size={15}
+                color={FinColors.textMuted}
+                style={styles.categorySearchIcon}
+                variant="outlined"
+              />
+              <TextInput
+                value={categorySearchInput}
+                onChangeText={setCategorySearchInput}
+                placeholder="Zoek categorie..."
+                placeholderTextColor={FinColors.textMuted}
+                style={styles.categorySearchInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+                clearButtonMode="while-editing"
+              />
+            </View>
+          ) : null}
         </View>
 
         <ScrollView
@@ -1188,8 +1305,8 @@ export default function TransactionDetailScreen() {
           showsVerticalScrollIndicator={false}
           showsHorizontalScrollIndicator={false}
         >
-          {categoryGroups.length ? (
-            categoryGroups.map((group) => {
+          {categoryChangeMode === "manual" && filteredCategoryGroups.length ? (
+            filteredCategoryGroups.map((group) => {
               const groupKey = group.parent?.id || "__root";
               const isExpanded = categorySheetExpandedGroupId === groupKey;
               const selectedLeaf = group.leaves.find(
@@ -1255,7 +1372,7 @@ export default function TransactionDetailScreen() {
                             label={cat.name}
                             selected={isSelected}
                             iconName={leafIconName}
-                            disabled={aiRecategorizing}
+                            disabled={savingCategory}
                             onPress={() => {
                               setDraftCategoryId(cat.id);
                               setCategorySheetExpandedGroupId(groupKey);
@@ -1270,7 +1387,11 @@ export default function TransactionDetailScreen() {
             })
           ) : (
             <Text style={styles.categorySheetEmptyText}>
-              Geen categorieën beschikbaar.
+              {categoryChangeMode === "ai"
+                ? "Via AI is uitgevoerd. Kies 'Handmatig' om zelf een categorie te selecteren."
+                : normalizedCategorySearch
+                  ? "Geen categorie gevonden voor je zoekopdracht."
+                : "Geen categorieën beschikbaar."}
             </Text>
           )}
         </ScrollView>
@@ -1723,12 +1844,10 @@ const styles = StyleSheet.create({
   },
 
   heroCard: {
-    backgroundColor: FinColors.bgCard,
+    ...FinSurfaces.topLevelCard,
     borderRadius: 28,
     padding: 20,
     gap: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: FinColors.border,
   },
   heroTopRow: {
     flexDirection: "row",
@@ -2185,6 +2304,48 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     paddingHorizontal: 4,
   },
+  categoryModeSwitchRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  categoryModeButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  categoryModeButtonActive: {
+    backgroundColor: FinColors.yellow,
+    borderColor: FinColors.yellow,
+  },
+  categoryModeButtonText: {
+    color: FinColors.textSecondary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  categoryModeButtonTextActive: {
+    color: FinColors.textPrimary,
+  },
+  categoryOptionsToggle: {
+    alignSelf: "flex-start",
+    marginTop: 2,
+    marginBottom: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  categoryOptionsToggleText: {
+    color: FinColors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
   categorySheetScroll: {
     flex: 1,
     minHeight: 0,
@@ -2192,6 +2353,27 @@ const styles = StyleSheet.create({
   categorySheetContent: {
     gap: 10,
     paddingBottom: 10,
+  },
+  categorySearchWrap: {
+    minHeight: 40,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    justifyContent: "center",
+  },
+  categorySearchIcon: {
+    position: "absolute",
+    left: 12,
+    top: 12,
+  },
+  categorySearchInput: {
+    paddingLeft: 36,
+    paddingRight: 12,
+    paddingVertical: 10,
+    fontSize: 12,
+    lineHeight: 16,
+    color: FinColors.textPrimary,
   },
   categorySheetFooter: {
     marginTop: 16,
