@@ -31,6 +31,7 @@ export type BudgetWeekBreakdownTransaction = {
   counterparty?: string | null;
   date: string;
   amount: number;
+  budgetExcluded?: boolean;
   categoryAutoId?: string | null;
   categoryUserId?: string | null;
   category_id_auto?: string | null;
@@ -52,6 +53,8 @@ type BudgetWeekBreakdownModalProps = {
   categoryErrors: Record<string, string>;
   categoryById: Map<string, CategoryRecord>;
   onOpenTransaction: (transactionId: string) => void;
+  onExcludeTransaction?: (categoryKey: string, transactionId: string) => void;
+  updatingTransactionIds?: string[];
 };
 
 function formatTransactionDate(value: string) {
@@ -86,6 +89,8 @@ export function BudgetWeekBreakdownModal({
   categoryErrors,
   categoryById,
   onOpenTransaction,
+  onExcludeTransaction,
+  updatingTransactionIds = [],
 }: BudgetWeekBreakdownModalProps) {
   const totalRemaining = Math.max(totalBudget - totalSpent, 0);
 
@@ -222,30 +227,62 @@ export function BudgetWeekBreakdownModal({
                             String(transaction.counterparty || "").trim()
                               ? transaction.title
                               : undefined;
+                          const isUpdating = updatingTransactionIds.includes(
+                            transaction.id,
+                          );
+                          const canExclude =
+                            typeof onExcludeTransaction === "function";
+                          const toggleLabel = transaction.budgetExcluded
+                            ? "Meenemen"
+                            : "Uitsluiten";
 
                           return (
-                            <TransactionListRow
+                            <View
                               key={transaction.id}
-                              title={receiverLabel}
-                              subtitle={descriptionLabel}
-                              meta={formatTransactionDate(transaction.date)}
-                              amount={transaction.amount}
-                              showRunningBalance={false}
-                              categoryAutoId={
-                                transaction.categoryAutoId ??
-                                transaction.category_id_auto ??
-                                null
-                              }
-                              categoryUserId={
-                                transaction.categoryUserId ??
-                                transaction.category_id_user ??
-                                null
-                              }
-                              categoryById={categoryById}
-                              showDivider={index < transactions.length - 1}
-                              onPress={() => onOpenTransaction(transaction.id)}
-                              style={styles.transactionListRow}
-                            />
+                              style={[
+                                styles.transactionItem,
+                                index < transactions.length - 1
+                                  ? styles.transactionItemDivider
+                                  : null,
+                              ]}
+                            >
+                              <TransactionListRow
+                                title={receiverLabel}
+                                subtitle={descriptionLabel}
+                                meta={formatTransactionDate(transaction.date)}
+                                amount={transaction.amount}
+                                showRunningBalance={false}
+                                categoryAutoId={
+                                  transaction.categoryAutoId ??
+                                  transaction.category_id_auto ??
+                                  null
+                                }
+                                categoryUserId={
+                                  transaction.categoryUserId ??
+                                  transaction.category_id_user ??
+                                  null
+                                }
+                                categoryById={categoryById}
+                                showDivider={false}
+                                onPress={() => onOpenTransaction(transaction.id)}
+                                style={styles.transactionListRow}
+                                trailingActionLabel={
+                                  canExclude ? (isUpdating ? "Bezig..." : toggleLabel) : null
+                                }
+                                onPressTrailingAction={
+                                  canExclude
+                                    ? () => onExcludeTransaction(item.key, transaction.id)
+                                    : null
+                                }
+                                trailingActionDisabled={isUpdating}
+                                trailingActionActive={Boolean(transaction.budgetExcluded)}
+                                trailingActionAccessibilityLabel={
+                                  transaction.budgetExcluded
+                                    ? "Weer meetellen in budget"
+                                    : "Niet meetellen in budget"
+                                }
+                              />
+                            </View>
                           );
                         })
                       : null}
@@ -442,6 +479,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#f7f7f7",
     paddingHorizontal: 10,
     paddingVertical: 9,
+  },
+  transactionItem: {
+    width: "100%",
+  },
+  transactionItemDivider: {
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: FinColors.borderSubtle,
   },
   transactionLoadingRow: {
     flexDirection: "row",

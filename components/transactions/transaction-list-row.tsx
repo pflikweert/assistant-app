@@ -32,6 +32,11 @@ type TransactionListRowProps = {
   maxWidth?: number;
   showDivider?: boolean;
   style?: StyleProp<ViewStyle>;
+  trailingActionLabel?: string | null;
+  onPressTrailingAction?: (() => void) | null;
+  trailingActionDisabled?: boolean;
+  trailingActionActive?: boolean;
+  trailingActionAccessibilityLabel?: string;
 };
 
 export function TransactionListRow({
@@ -50,6 +55,11 @@ export function TransactionListRow({
   maxWidth,
   showDivider = false,
   style,
+  trailingActionLabel = null,
+  onPressTrailingAction = null,
+  trailingActionDisabled = false,
+  trailingActionActive = false,
+  trailingActionAccessibilityLabel,
 }: TransactionListRowProps) {
   const isPositive = amount >= 0;
 
@@ -107,6 +117,22 @@ export function TransactionListRow({
               ? "Saldo onbekend"
               : `Saldo ${euroFormatter.format(runningBalance)}`}
           </Text>
+        ) : null}
+        {trailingActionLabel ? (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={trailingActionAccessibilityLabel || trailingActionLabel}
+            activeOpacity={0.82}
+            onPress={onPressTrailingAction || undefined}
+            disabled={trailingActionDisabled || !onPressTrailingAction}
+            style={[
+              styles.trailingActionChip,
+              trailingActionActive ? styles.trailingActionChipActive : null,
+              trailingActionDisabled ? styles.trailingActionChipDisabled : null,
+            ]}
+          >
+            <Text style={styles.trailingActionChipText}>{trailingActionLabel}</Text>
+          </TouchableOpacity>
         ) : null}
       </View>
     </TouchableOpacity>
@@ -166,6 +192,7 @@ const styles = StyleSheet.create({
   amountColumn: {
     minWidth: 92,
     alignItems: "flex-end",
+    gap: 6,
   },
   amount: {
     fontSize: 16,
@@ -185,5 +212,25 @@ const styles = StyleSheet.create({
     lineHeight: 13,
     color: FinColors.textMuted,
     textAlign: "right",
+  },
+  trailingActionChip: {
+    minHeight: 24,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f4f1e6",
+  },
+  trailingActionChipActive: {
+    backgroundColor: "#ebecef",
+  },
+  trailingActionChipDisabled: {
+    opacity: 0.62,
+  },
+  trailingActionChipText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
   },
 });

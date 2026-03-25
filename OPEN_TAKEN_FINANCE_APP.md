@@ -57,6 +57,11 @@ De focus is nu niet meer "opnieuw bouwen", maar:
   - summarypills tonen hele euro's met `Math.floor`
   - transactielijst gebruikt `TransactionListRow`
   - `budget_excluded = true` transacties blijven buiten dit overzicht
+- In `Budget > Deze maand` moet de budgetactie compact in de transactieregel zelf zitten:
+  - geen losse actierij onder de transactie
+  - gebruik een kleine inline actiechip rechts in de regel
+  - copy moet actiegericht zijn: `Uitsluiten` (uit budget) en `Meenemen` (weer in budget)
+  - na `Uitsluiten` verdwijnt de transactie direct uit de maandlijst
 - In transactierijen is leeshiërarchie belangrijk:
   - ontvanger bovenaan
   - omschrijving op tweede regel
@@ -66,6 +71,7 @@ De focus is nu niet meer "opnieuw bouwen", maar:
   - actieve filterchips kleiner
   - per chip een directe `x`-actie om alleen die filter te verwijderen
   - importactie als icoon naast filter, zonder extra grote importkaart
+- `Abonnementen` hoort in het headermenu als tekstlink onder sectie `Transacties` (zelfde stijl als `Importeren`), niet in de primaire hoofdlijst.
 - In `Transaction Detail > Categorie wijzigen` werkt een duidelijke keuze-flow beter op kleine schermen:
   - moduskeuze `Via AI` of `Handmatig`
   - optieblokken inklapbaar met `Toon opties` / `Verberg opties` (standaard verborgen)

@@ -18,7 +18,13 @@ import {
 type MenuItem = {
   label: string;
   iconName: AppIconName;
-  path: "/" | "/transactions" | "/insights" | "/budget" | "/csv-import";
+  path:
+    | "/"
+    | "/transactions"
+    | "/insights"
+    | "/budget"
+    | "/subscriptions"
+    | "/csv-import";
 };
 
 type SecondaryMenuItem = {
@@ -46,6 +52,7 @@ const SUPPORT_ITEMS: SecondaryMenuItem[] = [
 
 const IMPORT_ITEMS: MenuItem[] = [
   { label: "Importeren", iconName: "upload-file", path: "/csv-import" },
+  { label: "Abonnementen", iconName: "subscriptions", path: "/subscriptions" },
 ];
 
 function normalizePath(pathname: string): string {

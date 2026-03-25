@@ -36,15 +36,26 @@ vi.mock("@/components/transactions/transaction-list-row", () => ({
     title,
     dateLabel,
     onPress,
+    trailingActionLabel,
+    onPressTrailingAction,
   }: {
     title: string;
     dateLabel?: string;
     onPress: () => void;
+    trailingActionLabel?: string | null;
+    onPressTrailingAction?: (() => void) | null;
   }) => (
-    <Pressable onPress={onPress}>
-      <Text>{title}</Text>
-      <Text>{dateLabel}</Text>
-    </Pressable>
+    <>
+      <Pressable onPress={onPress}>
+        <Text>{title}</Text>
+        <Text>{dateLabel}</Text>
+      </Pressable>
+      {trailingActionLabel ? (
+        <Pressable onPress={onPressTrailingAction || undefined}>
+          <Text>{trailingActionLabel}</Text>
+        </Pressable>
+      ) : null}
+    </>
   ),
 }));
 
@@ -86,6 +97,7 @@ describe("BudgetWeekBreakdownModal", () => {
   it("toont weekonderverdeling per variabele categorie", () => {
     const onToggleCategory = vi.fn();
     const onOpenTransaction = vi.fn();
+    const onExcludeTransaction = vi.fn();
 
     let tree!: renderer.ReactTestRenderer;
     act(() => {
@@ -129,6 +141,8 @@ describe("BudgetWeekBreakdownModal", () => {
           categoryErrors={{}}
           categoryById={new Map()}
           onOpenTransaction={onOpenTransaction}
+          onExcludeTransaction={onExcludeTransaction}
+          updatingTransactionIds={[]}
         />,
       );
     });
@@ -163,5 +177,11 @@ describe("BudgetWeekBreakdownModal", () => {
       transactionPressable?.props.onPress();
     });
     expect(onOpenTransaction).toHaveBeenCalledWith("tx-1");
+
+    const excludePressable = findPressableForText(tree, "Uitsluiten");
+    act(() => {
+      excludePressable?.props.onPress();
+    });
+    expect(onExcludeTransaction).toHaveBeenCalledWith("groceries", "tx-1");
   });
 });

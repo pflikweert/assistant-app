@@ -236,6 +236,22 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
   - maak cardvarianten gedeeld zodra eenzelfde card op meerdere schermen terugkomt
   - gebruik geen unieke card-styling per scherm als de inhoud grotendeels hetzelfde is
 
+### Patroon: Inline Actiechip In Transactierij
+
+- Naam: Compacte rijactie
+- Doel: snelle contextactie zonder extra knoprijen of visuele ruis
+- Waar toepasbaar in de app: transactielijsten in utility-modals en budgetdetail
+- Structuur / opbouw:
+  - actiechip rechts in dezelfde kolom als bedrag/status
+  - geen losse action-row onder de transactieregel
+  - korte actiecopy die gedrag duidelijk maakt
+- Copyrichtlijn:
+  - gebruik actiegerichte labels zoals `Uitsluiten` en `Meenemen`
+  - vermijd vage statuslabels zoals `Binnen` als primaire actie
+- Interactie:
+  - bij uitsluiten van budget in maandlijsten verdwijnt de transactie direct uit de actieve lijst
+  - toon tijdens schrijven een korte disabled-state (`Bezig...`)
+
 ### Patroon: Stat Blocks
 
 - Naam: Kerngetal met context

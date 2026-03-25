@@ -2,7 +2,10 @@ import {
   applyEffectiveBudgetGroupsToCategories,
   listCategoryBudgetGroupOverrides,
 } from "@/services/category-budget-groups";
-import { markForecastDirty } from "@/services/forecast-refresh";
+import {
+  markForecastDirty,
+  requestForecastRefresh,
+} from "@/services/forecast-refresh";
 import { normalizePattern } from "@/services/pattern-normalization";
 import { supabase } from "@/services/supabase";
 import { requireCurrentUserId } from "@/services/current-user";
@@ -220,7 +223,7 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
       const { data, error } = await supabase
         .from("transactions")
         .select(
-          "id,details,counterparty,amount,date,category_id_auto,category_id_user",
+          "id,details,counterparty,amount,date,metadata,category_id_auto,category_id_user",
         )
         .eq("user_id", userId)
         .in("id", ids);
@@ -231,6 +234,10 @@ export function createSupabaseCategorizationRepository(): CategorizationReposito
         counterparty: row.counterparty ? String(row.counterparty) : null,
         amount: asNumber(row.amount, 0),
         date: String(row.date || ""),
+        metadata:
+          row.metadata && typeof row.metadata === "object"
+            ? (row.metadata as Record<string, unknown>)
+            : null,
         category_id_auto: row.category_id_auto || null,
         category_id_user: row.category_id_user || null,
       }));
@@ -507,8 +514,14 @@ export async function setTransactionManualCategory(
     }
   }
 
-  await markForecastDirty("manual_category").catch((error) => {
-    console.warn("[categories] forecast dirty mark after manual category failed", error);
+  await requestForecastRefresh({
+    reason: "manual_category",
+    eager: true,
+  }).catch((error) => {
+    console.warn(
+      "[categories] forecast refresh scheduling after manual category failed",
+      error,
+    );
   });
 }
 

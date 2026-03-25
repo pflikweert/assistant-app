@@ -165,19 +165,19 @@ type InlineWeekTransaction = {
 type BudgetInlineTransactionRowProps = {
   tx: InlineWeekTransaction;
   categoryById: Map<string, CategoryRecord>;
-  isUpdating: boolean;
   overlapLabel?: string | null;
   onOpen: () => void;
-  onToggle: () => void;
+  onToggle?: () => void;
+  isUpdating?: boolean;
 };
 
 function BudgetInlineTransactionRow({
   tx,
   categoryById,
-  isUpdating,
   overlapLabel,
   onOpen,
   onToggle,
+  isUpdating = false,
 }: BudgetInlineTransactionRowProps) {
   const categoryLabel = getCategoryPathLabel(tx, categoryById);
   const metaParts = [formatDetailDateLabel(tx.date)];
@@ -217,36 +217,38 @@ function BudgetInlineTransactionRow({
         <Text style={styles.inlineTransactionAmount}>
           {fmt.format(Math.abs(tx.amount))}
         </Text>
-        <Pressable
-          style={[
-            styles.inlineExcludeToggle,
-            tx.budgetExcluded && styles.inlineExcludeToggleActive,
-          ]}
-          onPress={onToggle}
-          disabled={isUpdating}
-        >
-          <View style={styles.inlineExcludeToggleInner}>
-            <AppIcon
-              name={
-                tx.budgetExcluded
-                  ? "remove-circle-outline"
-                  : "check-circle-outline"
-              }
-              size={12}
-              color={
-                tx.budgetExcluded ? FinColors.warningText : FinColors.green
-              }
-            />
-            <Text
-              style={[
-                styles.inlineExcludeToggleText,
-                tx.budgetExcluded && styles.inlineExcludeToggleTextActive,
-              ]}
-            >
-              {tx.budgetExcluded ? "Buiten" : "Binnen"}
-            </Text>
-          </View>
-        </Pressable>
+        {onToggle ? (
+          <Pressable
+            style={[
+              styles.inlineExcludeToggle,
+              tx.budgetExcluded && styles.inlineExcludeToggleActive,
+            ]}
+            onPress={onToggle}
+            disabled={isUpdating}
+          >
+            <View style={styles.inlineExcludeToggleInner}>
+              <AppIcon
+                name={
+                  tx.budgetExcluded
+                    ? "remove-circle-outline"
+                    : "check-circle-outline"
+                }
+                size={12}
+                color={
+                  tx.budgetExcluded ? FinColors.warningText : FinColors.green
+                }
+              />
+              <Text
+                style={[
+                  styles.inlineExcludeToggleText,
+                  tx.budgetExcluded && styles.inlineExcludeToggleTextActive,
+                ]}
+              >
+                {tx.budgetExcluded ? "Buiten" : "Binnen"}
+              </Text>
+            </View>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -882,8 +884,6 @@ export default function BudgetScreen() {
   const [inlineSubcategoryErrors, setInlineSubcategoryErrors] = React.useState<
     Record<string, string>
   >({});
-  const [inlineUpdatingTransactionIds, setInlineUpdatingTransactionIds] =
-    React.useState<string[]>([]);
   const [categoryIdsByKey, setCategoryIdsByKey] = React.useState<
     Record<string, string[]>
   >({});
@@ -908,6 +908,10 @@ export default function BudgetScreen() {
   const [categoryDetailErrors, setCategoryDetailErrors] = React.useState<
     Record<string, string>
   >({});
+  const [
+    monthCategoryUpdatingTransactionIds,
+    setMonthCategoryUpdatingTransactionIds,
+  ] = React.useState<string[]>([]);
   const [expandedWeekSummaryCategories, setExpandedWeekSummaryCategories] =
     React.useState<string[]>([]);
   const [weekSummaryTransactionsByCategory, setWeekSummaryTransactionsByCategory] =
@@ -2435,42 +2439,6 @@ export default function BudgetScreen() {
     ],
   );
 
-  const toggleInlineTransactionBudgetExcluded = React.useCallback(
-    async (cacheKey: string, transactionId: string, nextExcluded: boolean) => {
-      if (inlineUpdatingTransactionIds.includes(transactionId)) return;
-
-      setInlineUpdatingTransactionIds((current) => [...current, transactionId]);
-      setInlineTransactionsBySubcategory((current) => ({
-        ...current,
-        [cacheKey]: (current[cacheKey] || []).map((item) =>
-          item.id === transactionId
-            ? { ...item, budgetExcluded: nextExcluded }
-            : item,
-        ),
-      }));
-
-      try {
-        await setTransactionBudgetExcluded(transactionId, nextExcluded);
-        await loadBudget();
-      } catch (error) {
-        console.warn("[budget] budget exclusion toggle error", error);
-        setInlineTransactionsBySubcategory((current) => ({
-          ...current,
-          [cacheKey]: (current[cacheKey] || []).map((item) =>
-            item.id === transactionId
-              ? { ...item, budgetExcluded: !nextExcluded }
-              : item,
-          ),
-        }));
-      } finally {
-        setInlineUpdatingTransactionIds((current) =>
-          current.filter((id) => id !== transactionId),
-        );
-      }
-    },
-    [inlineUpdatingTransactionIds, loadBudget],
-  );
-
   const fetchOutsideBudgetItemTransactions = React.useCallback(
     async (item: BudgetOutsideExpenseItem) => {
       const cacheKey = item.groupKey;
@@ -2571,42 +2539,6 @@ export default function BudgetScreen() {
       outsideBudgetLoadingItems,
       outsideBudgetTransactionsByItem,
     ],
-  );
-
-  const toggleOutsideBudgetTransactionBudgetExcluded = React.useCallback(
-    async (cacheKey: string, transactionId: string, nextExcluded: boolean) => {
-      if (inlineUpdatingTransactionIds.includes(transactionId)) return;
-
-      setInlineUpdatingTransactionIds((current) => [...current, transactionId]);
-      setOutsideBudgetTransactionsByItem((current) => ({
-        ...current,
-        [cacheKey]: (current[cacheKey] || []).map((item) =>
-          item.id === transactionId
-            ? { ...item, budgetExcluded: nextExcluded }
-            : item,
-        ),
-      }));
-
-      try {
-        await setTransactionBudgetExcluded(transactionId, nextExcluded);
-        await loadBudget();
-      } catch (error) {
-        console.warn("[budget] buiten-budget toggle error", error);
-        setOutsideBudgetTransactionsByItem((current) => ({
-          ...current,
-          [cacheKey]: (current[cacheKey] || []).map((item) =>
-            item.id === transactionId
-              ? { ...item, budgetExcluded: !nextExcluded }
-              : item,
-          ),
-        }));
-      } finally {
-        setInlineUpdatingTransactionIds((current) =>
-          current.filter((id) => id !== transactionId),
-        );
-      }
-    },
-    [inlineUpdatingTransactionIds, loadBudget],
   );
 
   const fetchCategoryDetailTransactions = React.useCallback(
@@ -2717,6 +2649,69 @@ export default function BudgetScreen() {
     selectedMonthCategoryKey,
   ]);
 
+  const toggleMonthCategoryTransactionBudgetExcluded = React.useCallback(
+    async (
+      categoryKey: VariableBudgetCategoryKey,
+      transactionId: string,
+      nextExcluded: boolean,
+    ) => {
+      if (monthCategoryUpdatingTransactionIds.includes(transactionId)) return;
+
+      setMonthCategoryUpdatingTransactionIds((current) => [
+        ...current,
+        transactionId,
+      ]);
+      setCategoryDetailTransactionsByKey((current) => ({
+        ...current,
+        [categoryKey]: nextExcluded
+          ? (current[categoryKey] || []).filter(
+              (item) => item.id !== transactionId,
+            )
+          : (current[categoryKey] || []).map((item) =>
+              item.id === transactionId
+                ? { ...item, budgetExcluded: nextExcluded }
+                : item,
+            ),
+      }));
+
+      try {
+        await setTransactionBudgetExcluded(transactionId, nextExcluded);
+        await loadBudget();
+      } catch (error) {
+        console.warn("[budget] maand-transactie toggle error", error);
+        setCategoryDetailTransactionsByKey((current) => ({
+          ...current,
+          [categoryKey]: (current[categoryKey] || []).map((item) =>
+            item.id === transactionId
+              ? { ...item, budgetExcluded: !nextExcluded }
+              : item,
+          ),
+        }));
+      } finally {
+        setMonthCategoryUpdatingTransactionIds((current) =>
+          current.filter((id) => id !== transactionId),
+        );
+      }
+    },
+    [loadBudget, monthCategoryUpdatingTransactionIds],
+  );
+
+  const toggleMonthSummaryTransactionBudgetExcluded = React.useCallback(
+    (categoryKey: string, transactionId: string) => {
+      const typedCategoryKey = categoryKey as VariableBudgetCategoryKey;
+      const currentRows = categoryDetailTransactionsByKey[typedCategoryKey] || [];
+      const currentRow = currentRows.find((item) => item.id === transactionId);
+      const nextExcluded = !(currentRow?.budgetExcluded ?? false);
+
+      void toggleMonthCategoryTransactionBudgetExcluded(
+        typedCategoryKey,
+        transactionId,
+        nextExcluded,
+      );
+    },
+    [categoryDetailTransactionsByKey, toggleMonthCategoryTransactionBudgetExcluded],
+  );
+
   const toggleMonthSummaryCategory = React.useCallback(
     (categoryKey: string) => {
       const typedCategoryKey = categoryKey as VariableBudgetCategoryKey;
@@ -2748,42 +2743,6 @@ export default function BudgetScreen() {
     setCategoryDetailLoadingKeys([]);
     setCategoryDetailErrors({});
   }, [selectedMonth.startIso]);
-
-  const toggleCategoryDetailTransactionBudgetExcluded = React.useCallback(
-    async (categoryKey: VariableBudgetCategoryKey, transactionId: string, nextExcluded: boolean) => {
-      if (inlineUpdatingTransactionIds.includes(transactionId)) return;
-
-      setInlineUpdatingTransactionIds((current) => [...current, transactionId]);
-      setCategoryDetailTransactionsByKey((current) => ({
-        ...current,
-        [categoryKey]: (current[categoryKey] || []).map((item) =>
-          item.id === transactionId
-            ? { ...item, budgetExcluded: nextExcluded }
-            : item,
-        ),
-      }));
-
-      try {
-        await setTransactionBudgetExcluded(transactionId, nextExcluded);
-        await loadBudget();
-      } catch (error) {
-        console.warn("[budget] categorie-detail toggle error", error);
-        setCategoryDetailTransactionsByKey((current) => ({
-          ...current,
-          [categoryKey]: (current[categoryKey] || []).map((item) =>
-            item.id === transactionId
-              ? { ...item, budgetExcluded: !nextExcluded }
-              : item,
-          ),
-        }));
-      } finally {
-        setInlineUpdatingTransactionIds((current) =>
-          current.filter((id) => id !== transactionId),
-        );
-      }
-    },
-    [inlineUpdatingTransactionIds, loadBudget],
-  );
 
   return (
     <View style={styles.root}>
@@ -3712,6 +3671,14 @@ export default function BudgetScreen() {
         categoryErrors={summaryBreakdownCategoryErrors}
         categoryById={categoryById}
         onOpenTransaction={openInlineTransactionDetail}
+        onExcludeTransaction={
+          isMonthSummaryModal
+            ? toggleMonthSummaryTransactionBudgetExcluded
+            : undefined
+        }
+        updatingTransactionIds={
+          isMonthSummaryModal ? monthCategoryUpdatingTransactionIds : []
+        }
       />
 
       <Modal
@@ -3928,17 +3895,11 @@ export default function BudgetScreen() {
                                         !inlineError &&
                                         inlineTransactions.length
                                           ? inlineTransactions.map((tx) => {
-                                              const isUpdating =
-                                                inlineUpdatingTransactionIds.includes(
-                                                  tx.id,
-                                                );
-
                                               return (
                                                 <BudgetInlineTransactionRow
                                                   key={tx.id}
                                                   tx={tx}
                                                   categoryById={categoryById}
-                                                  isUpdating={isUpdating}
                                                   overlapLabel={getMonthOverlapLabel(
                                                     tx.date,
                                                     budgetPlan?.monthStart,
@@ -3946,13 +3907,6 @@ export default function BudgetScreen() {
                                                   onOpen={() =>
                                                     openInlineTransactionDetail(
                                                       tx.id,
-                                                    )
-                                                  }
-                                                  onToggle={() =>
-                                                    void toggleInlineTransactionBudgetExcluded(
-                                                      cacheKey,
-                                                      tx.id,
-                                                      !tx.budgetExcluded,
                                                     )
                                                   }
                                                 />
@@ -4180,22 +4134,22 @@ export default function BudgetScreen() {
                     selectedMonthCategoryTransactions.length
                       ? selectedMonthCategoryTransactions.map((tx) => {
                           const isUpdating =
-                            inlineUpdatingTransactionIds.includes(tx.id);
+                            monthCategoryUpdatingTransactionIds.includes(tx.id);
 
                           return (
                             <BudgetInlineTransactionRow
                               key={tx.id}
                               tx={tx}
                               categoryById={categoryById}
-                              isUpdating={isUpdating}
                               onOpen={() => openInlineTransactionDetail(tx.id)}
                               onToggle={() =>
-                                void toggleCategoryDetailTransactionBudgetExcluded(
+                                void toggleMonthCategoryTransactionBudgetExcluded(
                                   selectedMonthCategory.categoryKey as VariableBudgetCategoryKey,
                                   tx.id,
                                   !tx.budgetExcluded,
                                 )
                               }
+                              isUpdating={isUpdating}
                             />
                           );
                         })
@@ -4325,24 +4279,13 @@ export default function BudgetScreen() {
 
                               {!isLoading && !itemError && transactions.length
                                 ? transactions.map((tx) => {
-                                    const isUpdating =
-                                      inlineUpdatingTransactionIds.includes(tx.id);
-
                                     return (
                                       <BudgetInlineTransactionRow
                                         key={tx.id}
                                         tx={tx}
                                         categoryById={categoryById}
-                                        isUpdating={isUpdating}
                                         onOpen={() =>
                                           openInlineTransactionDetail(tx.id)
-                                        }
-                                        onToggle={() =>
-                                          void toggleOutsideBudgetTransactionBudgetExcluded(
-                                            cacheKey,
-                                            tx.id,
-                                            !tx.budgetExcluded,
-                                          )
                                         }
                                       />
                                     );

@@ -1060,6 +1060,7 @@ export default function TransactionDetailScreen() {
           onToggle={handleBudgetExcludedToggle}
           disabled={budgetExclusionToggling}
           budgetBucketLabel={budgetBucketLabel}
+          subtitle="Niet meetellen in budget deze maand."
         />
 
         {isPspLikeExpense || linkedSubscriptionProfile ? (

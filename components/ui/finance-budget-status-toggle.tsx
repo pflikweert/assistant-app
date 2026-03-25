@@ -15,15 +15,15 @@ export function FinanceBudgetStatusToggle({
   excluded,
   onToggle,
   disabled = false,
-  subtitle = "Markeer als uitzondering",
+  subtitle = "Deze keuze geldt alleen voor deze maand.",
   budgetBucketLabel = null,
 }: FinanceBudgetStatusToggleProps) {
   const isOutsideBudget = excluded;
   const statusLabel = isOutsideBudget
-    ? "Buiten budget opgenomen"
+    ? "Telt niet mee in budget"
     : budgetBucketLabel
-      ? `Binnen budget ${budgetBucketLabel} opgenomen`
-      : "Binnen budget opgenomen";
+      ? `Telt mee in budget ${budgetBucketLabel}`
+      : "Telt mee in budget";
 
   return (
     <View
