@@ -908,6 +908,18 @@ export default function BudgetScreen() {
   const [categoryDetailErrors, setCategoryDetailErrors] = React.useState<
     Record<string, string>
   >({});
+  const [expandedWeekSummaryCategories, setExpandedWeekSummaryCategories] =
+    React.useState<string[]>([]);
+  const [weekSummaryTransactionsByCategory, setWeekSummaryTransactionsByCategory] =
+    React.useState<Record<string, InlineWeekTransaction[]>>({});
+  const [weekSummaryLoadingCategories, setWeekSummaryLoadingCategories] =
+    React.useState<string[]>([]);
+  const [weekSummaryCategoryErrors, setWeekSummaryCategoryErrors] = React.useState<
+    Record<string, string>
+  >({});
+  const [monthSummaryModalOpen, setMonthSummaryModalOpen] = React.useState(false);
+  const [expandedMonthSummaryCategories, setExpandedMonthSummaryCategories] =
+    React.useState<string[]>([]);
   const [detailSection, setDetailSection] = React.useState<
     "fixed_costs" | "subscriptions" | null
   >(null);
@@ -1815,6 +1827,7 @@ export default function BudgetScreen() {
     return resolveWeekBudgetByMainCategory(selectedWeekDetail.week);
   }, [resolveWeekBudgetByMainCategory, selectedWeekDetail]);
   const isWeekSummaryModal = selectedWeekDetail != null && segment === "new";
+  const isMonthSummaryModal = monthSummaryModalOpen;
   const selectedWeekSummaryItems = React.useMemo((): BudgetWeekBreakdownRow[] => {
     if (!selectedWeekDetail) return [];
 
@@ -1831,6 +1844,47 @@ export default function BudgetScreen() {
       })
       .filter((item) => item.usedAmount > 0 || item.totalBudget > 0);
   }, [selectedWeekBudgetByMainCategory, selectedWeekDetail]);
+  const selectedMonthSummaryItems = React.useMemo((): BudgetWeekBreakdownRow[] => {
+    return categoryRows
+      .map((row) => ({
+        key: row.categoryKey,
+        label: row.label,
+        iconName: getVariableCategoryIconName(row.categoryKey),
+        usedAmount: Math.max(row.monthlyActual, 0),
+        totalBudget: Math.max(row.monthlyBudget, 0),
+      }))
+      .filter((item) => item.usedAmount > 0 || item.totalBudget > 0);
+  }, [categoryRows]);
+  const isSummaryBreakdownModalVisible = isWeekSummaryModal || isMonthSummaryModal;
+  const summaryBreakdownModalTitle =
+    isWeekSummaryModal && selectedWeekDetail
+      ? formatBudgetWeekLabel(selectedWeekDetail.week)
+      : "Deze maand";
+  const summaryBreakdownModalPeriodLabel =
+    isWeekSummaryModal && selectedWeekDetail
+      ? formatWeekRangeLabel(selectedWeekDetail.week)
+      : selectedMonth.label;
+  const summaryBreakdownModalTotalSpent = isWeekSummaryModal
+    ? Math.max(selectedWeekDetail?.week.actual || 0, 0)
+    : Math.max(monthBudgetSnapshot.spent || 0, 0);
+  const summaryBreakdownModalTotalBudget = isWeekSummaryModal
+    ? Math.max(selectedWeekDetail?.week.budget || 0, 0)
+    : Math.max(monthBudgetSnapshot.budget || 0, 0);
+  const summaryBreakdownModalItems = isWeekSummaryModal
+    ? selectedWeekSummaryItems
+    : selectedMonthSummaryItems;
+  const summaryBreakdownExpandedCategoryKeys = isWeekSummaryModal
+    ? expandedWeekSummaryCategories
+    : expandedMonthSummaryCategories;
+  const summaryBreakdownTransactionsByCategory = isWeekSummaryModal
+    ? weekSummaryTransactionsByCategory
+    : categoryDetailTransactionsByKey;
+  const summaryBreakdownLoadingCategoryKeys = isWeekSummaryModal
+    ? weekSummaryLoadingCategories
+    : categoryDetailLoadingKeys;
+  const summaryBreakdownCategoryErrors = isWeekSummaryModal
+    ? weekSummaryCategoryErrors
+    : categoryDetailErrors;
 
   const detailItems = React.useMemo(() => {
     if (!budgetPlan || !detailSection) return [];
@@ -2063,15 +2117,35 @@ export default function BudgetScreen() {
   ]);
 
   const openWeekDetail = React.useCallback((weekNumber: number) => {
+    setMonthSummaryModalOpen(false);
     setSelectedWeekNumber(weekNumber);
     setExpandedWeekMainCategories([]);
     setExpandedWeekSubcategories([]);
+    setExpandedWeekSummaryCategories([]);
+    setWeekSummaryTransactionsByCategory({});
+    setWeekSummaryLoadingCategories([]);
+    setWeekSummaryCategoryErrors({});
   }, []);
 
   const closeWeekDetail = React.useCallback(() => {
     setSelectedWeekNumber(null);
     setExpandedWeekMainCategories([]);
     setExpandedWeekSubcategories([]);
+    setExpandedWeekSummaryCategories([]);
+    setWeekSummaryTransactionsByCategory({});
+    setWeekSummaryLoadingCategories([]);
+    setWeekSummaryCategoryErrors({});
+  }, []);
+
+  const openMonthSummaryDetail = React.useCallback(() => {
+    setSelectedWeekNumber(null);
+    setMonthSummaryModalOpen(true);
+    setExpandedMonthSummaryCategories([]);
+  }, []);
+
+  const closeMonthSummaryDetail = React.useCallback(() => {
+    setMonthSummaryModalOpen(false);
+    setExpandedMonthSummaryCategories([]);
   }, []);
 
   const closeOutsideBudget = React.useCallback(() => {
@@ -2103,10 +2177,117 @@ export default function BudgetScreen() {
       if (!transactionId) return;
       setPendingTransactionDetailId(transactionId);
       closeWeekDetail();
+      closeMonthSummaryDetail();
       closeOutsideBudget();
       closeMonthCategoryDetail();
     },
-    [closeMonthCategoryDetail, closeOutsideBudget, closeWeekDetail],
+    [
+      closeMonthCategoryDetail,
+      closeMonthSummaryDetail,
+      closeOutsideBudget,
+      closeWeekDetail,
+    ],
+  );
+
+  const fetchWeekSummaryCategoryTransactions = React.useCallback(
+    async (categoryKey: string) => {
+      if (!selectedWeekDetail) return;
+
+      const categoryBucketKey = categoryKey as VariableBudgetCategoryKey;
+      const categoryIdsForBucket =
+        variableCategoryIdsByBucket.get(categoryBucketKey) || new Set<string>();
+
+      setWeekSummaryCategoryErrors((current) => {
+        const next = { ...current };
+        delete next[categoryKey];
+        return next;
+      });
+      setWeekSummaryLoadingCategories((current) => {
+        if (current.includes(categoryKey)) return current;
+        return [...current, categoryKey];
+      });
+
+      try {
+        const userId = await requireCurrentUserId();
+        const { data, error } = await supabase
+          .from("transactions")
+          .select(
+            "id,date,amount,details,counterparty,budget_excluded,category_id_auto,category_id_user",
+          )
+          .eq("user_id", userId)
+          .gte("date", selectedWeekDetail.week.startDate)
+          .lt("date", selectedWeekDetail.week.endDateExclusive)
+          .lt("amount", 0)
+          .order("date", { ascending: false })
+          .limit(300);
+
+        if (error) throw error;
+
+        const rows = ((data || []) as Record<string, unknown>[])
+          .map((row) => ({
+            id: String(row.id || ""),
+            date: String(row.date || ""),
+            title: extractTransactionTitle(String(row.details || "")),
+            counterparty: row.counterparty ? String(row.counterparty) : null,
+            amount: Number(row.amount || 0),
+            budgetExcluded: Boolean(row.budget_excluded),
+            category_id_auto: row.category_id_auto
+              ? String(row.category_id_auto)
+              : null,
+            category_id_user: row.category_id_user
+              ? String(row.category_id_user)
+              : null,
+          }))
+          .filter((row) => {
+            const effectiveCategoryId = row.category_id_user || row.category_id_auto;
+            if (effectiveCategoryId && categoryIdsForBucket.has(effectiveCategoryId)) {
+              return true;
+            }
+            return (
+              resolveVariableCategoryKeyForTransaction(row, categoryById) === categoryBucketKey
+            );
+          });
+
+        setWeekSummaryTransactionsByCategory((current) => ({
+          ...current,
+          [categoryKey]: rows,
+        }));
+      } catch (error) {
+        console.warn("[budget] weeksummary transacties laden mislukt", error);
+        setWeekSummaryCategoryErrors((current) => ({
+          ...current,
+          [categoryKey]: "Kon transacties niet laden.",
+        }));
+      } finally {
+        setWeekSummaryLoadingCategories((current) =>
+          current.filter((item) => item !== categoryKey),
+        );
+      }
+    },
+    [categoryById, selectedWeekDetail, variableCategoryIdsByBucket],
+  );
+
+  const toggleWeekSummaryCategory = React.useCallback(
+    (categoryKey: string) => {
+      const isExpanded = expandedWeekSummaryCategories.includes(categoryKey);
+      setExpandedWeekSummaryCategories((current) => {
+        if (current.includes(categoryKey)) {
+          return current.filter((key) => key !== categoryKey);
+        }
+        return [...current, categoryKey];
+      });
+
+      if (isExpanded) return;
+      if (weekSummaryTransactionsByCategory[categoryKey]) return;
+      if (weekSummaryLoadingCategories.includes(categoryKey)) return;
+      void fetchWeekSummaryCategoryTransactions(categoryKey);
+    },
+    [
+      expandedWeekSummaryCategories,
+      fetchWeekSummaryCategoryTransactions,
+      weekSummaryLoadingCategories,
+      weekSummaryTransactionsByCategory,
+    ],
   );
 
   const fetchInlineWeekSubcategoryTransactions = React.useCallback(
@@ -2534,6 +2715,31 @@ export default function BudgetScreen() {
     selectedMonthCategoryKey,
   ]);
 
+  const toggleMonthSummaryCategory = React.useCallback(
+    (categoryKey: string) => {
+      const typedCategoryKey = categoryKey as VariableBudgetCategoryKey;
+      const isExpanded = expandedMonthSummaryCategories.includes(categoryKey);
+
+      setExpandedMonthSummaryCategories((current) => {
+        if (current.includes(categoryKey)) {
+          return current.filter((key) => key !== categoryKey);
+        }
+        return [...current, categoryKey];
+      });
+
+      if (isExpanded) return;
+      if (categoryDetailTransactionsByKey[typedCategoryKey]) return;
+      if (categoryDetailLoadingKeys.includes(typedCategoryKey)) return;
+      void fetchCategoryDetailTransactions(typedCategoryKey);
+    },
+    [
+      categoryDetailLoadingKeys,
+      categoryDetailTransactionsByKey,
+      expandedMonthSummaryCategories,
+      fetchCategoryDetailTransactions,
+    ],
+  );
+
   React.useEffect(() => {
     setSelectedMonthCategoryKey(null);
     setCategoryDetailTransactionsByKey({});
@@ -2667,6 +2873,7 @@ export default function BudgetScreen() {
                     usedAmount={Math.max(monthBudgetSnapshot.spent || 0, 0)}
                     totalVariableAmount={Math.max(monthBudgetSnapshot.budget || 0, 0)}
                     tone={monthBudgetSnapshot.tone}
+                    onPress={openMonthSummaryDetail}
                   />
 
                   {budgetPlan ? (
@@ -3489,15 +3696,19 @@ export default function BudgetScreen() {
       </Modal>
 
       <BudgetWeekBreakdownModal
-        visible={isWeekSummaryModal}
-        onClose={closeWeekDetail}
-        title={selectedWeekDetail ? formatBudgetWeekLabel(selectedWeekDetail.week) : "Deze week"}
-        periodLabel={
-          selectedWeekDetail ? formatWeekRangeLabel(selectedWeekDetail.week) : "Weekoverzicht"
-        }
-        totalSpent={Math.max(selectedWeekDetail?.week.actual || 0, 0)}
-        totalBudget={Math.max(selectedWeekDetail?.week.budget || 0, 0)}
-        items={selectedWeekSummaryItems}
+        visible={isSummaryBreakdownModalVisible}
+        onClose={isWeekSummaryModal ? closeWeekDetail : closeMonthSummaryDetail}
+        title={summaryBreakdownModalTitle}
+        periodLabel={summaryBreakdownModalPeriodLabel}
+        totalSpent={summaryBreakdownModalTotalSpent}
+        totalBudget={summaryBreakdownModalTotalBudget}
+        items={summaryBreakdownModalItems}
+        expandedCategoryKeys={summaryBreakdownExpandedCategoryKeys}
+        onToggleCategory={isWeekSummaryModal ? toggleWeekSummaryCategory : toggleMonthSummaryCategory}
+        transactionsByCategory={summaryBreakdownTransactionsByCategory}
+        loadingCategoryKeys={summaryBreakdownLoadingCategoryKeys}
+        categoryErrors={summaryBreakdownCategoryErrors}
+        onOpenTransaction={openInlineTransactionDetail}
       />
 
       <Modal

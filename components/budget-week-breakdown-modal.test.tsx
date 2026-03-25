@@ -27,6 +27,10 @@ vi.mock("@/components/budget-category-progress-row", () => ({
   BudgetCategoryProgressRow: ({ label }: { label: string }) => <Text>{label}</Text>,
 }));
 
+vi.mock("@/components/ui/app-icon", () => ({
+  AppIcon: ({ name }: { name: string }) => <Text>{name}</Text>,
+}));
+
 function flattenText(value: unknown): string[] {
   if (value == null) return [];
   if (typeof value === "string" || typeof value === "number") {
@@ -42,8 +46,30 @@ function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function findPressableForText(
+  tree: renderer.ReactTestRenderer,
+  text: string,
+) {
+  const textNode = tree.root
+    .findAllByType(Text)
+    .find((node) => flattenText(node.props.children).join("").includes(text));
+  if (!textNode) return null;
+
+  let current: renderer.ReactTestInstance | null = textNode;
+  while (current) {
+    if (typeof current.props.onPress === "function") {
+      return current;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
 describe("BudgetWeekBreakdownModal", () => {
   it("toont weekonderverdeling per variabele categorie", () => {
+    const onToggleCategory = vi.fn();
+    const onOpenTransaction = vi.fn();
+
     let tree!: renderer.ReactTestRenderer;
     act(() => {
       tree = renderer.create(
@@ -70,6 +96,21 @@ describe("BudgetWeekBreakdownModal", () => {
               totalBudget: 45,
             },
           ]}
+          expandedCategoryKeys={["groceries"]}
+          onToggleCategory={onToggleCategory}
+          transactionsByCategory={{
+            groceries: [
+              {
+                id: "tx-1",
+                title: "Albert Heijn",
+                date: "2026-05-09",
+                amount: -24.5,
+              },
+            ],
+          }}
+          loadingCategoryKeys={[]}
+          categoryErrors={{}}
+          onOpenTransaction={onOpenTransaction}
         />,
       );
     });
@@ -83,13 +124,26 @@ describe("BudgetWeekBreakdownModal", () => {
 
     expect(text).toContain("Week 19");
     expect(text).toContain("8 mei - 14 mei");
-    expect(text).toContain("variabele uitgaven per categorie");
-    expect(text).toContain("Totaal gebruikt");
-    expect(text).toContain("Totaal budget");
+    expect(text).toContain("Variabele uitgaven per categorie");
+    expect(text).toContain("Budget");
+    expect(text).toContain("Gebruikt");
     expect(text).toContain("Resterend");
     expect(text).toContain("Boodschappen");
     expect(text).toContain("Vervoer");
     expect(text).toContain("Gebruikt");
     expect(text).toContain("Budget");
+    expect(text).toContain("Albert Heijn");
+
+    const categoryPressable = findPressableForText(tree, "Boodschappen");
+    act(() => {
+      categoryPressable?.props.onPress();
+    });
+    expect(onToggleCategory).toHaveBeenCalledWith("groceries");
+
+    const transactionPressable = findPressableForText(tree, "Albert Heijn");
+    act(() => {
+      transactionPressable?.props.onPress();
+    });
+    expect(onOpenTransaction).toHaveBeenCalledWith("tx-1");
   });
 });

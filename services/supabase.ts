@@ -218,7 +218,11 @@ export async function updatePassword(password: string) {
 }
 
 export async function logout() {
-  return supabase.auth.signOut();
+  try {
+    return await supabase.auth.signOut();
+  } finally {
+    await clearSupabaseSessionStorage();
+  }
 }
 
 export async function getSession(): Promise<Session | null> {
@@ -232,4 +236,8 @@ export function onAuthStateChange(
   callback: (event: AuthChangeEvent, session: Session | null) => void,
 ) {
   return supabase.auth.onAuthStateChange(callback);
+}
+
+export async function clearSupabaseSessionStorage() {
+  await secureSessionStorage.removeItem(SUPABASE_STORAGE_KEY);
 }

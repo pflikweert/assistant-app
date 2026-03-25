@@ -54,13 +54,14 @@ describe("BudgetMonthSummaryCard", () => {
 
     expect(text).toContain("Deze maand");
     expect(text).toContain("Op koers");
-    expect(text).toContain("Nog beschikbaar");
+    expect(text).toContain("resterend");
     expect(text).toContain(normalizeWhitespace(euroFormatter.format(540)));
     expect(text).toContain(
       normalizeWhitespace(
-        `${euroFormatter.format(590)} gebruikt van ${euroFormatter.format(1130)}`,
+        `${euroFormatter.format(590)} uitgegeven van ${euroFormatter.format(1130)} richtbedrag`,
       ),
     );
+    expect(text).toContain("Variabele ruimte");
     expect(text).not.toContain("Inkomend budget");
     expect(text).not.toContain("Vaste lasten");
     expect(text).not.toContain("Abonnementen");

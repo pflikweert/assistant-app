@@ -4,6 +4,7 @@ import { clearCategorizationClientState } from "@/services/categorization";
 import { getAuthRedirectPath } from "@/services/auth-routing";
 import {
   createDevSession,
+  clearSupabaseSessionStorage,
   getSession,
   isDevAuthBypassEnabled,
   loginWithEmail,
@@ -13,6 +14,10 @@ import {
   requestPasswordReset,
   updatePassword as updatePasswordForCurrentUser,
 } from "@/services/supabase";
+import {
+  isRefreshTokenAuthError,
+  isSessionIdleExpired,
+} from "@/services/auth-session";
 import { DarkTheme, ThemeProvider } from "@react-navigation/native";
 import type { Session, User } from "@supabase/supabase-js";
 import { useFonts } from "expo-font";
@@ -31,9 +36,10 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-import { LogBox } from "react-native";
+import { AppState, LogBox, type AppStateStatus } from "react-native";
 import "react-native-reanimated";
 // Session context
 type SessionContextType = {
@@ -58,35 +64,173 @@ export function useSession() {
 function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [appState, setAppState] = useState<AppStateStatus>(
+    AppState.currentState,
+  );
+  const sessionRef = useRef<Session | null>(null);
+  const lastActiveAtRef = useRef<number | null>(null);
+  const loggingOutRef = useRef(false);
 
   useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  const clearIdleMarker = useCallback(() => {
+    lastActiveAtRef.current = null;
+  }, []);
+
+  const handleForcedLogout = useCallback(
+    async (reason: "idle_timeout" | "refresh_token_error" | "signed_out") => {
+      if (loggingOutRef.current) return;
+      loggingOutRef.current = true;
+      try {
+        clearCategorizationClientState();
+        setSession(null);
+        clearIdleMarker();
+
+        if (reason === "idle_timeout") {
+          console.warn("[auth] session expired after inactivity");
+        }
+
+        if (!isDevAuthBypassEnabled) {
+          try {
+            await logout();
+          } catch (error) {
+            if (!isRefreshTokenAuthError(error)) {
+              console.warn("[auth] logout failed", error);
+            }
+          } finally {
+            await clearSupabaseSessionStorage();
+          }
+        }
+      } finally {
+        loggingOutRef.current = false;
+        setLoading(false);
+      }
+    },
+    [clearIdleMarker],
+  );
+
+  const loadSession = useCallback(async () => {
     if (isDevAuthBypassEnabled) {
       setSession(createDevSession());
       setLoading(false);
       return;
     }
 
-    getSession()
-      .then((sess) => {
-        setSession(sess);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-    const { data: listener } = onAuthStateChange((_event, sess) => {
+    try {
+      const sess = await getSession();
       setSession(sess);
+      if (sess) {
+        lastActiveAtRef.current = Date.now();
+      } else {
+        clearIdleMarker();
+      }
+    } catch (error) {
+      if (isRefreshTokenAuthError(error)) {
+        await handleForcedLogout("refresh_token_error");
+        return;
+      }
+
+      console.warn("[auth] session bootstrap failed", error);
+      setSession(null);
+      clearIdleMarker();
+    } finally {
+      setLoading(false);
+    }
+  }, [clearIdleMarker, handleForcedLogout]);
+
+  useEffect(() => {
+    void loadSession();
+
+    if (isDevAuthBypassEnabled) {
+      return;
+    }
+
+    const { data: listener } = onAuthStateChange((event, sess) => {
+      if (event === "SIGNED_OUT") {
+        clearCategorizationClientState();
+        void clearSupabaseSessionStorage();
+        setSession(null);
+        clearIdleMarker();
+        setLoading(false);
+        return;
+      }
+
+      setSession(sess);
+      if (sess) {
+        lastActiveAtRef.current = Date.now();
+      } else {
+        clearIdleMarker();
+      }
       setLoading(false);
     });
+
     return () => {
       listener?.subscription?.unsubscribe?.();
     };
+  }, [clearIdleMarker, loadSession]);
+
+  useEffect(() => {
+    if (isDevAuthBypassEnabled) return;
+
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      setAppState(nextState);
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
+
+  useEffect(() => {
+    if (isDevAuthBypassEnabled || loading) return;
+    if (appState !== "active") return;
+
+    const currentSession = sessionRef.current;
+    if (!currentSession) return;
+
+    const lastActiveAt = lastActiveAtRef.current;
+    if (lastActiveAt && isSessionIdleExpired(lastActiveAt)) {
+      void handleForcedLogout("idle_timeout");
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const freshSession = await getSession();
+        if (cancelled) return;
+
+        setSession(freshSession);
+        if (freshSession) {
+          lastActiveAtRef.current = Date.now();
+        } else {
+          clearCategorizationClientState();
+          clearIdleMarker();
+          await clearSupabaseSessionStorage();
+        }
+      } catch (error) {
+        if (cancelled) return;
+
+        if (isRefreshTokenAuthError(error)) {
+          await handleForcedLogout("refresh_token_error");
+          return;
+        }
+
+        console.warn("[auth] session refresh failed", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appState, clearIdleMarker, handleForcedLogout, loading]);
 
   const user = session?.user ?? null;
   const handleLogout = useCallback(async () => {
-    clearCategorizationClientState();
-    await logout();
-  }, []);
+    await handleForcedLogout("signed_out");
+  }, [handleForcedLogout]);
 
   const value = useMemo(
     () => ({
