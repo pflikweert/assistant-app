@@ -1,5 +1,6 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { DashboardBalanceSummary } from "@/components/dashboard/dashboard-balance-summary";
+import { DashboardAssistantCallout } from "@/components/dashboard/dashboard-assistant-callout";
 import {
   buildDashboardBudgetOverviewModel,
   DashboardBudgetOverviewCard,
@@ -148,6 +149,43 @@ export default function DashboardScreen() {
         year: "numeric",
       }).format(new Date()),
     [],
+  );
+  const dashboardHelpAssistantScreenContext = React.useMemo(
+    () => ({
+      kind: "budget" as const,
+      monthLabel: dashboardPeriodLabel,
+      monthBudgetState: dashboardBudgetOverview.monthSnapshot.state,
+      monthStatusLabel: dashboardBudgetOverview.monthSnapshot.label,
+      monthRiskTone:
+        dashboardBudgetOverview.monthSnapshot.tone === "neutral"
+          ? null
+          : dashboardBudgetOverview.monthSnapshot.tone,
+      remainingVariableBudget: dashboardBudgetOverview.monthSnapshot.remaining,
+      spentVariableBudget: dashboardBudgetOverview.monthSnapshot.spent,
+      totalVariableBudget: dashboardBudgetOverview.monthSnapshot.budget,
+      weekStatusLabel: dashboardBudgetOverview.weekSnapshot.label,
+      weekRiskTone: dashboardBudgetOverview.weekSnapshot.tone,
+      weekRemainingBudget: dashboardBudgetOverview.weekSnapshot.remaining,
+      weekTempoDelta: dashboardBudgetOverview.weekSnapshot.tempoDelta,
+      expectedFixedCosts: budgetPlan?.flowSummary.fixedCostsBudget ?? null,
+      expectedSubscriptions: budgetPlan?.flowSummary.subscriptionsBudget ?? null,
+      hasForecastData: false,
+    }),
+    [
+      budgetPlan?.flowSummary.fixedCostsBudget,
+      budgetPlan?.flowSummary.subscriptionsBudget,
+      dashboardBudgetOverview.monthSnapshot.budget,
+      dashboardBudgetOverview.monthSnapshot.label,
+      dashboardBudgetOverview.monthSnapshot.remaining,
+      dashboardBudgetOverview.monthSnapshot.spent,
+      dashboardBudgetOverview.monthSnapshot.state,
+      dashboardBudgetOverview.monthSnapshot.tone,
+      dashboardBudgetOverview.weekSnapshot.label,
+      dashboardBudgetOverview.weekSnapshot.remaining,
+      dashboardBudgetOverview.weekSnapshot.tone,
+      dashboardBudgetOverview.weekSnapshot.tempoDelta,
+      dashboardPeriodLabel,
+    ],
   );
 
   const loadCategories = React.useCallback(async () => {
@@ -354,15 +392,22 @@ export default function DashboardScreen() {
                 hasTransactions={hasTransactions}
               />
 
+              <DashboardAssistantCallout
+                selectedPeriod={{
+                  label: dashboardPeriodLabel,
+                }}
+                screenContext={dashboardHelpAssistantScreenContext}
+              />
+
               <DashboardBudgetOverviewCard
                 model={dashboardBudgetOverview}
                 onPress={() => router.push("/budget")}
               />
 
               <View style={styles.actionsRow}>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.actionButtonPrimary]}
-                  onPress={() => router.push("/transactions")}
+            <TouchableOpacity
+              style={[styles.actionButton, styles.actionButtonPrimary]}
+              onPress={() => router.push("/transactions")}
                 >
                   <Text style={styles.actionButtonPrimaryText}>Transacties bekijken</Text>
                 </TouchableOpacity>
@@ -453,7 +498,7 @@ const styles = StyleSheet.create({
   },
   mainStack: {
     paddingTop: 24,
-    gap: 18,
+    gap: 32,
   },
   sectionHeader: {
     flexDirection: "row",

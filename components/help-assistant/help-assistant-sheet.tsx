@@ -393,7 +393,7 @@ export function HelpAssistantSheet({
             >
               <BudioAssistantEmptyState
                 visible={thread.messages.length === 0}
-                actions={quickActions.slice(0, 4)}
+                actions={quickActions}
                 onPressAction={handleQuickActionPress}
                 onExitComplete={handleEmptyStateExitComplete}
                 assistantLabel="Hulpassistent"

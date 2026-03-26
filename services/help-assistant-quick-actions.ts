@@ -2,7 +2,6 @@ import type { HelpAssistantContext } from "@/services/help-assistant-context";
 
 export type HelpAssistantQuickActionId =
   | "explain_screen"
-  | "why_incorrect"
   | "report_bug"
   | "share_idea"
   | "can_i_still_spend"
@@ -55,31 +54,22 @@ function buildBaseQuickActions(
       seedText: `Leg uit wat ik op ${context.screenTitle} zie en waar ik als eerste op moet letten.`,
     },
     {
-      id: "why_incorrect",
-      label: "Waarom klopt dit niet?",
-      description: "Start met controle van context en verwachtingen.",
-      behavior: "start_local_thread",
-      intent: "discrepancy_check",
-      target: "general_help",
-      seedText: `Waarom lijkt dit op ${context.screenTitle} niet te kloppen?`,
-    },
-    {
       id: "report_bug",
-      label: "Ik zie een fout",
+      label: "Probleem melden",
       description: "Start een gesprek over een probleem of bug.",
       behavior: "start_local_thread",
       intent: "bug_report",
       target: "issue_draft",
-      seedText: `Ik zie een fout op ${context.screenTitle}.`,
+      seedText: `Ik wil een probleem melden op ${context.screenTitle}.`,
     },
     {
       id: "share_idea",
-      label: "Ik heb een idee",
+      label: "Idee melden",
       description: "Start een gesprek over een idee of verbetering.",
       behavior: "start_local_thread",
       intent: "feature_idea",
       target: "issue_draft",
-      seedText: `Ik heb een idee voor ${context.screenTitle}.`,
+      seedText: `Ik wil een idee melden voor ${context.screenTitle}.`,
     },
     {
       id: "can_i_still_spend",
@@ -106,17 +96,25 @@ export function listHelpAssistantQuickActions(
   context: HelpAssistantContext,
 ): HelpAssistantQuickAction[] {
   const actions = buildBaseQuickActions(context);
+  const issueActions = [actions[1], actions[2]];
+  const generalActions = [actions[0]];
+  const spendingActions = [actions[3], actions[4]];
 
   if (context.screenId === "budget" || context.screenId === "insights") {
     return [
-      actions[4],
-      actions[5],
-      actions[0],
-      actions[1],
-      actions[2],
-      actions[3],
+      spendingActions[0],
+      spendingActions[1],
+      issueActions[0],
+      issueActions[1],
+      generalActions[0],
     ];
   }
 
-  return actions;
+  return [
+    issueActions[0],
+    issueActions[1],
+    generalActions[0],
+    spendingActions[0],
+    spendingActions[1],
+  ];
 }

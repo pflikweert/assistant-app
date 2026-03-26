@@ -31,8 +31,7 @@ Elke actie heeft:
 
 Belangrijk voor de huidige Help Assistant-flow:
 
-- `Ik heb een idee` en `Ik zie een fout` starten een gesprek, geen directe
-  submit
+- `Probleem melden` en `Idee melden` starten een gesprek, geen directe submit
 - de AI-router bepaalt daarna of het gesprek echt in issue-intake, spending
   advice of algemene hulp landt
 - als een issue/idee wordt herkend, toont de assistent een vaste reviewkaart
@@ -48,7 +47,8 @@ Belangrijk voor de huidige Help Assistant-flow:
 - prioritering per schermtype te bepalen
 
 Voor `budget` en `insights` staan spending-vragen bovenaan; op andere
-schermen blijft de algemene supportvolgorde leidend.
+schermen staan de meldchips direct bovenaan en blijft de algemene
+supportvolgorde daaronder leidend.
 
 De issue-actions blijven bewust lager-risico dan spending quick actions:
 

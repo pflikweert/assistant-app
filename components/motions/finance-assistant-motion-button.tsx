@@ -1,17 +1,9 @@
-import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
 import React from "react";
 import { StyleSheet, TouchableOpacity, type StyleProp, type ViewStyle } from "react-native";
-import Animated, {
-  Easing,
-  ReduceMotion,
-  cancelAnimation,
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from "react-native-reanimated";
+import Animated from "react-native-reanimated";
+import { FinanceAssistantMotionGlyph } from "@/components/motions/finance-assistant-motion-glyph";
+import { useFinanceAssistantMotion } from "@/components/motions/use-finance-assistant-motion";
 
 type FinanceAssistantMotionButtonProps = {
   onPress: () => void;
@@ -28,64 +20,7 @@ export function FinanceAssistantMotionButton({
   disabled = false,
   style,
 }: FinanceAssistantMotionButtonProps) {
-  const phase = useSharedValue(0);
-
-  React.useEffect(() => {
-    if (disabled) {
-      phase.value = 0;
-      return;
-    }
-
-    phase.value = withRepeat(
-      withTiming(1, {
-        duration: 7600,
-        easing: Easing.inOut(Easing.cubic),
-        reduceMotion: ReduceMotion.System,
-      }),
-      -1,
-      false,
-    );
-
-    return () => {
-      cancelAnimation(phase);
-    };
-  }, [disabled, phase]);
-
-  const motionStyle = useAnimatedStyle(() => {
-    const p = phase.value;
-    const lift =
-      p < 0.12
-        ? 0
-        : p < 0.22
-          ? interpolate(p, [0.12, 0.22], [0, -2.2])
-          : p < 0.32
-            ? interpolate(p, [0.22, 0.32], [-2.2, 0])
-            : 0;
-    const tilt =
-      p < 0.12
-        ? 0
-        : p < 0.22
-          ? interpolate(p, [0.12, 0.22], [0, -4])
-          : p < 0.32
-            ? interpolate(p, [0.22, 0.32], [-4, 0])
-            : 0;
-    const scale =
-      p < 0.12
-        ? 1
-        : p < 0.22
-          ? interpolate(p, [0.12, 0.22], [1, 1.03])
-          : p < 0.32
-            ? interpolate(p, [0.22, 0.32], [1.03, 1])
-            : 1;
-
-    return {
-      transform: [
-        { translateY: lift },
-        { rotateZ: `${tilt}deg` },
-        { scale },
-      ],
-    };
-  });
+  const motionStyle = useFinanceAssistantMotion({ disabled });
 
   return (
     <AnimatedTouchableOpacity
@@ -98,14 +33,13 @@ export function FinanceAssistantMotionButton({
         styles.button,
         disabled ? styles.buttonDisabled : null,
         style,
-        motionStyle,
       ]}
     >
-      <AppIcon
-        name="smart-toy"
+      <FinanceAssistantMotionGlyph
         size={18}
         color="#5b4a00"
-        variant="outlined"
+        disabled={disabled}
+        style={motionStyle}
       />
     </AnimatedTouchableOpacity>
   );
