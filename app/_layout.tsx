@@ -44,7 +44,9 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, LogBox, type AppStateStatus } from "react-native";
+import { AppState, LogBox, Platform, type AppStateStatus } from "react-native";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import "react-native-reanimated";
 
 function patchReactDevToolsVersion() {
@@ -454,6 +456,17 @@ function RecoveryRedirector({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function VercelWebMetrics() {
+  if (Platform.OS !== "web") return null;
+
+  return (
+    <>
+      <Analytics mode="production" />
+      <SpeedInsights />
+    </>
+  );
+}
+
 export default function RootLayout() {
   const [iconFontsLoaded, iconFontsError] = useFonts(MATERIAL_ICON_FONT_MAP);
 
@@ -471,6 +484,7 @@ export default function RootLayout() {
         <RecoveryRedirector>
           <RootNavigator />
           <StatusBar style="light" />
+          <VercelWebMetrics />
         </RecoveryRedirector>
       </SessionProvider>
     </ThemeProvider>

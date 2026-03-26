@@ -27,6 +27,8 @@
     "@react-navigation/native": "^7.1.8",
     "@shopify/react-native-skia": "^2.2.12",
     "@supabase/supabase-js": "^2.99.1",
+    "@vercel/analytics": "1.5.0",
+    "@vercel/speed-insights": "1.2.0",
     "dotenv": "^17.3.1",
     "expo": "~54.0.33",
     "expo-constants": "~18.0.13",
