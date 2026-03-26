@@ -1,19 +1,16 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
+import { DashboardBalanceSummary } from "@/components/dashboard/dashboard-balance-summary";
+import {
+  buildDashboardBudgetOverviewModel,
+  DashboardBudgetOverviewCard,
+} from "@/components/dashboard/dashboard-overview-card";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceHeaderActions } from "@/components/ui/finance-header-actions";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { AppIcon } from "@/components/ui/app-icon";
-import { SquareAccentBlock } from "@/components/ui/square-accent-block";
-import { FinanceBudgetProgressBar } from "@/components/ui/finance-budget-progress-bar";
 import { SplashLoader } from "@/components/motions/SplashLoader";
 import { FinColors, FinSurfaces } from "@/constants/theme";
-import {
-  getMonthVariableBudgetUsageText,
-  getMonthVariableBudgetSnapshot,
-  getWeekBudgetSnapshot,
-  getWeekTempoMessage,
-} from "@/services/budget-risk";
 import { loadBudgetPlanForSurface } from "@/services/budget-plan-surface";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
@@ -36,13 +33,11 @@ import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  useWindowDimensions,
 } from "react-native";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
@@ -72,34 +67,6 @@ function formatShortDateLabel(value: string) {
     day: "2-digit",
     month: "2-digit",
   });
-}
-
-function formatWeekRangeLabel(startDate: string, endDateExclusive: string) {
-  const endDate = new Date(`${endDateExclusive}T00:00:00.000Z`);
-  if (Number.isNaN(endDate.getTime())) {
-    return `${formatShortDateLabel(startDate)} - ${formatShortDateLabel(endDateExclusive)}`;
-  }
-
-  endDate.setUTCDate(endDate.getUTCDate() - 1);
-  return `${formatShortDateLabel(startDate)} - ${formatShortDateLabel(endDate.toISOString().slice(0, 10))}`;
-}
-
-function formatRemainingDaysInWeekLabel(
-  endDateExclusive: string,
-  now = new Date(),
-) {
-  const endDate = new Date(`${endDateExclusive}T00:00:00.000Z`);
-  if (Number.isNaN(endDate.getTime())) return null;
-
-  const utcToday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
-  const dayDiff = Math.ceil(
-    (endDate.getTime() - utcToday.getTime()) / (24 * 60 * 60 * 1000),
-  );
-  const remainingDays = Math.max(0, Math.min(7, dayDiff));
-  const dayLabel = remainingDays === 1 ? "dag" : "dagen";
-  return `${remainingDays} ${dayLabel} resterend`;
 }
 
 function isMissingRelationError(error: unknown) {
@@ -144,8 +111,6 @@ function TxRow({
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const isWideLayout = width >= 980;
   const [transactions, setTransactions] = React.useState<DashboardTx[]>([]);
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
   const [budgetPlan, setBudgetPlan] =
@@ -163,6 +128,10 @@ export default function DashboardScreen() {
   );
 
   const hasTransactions = transactions.length > 0;
+  const dashboardBudgetOverview = React.useMemo(
+    () => buildDashboardBudgetOverviewModel(budgetPlan),
+    [budgetPlan],
+  );
 
   const recentTransactions = React.useMemo<DashboardTxRow[]>(
     () =>
@@ -172,46 +141,6 @@ export default function DashboardScreen() {
       })),
     [transactions, categoryMap],
   );
-
-  const remainingBudget = React.useMemo(() => {
-    return getMonthVariableBudgetSnapshot(budgetPlan).remaining;
-  }, [budgetPlan]);
-  const monthBudgetSnapshot = React.useMemo(
-    () => getMonthVariableBudgetSnapshot(budgetPlan),
-    [budgetPlan],
-  );
-  const monthSpentInBudget = monthBudgetSnapshot.spent;
-  const monthBudgetTotal = monthBudgetSnapshot.budget;
-  const monthBudgetFill =
-    monthBudgetTotal != null && monthBudgetTotal > 0 && monthSpentInBudget != null
-      ? Math.max(
-          0,
-          Math.min(100, Math.round((monthSpentInBudget / monthBudgetTotal) * 100)),
-        )
-      : 0;
-
-  const currentWeekPlan = React.useMemo(() => {
-    if (!budgetPlan) return null;
-    return (
-      budgetPlan.weeklyVariablePlan.find((week) => week.isCurrentWeek) || null
-    );
-  }, [budgetPlan]);
-
-  const currentWeekRemainingDays = React.useMemo(() => {
-    if (!currentWeekPlan) return null;
-    return formatRemainingDaysInWeekLabel(currentWeekPlan.endDateExclusive);
-  }, [currentWeekPlan]);
-
-  const currentWeekProgress = React.useMemo(() => {
-    return getWeekBudgetSnapshot(currentWeekPlan).progress;
-  }, [currentWeekPlan]);
-  const currentWeekSnapshot = React.useMemo(
-    () => getWeekBudgetSnapshot(currentWeekPlan),
-    [currentWeekPlan],
-  );
-  const currentWeekRiskTone = currentWeekSnapshot.tone;
-  const monthRiskTone = monthBudgetSnapshot.tone;
-  const monthBudgetStatusLabel = monthBudgetSnapshot.label.toUpperCase();
   const dashboardPeriodLabel = React.useMemo(
     () =>
       new Intl.DateTimeFormat("nl-NL", {
@@ -382,16 +311,19 @@ export default function DashboardScreen() {
             screenContext={{
               kind: "budget",
               monthLabel: dashboardPeriodLabel,
-              monthBudgetState: monthBudgetSnapshot.state,
-              monthStatusLabel: monthBudgetSnapshot.label,
-              monthRiskTone,
-              remainingVariableBudget: monthBudgetSnapshot.remaining,
-              spentVariableBudget: monthBudgetSnapshot.spent,
-              totalVariableBudget: monthBudgetSnapshot.budget,
-              weekStatusLabel: currentWeekSnapshot.label,
-              weekRiskTone: currentWeekSnapshot.tone,
-              weekRemainingBudget: currentWeekSnapshot.remaining,
-              weekTempoDelta: currentWeekSnapshot.tempoDelta,
+              monthBudgetState: dashboardBudgetOverview.monthSnapshot.state,
+              monthStatusLabel: dashboardBudgetOverview.monthSnapshot.label,
+              monthRiskTone:
+                dashboardBudgetOverview.monthSnapshot.tone === "neutral"
+                  ? null
+                  : dashboardBudgetOverview.monthSnapshot.tone,
+              remainingVariableBudget: dashboardBudgetOverview.monthSnapshot.remaining,
+              spentVariableBudget: dashboardBudgetOverview.monthSnapshot.spent,
+              totalVariableBudget: dashboardBudgetOverview.monthSnapshot.budget,
+              weekStatusLabel: dashboardBudgetOverview.weekSnapshot.label,
+              weekRiskTone: dashboardBudgetOverview.weekSnapshot.tone,
+              weekRemainingBudget: dashboardBudgetOverview.weekSnapshot.remaining,
+              weekTempoDelta: dashboardBudgetOverview.weekSnapshot.tempoDelta,
               expectedFixedCosts: budgetPlan?.flowSummary.fixedCostsBudget ?? null,
               expectedSubscriptions: budgetPlan?.flowSummary.subscriptionsBudget ?? null,
               hasForecastData: false,
@@ -408,174 +340,24 @@ export default function DashboardScreen() {
           contentContainerStyle={styles.scroll}
         >
           <FinanceHeroShell
-            eyebrow="Huidig saldo"
-            title={hasTransactions && balance != null ? fmt.format(balance) : "Nog geen data"}
-            subtitle={
-              hasTransactions
-                ? "Actuele momentopname van je hoofdrekening."
-                : "Koppel of importeer transacties om direct overzicht en budgetsturing te krijgen."
-            }
-            titleStyle={[
-              styles.heroAmount,
-              !hasTransactions && styles.emptyAmount,
-            ]}
+            eyebrow="Dashboard"
+            title="Overzicht"
+            subtitle="Je actuele geldstand staat direct onder de hero, daarna volgen maand en week."
+            titleStyle={styles.heroTitle}
             subtitleStyle={styles.heroSupport}
-          >
-            <SquareAccentBlock
-              style={styles.heroBudgetCard}
-              onPress={() => router.push("/budget")}
-            >
-              <View style={styles.heroBudgetHeader}>
-                <Text style={styles.heroBudgetEyebrow}>Huidig maandbudget</Text>
-                <View style={styles.heroBudgetHeaderMeta}>
-                  <View
-                    style={[
-                      styles.heroMonthStatusPill,
-                      monthRiskTone === "good" && styles.heroMonthStatusPillGood,
-                      monthRiskTone === "watch" && styles.heroMonthStatusPillWatch,
-                      monthRiskTone === "critical" && styles.heroMonthStatusPillCritical,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.heroMonthStatusDot,
-                        monthRiskTone === "good" && styles.heroMonthStatusDotGood,
-                        monthRiskTone === "watch" && styles.heroMonthStatusDotWatch,
-                        monthRiskTone === "critical" && styles.heroMonthStatusDotCritical,
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.heroMonthStatusText,
-                        monthRiskTone === "good" && styles.heroMonthStatusTextGood,
-                        monthRiskTone === "watch" && styles.heroMonthStatusTextWatch,
-                        monthRiskTone === "critical" && styles.heroMonthStatusTextCritical,
-                      ]}
-                    >
-                      {monthBudgetStatusLabel}
-                    </Text>
-                  </View>
-                  <View style={styles.inlineCta}>
-                    <Text style={styles.inlineCtaText}>Bekijk budget</Text>
-                    <AppIcon
-                      name="chevron-right"
-                      size={16}
-                      color={FinColors.warningText}
-                    />
-                  </View>
-                </View>
-              </View>
-              <Text style={styles.heroBudgetValue}>
-                {remainingBudget == null
-                  ? "Nog geen data"
-                  : fmt.format(Math.max(remainingBudget, 0))}
-              </Text>
-              <Text style={styles.heroBudgetSupport}>
-                {budgetPlan
-                  ? getMonthVariableBudgetUsageText(monthBudgetSnapshot, fmt)
-                  : budgetSchemaMissing
-                    ? "Budgetschema is nog niet beschikbaar in deze omgeving."
-                    : "Budgetgegevens laden..."}
-              </Text>
-              {budgetPlan ? (
-                <FinanceBudgetProgressBar
-                  progress={monthBudgetFill}
-                  tone={monthRiskTone}
-                />
-              ) : null}
-            </SquareAccentBlock>
-          </FinanceHeroShell>
+          />
 
           <View style={styles.contentMax}>
             <View style={styles.mainStack}>
-              <View style={[styles.gridRow, isWideLayout && styles.gridRowWide]}>
-                <Pressable
-                  style={[
-                    styles.surfaceCard,
-                    styles.weekCard,
-                    isWideLayout && styles.weekCardWide,
-                  ]}
-                  onPress={() => router.push("/budget")}
-                >
-                  <View style={styles.cardHeaderRow}>
-                    <View style={styles.cardHeaderText}>
-                      <Text style={styles.sectionTitle}>Deze week</Text>
-                      <Text style={styles.sectionSubtle}>
-                        {currentWeekPlan
-                          ? formatWeekRangeLabel(
-                              currentWeekPlan.startDate,
-                              currentWeekPlan.endDateExclusive,
-                            )
-                          : "Weekbudget volgt zodra je budget actief is"}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.weekStatusPill,
-                        currentWeekRiskTone === "good" && styles.weekStatusPillGood,
-                        currentWeekRiskTone === "watch" && styles.weekStatusPillWatch,
-                        currentWeekRiskTone === "critical" && styles.weekStatusPillCritical,
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.weekStatusDot,
-                          currentWeekRiskTone === "good" && styles.weekStatusDotGood,
-                          currentWeekRiskTone === "watch" && styles.weekStatusDotWatch,
-                          currentWeekRiskTone === "critical" && styles.weekStatusDotCritical,
-                        ]}
-                      />
-                      <Text
-                        style={[
-                          styles.weekStatusText,
-                          currentWeekRiskTone === "good" && styles.weekStatusTextGood,
-                          currentWeekRiskTone === "watch" && styles.weekStatusTextWatch,
-                          currentWeekRiskTone === "critical" && styles.weekStatusTextCritical,
-                        ]}
-                      >
-                        {currentWeekSnapshot.label.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.weekSummaryRow}>
-                    <View style={styles.weekSummaryMain}>
-                      <View style={styles.weekAmountRow}>
-                        <Text style={styles.weekSummaryValue}>
-                          {currentWeekPlan ? fmt.format(currentWeekPlan.actual) : "Nog geen data"}
-                        </Text>
-                        {currentWeekPlan ? (
-                          <Text style={styles.weekSummaryOfBudget}>
-                            van {fmt.format(currentWeekPlan.budget)}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-                    <View style={styles.weekMetaWrap}>
-                      <Text style={styles.weekSummaryMeta}>
-                        {currentWeekRemainingDays || "Deze week"}
-                      </Text>
-                    </View>
-                  </View>
-                  <FinanceBudgetProgressBar
-                    progress={currentWeekProgress * 100}
-                    tone={currentWeekRiskTone}
-                  />
-                  <View style={styles.weekHintCard}>
-                    <View style={styles.weekHintIconWrap}>
-                      <AppIcon
-                        name="eco"
-                        size={14}
-                        color={FinColors.warningText}
-                        variant="outlined"
-                      />
-                    </View>
-                    <Text style={styles.weekTrendText}>
-                      {getWeekTempoMessage(currentWeekPlan)}
-                    </Text>
-                  </View>
-                </Pressable>
+              <DashboardBalanceSummary
+                balance={balance}
+                hasTransactions={hasTransactions}
+              />
 
-              </View>
+              <DashboardBudgetOverviewCard
+                model={dashboardBudgetOverview}
+                onPress={() => router.push("/budget")}
+              />
 
               <View style={styles.actionsRow}>
                 <TouchableOpacity
@@ -650,106 +432,17 @@ const styles = StyleSheet.create({
   scroll: {
     paddingBottom: 128,
   },
-  heroAmount: {
-    fontSize: 52,
-    lineHeight: 54,
+  heroTitle: {
+    fontSize: 30,
+    lineHeight: 34,
     fontWeight: "900",
     color: FinColors.textPrimary,
-    letterSpacing: -1.8,
-  },
-  emptyAmount: {
-    fontSize: 20,
-    lineHeight: 26,
-    color: FinColors.textMuted,
-    letterSpacing: 0,
+    letterSpacing: -0.8,
   },
   heroSupport: {
     maxWidth: 720,
     fontSize: 18,
     lineHeight: 26,
-    color: FinColors.textSecondary,
-  },
-  heroBudgetCard: {
-    marginTop: 24,
-  },
-  heroBudgetHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-  },
-  heroBudgetHeaderMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  heroMonthStatusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: FinColors.bgElevated,
-  },
-  heroMonthStatusPillGood: {
-    backgroundColor: "#e7f3a8",
-  },
-  heroMonthStatusPillWatch: {
-    backgroundColor: FinColors.warningBg,
-  },
-  heroMonthStatusPillCritical: {
-    backgroundColor: FinColors.redBg,
-  },
-  heroMonthStatusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: FinColors.textMuted,
-  },
-  heroMonthStatusDotGood: {
-    backgroundColor: "#10b981",
-  },
-  heroMonthStatusDotWatch: {
-    backgroundColor: FinColors.warningText,
-  },
-  heroMonthStatusDotCritical: {
-    backgroundColor: FinColors.red,
-  },
-  heroMonthStatusText: {
-    fontSize: 12,
-    lineHeight: 14,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    color: FinColors.textSecondary,
-  },
-  heroMonthStatusTextGood: {
-    color: "#5b6a1b",
-  },
-  heroMonthStatusTextWatch: {
-    color: FinColors.warningText,
-  },
-  heroMonthStatusTextCritical: {
-    color: FinColors.red,
-  },
-  heroBudgetEyebrow: {
-    fontSize: 10,
-    lineHeight: 14,
-    color: FinColors.textMuted,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1.8,
-  },
-  heroBudgetValue: {
-    fontSize: 34,
-    lineHeight: 38,
-    fontWeight: "900",
-    color: FinColors.textPrimary,
-    letterSpacing: -1,
-  },
-  heroBudgetSupport: {
-    fontSize: 13,
-    lineHeight: 20,
     color: FinColors.textSecondary,
   },
   contentMax: {
@@ -761,73 +454,6 @@ const styles = StyleSheet.create({
   mainStack: {
     paddingTop: 24,
     gap: 18,
-  },
-  gridRow: {
-    gap: 18,
-  },
-  gridRowWide: {
-    flexDirection: "row",
-    alignItems: "stretch",
-  },
-  surfaceCard: {
-    ...FinSurfaces.topLevelCard,
-    borderRadius: 30,
-    padding: 22,
-  },
-  weekCard: {
-    ...FinSurfaces.topLevelCard,
-    gap: 14,
-    borderRadius: 28,
-  },
-  weekCardWide: {
-    flex: 1.25,
-  },
-  monthStatusCard: {
-    gap: 14,
-  },
-  cardHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  cardHeaderText: {
-    flex: 1,
-  },
-  inlineCta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: FinColors.warningBg,
-  },
-  inlineCtaText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: FinColors.warningText,
-  },
-  subStatsColumn: {
-    gap: 10,
-  },
-  subStatCard: {
-    backgroundColor: FinColors.bgElevated,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-  },
-  subStatLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: FinColors.textSecondary,
-  },
-  subStatValue: {
-    marginTop: 8,
-    fontSize: 16,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -880,121 +506,6 @@ const styles = StyleSheet.create({
     color: FinColors.warningText,
   },
   statusChipTextCritical: {
-    color: FinColors.red,
-  },
-  weekSummaryRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  weekSummaryMain: {
-    flex: 1,
-    minWidth: 0,
-  },
-  weekAmountRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 6,
-    flexWrap: "wrap",
-  },
-  weekSummaryValue: {
-    fontSize: 42,
-    lineHeight: 44,
-    fontWeight: "900",
-    color: FinColors.textPrimary,
-    letterSpacing: -0.8,
-  },
-  weekSummaryOfBudget: {
-    fontSize: 30 / 2,
-    lineHeight: 24,
-    fontWeight: "500",
-    color: FinColors.textSecondary,
-    marginBottom: 3,
-  },
-  weekMetaWrap: {
-    minWidth: 84,
-    alignItems: "flex-end",
-  },
-  weekSummaryMeta: {
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1.1,
-    color: FinColors.warningText,
-    textAlign: "right",
-  },
-  weekTrendText: {
-    flex: 1,
-    fontSize: 21 / 2,
-    lineHeight: 18,
-    color: FinColors.textSecondary,
-    fontWeight: "600",
-  },
-  weekHintCard: {
-    marginTop: 4,
-    borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  weekHintIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: FinColors.bgCard,
-  },
-  weekStatusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: FinColors.bgElevated,
-  },
-  weekStatusPillGood: {
-    backgroundColor: "#e7f3a8",
-  },
-  weekStatusPillWatch: {
-    backgroundColor: FinColors.warningBg,
-  },
-  weekStatusPillCritical: {
-    backgroundColor: FinColors.redBg,
-  },
-  weekStatusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: FinColors.textMuted,
-  },
-  weekStatusDotGood: {
-    backgroundColor: "#10b981",
-  },
-  weekStatusDotWatch: {
-    backgroundColor: FinColors.warningText,
-  },
-  weekStatusDotCritical: {
-    backgroundColor: FinColors.red,
-  },
-  weekStatusText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.1,
-    color: FinColors.textSecondary,
-  },
-  weekStatusTextGood: {
-    color: "#5b6a1b",
-  },
-  weekStatusTextWatch: {
-    color: FinColors.warningText,
-  },
-  weekStatusTextCritical: {
     color: FinColors.red,
   },
   actionsRow: {
