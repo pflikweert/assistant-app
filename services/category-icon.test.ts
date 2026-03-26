@@ -93,6 +93,26 @@ describe("resolveTransactionCategoryIconName", () => {
     ).toBe("music-note");
   });
 
+  it("maps travel categories to a transit-style icon", () => {
+    const categoryById = createCategoryMap([
+      {
+        id: "travel-root",
+        key: "leisure_travel_stays",
+        name: "Reizen & verblijf",
+        parent_id: null,
+        budget_group: "variable",
+        sort_order: 97,
+      },
+    ]);
+
+    expect(
+      resolveTransactionCategoryIconName(
+        { category_id_auto: "travel-root", category_id_user: null },
+        categoryById,
+      ),
+    ).toBe("directions-transit");
+  });
+
   it("prefers the manual category when both auto and manual are present", () => {
     const categoryById = createCategoryMap([
       {

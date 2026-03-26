@@ -91,6 +91,49 @@ describe("transaction-rule-management", () => {
     });
   });
 
+  it("matches details-only rules for semantic labels like alimentatie", async () => {
+    repoMock.getCategories.mockResolvedValue([
+      { id: "cat-alimony", key: "other_alimony_support", name: "Alimentatie / onderhoudsbijdrage" },
+    ]);
+    repoMock.getActiveRules.mockResolvedValue([
+      {
+        id: "rule-2",
+        category_id: "cat-alimony",
+        pattern: "Alimentatie",
+        pattern_normalized: "alimentatie",
+        pattern_type: "details_contains",
+        confidence: 0.98,
+        hit_count: 1,
+        is_active: true,
+        scope: "system",
+        user_id: null,
+      },
+    ]);
+    repoMock.getTransactionsByIds.mockResolvedValue([
+      {
+        id: "tx-2",
+        counterparty: "B.J. Keetman",
+        details: "Alimentatie | B.J. Keetman eo K.J.J. Blom",
+        amount: -533,
+        date: "2024-10-01",
+        category_id_auto: null,
+        category_id_user: null,
+      },
+    ]);
+
+    await expect(getTransactionRuleMatch("tx-2")).resolves.toMatchObject({
+      ruleId: "rule-2",
+      categoryId: "cat-alimony",
+      categoryKey: "other_alimony_support",
+      categoryName: "Alimentatie / onderhoudsbijdrage",
+      pattern: "Alimentatie",
+      patternType: "details_contains",
+      confidence: 0.98,
+      scope: "system",
+      userId: null,
+    });
+  });
+
   it("deactivates the rule and clears the auto category when resetting", async () => {
     repoMock.getCategories.mockResolvedValue([
       { id: "cat-food", key: "food", name: "Boodschappen" },
