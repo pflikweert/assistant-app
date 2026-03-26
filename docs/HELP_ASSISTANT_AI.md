@@ -24,23 +24,48 @@ Request bevat:
 
 - `context` (`HelpAssistantContext`)
 - `thread` (`HelpAssistantThreadState`)
+- optioneel `issueFlowActive`
 
-Adapter-gedrag:
+De adapter doet nu per beurt eerst een OpenAI-routerstap:
 
-- bouwt OpenAI `messages` uit system prompt + context + recente thread
-- voegt schermspecifieke contextregels toe
-- voor bestedingsvragen bouwt hij een gestandaardiseerde `SpendingAdviceContext`
-  met budget-/planning-/forecast-signalen
-- stuurt spending-requests via een expliciete help-assistant proxy use-case
-- parseert antwoord schema-first (JSON velden) naar het vaste 4-delige patroon
+1. OpenAI bepaalt of de turn `issue_intake`, `spending_advice` of `general`
+   is.
+2. Alleen daarna bouwen we de uiteindelijke OpenAI-prompt voor die route.
+3. Als er al een actieve issueflow is, blijft de router in issue-intake modus.
 
-Response bevat:
+Belangrijke uitkomst:
 
+- issue-/idee-/feedbackmeldingen worden niet meer primair op lokale keywordregels
+  gerouteerd
+- lokale intentheuristiek blijft alleen nog bruikbaar als fallback/transporthint
+- `budget`, `grafiek` en `dashboard` mogen dus niet automatisch de spending-route winnen als de AI een idee of issue herkent
+
+## Issue-intake schema
+
+Voor issue-/idee-turns verwacht de assistent JSON met:
+
+- `meta.route = "issue_intake"`
+- `meta.type` en `meta.subtype`
+- `meta.confidence`
+- `meta.state`
+- `meta.needsClarification`
+- `meta.context`
 - `answerText`
-- `model`
-- `responseId`
+- `summary`
+- `featureArea`
+- `userNeed`
+- `proposedChange`
+- `followUpQuestion`
+- `isReadyForSubmission`
 
-### Spending advice schema
+Gedrag:
+
+- de chatregel toont alleen de korte verdiepende vraag
+- de samenvatting blijft in de vaste meldkaart boven de chat
+- `Annuleren` sluit de kaart en houdt hem gesloten tot een nieuwe issue-signalering
+- pas na expliciete klik op `Versturen` gaat de server-side GitHub-flow lopen
+
+## Spending advice schema
 
 Voor bestedingsvragen verwacht de assistent JSON met:
 
@@ -53,15 +78,19 @@ Optioneel:
 
 - `confidence`
 - `dataGaps` (array)
+- `meta` met `route = "spending_advice"`
 
 UI blijft altijd het vaste 4-stappenpatroon renderen.
 
 ## Privacy-aanpak
 
-- Alleen veilige samenvatting gaat mee (labels, status, aantallen, periodes).
-- Geen ruwe transactieregels, geen rekeningnummers, geen metadata blobs.
-- Schermcontext wordt eerst centraal gesaneerd in `help-assistant-context.ts`.
+- Alleen veilige context gaat mee: scherm, periode en geaggregeerde signalen.
+- Geen client-side GitHub writes; issue creatie blijft server-side.
+- De router gebruikt alleen de relevante recente thread en schermcontext, geen
+  ruwe financiële dumps.
 - Spending context blijft geaggregeerd en uitlegbaar (geen ruwe transactiedumps).
+- Issue-intake responses bevatten alleen de samenvatting en een korte vraag
+  voor de gebruiker; technische metadata blijft intern.
 
 ## UI-koppeling
 
@@ -69,9 +98,10 @@ UI blijft altijd het vaste 4-stappenpatroon renderen.
   - maakt lokale user+pending assistant messages
   - roept `requestHelpAssistantReply(...)` aan
   - vervangt pending assistant met AI-antwoord of foutstatus
+  - plakt de reviewkaart vast boven de chat wanneer de AI een issue/idee meldt
 
-Zo blijft de UX direct bruikbaar, en kan de backend later per use case verder
-gespecialiseerd worden zonder de sheet-architectuur om te gooien.
+Zo blijft de UX direct bruikbaar, terwijl de routering nu door OpenAI wordt
+bepaald en de sheet-architectuur rustig en stabiel blijft.
 
 ## Spending Advice Patroon (v2)
 
@@ -87,3 +117,14 @@ Proxy- en fallbackgedrag:
 - server/proxy valideert spending-schema voor de help use-case
 - bij schema- of proxyfout geeft de server een veilige fallbackresponse terug
 - client heeft daarnaast een lokale veilige fallback als laatste vangnet
+
+## Geleerde lessen
+
+- Een help-assistant router op basis van vaste woorden zoals `budget` of
+  `grafiek` is te fragiel voor productchat.
+- OpenAI moet eerst intent bepalen; de app mag die uitkomst daarna alleen
+  veilig toepassen.
+- De vaste meldkaart werkt beter als zichtbare samenvatting dan als los
+  ticketsysteem.
+- De chatregel mag niet samenvatten én doorsturen tegelijk doen; de kaart is de
+  plek voor de samenvatting, de chat is voor de verdiepende vraag.

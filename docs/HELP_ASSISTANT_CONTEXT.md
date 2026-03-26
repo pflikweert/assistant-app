@@ -35,6 +35,17 @@ Belangrijkste exports:
 
 De trigger geeft dit contextobject door aan `HelpAssistantSheet`.
 
+Dezelfde context wordt nu ook gebruikt door de OpenAI-router en de issue-intake
+om:
+
+- een route te bepalen (`issue_intake`, `spending_advice` of `general`)
+- een begrijpelijke `featureArea` te kiezen voor de reviewkaart
+- de samenvatting op het juiste scherm en in de juiste periode te plaatsen
+
+Daarmee blijft de assistent consistent: dezelfde schermcontext voedt zowel de
+chatcopy als de vaste meldkaart, zonder dat losse schermcomponenten hun eigen
+AI-context hoeven te verzinnen.
+
 Ondersteunde `screenContext` varianten:
 
 - `budget`: maandlabel, status/tone, budgetsamenvatting

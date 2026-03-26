@@ -29,6 +29,17 @@ Elke actie heeft:
   - `start_local_thread`: plaatst lokale user+assistant placeholders
 - `seedText`: de context-aware starttekst
 
+Belangrijk voor de huidige Help Assistant-flow:
+
+- `Ik heb een idee` en `Ik zie een fout` starten een gesprek, geen directe
+  submit
+- de AI-router bepaalt daarna of het gesprek echt in issue-intake, spending
+  advice of algemene hulp landt
+- als een issue/idee wordt herkend, toont de assistent een vaste reviewkaart
+  boven de chat; quick actions zelf versturen niets naar GitHub
+- `prefill_composer` blijft alleen voor spending-vragen en andere directe
+  vragen waar een composervraag al voldoende is
+
 ## Schermkoppeling
 
 `listHelpAssistantQuickActions` gebruikt `HelpAssistantContext` om:
@@ -38,6 +49,12 @@ Elke actie heeft:
 
 Voor `budget` en `insights` staan spending-vragen bovenaan; op andere
 schermen blijft de algemene supportvolgorde leidend.
+
+De issue-actions blijven bewust lager-risico dan spending quick actions:
+
+- ze mogen de intake wel starten
+- ze mogen geen directe issuekaart-submit triggeren
+- de gebruiker houdt altijd de regie via de reviewkaart en `Annuleren`
 
 ## Uitbreiden
 

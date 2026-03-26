@@ -211,6 +211,63 @@ This is actually two OpenAI-enabled helpers in the budget stack.
 - medium
 - this is more about behavioral finance context than per-transaction detail, but it is still personal financial data
 
+### 2.4 Help Assistant routing, spending advice and issue intake
+
+**Trigger**
+
+- help assistant sheet in [`components/help-assistant/help-assistant-sheet.tsx`](./components/help-assistant/help-assistant-sheet.tsx)
+- route decision and response assembly in [`services/help-assistant-ai.ts`](./services/help-assistant-ai.ts)
+- issue state machine in [`services/help-assistant-issue-flow.ts`](./services/help-assistant-issue-flow.ts)
+
+**What it does**
+
+- first asks OpenAI to classify the latest user turn into:
+  - `issue_intake`
+  - `spending_advice`
+  - `general`
+- for issue/idea/feedback/problem turns:
+  - asks OpenAI to produce a structured JSON intake
+  - keeps the review card fixed above the chat
+  - shows only the follow-up question in the chat bubble
+- for spending advice turns:
+  - uses the existing spending advice schema and fallback path
+- for general help turns:
+  - returns the regular assistant reply without issueflow state
+
+**Payload sent to OpenAI**
+
+- recent thread messages
+- screen context (`screenId`, `screenTitle`, `routeName`, `platform`, `periodLabel`)
+- for spending advice:
+  - unified financial context with budget, planning and forecast aggregates
+- for issue intake:
+  - no raw transaction dump
+  - only the screen context and the relevant conversation turn(s)
+
+**Why it exists**
+
+- to keep issue/idee routing conversational and less rule-based
+- to prevent budgetwoorden zoals `grafiek` of `budget` from forcing the wrong route when the user actually wants to suggest a product change
+- to make the app feel like a helper that understands intent before it shows a review card
+
+**Output usage**
+
+- issue intake JSON is converted into the fixed review card draft
+- spending advice JSON is converted into the 4-step advice pattern
+- general replies go straight to the chat
+
+**Storage / caching impact**
+
+- no dedicated persistent OpenAI cache in this flow
+- the issue card state itself is held locally in the Help Assistant sheet
+
+**Privacy impact**
+
+- medium
+- the router only sees the relevant recent turn and safe screen context
+- the spending route still sees budget/forecast aggregates, so it remains more sensitive than the general route
+- issue intake keeps the user-facing summary compact and avoids exposing technical metadata in the chat
+
 ## 3. Inactive or Currently Unused AI Helper
 
 ### Rabobank PDF AI mapper

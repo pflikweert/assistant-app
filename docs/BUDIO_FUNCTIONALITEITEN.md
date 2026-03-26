@@ -166,6 +166,46 @@ Niet bedoeld voor:
 - Relatie met andere pagina's:
   - container voor alle hoofdschermen
 
+### Help Assistant
+
+- Status: `Actief`
+- Shelltype: `utility/subscherm`
+- Doel van deze flow: rustige hulpassistent voor schermuitleg, probleemhulp,
+  idee-intake en bestedingsruimtevragen
+- Voor wie / wanneer: wanneer een gebruiker context of sturing nodig heeft
+- Kernfunctionaliteiten:
+  - OpenAI-router bepaalt per beurt of de vraag in `issue_intake`,
+    `spending_advice` of `general` valt
+  - issue-/idee-flow toont een compacte reviewkaart vast boven de chat
+  - reviewkaart blijft zichtbaar en kan live worden bijgewerkt in de chat
+  - `Annuleren` sluit de kaart direct
+  - issue/idee-meldingen worden pas na expliciete klik op `Versturen` naar de
+    server-side GitHub-flow gestuurd
+  - quick actions starten de intake of vullen direct een duidelijke vraag in
+- Belangrijkste acties:
+  - schermuitleg vragen
+  - idee of probleem melden
+  - bestedingsruimte of forecastvraag stellen
+- Relatie met andere pagina's:
+  - gebruikt de context van het actieve scherm als veilige basis voor AI en
+    meldkaartsamenvatting
+  - respecteert dezelfde budget-/forecasttaal als Dashboard, Budget en Insights
+  - gebruikt geen directe client-side GitHub writes
+
+### Route: `help-assistant`
+
+- Status: `Actief`
+- Doel van deze pagina: modal-/sheetflow voor de Help Assistant
+- Voor wie / wanneer: vanuit elke relevante appcontext
+- Kernfunctionaliteiten:
+  - vaste reviewbanner voor meldingen
+  - chat-first intake
+  - spending advice en algemene hulp in dezelfde sheet
+- Belangrijkste acties:
+  - uitklappen van context, sturen, annuleren
+- Relatie met andere pagina's:
+  - gekoppeld aan context van de actieve route en periode
+
 ### Utility- en detailflows
 
 ### Route: `app/transaction-detail.tsx`

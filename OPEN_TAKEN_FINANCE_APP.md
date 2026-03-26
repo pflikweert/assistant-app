@@ -44,6 +44,11 @@ De focus is nu niet meer "opnieuw bouwen", maar:
   - gebruik globale DOM listeners op web (`dragenter`, `dragover`, `dragleave`, `drop`)
   - blokkeer browsernavigatie altijd met `preventDefault` + `stopPropagation`
   - accepteer drop alleen binnen het bedoelde doelvlak via hit-test
+- Help Assistant werkt beter als OpenAI de intent en route bepaalt:
+  - lokale keywordregels mogen niet de bron van waarheid zijn
+  - issue-/idee-kaarten moeten als vaste reviewbanner boven de chat blijven staan
+  - `Annuleren` moet de kaart direct sluiten en niet laten terugkomen door oude threadstate
+  - zichtbare chatcopy moet alleen de verduidelijkende vraag tonen, niet de interne samenvatting
 - In `Transacties` toont het bankrekeningfilter alleen actieve rekeningen:
   - gearchiveerde rekeningen verschijnen niet als filteroptie
   - historische transacties blijven zichtbaar via `Alles` en periode/type/categorie-filters
@@ -238,8 +243,10 @@ Exit-criteria:
   - interne overboekingen bij voorkeur koppelen op echte rekeningrelatie (bron/doel) in plaats van alleen detailtekst
   - gerichte recategorisatie-run voorbereiden zodra rekeningkoppeling hiervoor als betrouwbare bron beschikbaar is
 - Help Assistant AI verder verfijnen:
-  - prompts per schermtype aanscherpen (`Budget` vs `Inzichten`) met expliciete focus op budgetruimte, planning en forecastscenario's
-  - categorie-gebonden uitgavenvragen beter sturen zonder extra hardcoded conclusielogica
+  - routerprompt per schermtype en intentklasse blijven toetsen op edgecases zoals budget + grafiek + dashboard
+  - vaste reviewbanner visueel en tekstueel blijven polijsten
+  - spending advice en issue-intake alleen nog via de AI-router laten starten, niet via nieuwe hardcoded woordregels
+  - aanvullende QA op `Annuleren`, live-updating van de kaart en mobiele/webervaring
 
 ### Nog niet af
 
