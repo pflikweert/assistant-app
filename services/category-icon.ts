@@ -64,6 +64,39 @@ export function resolveTransactionCategoryIconName(
   ) {
     return "child-care";
   }
+  if (includesAnyToken(haystack, ["huurtoeslag", "housing allowance"])) {
+    return "home";
+  }
+  if (
+    includesAnyToken(haystack, [
+      "zorgtoeslag",
+      "health allowance",
+      "zorg ondersteuning",
+    ])
+  ) {
+    return "verified-user";
+  }
+  if (
+    includesAnyToken(haystack, [
+      "kinderopvangtoeslag",
+      "kinderbijslag",
+      "child benefit",
+      "childcare allowance",
+    ])
+  ) {
+    return "child-care";
+  }
+  if (includesAnyToken(haystack, ["pleegvergoeding"])) return "volunteer-activism";
+  if (includesAnyToken(haystack, ["tegemoetkoming schoolkosten"])) return "school";
+  if (
+    includesAnyToken(haystack, [
+      "persoonsgebonden budget",
+      "pgb",
+      "personal budget",
+    ])
+  ) {
+    return "medical-services";
+  }
   if (includesAnyToken(haystack, ["tax refund", "belasting", "wegenbelasting"])) {
     return "receipt-long";
   }

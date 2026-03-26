@@ -113,6 +113,128 @@ describe("resolveTransactionCategoryIconName", () => {
     ).toBe("directions-transit");
   });
 
+  it.each([
+    [
+      "housing allowance",
+      [
+        {
+          id: "income-root",
+          key: "income",
+          name: "Inkomen",
+          parent_id: null,
+          budget_group: "income",
+          sort_order: 10,
+        },
+        {
+          id: "housing-allowance",
+          key: "income_benefits_housing_allowance",
+          name: "Huurtoeslag",
+          parent_id: "income-root",
+          budget_group: "income",
+          sort_order: 16,
+        },
+      ],
+      "home",
+    ],
+    [
+      "health allowance",
+      [
+        {
+          id: "income-root",
+          key: "income",
+          name: "Inkomen",
+          parent_id: null,
+          budget_group: "income",
+          sort_order: 10,
+        },
+        {
+          id: "health-allowance",
+          key: "income_benefits_health_allowance",
+          name: "Zorgtoeslag",
+          parent_id: "income-root",
+          budget_group: "income",
+          sort_order: 17,
+        },
+      ],
+      "verified-user",
+    ],
+    [
+      "child benefit allowance",
+      [
+        {
+          id: "income-root",
+          key: "income",
+          name: "Inkomen",
+          parent_id: null,
+          budget_group: "income",
+          sort_order: 10,
+        },
+        {
+          id: "child-allowance",
+          key: "income_benefits_childcare_allowance",
+          name: "Kinderopvangtoeslag",
+          parent_id: "income-root",
+          budget_group: "income",
+          sort_order: 18,
+        },
+      ],
+      "child-care",
+    ],
+    [
+      "school support allowance",
+      [
+        {
+          id: "income-root",
+          key: "income",
+          name: "Inkomen",
+          parent_id: null,
+          budget_group: "income",
+          sort_order: 10,
+        },
+        {
+          id: "school-support",
+          key: "income_benefits_school_support",
+          name: "Tegemoetkoming schoolkosten",
+          parent_id: "income-root",
+          budget_group: "income",
+          sort_order: 21,
+        },
+      ],
+      "school",
+    ],
+    [
+      "pgb allowance",
+      [
+        {
+          id: "income-root",
+          key: "income",
+          name: "Inkomen",
+          parent_id: null,
+          budget_group: "income",
+          sort_order: 10,
+        },
+        {
+          id: "pgb",
+          key: "income_benefits_pgb",
+          name: "Persoonsgebonden budget",
+          parent_id: "income-root",
+          budget_group: "income",
+          sort_order: 22,
+        },
+      ],
+      "medical-services",
+    ],
+  ])("maps %s to a dedicated benefit icon", (_label, categories, icon) => {
+    const categoryById = createCategoryMap(categories as CategoryRecord[]);
+
+    expect(
+      resolveTransactionCategoryIconName(
+        { category_id_auto: categories[1].id, category_id_user: null },
+        categoryById,
+      ),
+    ).toBe(icon);
+  });
+
   it("prefers the manual category when both auto and manual are present", () => {
     const categoryById = createCategoryMap([
       {
