@@ -12,6 +12,7 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 - herkent abonnementen en vaste lasten
 - maakt forecasts met cashflow- en risicosignalen
 - geeft rustige, duidelijke feedback die gebruikers helpt betere keuzes te maken
+- Hierbij de voledege functionaliteiten uitgwerkt `docs/BUDIO_FUNCTIONALITEITEN.md`. Werk deze bij als we nieuwe functionalieten toevoegen of bestaande wijzigen.
 
 ## Doelgroep
 
