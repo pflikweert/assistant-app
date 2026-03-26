@@ -18,18 +18,21 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-function getAdminClient() {
-  const url = process.env.SUPABASE_URL;
+function getSupabaseAuthClient() {
+  const url = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL;
   const serviceRoleKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
+  const anonKey =
+    process.env.SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  const key = serviceRoleKey || anonKey;
 
-  if (!url || !serviceRoleKey) {
+  if (!url || !key) {
     throw new Error(
-      "Supabase admin client config ontbreekt voor OpenAI proxy.",
+      "Supabase config ontbreekt voor OpenAI proxy (SUPABASE_URL + service role of anon key).",
     );
   }
 
-  return createClient(url, serviceRoleKey, {
+  return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
@@ -55,73 +58,81 @@ function pickForwardedHeaders(headers: Headers) {
 }
 
 export default async function handler(req: any, res: any) {
-  if (req.method === "OPTIONS") {
-    res.status(204);
+  try {
+    if (req.method === "OPTIONS") {
+      res.status(204);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.end();
+      return;
+    }
+
+    if (req.method !== "POST") {
+      res.status(405);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.json({ message: "Method not allowed" });
+      return;
+    }
+
+    const authHeader = String(req.headers.authorization ?? "");
+    if (!authHeader.toLowerCase().startsWith("bearer ")) {
+      res.status(401);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.json({ message: "Missing access token" });
+      return;
+    }
+
+    const token = authHeader.slice(7);
+    const supabaseClient = getSupabaseAuthClient();
+    const userResult = await supabaseClient.auth.getUser(token);
+    if (userResult.error || !userResult.data.user) {
+      res.status(401);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.json({ message: "Invalid authentication token" });
+      return;
+    }
+
+    const body =
+      typeof req.body === "string"
+        ? (() => {
+            try {
+              return JSON.parse(req.body);
+            } catch {
+              return null;
+            }
+          })()
+        : req.body;
+
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      res.status(400);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.json({ message: "Invalid request body" });
+      return;
+    }
+
+    const response = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getOpenAIKey()}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const headers = pickForwardedHeaders(response.headers);
+    headers.forEach((value, key) => {
+      res.setHeader(key, value);
+    });
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.end();
-    return;
-  }
 
-  if (req.method !== "POST") {
-    res.status(405);
+    const responseBody = await response.text();
+    res.status(response.status).send(responseBody);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "OpenAI proxy onverwachte fout";
+    res.status(500);
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.json({ message: "Method not allowed" });
-    return;
+    res.json({ message });
   }
-
-  const authHeader = String(req.headers.authorization ?? "");
-  if (!authHeader.toLowerCase().startsWith("bearer ")) {
-    res.status(401);
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.json({ message: "Missing access token" });
-    return;
-  }
-
-  const token = authHeader.slice(7);
-  const supabaseAdmin = getAdminClient();
-  const userResult = await supabaseAdmin.auth.getUser(token);
-  if (userResult.error || !userResult.data.user) {
-    res.status(401);
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.json({ message: "Invalid authentication token" });
-    return;
-  }
-
-  const body =
-    typeof req.body === "string"
-      ? (() => {
-          try {
-            return JSON.parse(req.body);
-          } catch {
-            return null;
-          }
-        })()
-      : req.body;
-
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    res.status(400);
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.json({ message: "Invalid request body" });
-    return;
-  }
-
-  const response = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getOpenAIKey()}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  const headers = pickForwardedHeaders(response.headers);
-  headers.forEach((value, key) => {
-    res.setHeader(key, value);
-  });
-  res.setHeader("Access-Control-Allow-Origin", "*");
-
-  const responseBody = await response.text();
-  res.status(response.status).send(responseBody);
 }
