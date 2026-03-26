@@ -51,6 +51,7 @@ describe("help-assistant-issue-flow", () => {
 
     const response: HelpAssistantIssueFlowStructuredResponse = {
       meta: {
+        route: "issue_intake",
         type: "idea",
         subtype: "idea",
         confidence: "high",
@@ -80,6 +81,7 @@ describe("help-assistant-issue-flow", () => {
         context,
         composerValue: "",
         structuredResponse: response,
+        anchorMessageId: "msg-1",
       },
     );
 

@@ -65,6 +65,18 @@ function createThreadWithUserMessage(text: string) {
   };
 }
 
+function createJsonResponse(content: unknown, id: string) {
+  return {
+    ok: true,
+    text: async () =>
+      JSON.stringify({
+        id,
+        model: "gpt-4.1-mini",
+        choices: [{ message: { content: JSON.stringify(content) } }],
+      }),
+  };
+}
+
 describe("help-assistant-ai spending advice", () => {
   beforeEach(() => {
     postOpenAIChatCompletionMock.mockReset();
@@ -142,6 +154,30 @@ describe("help-assistant-ai spending advice", () => {
   });
 
   it("uses safe fallback pattern when spending response is malformed", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createJsonResponse(
+        {
+          route: "spending_advice",
+          confidence: "high",
+          type: "spending_advice",
+          subtype: "general",
+          needsClarification: false,
+          meta: {
+            type: "spending_advice",
+            subtype: "general",
+            confidence: "high",
+            context: {
+              screenId: "budget",
+              screenTitle: "Budget",
+              routeName: "/budget",
+              platform: "ios",
+              periodLabel: "maart 2026",
+            },
+          },
+        },
+        "router-1",
+      ),
+    );
     postHelpAssistantSpendingAdviceCompletionMock.mockResolvedValue({
       ok: true,
       text: async () =>
@@ -181,15 +217,41 @@ describe("help-assistant-ai spending advice", () => {
   });
 
   it("keeps non-spending questions on regular proxy path", async () => {
-    postOpenAIChatCompletionMock.mockResolvedValue({
-      ok: true,
-      text: async () =>
-        JSON.stringify({
-          id: "chatcmpl-2",
-          model: "gpt-4.1-mini",
-          choices: [{ message: { content: "Hier is je schermuitleg." } }],
-        }),
-    });
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createJsonResponse(
+        {
+          route: "general",
+          confidence: "high",
+          type: "general",
+          subtype: "general",
+          needsClarification: false,
+          meta: {
+            type: "general",
+            subtype: "general",
+            confidence: "high",
+            context: {
+              screenId: "transactions",
+              screenTitle: "Transactions",
+              routeName: "/transactions",
+              platform: "web",
+              periodLabel: "maart 2026",
+            },
+          },
+        },
+        "router-2",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      {
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            id: "chatcmpl-2",
+            model: "gpt-4.1-mini",
+            choices: [{ message: { content: "Hier is je schermuitleg." } }],
+          }),
+      },
+    );
 
     const context = buildHelpAssistantContext({
       screenId: "transactions",
@@ -207,24 +269,53 @@ describe("help-assistant-ai spending advice", () => {
 
     expect(postHelpAssistantSpendingAdviceCompletionMock).not.toHaveBeenCalled();
     expect(resolveUnifiedFinancialAdviceContextMock).not.toHaveBeenCalled();
-    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(1);
+    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(2);
     expect(result.answerText).toBe("Hier is je schermuitleg.");
   });
 
   it("keeps budget mismatch questions on regular proxy path", async () => {
-    postOpenAIChatCompletionMock.mockResolvedValue({
-      ok: true,
-      text: async () =>
-        JSON.stringify({
-          id: "chatcmpl-2b",
-          model: "gpt-4.1-mini",
-          choices: [
-            {
-              message: { content: "Laten we samen stap voor stap je budget controleren." },
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createJsonResponse(
+        {
+          route: "general",
+          confidence: "high",
+          type: "general",
+          subtype: "general",
+          needsClarification: false,
+          meta: {
+            type: "general",
+            subtype: "general",
+            confidence: "high",
+            context: {
+              screenId: "budget",
+              screenTitle: "Budget",
+              routeName: "/budget",
+              platform: "web",
+              periodLabel: "maart 2026",
             },
-          ],
-        }),
-    });
+          },
+        },
+        "router-2b",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      {
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            id: "chatcmpl-2b",
+            model: "gpt-4.1-mini",
+            choices: [
+              {
+                message: {
+                  content:
+                    "Laten we samen stap voor stap je budget controleren.",
+                },
+              },
+            ],
+          }),
+      },
+    );
 
     const context = buildHelpAssistantContext({
       screenId: "budget",
@@ -243,12 +334,37 @@ describe("help-assistant-ai spending advice", () => {
 
     expect(postHelpAssistantSpendingAdviceCompletionMock).not.toHaveBeenCalled();
     expect(resolveUnifiedFinancialAdviceContextMock).not.toHaveBeenCalled();
-    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(1);
+    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(2);
     expect(result.answerText).toContain("budget");
   });
 
   it("parses issue intake JSON with type and context metadata", async () => {
-    postOpenAIChatCompletionMock.mockResolvedValue({
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createJsonResponse(
+        {
+          route: "issue_intake",
+          confidence: "high",
+          type: "idea",
+          subtype: "idea",
+          needsClarification: false,
+          meta: {
+            route: "issue_intake",
+            type: "idea",
+            subtype: "idea",
+            confidence: "high",
+            context: {
+              screenId: "dashboard",
+              screenTitle: "Dashboard",
+              routeName: "/dashboard",
+              platform: "web",
+              periodLabel: "maart 2026",
+            },
+          },
+        },
+        "router-issue-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
       ok: true,
       text: async () =>
         JSON.stringify({
@@ -259,6 +375,7 @@ describe("help-assistant-ai spending advice", () => {
               message: {
                 content: JSON.stringify({
                   meta: {
+                    route: "issue_intake",
                     type: "idea",
                     subtype: "idea",
                     confidence: "high",
@@ -303,7 +420,7 @@ describe("help-assistant-ai spending advice", () => {
       ),
     });
 
-    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(1);
+    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(2);
     expect(result.issueIntake?.meta.type).toBe("idea");
     expect(result.issueIntake?.meta.context.screenId).toBe("dashboard");
     expect(result.issueIntake?.summary).toContain("Grafiek");
@@ -314,6 +431,30 @@ describe("help-assistant-ai spending advice", () => {
   });
 
   it("uses context-based data gaps instead of model-invented data gaps", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createJsonResponse(
+        {
+          route: "spending_advice",
+          confidence: "high",
+          type: "spending_advice",
+          subtype: "general",
+          needsClarification: false,
+          meta: {
+            type: "spending_advice",
+            subtype: "general",
+            confidence: "high",
+            context: {
+              screenId: "dashboard",
+              screenTitle: "Dashboard",
+              routeName: "/dashboard",
+              platform: "web",
+              periodLabel: "maart 2026",
+            },
+          },
+        },
+        "router-3",
+      ),
+    );
     postHelpAssistantSpendingAdviceCompletionMock.mockResolvedValue({
       ok: true,
       text: async () =>

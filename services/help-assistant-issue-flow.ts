@@ -24,6 +24,7 @@ export type HelpAssistantIssueFlowSignalType =
 
 export type HelpAssistantIssueFlowStructuredResponse = {
   meta: {
+    route: "issue_intake";
     type: HelpAssistantIssueFlowSignalType;
     subtype: "general" | "idea" | "issue" | "feedback" | "bug";
     confidence: "low" | "medium" | "high";
@@ -82,6 +83,7 @@ export type HelpAssistantIssueFlowAction =
       context: HelpAssistantContext;
       composerValue?: string;
       structuredResponse?: HelpAssistantIssueFlowStructuredResponse | null;
+      anchorMessageId?: string | null;
     }
   | { type: "request_submit" }
   | { type: "mark_submitted" }
@@ -454,19 +456,6 @@ function isIssueTriggerMessage(
   return true;
 }
 
-function findLatestIssueAnchor(
-  thread: HelpAssistantThreadState,
-  context: HelpAssistantContext,
-) {
-  for (let index = thread.messages.length - 1; index >= 0; index -= 1) {
-    const message = thread.messages[index];
-    if (isIssueTriggerMessage(message, context)) {
-      return message.id;
-    }
-  }
-  return null;
-}
-
 function areDraftsEquivalent(
   left: HelpAssistantIssueFlowDraft | null,
   right: HelpAssistantIssueFlowDraft | null,
@@ -586,12 +575,14 @@ export function helpAssistantIssueFlowReducer(
     };
   }
 
-  const latestAnchorMessageId = findLatestIssueAnchor(
-    action.thread,
-    action.context,
-  );
+  const activeAnchorMessageId =
+    action.anchorMessageId ||
+    (state.anchorMessageId &&
+    action.thread.messages.some((message) => message.id === state.anchorMessageId)
+      ? state.anchorMessageId
+      : null);
 
-  if (!latestAnchorMessageId) {
+  if (!activeAnchorMessageId) {
     if (state.status === "submitting") return state;
     if (state.status === "submitted" || state.status === "cancelled") {
       return state;
@@ -604,12 +595,6 @@ export function helpAssistantIssueFlowReducer(
       errorMessage: null,
     };
   }
-
-  const activeAnchorMessageId =
-    state.anchorMessageId &&
-    action.thread.messages.some((message) => message.id === state.anchorMessageId)
-      ? state.anchorMessageId
-      : latestAnchorMessageId;
 
   if (state.status === "submitting") {
     return state;

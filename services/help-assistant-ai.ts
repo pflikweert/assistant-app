@@ -4,7 +4,6 @@ import type {
 } from "@/services/help-assistant-chat";
 import {
   classifyHelpAssistantIntent,
-  type HelpAssistantClassifiedIntent,
 } from "@/services/help-assistant-intent";
 import {
   buildHelpAssistantScreenContextLines,
@@ -64,7 +63,7 @@ const SPENDING_ADVICE_SYSTEM_PROMPT = [
   "Geef geen absolute zekerheid en geen professioneel financieel advies.",
   "Vertaal technische signalen naar gewone taal; toon geen ruwe interne veldnamen.",
   "Je antwoord blijft altijd compact, menselijk en in het Nederlands.",
-  "Geef in JSON ook een meta-blok terug met type='spending_advice' en context met screenId, screenTitle, routeName, platform en periodLabel.",
+  "Geef in JSON ook een meta-blok terug met route='spending_advice', type='spending_advice' en context met screenId, screenTitle, routeName, platform en periodLabel.",
   "De bestaande velden conclusion, why, risk en nextStep blijven gewoon op root-niveau aanwezig.",
   "Output is exact JSON met verplichte velden: conclusion, why, risk, nextStep.",
   "Optioneel: confidence (low|medium|high) en dataGaps (korte labels).",
@@ -89,6 +88,25 @@ const SPENDING_DECISION_QUESTION_PROMPT = [
   "nextStep: geef een concrete kleine vervolgstap, zoals bedrag verlagen, wachten of eerst data controleren.",
 ].join(" ");
 
+const HELP_ASSISTANT_TURN_ROUTER_PROMPT = [
+  "Je bent de router van de Budio Assistent.",
+  "Bepaal voor de laatste gebruikerszin en de context exact één route: issue_intake, spending_advice of general.",
+  "Gebruik issue_intake als de gebruiker vooral een idee, feedback, probleem of bug meldt, ook als er woorden als budget, grafiek of dashboard in staan.",
+  "Gebruik spending_advice alleen als de gebruiker echt vraagt naar bestedingsruimte, hoeveel er nog kan, of een uitgavebeslissing wil maken.",
+  "Gebruik general voor schermuitleg of andere hulp die geen idee, issue of budgetvraag is.",
+  "Je mag niet op basis van vaste woordregels beslissen; redeneer op intent en context.",
+  "Geef uitsluitend JSON terug met deze structuur:",
+  "{",
+  '  "route": "issue_intake|spending_advice|general",',
+  '  "confidence": "low|medium|high",',
+  '  "type": "idea|issue|feedback|bug|spending_advice|general",',
+  '  "subtype": "idea|issue|feedback|bug|general",',
+  '  "needsClarification": true,',
+  '  "meta": { "type": "idea|issue|feedback|bug|spending_advice|general", "subtype": "idea|issue|feedback|bug|general", "confidence": "low|medium|high", "context": { "screenId": "...", "screenTitle": "...", "routeName": "...", "platform": "...", "periodLabel": "..." } }',
+  "}",
+  "Zorg dat de meta-context altijd de huidige schermcontext bevat.",
+].join(" ");
+
 const ISSUE_INTAKE_SYSTEM_PROMPT = [
   "Je bent de Budio Assistent voor chat-first idee- en issue-intake.",
   "Je helpt de gebruiker rustig om een idee, feedback of probleem in gewone taal helder te maken.",
@@ -98,7 +116,7 @@ const ISSUE_INTAKE_SYSTEM_PROMPT = [
   "Je mag nooit zeggen dat iets al is doorgestuurd, gemeld of opgelost voordat de gebruiker expliciet op versturen klikt.",
   "Je geeft altijd strict JSON terug met exact deze structuur:",
   "{",
-  '  "meta": { "type": "idea|issue|feedback|bug|general", "subtype": "idea|issue|feedback|bug|general", "confidence": "low|medium|high", "state": "collecting|ready_to_review", "needsClarification": true, "context": { "screenId": "...", "screenTitle": "...", "routeName": "...", "platform": "...", "periodLabel": "..." } },',
+  '  "meta": { "route": "issue_intake", "type": "idea|issue|feedback|bug|general", "subtype": "idea|issue|feedback|bug|general", "confidence": "low|medium|high", "state": "collecting|ready_to_review", "needsClarification": true, "context": { "screenId": "...", "screenTitle": "...", "routeName": "...", "platform": "...", "periodLabel": "..." } },',
   '  "answerText": "korte chatreactie in gewone taal",',
   '  "summary": "korte conceptsamenvatting",',
   '  "featureArea": "korte productplek of schermnaam",',
@@ -152,6 +170,22 @@ export type HelpAssistantAIResponse = {
   issueIntake?: HelpAssistantIssueDraftResponse | null;
 };
 
+type HelpAssistantTurnRoute = "issue_intake" | "spending_advice" | "general";
+
+type HelpAssistantTurnRoutingResponse = {
+  route: HelpAssistantTurnRoute;
+  confidence: "low" | "medium" | "high";
+  type: "idea" | "issue" | "feedback" | "bug" | "spending_advice" | "general";
+  subtype: "idea" | "issue" | "feedback" | "bug" | "general";
+  needsClarification: boolean;
+  meta: {
+    type: "idea" | "issue" | "feedback" | "bug" | "spending_advice" | "general";
+    subtype: "idea" | "issue" | "feedback" | "bug" | "general";
+    confidence: "low" | "medium" | "high";
+    context: HelpAssistantStructuredResponseContext;
+  };
+};
+
 type SpendingAdviceSections = {
   conclusion: string;
   why: string;
@@ -176,6 +210,7 @@ type HelpAssistantStructuredResponseContext = {
 
 type HelpAssistantIssueDraftResponse = {
   meta: {
+    route: "issue_intake";
     type: HelpAssistantStructuredResponseType;
     subtype: "general" | "idea" | "issue" | "feedback" | "bug";
     confidence: "low" | "medium" | "high";
@@ -193,6 +228,11 @@ type HelpAssistantIssueDraftResponse = {
 };
 
 export type SpendingAdviceResponseSchema = SpendingAdviceSections & {
+  meta?: {
+    route: "spending_advice";
+    type: "spending_advice";
+    context: HelpAssistantStructuredResponseContext;
+  };
   confidence?: string;
   dataGaps?: string[];
 };
@@ -410,13 +450,14 @@ export function isFinancialAdviceQuestion(input: string) {
   return classifySpendingQuestionType(input) !== null;
 }
 
-function classifyIssueIntakeType(
-  intent: HelpAssistantClassifiedIntent | undefined,
-): HelpAssistantStructuredResponseType | null {
-  if (intent === "feature_request") return "idea";
-  if (intent === "mogelijke_bug") return "issue";
-  if (intent === "feedback") return "feedback";
-  return null;
+function buildTurnRouterPrompt(context: HelpAssistantContext, issueFlowActive: boolean) {
+  return [
+    HELP_ASSISTANT_TURN_ROUTER_PROMPT,
+    "",
+    `Actieve meldkaart: ${issueFlowActive ? "ja" : "nee"}.`,
+    "",
+    `Context:\n${buildContextPrompt(context)}`,
+  ].join("\n");
 }
 
 function buildIssueIntakePrompt(context: HelpAssistantContext) {
@@ -426,6 +467,7 @@ function buildIssueIntakePrompt(context: HelpAssistantContext) {
     "Als de melding nog vaag is, stel hooguit 1 korte verduidelijkende vraag.",
     "Als de melding concreet genoeg is, maak dan een compacte samenvatting die klaar is om te reviewen.",
     "Zorg dat featureArea een begrijpelijke productplek of schermnaam is.",
+    "Geef in meta altijd route='issue_intake', type, subtype, confidence en context mee.",
     "Gebruik answerText voor de chatreactie die de gebruiker ziet.",
     "Gebruik summary voor de korte conceptsamenvatting.",
     "",
@@ -453,6 +495,7 @@ function parseIssueIntakeResponse(
   if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
 
   const typedMeta = meta as Record<string, unknown>;
+  const route = String(typedMeta.route || "").trim();
   const type = String(typedMeta.type || "").trim();
   const subtype = String(typedMeta.subtype || "").trim();
   const confidence = String(typedMeta.confidence || "").trim();
@@ -460,6 +503,7 @@ function parseIssueIntakeResponse(
   const needsClarification = Boolean(typedMeta.needsClarification);
   const context = typedMeta.context;
 
+  if (route !== "issue_intake") return null;
   if (!["general", "idea", "issue", "feedback", "bug"].includes(type)) return null;
   if (!["general", "idea", "issue", "feedback", "bug"].includes(subtype)) return null;
   if (!["low", "medium", "high"].includes(confidence)) return null;
@@ -514,6 +558,157 @@ function parseIssueIntakeResponse(
         ? parsed.followUpQuestion.trim() || undefined
         : undefined,
   };
+}
+
+function parseHelpAssistantTurnRoutingResponse(
+  content: string,
+): HelpAssistantTurnRoutingResponse | null {
+  const parsed = parseJsonObject(content);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+
+  const route = String(parsed.route || "").trim();
+  const confidence = String(parsed.confidence || "").trim();
+  const type = String(parsed.type || "").trim();
+  const subtype = String(parsed.subtype || "").trim();
+  const needsClarification = Boolean(parsed.needsClarification);
+  const meta = parsed.meta;
+
+  if (!["issue_intake", "spending_advice", "general"].includes(route)) return null;
+  if (!["low", "medium", "high"].includes(confidence)) return null;
+  if (
+    ![
+      "idea",
+      "issue",
+      "feedback",
+      "bug",
+      "spending_advice",
+      "general",
+    ].includes(type)
+  ) {
+    return null;
+  }
+  if (!["idea", "issue", "feedback", "bug", "general"].includes(subtype)) {
+    return null;
+  }
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+
+  const typedMeta = meta as Record<string, unknown>;
+  const metaType = String(typedMeta.type || "").trim();
+  const metaSubtype = String(typedMeta.subtype || "").trim();
+  const metaConfidence = String(typedMeta.confidence || "").trim();
+  const metaContext = typedMeta.context;
+
+  if (![
+    "idea",
+    "issue",
+    "feedback",
+    "bug",
+    "spending_advice",
+    "general",
+  ].includes(metaType)) {
+    return null;
+  }
+  if (!["idea", "issue", "feedback", "bug", "general"].includes(metaSubtype)) {
+    return null;
+  }
+  if (!["low", "medium", "high"].includes(metaConfidence)) return null;
+  if (
+    !metaContext ||
+    typeof metaContext !== "object" ||
+    Array.isArray(metaContext)
+  ) {
+    return null;
+  }
+
+  const typedContext = metaContext as Record<string, unknown>;
+  const screenId = String(typedContext.screenId || "").trim();
+  const screenTitle = String(typedContext.screenTitle || "").trim();
+  const routeName = String(typedContext.routeName || "").trim();
+  const platform = String(typedContext.platform || "").trim();
+  const periodLabelRaw = typedContext.periodLabel;
+  const periodLabel =
+    typeof periodLabelRaw === "string"
+      ? periodLabelRaw.trim() || null
+      : periodLabelRaw == null
+        ? null
+        : String(periodLabelRaw || "").trim() || null;
+
+  if (!screenId || !screenTitle || !routeName || !platform) return null;
+
+  return {
+    route: route as HelpAssistantTurnRoute,
+    confidence: confidence as "low" | "medium" | "high",
+    type: type as HelpAssistantTurnRoutingResponse["type"],
+    subtype: subtype as HelpAssistantTurnRoutingResponse["subtype"],
+    needsClarification,
+    meta: {
+      type: metaType as HelpAssistantTurnRoutingResponse["meta"]["type"],
+      subtype: metaSubtype as HelpAssistantTurnRoutingResponse["meta"]["subtype"],
+      confidence: metaConfidence as "low" | "medium" | "high",
+      context: {
+        screenId,
+        screenTitle,
+        routeName,
+        platform,
+        periodLabel,
+      },
+    },
+  };
+}
+
+async function classifyHelpAssistantTurnWithOpenAI(input: {
+  context: HelpAssistantContext;
+  thread: HelpAssistantThreadState;
+  issueFlowActive: boolean;
+}) {
+  const response = await postOpenAIChatCompletion(
+    {
+      model: DEFAULT_MODEL,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: buildTurnRouterPrompt(input.context, input.issueFlowActive),
+        },
+        ...pickThreadMessagesForModel(input.thread).map((message) => ({
+          role: toOpenAIRole(message.role),
+          content: message.text,
+        })),
+      ],
+    },
+    {
+      useCase: "help_general",
+      routeName: input.context.routeName,
+      screenId: input.context.screenId,
+      screenTitle: input.context.screenTitle,
+      platform: input.context.platform,
+      periodLabel: input.context.selectedPeriod?.label || undefined,
+      agentMode: "chat",
+      responseMode: "json_object",
+      fallbackEnabled: true,
+    },
+  );
+
+  const raw = await response.text();
+  let parsed: ChatCompletionResponse | null = null;
+
+  try {
+    parsed = JSON.parse(raw) as ChatCompletionResponse;
+  } catch {
+    parsed = null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (parsed || {}) as ChatCompletionResponse;
+  const content = String(payload.choices?.[0]?.message?.content || "").trim();
+  if (!content) return null;
+  return parseHelpAssistantTurnRoutingResponse(content);
 }
 
 function buildIssueIntakeAnswerText(input: {
@@ -713,12 +908,53 @@ export function parseSpendingAdviceSchema(
             .map((entry) => String(entry || "").trim())
             .filter(Boolean)
         : undefined;
+      const meta = parsed.meta;
+      const typedMeta =
+        meta && typeof meta === "object" && !Array.isArray(meta)
+          ? (meta as Record<string, unknown>)
+          : null;
+      const metaRoute = String(typedMeta?.route || "").trim();
+      const metaType = String(typedMeta?.type || "").trim();
+      const metaContext = typedMeta?.context;
+      const parsedMeta =
+        metaRoute === "spending_advice" &&
+        metaType === "spending_advice" &&
+        metaContext &&
+        typeof metaContext === "object" &&
+        !Array.isArray(metaContext)
+          ? {
+              route: "spending_advice" as const,
+              type: "spending_advice" as const,
+              context: {
+                screenId: String(
+                  (metaContext as Record<string, unknown>).screenId || "",
+                ).trim(),
+                screenTitle: String(
+                  (metaContext as Record<string, unknown>).screenTitle || "",
+                ).trim(),
+                routeName: String(
+                  (metaContext as Record<string, unknown>).routeName || "",
+                ).trim(),
+                platform: String(
+                  (metaContext as Record<string, unknown>).platform || "",
+                ).trim(),
+                periodLabel:
+                  typeof (metaContext as Record<string, unknown>).periodLabel ===
+                  "string"
+                    ? String(
+                        (metaContext as Record<string, unknown>).periodLabel,
+                      ).trim() || null
+                    : null,
+              },
+            }
+          : undefined;
 
       return {
         conclusion,
         why,
         risk,
         nextStep,
+        ...(parsedMeta ? { meta: parsedMeta } : {}),
         confidence,
         dataGaps: dataGaps?.length ? dataGaps : undefined,
       };
@@ -785,17 +1021,23 @@ export async function requestHelpAssistantReply({
     ? classifyHelpAssistantIntent(latestUserMessage.text)
     : null;
   const isIssueFlowActive = Boolean(issueFlowActive);
-  const issueIntakeType = classifyIssueIntakeType(latestUserIntent?.intent);
-  const isIssueIntakeQuestion = Boolean(issueIntakeType) || isIssueFlowActive;
-  const classifiedAsSpendingAdvice =
-    latestUserMessage?.metadata.classification?.intent === "spending_advice";
-  const spendingQuestionType = latestUserMessage
-    ? classifiedAsSpendingAdvice
-      ? classifySpendingQuestionType(latestUserMessage.text) || "spending_decision"
-      : classifySpendingQuestionType(latestUserMessage.text)
+  const routeDecision = !isIssueFlowActive && latestUserMessage
+    ? await classifyHelpAssistantTurnWithOpenAI({
+        context,
+        thread,
+        issueFlowActive: isIssueFlowActive,
+      })
     : null;
-  const isSpendingAdviceQuestion =
-    spendingQuestionType !== null && !isIssueIntakeQuestion;
+  const route: HelpAssistantTurnRoute =
+    isIssueFlowActive
+      ? "issue_intake"
+      : routeDecision?.route || "general";
+  const isIssueIntakeQuestion = route === "issue_intake";
+  const isSpendingAdviceQuestion = route === "spending_advice";
+  const spendingQuestionType =
+    latestUserMessage && isSpendingAdviceQuestion
+      ? classifySpendingQuestionType(latestUserMessage.text) || "spending_decision"
+      : null;
   const spendingPromptVariant = spendingQuestionType
     ? selectSpendingPromptVariant(spendingQuestionType)
     : null;
@@ -824,6 +1066,7 @@ export async function requestHelpAssistantReply({
         confidence:
           latestUserMessage.metadata.classification?.confidence ||
           latestUserIntent?.confidence,
+        route: routeDecision?.route || route,
         repeatedQuestion,
         issueFlowIncomplete: Boolean(
           latestUserMessage.metadata.issueDraftCandidate &&

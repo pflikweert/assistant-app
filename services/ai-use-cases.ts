@@ -71,6 +71,7 @@ export type AiRouteSetting = {
 
 export type AiProxySignalHints = {
   confidence?: "low" | "medium" | "high";
+  route?: "issue_intake" | "spending_advice" | "general";
   repeatedQuestion?: boolean;
   issueFlowIncomplete?: boolean;
 };

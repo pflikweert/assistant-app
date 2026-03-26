@@ -22,7 +22,6 @@ import {
 import type { UnifiedFinancialAdviceContext } from "@/services/help-assistant-financial-context";
 import {
   createInitialHelpAssistantIssueFlowState,
-  isHelpAssistantIssueTriggerMessage,
   helpAssistantIssueFlowReducer,
   type HelpAssistantIssueFlowStructuredResponse,
 } from "@/services/help-assistant-issue-flow";
@@ -95,15 +94,6 @@ export function HelpAssistantSheet({
     ? userFirstName.toUpperCase()
     : "JIJ";
   const shouldShowQuickActions = thread.messages.length === 0;
-  const latestIssueAnchorMessageId = React.useMemo(() => {
-    for (let index = thread.messages.length - 1; index >= 0; index -= 1) {
-      const message = thread.messages[index];
-      if (message.role === "user" && isHelpAssistantIssueTriggerMessage(message, context)) {
-        return message.id;
-      }
-    }
-    return null;
-  }, [context, thread.messages]);
   const activeIssueDraft =
     issueFlowState.activeDraft && issueFlowState.status !== "idle"
       ? issueFlowState.activeDraft
@@ -125,29 +115,20 @@ export function HelpAssistantSheet({
   React.useEffect(() => {
     if (!visible) return;
     if (
-      (issueFlowState.status === "submitted" ||
-        issueFlowState.status === "cancelled") &&
-      latestIssueAnchorMessageId === issueFlowState.anchorMessageId
+      issueFlowState.status === "submitted" ||
+      issueFlowState.status === "cancelled"
     ) {
       return;
     }
 
-    const hasIssueSignal = Boolean(
-      issueFlowState.status === "collecting" ||
+    const hasActiveIssueFlow = Boolean(
+      latestStructuredIssueResponseRef.current ||
+        issueFlowState.status === "collecting" ||
         issueFlowState.status === "ready_to_review" ||
-        issueFlowState.status === "submitting" ||
-      thread.messages.some(
-          (message) =>
-            message.role === "user" &&
-            (isHelpAssistantIssueTriggerMessage(message, context) ||
-              message.metadata.issueDraftCandidate ||
-              message.metadata.classification?.intent === "mogelijke_bug" ||
-              message.metadata.classification?.intent === "feedback" ||
-              message.metadata.classification?.intent === "feature_request"),
-        ),
+        issueFlowState.status === "submitting",
     );
 
-    if (!hasIssueSignal) return;
+    if (!hasActiveIssueFlow) return;
 
     dispatchIssueFlow({
       type: "sync",
@@ -155,13 +136,13 @@ export function HelpAssistantSheet({
       context,
       composerValue,
       structuredResponse: latestStructuredIssueResponseRef.current,
+      anchorMessageId: issueFlowState.anchorMessageId || undefined,
     });
   }, [
     composerValue,
     context,
     issueFlowState.anchorMessageId,
     issueFlowState.status,
-    latestIssueAnchorMessageId,
     thread,
     visible,
   ]);
@@ -229,6 +210,7 @@ export function HelpAssistantSheet({
             context,
             composerValue: composerValueRef.current,
             structuredResponse: reply.issueIntake,
+            anchorMessageId: requestAnchorMessageId,
           });
         }
         setThread((current) =>
