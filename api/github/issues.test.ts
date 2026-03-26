@@ -45,7 +45,10 @@ describe("github issue payload helpers", () => {
       ],
       shortDescription:
         "Gebruikersmelding op Inzichten: test@example.com wil dit zien.",
-    } as Parameters<typeof buildGithubIssuePayload>[0]);
+    } as Parameters<typeof buildGithubIssuePayload>[0], {
+      userId: "user-123",
+      displayName: "Pieter Flikweert",
+    });
 
     expect(payload.title).toBe("Ik wil een grafiek zien");
     expect(payload.labels).toContain("source:help-assistant");
@@ -53,6 +56,9 @@ describe("github issue payload helpers", () => {
     expect(payload.body).toContain("[redacted-email]");
     expect(payload.body).not.toContain("test@example.com");
     expect(payload.body).toContain("## Help Assistant issue draft");
+    expect(payload.body).toContain("Naam melder: Pieter Flikweert");
+    expect(payload.body).toContain("Gebruikers-ID: user-123");
+    expect(payload.body).toContain("Bron: Help Assistant chat");
   });
 
   it("normalizes full owner/repo config values", () => {

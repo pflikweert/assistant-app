@@ -181,6 +181,8 @@ Niet bedoeld voor:
   - `Annuleren` sluit de kaart direct
   - issue/idee-meldingen worden pas na expliciete klik op `Versturen` naar de
     server-side GitHub-flow gestuurd
+  - de GitHub issue-body bevat bij chatmeldingen de naam en het gebruikers-ID
+    van de melder
   - quick actions starten de intake of vullen direct een duidelijke vraag in
 - Belangrijkste acties:
   - schermuitleg vragen

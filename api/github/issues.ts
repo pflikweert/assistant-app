@@ -1,4 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
+import {
+  resolveHelpAssistantDisplayName,
+  type HelpAssistantUserProfile,
+} from "@/services/help-assistant-context";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +31,11 @@ type GithubConfig = {
   owner: string;
   repo: string;
   fullName: string;
+};
+
+type IssueReporter = {
+  userId: string;
+  displayName: string;
 };
 
 function getSupabaseAuthClient() {
@@ -173,7 +182,10 @@ function parseIssueDraft(body: unknown): IssueDraftPayload | null {
   };
 }
 
-export function buildGithubIssuePayload(input: IssueDraftPayload) {
+export function buildGithubIssuePayload(
+  input: IssueDraftPayload,
+  reporter?: IssueReporter | null,
+) {
   const title = sanitizeText(input.summary, 120) || "Help Assistant melding";
   const cleanedLabels = Array.from(
     new Set(
@@ -188,6 +200,13 @@ export function buildGithubIssuePayload(input: IssueDraftPayload) {
     "## Help Assistant issue draft",
     "",
     `Type: ${input.type}`,
+    reporter
+      ? `Naam melder: ${sanitizeText(reporter.displayName || "Onbekend", 80)}`
+      : "",
+    reporter
+      ? `Gebruikers-ID: ${sanitizeText(reporter.userId || "onbekend", 80)}`
+      : "",
+    reporter ? "Bron: Help Assistant chat" : "",
     `Screen: ${sanitizeText(input.context.screenTitle, 60)}`,
     `Route: ${sanitizeText(input.context.routeName, 120)}`,
     `Periode: ${sanitizeText(input.context.periodLabel || "niet geselecteerd", 50)}`,
@@ -239,6 +258,14 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
+    const reporter = {
+      userId: userResult.data.user.id,
+      displayName:
+        resolveHelpAssistantDisplayName(
+          userResult.data.user as HelpAssistantUserProfile,
+        ) || userResult.data.user.email || "Onbekend",
+    };
+
     const draft = parseIssueDraft(req.body);
     if (!draft) {
       res.status(400);
@@ -248,7 +275,7 @@ export default async function handler(req: any, res: any) {
     }
 
     const { token: githubToken, owner, repo, fullName } = getGithubConfig();
-    const payload = buildGithubIssuePayload(draft);
+    const payload = buildGithubIssuePayload(draft, reporter);
     const githubResponse = await fetch(
       `${GITHUB_API_BASE}/repos/${owner}/${repo}/issues`,
       {

@@ -91,6 +91,9 @@ UI blijft altijd het vaste 4-stappenpatroon renderen.
 - Spending context blijft geaggregeerd en uitlegbaar (geen ruwe transactiedumps).
 - Issue-intake responses bevatten alleen de samenvatting en een korte vraag
   voor de gebruiker; technische metadata blijft intern.
+- Bij expliciete issue-submit voegen we de geauthenticeerde meldende gebruiker
+  toe aan de GitHub issue-body met naam en gebruikers-ID, zodat het team kan
+  herleiden wie de melding via chat heeft gedaan.
 
 ## UI-koppeling
 
