@@ -1,4 +1,4 @@
-import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
+import { FinanceHeaderActions } from "@/components/ui/finance-header-actions";
 import {
   FinanceInsightCard,
   type FinanceInsightCardType,
@@ -515,7 +515,27 @@ export default function InsightsScreen() {
       <FinanceTopBar
         shellStyle={styles.topBar}
         title="Inzichten"
-        rightSlot={<FinanceAvatarBadge />}
+        rightSlot={
+          <FinanceHeaderActions
+            screenId="insights"
+            selectedPeriod={{
+              key: selectedMonth.key,
+              label: selectedMonth.label,
+              startIso: selectedMonth.startIso,
+              endIsoExclusive: selectedMonth.endIso,
+            }}
+            screenContext={{
+              kind: "insights",
+              monthLabel: selectedMonth.label,
+              statusLabel: monthContext.statusLabel,
+              remainingPlannedExpenseTotal,
+              remainingVariableExpenseEstimate,
+              remainingMonthNetTotal,
+              remainingMonthExpectedEndBalance,
+              hasForecastData: forecast != null,
+            }}
+          />
+        }
       />
 
       <ScrollView

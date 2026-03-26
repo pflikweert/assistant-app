@@ -1,17 +1,10 @@
 import { Tabs } from "expo-router";
-import React from "react";
 import { useSession } from "../_layout";
 
 import { DockedTabBar } from "@/components/navigation/docked-tab-bar";
-import { runPendingCategorizationInBackground } from "@/services/categorization";
 
 export default function TabLayout() {
   const { user } = useSession();
-
-  React.useEffect(() => {
-    if (!user) return;
-    runPendingCategorizationInBackground();
-  }, [user]);
 
   if (!user) {
     return null;

@@ -16,6 +16,7 @@ type FinanceDetailTopBarProps = {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
   onBack: () => void;
+  rightSlot?: React.ReactNode;
   shellStyle?: StyleProp<ViewStyle>;
   innerStyle?: StyleProp<ViewStyle>;
   titleStyle?: StyleProp<TextStyle>;
@@ -26,6 +27,7 @@ export function FinanceDetailTopBar({
   title,
   subtitle,
   onBack,
+  rightSlot,
   shellStyle,
   innerStyle,
   titleStyle,
@@ -61,6 +63,7 @@ export function FinanceDetailTopBar({
 
           <View style={styles.rightSlot}>
             <HeaderDropdownMenu />
+            {rightSlot ? <View style={styles.rightExtra}>{rightSlot}</View> : null}
           </View>
         </View>
       </View>
@@ -118,6 +121,12 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
   },
   rightSlot: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  rightExtra: {
     flexShrink: 0,
   },
 });

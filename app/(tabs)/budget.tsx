@@ -17,7 +17,7 @@ import { BudgetWeekRhythmCard } from "@/components/budget-week-rhythm-card";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { FinColors, FinSurfaces } from "@/constants/theme";
-import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
+import { FinanceHeaderActions } from "@/components/ui/finance-header-actions";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceMonthSelector } from "@/components/ui/finance-month-selector";
@@ -73,6 +73,7 @@ import {
   formatForecastExpenseSourceLabel,
   getForecastExpenseSourceDescription,
 } from "@/services/forecast-expense-source-display";
+import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import type {
   BudgetCategoryKey,
   BudgetForecastExpenseSource,
@@ -922,6 +923,8 @@ export default function BudgetScreen() {
     Record<string, string>
   >({});
   const [monthSummaryModalOpen, setMonthSummaryModalOpen] = React.useState(false);
+  const [assistantForecastSummary, setAssistantForecastSummary] =
+    React.useState<InsightsForecastSummary | null>(null);
   const [expandedMonthSummaryCategories, setExpandedMonthSummaryCategories] =
     React.useState<string[]>([]);
   const [detailSection, setDetailSection] = React.useState<
@@ -999,15 +1002,17 @@ export default function BudgetScreen() {
         referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
       }
 
-      const { plan } = await loadBudgetPlanForSurface({
+      const { plan, forecast } = await loadBudgetPlanForSurface({
         referenceDate,
         planKey: "default",
         timelineReference: new Date(),
       });
       setBudgetPlan(plan);
+      setAssistantForecastSummary(forecast);
     } catch (error) {
       console.warn("[budget] load error", error);
       setBudgetPlan(null);
+      setAssistantForecastSummary(null);
     } finally {
       budgetLoadInFlight.current = false;
       setLoading(false);
@@ -2754,7 +2759,41 @@ export default function BudgetScreen() {
       <FinanceTopBar
         shellStyle={styles.topBar}
         title="Budget"
-        rightSlot={<FinanceAvatarBadge />}
+        rightSlot={
+          <FinanceHeaderActions
+            screenId="budget"
+            selectedPeriod={{
+              key: selectedMonth.key,
+              label: selectedMonth.label,
+              startIso: selectedMonth.startIso,
+              endIsoExclusive: selectedMonth.endIso,
+            }}
+            screenContext={{
+              kind: "budget",
+              monthLabel: selectedMonth.label,
+              monthBudgetState: monthBudgetSnapshot.state,
+              monthStatusLabel: monthBudgetSnapshot.label,
+              monthRiskTone,
+              remainingVariableBudget: monthlyRemaining,
+              spentVariableBudget: monthSpent,
+              totalVariableBudget: monthBudgetSnapshot.budget,
+              weekStatusLabel: focusWeekSnapshot.label,
+              weekRiskTone: focusWeekSnapshot.tone,
+              weekRemainingBudget: focusWeekSnapshot.remaining,
+              weekTempoDelta: focusWeekSnapshot.tempoDelta,
+              upcomingCommittedExpenseTotal:
+                assistantForecastSummary?.upcomingCommittedExpenseTotal ?? null,
+              expectedFixedCosts: assistantForecastSummary?.expectedFixedCosts ?? null,
+              expectedSubscriptions:
+                assistantForecastSummary?.expectedSubscriptions ?? null,
+              forecastExpectedEndBalance:
+                assistantForecastSummary?.expectedEndBalance ?? null,
+              forecastLowestExpectedBalance:
+                assistantForecastSummary?.lowestExpectedBalance ?? null,
+              hasForecastData: assistantForecastSummary != null,
+            }}
+          />
+        }
       />
 
       {loading && !budgetPlan ? (

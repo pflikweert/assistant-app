@@ -4,7 +4,7 @@ import {
   type FinanceQuickMenuKey,
 } from "@/components/navigation/finance-quick-menu";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
-import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
+import { FinanceHeaderActions } from "@/components/ui/finance-header-actions";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinanceCircleIconButton } from "@/components/ui/finance-circle-icon-button";
 import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
@@ -759,7 +759,28 @@ export default function TransactionsScreen({
         shellStyle={styles.topBar}
         innerStyle={styles.topBarInner}
         title="Budio"
-        rightSlot={<FinanceAvatarBadge />}
+        rightSlot={
+          <FinanceHeaderActions
+            screenId="transactions"
+            selectedPeriod={
+              activeMonthKey !== ALL_MONTHS_KEY && selectedMonthOption
+                ? {
+                    key: selectedMonthOption.key,
+                    label: selectedMonthOption.label,
+                    startIso: selectedMonthOption.startIso,
+                    endIsoExclusive: selectedMonthOption.endIso,
+                  }
+                : null
+            }
+            screenContext={{
+              kind: "transactions",
+              activeMonthLabel: periodSummaryLabel,
+              activeFilterCount,
+              hasSearchQuery: Boolean(searchQuery.trim()),
+              hasMonthFilter: activeMonthKey !== ALL_MONTHS_KEY,
+            }}
+          />
+        }
       />
 
       <SectionList

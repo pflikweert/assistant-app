@@ -2,7 +2,7 @@ import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceLoadingSplash } from "@/components/ui/finance-loading-splash";
-import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
+import { FinanceHeaderActions } from "@/components/ui/finance-header-actions";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SquareAccentBlock } from "@/components/ui/square-accent-block";
@@ -212,6 +212,14 @@ export default function DashboardScreen() {
   const currentWeekRiskTone = currentWeekSnapshot.tone;
   const monthRiskTone = monthBudgetSnapshot.tone;
   const monthBudgetStatusLabel = monthBudgetSnapshot.label.toUpperCase();
+  const dashboardPeriodLabel = React.useMemo(
+    () =>
+      new Intl.DateTimeFormat("nl-NL", {
+        month: "long",
+        year: "numeric",
+      }).format(new Date()),
+    [],
+  );
 
   const loadCategories = React.useCallback(async () => {
     try {
@@ -365,7 +373,31 @@ export default function DashboardScreen() {
       <FinanceTopBar
         shellStyle={styles.topBar}
         title="Budio"
-        rightSlot={<FinanceAvatarBadge />}
+        rightSlot={
+          <FinanceHeaderActions
+            screenId="dashboard"
+            selectedPeriod={{
+              label: dashboardPeriodLabel,
+            }}
+            screenContext={{
+              kind: "budget",
+              monthLabel: dashboardPeriodLabel,
+              monthBudgetState: monthBudgetSnapshot.state,
+              monthStatusLabel: monthBudgetSnapshot.label,
+              monthRiskTone,
+              remainingVariableBudget: monthBudgetSnapshot.remaining,
+              spentVariableBudget: monthBudgetSnapshot.spent,
+              totalVariableBudget: monthBudgetSnapshot.budget,
+              weekStatusLabel: currentWeekSnapshot.label,
+              weekRiskTone: currentWeekSnapshot.tone,
+              weekRemainingBudget: currentWeekSnapshot.remaining,
+              weekTempoDelta: currentWeekSnapshot.tempoDelta,
+              expectedFixedCosts: budgetPlan?.flowSummary.fixedCostsBudget ?? null,
+              expectedSubscriptions: budgetPlan?.flowSummary.subscriptionsBudget ?? null,
+              hasForecastData: false,
+            }}
+          />
+        }
       />
 
       {isBootstrapping ? (

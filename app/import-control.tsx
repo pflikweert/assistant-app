@@ -1,5 +1,6 @@
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
+import { FinanceHelpAssistantTrigger } from "@/components/ui/finance-help-assistant-trigger";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceStepIndicator } from "@/components/ui/finance-step-indicator";
 import { FinColors, FinSurfaces } from "@/constants/theme";
@@ -196,7 +197,20 @@ export default function ImportControlScreen() {
     return (
       <View style={styles.root}>
         <FinanceScreenBackdrop tone="warm" />
-        <FinanceDetailTopBar title="Transacties inlezen" onBack={() => router.back()} />
+        <FinanceDetailTopBar
+          title="Transacties inlezen"
+          onBack={() => router.back()}
+          rightSlot={
+            <FinanceHelpAssistantTrigger
+              screenId="import"
+              screenContext={{
+                kind: "import",
+                stage: run.status,
+                progressMessage: run.progress?.message || undefined,
+              }}
+            />
+          }
+        />
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.content}
@@ -226,7 +240,24 @@ export default function ImportControlScreen() {
   return (
     <View style={styles.root}>
       <FinanceScreenBackdrop tone="warm" />
-      <FinanceDetailTopBar title="Transacties inlezen" onBack={() => router.back()} />
+      <FinanceDetailTopBar
+        title="Transacties inlezen"
+        onBack={() => router.back()}
+        rightSlot={
+          <FinanceHelpAssistantTrigger
+            screenId="import"
+            selectedPeriod={{ label: draft.summary.periodLabel }}
+            screenContext={{
+              kind: "import",
+              sourceLabel: draft.summary.sourceLabel,
+              totalTransactions: draft.summary.totalTransactions,
+              periodLabel: draft.summary.periodLabel,
+              stage: run.status,
+              progressMessage: run.progress?.message || undefined,
+            }}
+          />
+        }
+      />
 
       <ScrollView
         style={styles.scroll}

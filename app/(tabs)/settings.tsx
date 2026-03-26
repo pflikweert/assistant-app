@@ -598,6 +598,10 @@ export default function SettingsScreen() {
               <Text style={styles.statusTitle}>Categorisatie</Text>
               <Text style={styles.statusPhase}>{backgroundStatus.phase}</Text>
             </View>
+            <Text style={styles.statusHint}>
+              Automatische categorisatie start na import. Handmatig kun je altijd
+              {'"'}Alles hercategoriseren{'"'} gebruiken.
+            </Text>
             <Text style={styles.statusText}>
               {formatCategorizationStatus(backgroundStatus)}
             </Text>
@@ -938,6 +942,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: FinColors.textPrimary,
+  },
+  statusHint: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
   },
   statusPhase: {
     fontSize: 12,

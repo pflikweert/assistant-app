@@ -237,6 +237,9 @@ Exit-criteria:
 - Spaar-/interne-overboekingsherkenning verdiepen:
   - interne overboekingen bij voorkeur koppelen op echte rekeningrelatie (bron/doel) in plaats van alleen detailtekst
   - gerichte recategorisatie-run voorbereiden zodra rekeningkoppeling hiervoor als betrouwbare bron beschikbaar is
+- Help Assistant AI verder verfijnen:
+  - prompts per schermtype aanscherpen (`Budget` vs `Inzichten`) met expliciete focus op budgetruimte, planning en forecastscenario's
+  - categorie-gebonden uitgavenvragen beter sturen zonder extra hardcoded conclusielogica
 
 ### Nog niet af
 
