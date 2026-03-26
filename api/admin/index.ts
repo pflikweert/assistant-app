@@ -9,7 +9,7 @@ import {
   type AiReviewItemStatus,
   type AiReviewRow,
   type AiUsageRow,
-} from "../../services/ai-use-cases.ts";
+} from "../../services/ai-use-cases";
 import {
   clearOpenAiOrgUsageSnapshotCache,
   loadOpenAiOrgUsageSnapshot,
