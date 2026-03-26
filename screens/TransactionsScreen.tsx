@@ -14,14 +14,12 @@ import { FinColors, FinSurfaces } from "@/constants/theme";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
-import { requireCurrentUserId } from "@/services/current-user";
 import { listBankAccounts, type BankAccount } from "@/services/bank-accounts";
 import {
   buildCategoryRecordMap,
   getCategoryPathLabel,
 } from "@/services/category-display";
 import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
-import { supabase } from "@/services/supabase";
 import {
   ALL_MONTHS_KEY,
   getCurrentMonthKey,
@@ -29,6 +27,7 @@ import {
   listTransactionMonthOptions,
   type TransactionMonthOption,
 } from "@/services/transaction-month-options";
+import { fetchTransactionsDateWindow } from "@/services/transactions-date-window";
 import type { CategoryRecord } from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -45,7 +44,7 @@ import {
   View,
 } from "react-native";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 30;
 const CONTENT_MAX_WIDTH = 1040;
 const TRANSACTION_TYPE_FILTER_OPTIONS = [
   { key: "all", label: "Alles" },
@@ -272,7 +271,6 @@ export default function TransactionsScreen({
   const loadPage = React.useCallback(async (pageNumber: number) => {
     setLoading(true);
     try {
-      const userId = await requireCurrentUserId();
       if (categoryKeyFilter && categoryFilterIds.length === 0) {
         setTransactions([]);
         setHasMore(false);
@@ -282,43 +280,23 @@ export default function TransactionsScreen({
 
       const start = pageNumber * PAGE_SIZE;
       const end = start + PAGE_SIZE - 1;
-      let query = supabase
-        .from("transactions")
-        .select("id,details,counterparty,date,amount,metadata,category_id_auto,category_id_user,category_confidence,category_source", { count: "exact" })
-        .eq("user_id", userId);
+      const { rows: data, totalCount } = await fetchTransactionsDateWindow({
+        select:
+          "id,details,counterparty,date,amount,metadata,category_id_auto,category_id_user,category_confidence,category_source",
+        fromDateInclusive: monthStartFilter,
+        toDateExclusive: monthEndExclusiveFilter,
+        bankAccountId: bankAccountIdFilter,
+        counterparty: counterpartyFilter,
+        analysisMainGroup: analysisMainGroupFilter,
+        analysisCategory: analysisCategoryFilter,
+        categoryFilterIdCsv,
+        searchQuery,
+        limit: PAGE_SIZE,
+        offset: start,
+      });
 
-      if (bankAccountIdFilter) query = query.eq("bank_account_id", bankAccountIdFilter);
-      if (counterpartyFilter) query = query.eq("counterparty", counterpartyFilter);
-      if (analysisMainGroupFilter) query = query.eq("analysis_main_group", analysisMainGroupFilter);
-      if (analysisCategoryFilter) query = query.eq("analysis_category", analysisCategoryFilter);
-      if (monthStartFilter) query = query.gte("date", monthStartFilter);
-      if (monthEndExclusiveFilter) query = query.lt("date", monthEndExclusiveFilter);
-      if (categoryFilterIdCsv) {
-        query = query.or(`category_id_user.in.(${categoryFilterIdCsv}),category_id_auto.in.(${categoryFilterIdCsv})`);
-      }
-      const searchTokensForQuery = normalizeSearch(searchQuery).split(" ").filter(Boolean);
-      if (searchTokensForQuery.length) {
-        const tokenFilters = searchTokensForQuery.map(
-          (token) => `or(details.ilike.%${token}%,counterparty.ilike.%${token}%)`,
-        );
-        const searchFilter =
-          tokenFilters.length === 1
-            ? tokenFilters[0]
-            : `and(${tokenFilters.join(",")})`;
-        query = query.or(searchFilter);
-      }
-
-      const response = await query
-        .order("date", { ascending: false })
-        .order("metadata->>Volgnr", { ascending: false })
-        .range(start, end);
-
-      const { data, error, count } = response as { data: any[] | null; error: any; count: number | null };
-      if (error) {
-        console.warn("loadPage error", error);
-      } else {
-        const rows = (data || []).map((row) => {
-          const metadata = row.metadata || {};
+      const rows = (data || []).map((row) => {
+          const metadata = (row.metadata || {}) as Record<string, unknown>;
           const rawSeq = String(metadata["Volgnr"] || "").replace(/^0+/, "");
           const details = String(row.details || "");
           const omschrijving1 = details.split("|")[0]?.trim() || details;
@@ -338,25 +316,26 @@ export default function TransactionsScreen({
               row.category_confidence == null ? null : Number(row.category_confidence),
             categorySource: row.category_source || null,
           } as Tx;
-        });
+      });
 
-        rows.sort((a, b) => {
-          if (a.date === b.date) return b.seq - a.seq;
-          return a.date < b.date ? 1 : -1;
-        });
+      rows.sort((a, b) => {
+        if (a.date === b.date) return b.seq - a.seq;
+        return a.date < b.date ? 1 : -1;
+      });
 
-        const subscriptionNames = await listTransactionSubscriptionProfileNames(rows.map((row) => row.id));
-        rows.forEach((row) => {
-          row.subscriptionProfileName = subscriptionNames[row.id] || null;
-        });
+      const subscriptionNames = await listTransactionSubscriptionProfileNames(
+        rows.map((row) => row.id),
+      );
+      rows.forEach((row) => {
+        row.subscriptionProfileName = subscriptionNames[row.id] || null;
+      });
 
-        setTransactions(rows);
-        const resolvedCount = Math.max(count ?? rows.length, 0);
-        setTotalCount(resolvedCount);
-        setHasMore(end + 1 < resolvedCount);
-      }
+      setTransactions(rows);
+      const resolvedCount = Math.max(totalCount ?? rows.length, 0);
+      setTotalCount(resolvedCount);
+      setHasMore(end + 1 < resolvedCount);
     } catch (error) {
-      console.error(error);
+      console.warn("loadPage error", error);
     } finally {
       setLoading(false);
     }

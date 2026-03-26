@@ -1,6 +1,10 @@
 import { supabase } from "./supabase";
+import { recordPerfMetric } from "./perf-metrics";
+import { RequestCache } from "./request-cache";
 
 export const ALL_MONTHS_KEY = "all-months";
+const MONTH_OPTIONS_CACHE_TTL_MS = 60_000;
+const monthOptionsCache = new RequestCache();
 
 export type TransactionMonthOption = {
   key: string;
@@ -89,36 +93,54 @@ export async function listTransactionMonthOptions(params?: {
   counterparty?: string | null;
   includeFutureMonths?: number;
 }) {
-  const { data, error } = await supabase.rpc("list_transaction_months", {
-    p_counterparty: params?.counterparty || null,
-  });
+  const startedAt = Date.now();
+  const normalizedCounterparty = String(params?.counterparty || "").trim();
+  const includeFutureMonths = Math.max(
+    0,
+    Math.round(params?.includeFutureMonths || 0),
+  );
+  const cacheKey = `transaction-month-options:${normalizedCounterparty || "__all__"}:${includeFutureMonths}`;
+  const result = await monthOptionsCache.run(
+    cacheKey,
+    MONTH_OPTIONS_CACHE_TTL_MS,
+    async () => {
+      const { data, error } = await supabase.rpc("list_transaction_months", {
+        p_counterparty: normalizedCounterparty || null,
+      });
 
-  if (error) throw error;
+      if (error) throw error;
 
-  const optionKeys = new Set(
-    ((data || []) as { month_start?: string | null }[])
-      .map((row) => String(row.month_start || "").slice(0, 7))
-      .filter((key) => /^\d{4}-\d{2}$/.test(key)),
+      const optionKeys = new Set(
+        ((data || []) as { month_start?: string | null }[])
+          .map((row) => String(row.month_start || "").slice(0, 7))
+          .filter((key) => /^\d{4}-\d{2}$/.test(key)),
+      );
+
+      if (includeFutureMonths > 0) {
+        const currentMonth = new Date();
+        for (let offset = 0; offset <= includeFutureMonths; offset += 1) {
+          const futureDate = addMonths(currentMonth, offset);
+          optionKeys.add(
+            `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, "0")}`,
+          );
+        }
+      }
+
+      const options = [...optionKeys]
+        .sort((left, right) => right.localeCompare(left))
+        .map((key) => getMonthOptionByKey(key))
+        .filter((option): option is TransactionMonthOption => Boolean(option));
+
+      if (options.length) return options;
+
+      const fallback = getMonthOptionByKey(getCurrentMonthKey());
+      return fallback ? [fallback] : [];
+    },
   );
 
-  const futureMonths = Math.max(0, Math.round(params?.includeFutureMonths || 0));
-  if (futureMonths > 0) {
-    const currentMonth = new Date();
-    for (let offset = 0; offset <= futureMonths; offset += 1) {
-      const futureDate = addMonths(currentMonth, offset);
-      optionKeys.add(
-        `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, "0")}`,
-      );
-    }
-  }
-
-  const options = [...optionKeys]
-    .sort((left, right) => right.localeCompare(left))
-    .map((key) => getMonthOptionByKey(key))
-    .filter((option): option is TransactionMonthOption => Boolean(option));
-
-  if (options.length) return options;
-
-  const fallback = getMonthOptionByKey(getCurrentMonthKey());
-  return fallback ? [fallback] : [];
+  recordPerfMetric("transactions.month_options", {
+    durationMs: Date.now() - startedAt,
+    cacheHit: result.cacheHit,
+  });
+  return result.value;
 }

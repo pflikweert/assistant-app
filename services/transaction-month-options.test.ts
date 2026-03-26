@@ -58,6 +58,24 @@ describe("groupMonthOptionsByYear", () => {
 });
 
 describe("listTransactionMonthOptions", () => {
+  it("reuses cached results for identical calls within TTL", async () => {
+    rpcMock.mockResolvedValue({
+      data: [{ month_start: "2026-03-01" }],
+      error: null,
+    });
+
+    const first = await listTransactionMonthOptions({
+      counterparty: "Spotify",
+    });
+    const second = await listTransactionMonthOptions({
+      counterparty: "Spotify",
+    });
+
+    expect(first.map((option) => option.key)).toEqual(["2026-03"]);
+    expect(second.map((option) => option.key)).toEqual(["2026-03"]);
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+  });
+
   it("maps RPC month rows to month options in descending order", async () => {
     rpcMock.mockResolvedValueOnce({
       data: [{ month_start: "2026-03-01" }, { month_start: "2025-12-01" }],
