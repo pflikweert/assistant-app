@@ -458,6 +458,7 @@ function RecoveryRedirector({ children }: { children: React.ReactNode }) {
 
 function VercelWebMetrics() {
   if (Platform.OS !== "web") return null;
+  if (process.env.NODE_ENV !== "production") return null;
 
   return (
     <>

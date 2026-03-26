@@ -231,6 +231,7 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 ## Technische Werkafspraken
 
 - Gebruik bestaande componenten en services opnieuw voordat je iets nieuws maakt
+- Nieuwe motion-, animation- en shared motion hooks horen onder `components/motions`; hergebruik die map eerst voordat je een nieuw motion-patroon toevoegt
 - Houd rekenlogica en UI-copy consistent tussen `Budget`, `Insights` en `Dashboard`
 - Als je financiële logica wijzigt, controleer ook de downstream impact op forecast, budget en transactielijsten
 - Vermijd local caches als dezelfde verbetering beter in database of query-optimalisatie opgelost kan worden

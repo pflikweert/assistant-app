@@ -7,12 +7,20 @@ const {
   loadBudgetPlanForSurfaceMock,
   getCurrentMonthKeyMock,
   getMonthOptionByKeyMock,
+  loadLatestKnownBalanceSnapshotMock,
+  listBankAccountBudgetFlagsMock,
+  createSupabaseCategorizationRepositoryMock,
+  supabaseFromMock,
 } = vi.hoisted(() => ({
   requireCurrentUserIdMock: vi.fn(),
   loadMonthForecastSummaryMock: vi.fn(),
   loadBudgetPlanForSurfaceMock: vi.fn(),
   getCurrentMonthKeyMock: vi.fn(),
   getMonthOptionByKeyMock: vi.fn(),
+  loadLatestKnownBalanceSnapshotMock: vi.fn(),
+  listBankAccountBudgetFlagsMock: vi.fn(),
+  createSupabaseCategorizationRepositoryMock: vi.fn(),
+  supabaseFromMock: vi.fn(),
 }));
 
 vi.mock("./current-user", () => ({
@@ -25,6 +33,31 @@ vi.mock("./month-forecast-summary", () => ({
 
 vi.mock("./budget-plan-surface", () => ({
   loadBudgetPlanForSurface: loadBudgetPlanForSurfaceMock,
+}));
+
+vi.mock("./latest-known-balance", () => ({
+  loadLatestKnownBalanceSnapshot: loadLatestKnownBalanceSnapshotMock,
+}));
+
+vi.mock("./bank-accounts", () => ({
+  listBankAccountBudgetFlags: listBankAccountBudgetFlagsMock,
+  isBankAccountIncludedInBudget: (
+    bankAccountId: string | null,
+    budgetFlags: Map<string, boolean>,
+  ) => {
+    if (!bankAccountId) return true;
+    return budgetFlags.get(bankAccountId) !== false;
+  },
+}));
+
+vi.mock("./categorization-repository", () => ({
+  createSupabaseCategorizationRepository: createSupabaseCategorizationRepositoryMock,
+}));
+
+vi.mock("./supabase", () => ({
+  supabase: {
+    from: supabaseFromMock,
+  },
 }));
 
 vi.mock("./transaction-month-options", () => ({
@@ -135,6 +168,127 @@ const samplePlan = {
   coachReport: {} as never,
 };
 
+const sampleCategories = [
+  {
+    id: "cat-food-root",
+    key: "groceries",
+    name: "Boodschappen",
+    parent_id: null,
+    budget_group: "variable",
+    sort_order: 1,
+  },
+  {
+    id: "cat-food-sub",
+    key: "supermarket",
+    name: "Supermarkt",
+    parent_id: "cat-food-root",
+    budget_group: "variable",
+    sort_order: 2,
+  },
+  {
+    id: "cat-home-root",
+    key: "housing",
+    name: "Wonen",
+    parent_id: null,
+    budget_group: "fixed",
+    sort_order: 3,
+  },
+  {
+    id: "cat-home-sub",
+    key: "rent",
+    name: "Huur",
+    parent_id: "cat-home-root",
+    budget_group: "fixed",
+    sort_order: 4,
+  },
+];
+
+const sampleMonthSpendRows = [
+  {
+    id: "tx-1",
+    date: "2026-03-12",
+    amount: -40,
+    details: "Jumbo",
+    counterparty: "Jumbo",
+    bank_account_id: "bank-1",
+    category_id_auto: "cat-food-sub",
+    category_id_user: null,
+    budget_excluded: false,
+  },
+  {
+    id: "tx-2",
+    date: "2026-03-15",
+    amount: -20,
+    details: "Huur",
+    counterparty: "Woningstichting",
+    bank_account_id: "bank-1",
+    category_id_auto: "cat-home-sub",
+    category_id_user: null,
+    budget_excluded: false,
+  },
+];
+
+const sampleWeekSpendRows = [
+  {
+    id: "tx-3",
+    date: "2026-03-25",
+    amount: -15,
+    details: "Albert Heijn",
+    counterparty: "Albert Heijn",
+    bank_account_id: "bank-1",
+    category_id_auto: "cat-food-sub",
+    category_id_user: null,
+    budget_excluded: false,
+  },
+];
+
+function createSupabaseRangeResponse(rows: unknown[]) {
+  return {
+    data: rows,
+    error: null,
+  };
+}
+
+function createSupabaseQueryMock() {
+  return vi.fn((table: string) => {
+    const state: Record<string, string | undefined> = {};
+    const chain = {
+      select() {
+        return chain;
+      },
+      eq(column: string, value: string) {
+        state[`eq:${column}`] = value;
+        return chain;
+      },
+      gte(column: string, value: string) {
+        state[`gte:${column}`] = value;
+        return chain;
+      },
+      lt(column: string, value: string) {
+        state[`lt:${column}`] = value;
+        return chain;
+      },
+      order() {
+        return chain;
+      },
+      range() {
+        if (table !== "transactions") {
+          return Promise.resolve(createSupabaseRangeResponse([]));
+        }
+        const key = `${state["gte:date"] || ""}|${state["lt:date"] || ""}`;
+        if (key === "2026-03-01|2026-04-01") {
+          return Promise.resolve(createSupabaseRangeResponse(sampleMonthSpendRows));
+        }
+        if (key === "2026-03-23|2026-03-30") {
+          return Promise.resolve(createSupabaseRangeResponse(sampleWeekSpendRows));
+        }
+        return Promise.resolve(createSupabaseRangeResponse([]));
+      },
+    };
+    return chain;
+  });
+}
+
 describe("resolveUnifiedFinancialAdviceContext", () => {
   beforeEach(() => {
     clearUnifiedFinancialAdviceContextCache();
@@ -143,6 +297,10 @@ describe("resolveUnifiedFinancialAdviceContext", () => {
     loadBudgetPlanForSurfaceMock.mockReset();
     getCurrentMonthKeyMock.mockReset();
     getMonthOptionByKeyMock.mockReset();
+    loadLatestKnownBalanceSnapshotMock.mockReset();
+    listBankAccountBudgetFlagsMock.mockReset();
+    createSupabaseCategorizationRepositoryMock.mockReset();
+    supabaseFromMock.mockReset();
 
     requireCurrentUserIdMock.mockResolvedValue("user-1");
     getCurrentMonthKeyMock.mockReturnValue("2026-03");
@@ -179,6 +337,15 @@ describe("resolveUnifiedFinancialAdviceContext", () => {
       plan: samplePlan,
       forecast: sampleForecastCurrent,
     });
+    loadLatestKnownBalanceSnapshotMock.mockResolvedValue({
+      balance: 1420,
+      date: "2026-03-19",
+    });
+    listBankAccountBudgetFlagsMock.mockResolvedValue(new Map([["bank-1", true]]));
+    createSupabaseCategorizationRepositoryMock.mockReturnValue({
+      getCategories: vi.fn().mockResolvedValue(sampleCategories),
+    });
+    supabaseFromMock.mockImplementation(createSupabaseQueryMock());
   });
 
   it("builds unified context with next-month signals", async () => {
@@ -205,6 +372,17 @@ describe("resolveUnifiedFinancialAdviceContext", () => {
     expect(result.forecastNextMonth.monthKey).toBe("2026-04");
     expect(result.quality.hasBudgetSignals).toBe(true);
     expect(result.quality.hasPlanningSignals).toBe(true);
+    expect(result.currentBalance.balance).toBe(1420);
+    expect(result.spending.currentMonthTotal).toBe(60);
+    expect(result.spending.currentMonthBreakdown.categories[0].label).toBe(
+      "Boodschappen",
+    );
+    expect(result.spending.currentWeekTotal).toBe(15);
+    expect(result.budgetPlan.currentWeekBudget).toBe(200);
+    expect(result.trend.weekTempoDelta).toBe(80);
+    expect(result.quality.hasBalanceSignals).toBe(true);
+    expect(result.quality.hasSpendingSignals).toBe(true);
+    expect(result.quality.hasCategorySignals).toBe(true);
   });
 
   it("falls back to current month when period is missing", async () => {

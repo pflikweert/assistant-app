@@ -128,6 +128,90 @@ describe("help-assistant-ai spending advice", () => {
         cashRiskFlag: "none",
         forecastReferenceDate: "2026-03-20",
       },
+      currentBalance: {
+        balance: 1400,
+        date: "2026-03-20",
+      },
+      spending: {
+        currentMonthTotal: 820,
+        currentWeekTotal: 210,
+        currentMonthBreakdown: {
+          total: 820,
+          transactionCount: 12,
+          categories: [
+            {
+              key: "housing",
+              label: "Wonen",
+              amount: 420,
+              transactionCount: 3,
+              subcategories: [
+                {
+                  key: "rent",
+                  label: "Huur",
+                  amount: 420,
+                  transactionCount: 3,
+                },
+              ],
+            },
+            {
+              key: "groceries",
+              label: "Boodschappen",
+              amount: 240,
+              transactionCount: 5,
+              subcategories: [
+                {
+                  key: "supermarket",
+                  label: "Supermarkt",
+                  amount: 240,
+                  transactionCount: 5,
+                },
+              ],
+            },
+          ],
+        },
+        currentWeekBreakdown: {
+          total: 210,
+          transactionCount: 4,
+          categories: [
+            {
+              key: "groceries",
+              label: "Boodschappen",
+              amount: 120,
+              transactionCount: 2,
+              subcategories: [
+                {
+                  key: "supermarket",
+                  label: "Supermarkt",
+                  amount: 120,
+                  transactionCount: 2,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      trend: {
+        monthStatusLabel: "LET OP",
+        monthRiskTone: "watch",
+        weekStatusLabel: "Op koers",
+        weekRiskTone: "good",
+        weekTempoDelta: -10,
+        monthProgress: 0.6,
+      },
+      budgetPlan: {
+        monthlyBudgetTotal: 2000,
+        weeklyBudgetTotal: 500,
+        fixedCostsBudget: 900,
+        subscriptionsBudget: 120,
+        variableBudget: 900,
+        variableSubcategoriesBudgetTotal: 900,
+        appliedSavingsTarget: 250,
+        currentWeekBudget: 200,
+        currentWeekActual: 120,
+        currentWeekRemaining: 80,
+        subtotalAfterFixed: 1100,
+        subtotalAfterSubscriptions: 980,
+      },
       quality: {
         cacheHit: false,
         fetchedAtIso: "2026-03-20T12:00:00.000Z",
@@ -135,6 +219,9 @@ describe("help-assistant-ai spending advice", () => {
         hasBudgetSignals: true,
         hasPlanningSignals: true,
         hasForecastSignals: true,
+        hasBalanceSignals: true,
+        hasSpendingSignals: true,
+        hasCategorySignals: true,
         confidence: "high",
         dataGaps: [],
       },
@@ -214,6 +301,16 @@ describe("help-assistant-ai spending advice", () => {
       "op basis van wat ik nu zie",
     );
     expect(resolveUnifiedFinancialAdviceContextMock).toHaveBeenCalledTimes(1);
+
+    const openAIRequest =
+      postHelpAssistantSpendingAdviceCompletionMock.mock.calls[0]?.[0]
+        ?.openAIRequest;
+    const promptText = JSON.stringify(openAIRequest?.messages || []);
+    expect(promptText).toContain("Actueel saldo");
+    expect(promptText).toContain("Huidige maand uitgaven totaal");
+    expect(promptText).toContain("Maandverdeling uitgaven");
+    expect(promptText).toContain("Weekverdeling uitgaven");
+    expect(promptText).toContain("Budgetplan maand totaal");
   });
 
   it("keeps non-spending questions on regular proxy path", async () => {
@@ -336,6 +433,76 @@ describe("help-assistant-ai spending advice", () => {
     expect(resolveUnifiedFinancialAdviceContextMock).not.toHaveBeenCalled();
     expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(2);
     expect(result.answerText).toContain("budget");
+  });
+
+  it("routes category spend questions to spending advice even when the router is generic", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createJsonResponse(
+        {
+          route: "general",
+          confidence: "medium",
+          type: "general",
+          subtype: "general",
+          needsClarification: false,
+          meta: {
+            type: "general",
+            subtype: "general",
+            confidence: "medium",
+            context: {
+              screenId: "budget",
+              screenTitle: "Budget",
+              routeName: "/budget",
+              platform: "web",
+              periodLabel: "maart 2026",
+            },
+          },
+        },
+        "router-category-spend",
+      ),
+    );
+    postHelpAssistantSpendingAdviceCompletionMock.mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-category-spend",
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  conclusion: "Je hebt deze maand € 240 aan boodschappen uitgegeven.",
+                  why: "De uitgavenverdeling laat boodschappen als aparte categorie zien.",
+                  risk: "Als dit tempo doorloopt, blijft er minder ruimte over voor de rest van de maand.",
+                  nextStep: "Kijk of je dit bedrag wilt vergelijken met je budget of met vorige maand.",
+                  confidence: "high",
+                }),
+              },
+            },
+          ],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "budget",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        remainingVariableBudget: 200,
+        hasForecastData: true,
+      },
+    });
+
+    const result = await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage(
+        "Hoeveel heb ik deze maand aan boodschappen uitgegeven?",
+      ),
+    });
+
+    expect(postHelpAssistantSpendingAdviceCompletionMock).toHaveBeenCalledTimes(1);
+    expect(resolveUnifiedFinancialAdviceContextMock).toHaveBeenCalledTimes(1);
+    expect(result.answerText).toContain("€ 240");
+    expect(result.answerText).toContain("boodschappen");
   });
 
   it("parses issue intake JSON with type and context metadata", async () => {

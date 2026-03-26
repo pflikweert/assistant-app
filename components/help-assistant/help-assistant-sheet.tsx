@@ -1,10 +1,9 @@
 import { useSession } from "@/app/_layout";
+import { BudioAssistantEmptyState } from "@/components/help-assistant/budio-assistant-empty-state";
 import { HelpAssistantComposer } from "@/components/help-assistant/help-assistant-composer";
 import { AiAssistantResponse } from "@/components/help-assistant/ai-assistant-response";
-import { HelpAssistantEmptyThread } from "@/components/help-assistant/help-assistant-empty-thread";
 import { HelpAssistantIssueDraftPreviewCard } from "@/components/help-assistant/help-assistant-issue-draft-preview";
 import { HelpAssistantMarkdown } from "@/components/help-assistant/help-assistant-markdown";
-import { HelpAssistantQuickActions } from "@/components/help-assistant/help-assistant-quick-actions";
 import { AppIcon } from "@/components/ui/app-icon";
 import {
   applyQuickActionLocally,
@@ -90,15 +89,14 @@ export function HelpAssistantSheet({
     [user],
   );
   const greetingTitle = userFirstName ? `Hoi ${userFirstName},` : "Hoi,";
-  const userMessageLabel = userFirstName
-    ? userFirstName.toUpperCase()
-    : "JIJ";
-  const shouldShowQuickActions = thread.messages.length === 0;
   const activeIssueDraft =
     issueFlowState.activeDraft && issueFlowState.status !== "idle"
       ? issueFlowState.activeDraft
       : null;
   const shouldShowIssueDraftPreview = Boolean(activeIssueDraft);
+  const [keepEmptyStateMounted, setKeepEmptyStateMounted] = React.useState(
+    () => visible && thread.messages.length === 0,
+  );
 
   React.useEffect(() => {
     threadRef.current = thread;
@@ -157,6 +155,17 @@ export function HelpAssistantSheet({
     if (!visible) return;
     scrollToLatestMessage();
   }, [latestMessageCursor, scrollToLatestMessage, visible]);
+
+  React.useEffect(() => {
+    if (!visible) {
+      setKeepEmptyStateMounted(false);
+      return;
+    }
+
+    if (thread.messages.length === 0) {
+      setKeepEmptyStateMounted(true);
+    }
+  }, [thread.messages.length, visible]);
 
   React.useEffect(() => {
     if (visible) return;
@@ -254,6 +263,10 @@ export function HelpAssistantSheet({
     [context, requestAssistantReply],
   );
 
+  const handleEmptyStateExitComplete = React.useCallback(() => {
+    setKeepEmptyStateMounted(false);
+  }, []);
+
   const handleCreateIssueDraft = React.useCallback(async () => {
     if (!activeIssueDraft) return;
     if (
@@ -337,12 +350,6 @@ export function HelpAssistantSheet({
       footerStyle={styles.footer}
       footer={
         <View style={styles.footerStack}>
-          {shouldShowQuickActions ? (
-            <HelpAssistantQuickActions
-              actions={quickActions}
-              onPressAction={handleQuickActionPress}
-            />
-          ) : null}
           <HelpAssistantComposer
             value={composerValue}
             onChangeText={setComposerValue}
@@ -375,22 +382,34 @@ export function HelpAssistantSheet({
           scrollToLatestMessage();
         }}
       >
-        <View style={styles.hero}>
-          <Text style={styles.heroTitle}>{greetingTitle}</Text>
-          <Text style={styles.heroSubtitle}>
-            Hoe kan ik je vandaag helpen met je financiële groei?
-          </Text>
-        </View>
+        <View style={styles.stage}>
+          {visible && (thread.messages.length === 0 || keepEmptyStateMounted) ? (
+            <View
+              style={[
+                styles.emptyStateWrap,
+                thread.messages.length > 0 && styles.emptyStateOverlay,
+              ]}
+              pointerEvents={thread.messages.length === 0 ? "auto" : "none"}
+            >
+              <BudioAssistantEmptyState
+                visible={thread.messages.length === 0}
+                actions={quickActions.slice(0, 4)}
+                onPressAction={handleQuickActionPress}
+                onExitComplete={handleEmptyStateExitComplete}
+                assistantLabel="Hulpassistent"
+                greetingTitle={greetingTitle}
+                intensity={0.66}
+              />
+            </View>
+          ) : null}
 
-        {thread.messages.length === 0 ? (
-          <HelpAssistantEmptyThread />
-        ) : (
-          <View style={styles.threadWrap}>
-            {thread.messages.map((message) => {
-              const isAssistant = message.role === "assistant";
-              const isLatestAssistant = message.id === latestAssistantMessageId;
-              const isPending = message.status === "pending";
-              const isReady = message.status === "ready";
+          {thread.messages.length > 0 ? (
+            <View style={styles.threadWrap}>
+              {thread.messages.map((message) => {
+                const isAssistant = message.role === "assistant";
+                const isLatestAssistant = message.id === latestAssistantMessageId;
+                const isPending = message.status === "pending";
+                const isReady = message.status === "ready";
               const isTypedCompleted = typedCompletedByMessageId[message.id] === true;
               const shouldRenderLiveAssistant =
                 isAssistant &&
@@ -460,7 +479,6 @@ export function HelpAssistantSheet({
                     </View>
                   ) : (
                     <View style={styles.userMessageWrap}>
-                      <Text style={styles.userLabel}>{userMessageLabel}</Text>
                       <HelpAssistantMarkdown
                         text={message.text}
                         tone="user"
@@ -468,10 +486,11 @@ export function HelpAssistantSheet({
                     </View>
                   )}
                 </View>
-              );
-            })}
-          </View>
-        )}
+                );
+              })}
+            </View>
+          ) : null}
+        </View>
       </ScrollView>
     </FinanceBottomSheetShell>
   );
@@ -485,31 +504,32 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    flexGrow: 1,
     gap: 20,
     paddingBottom: 16,
   },
   issueDraftStickyWrap: {
     marginBottom: 12,
   },
-  hero: {
-    gap: 8,
-    paddingTop: 2,
-  },
-  heroTitle: {
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-    color: FinColors.textPrimary,
-  },
-  heroSubtitle: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: "400",
-    color: FinColors.textMuted,
+  stage: {
+    position: "relative",
+    flexGrow: 1,
   },
   threadWrap: {
     gap: 14,
+    paddingTop: 2,
+  },
+  emptyStateWrap: {
+    flexGrow: 1,
+    justifyContent: "center",
+  },
+  emptyStateOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 1,
   },
   threadBubble: {
     borderRadius: 18,
@@ -563,15 +583,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   userMessageWrap: {
-    gap: 6,
-  },
-  userLabel: {
-    alignSelf: "flex-end",
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "600",
-    letterSpacing: 0.4,
-    color: FinColors.textMuted,
+    gap: 0,
   },
   assistantLiveResponse: {
     marginHorizontal: 0,

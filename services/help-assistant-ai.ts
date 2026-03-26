@@ -56,6 +56,7 @@ const SPENDING_ADVICE_SYSTEM_PROMPT = [
   "Je taak is voorzichtig, compact en bruikbaar meedenken over uitgavenruimte.",
   "Budgetruimte, planning en forecast zijn leidend; los saldo is nooit leidend.",
   "Denk altijd in drie tijdslagen: nu, later deze maand en begin volgende maand.",
+  "Als de gebruiker vraagt hoeveel er aan een categorie is uitgegeven (bijvoorbeeld boodschappen, eten, vervoer of kleding), gebruik dan de uitgavenverdeling in de context en geef een concreet totaal in euro's voor de huidige maand en, als dat helpt, ook voor de huidige week.",
   "Gebruik alleen data die expliciet in de huidige context staat.",
   "Verzin nooit bedragen, datums, transacties, categorieën of risico's.",
   "Als data ontbreekt of beperkt is, benoem onzekerheid expliciet.",
@@ -296,6 +297,53 @@ function cleanInlineText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function formatFinancialCategorySpendBreakdown(
+  title: string,
+  breakdown:
+    | {
+        total: number;
+        transactionCount: number;
+        categories: {
+          label: string;
+          amount: number;
+          transactionCount: number;
+          subcategories: {
+            label: string;
+            amount: number;
+            transactionCount: number;
+          }[];
+        }[];
+      }
+    | null
+    | undefined,
+) {
+  if (!breakdown) return `${title}: onbekend`;
+
+  const lines = [
+    `${title}: ${eur.format(breakdown.total)} (${breakdown.transactionCount} transacties)`,
+  ];
+
+  if (!breakdown.categories.length) {
+    lines.push("- nog geen categorieverdeling beschikbaar");
+    return lines.join("\n");
+  }
+
+  for (const category of breakdown.categories.slice(0, 5)) {
+    const subcategories = category.subcategories
+      .slice(0, 3)
+      .map((sub) => `${sub.label}: ${eur.format(sub.amount)}`)
+      .join(", ");
+
+    lines.push(
+      `- ${category.label}: ${eur.format(category.amount)}${
+        subcategories ? ` | ${subcategories}` : ""
+      }`,
+    );
+  }
+
+  return lines.join("\n");
+}
+
 function buildUnifiedFinancialContextPrompt(
   context: UnifiedFinancialAdviceContext,
 ) {
@@ -317,6 +365,59 @@ function buildUnifiedFinancialContextPrompt(
     context.period.usedFallbackPeriod
       ? "Periode-selectie: fallback gebruikt (huidige maand)."
       : "Periode-selectie: expliciet gekozen periode.",
+    context.currentBalance.balance != null
+      ? `Actueel saldo: ${eur.format(context.currentBalance.balance)}${context.currentBalance.date ? ` (laatst bekend op ${context.currentBalance.date})` : ""}`
+      : "Actueel saldo: onbekend",
+    context.spending.currentMonthTotal != null
+      ? `Huidige maand uitgaven totaal: ${eur.format(context.spending.currentMonthTotal)}`
+      : "Huidige maand uitgaven totaal: onbekend",
+    context.spending.currentWeekTotal != null
+      ? `Huidige week uitgaven totaal: ${eur.format(context.spending.currentWeekTotal)}`
+      : "Huidige week uitgaven totaal: onbekend",
+    formatFinancialCategorySpendBreakdown(
+      "Maandverdeling uitgaven",
+      context.spending.currentMonthBreakdown,
+    ),
+    formatFinancialCategorySpendBreakdown(
+      "Weekverdeling uitgaven",
+      context.spending.currentWeekBreakdown,
+    ),
+    context.trend.monthStatusLabel || context.trend.weekStatusLabel
+      ? `Trend huidig tempo: maand ${context.trend.monthStatusLabel || "onbekend"} (${context.trend.monthRiskTone || "neutral"}), week ${context.trend.weekStatusLabel || "onbekend"} (${context.trend.weekRiskTone || "neutral"}${context.trend.weekTempoDelta != null ? `, tempo delta ${eur.format(context.trend.weekTempoDelta)}` : ""})`
+      : "Trend huidig tempo: onbekend",
+    context.trend.monthProgress != null
+      ? `Maandprogressie: ${Math.round(context.trend.monthProgress * 100)}%`
+      : "",
+    context.budgetPlan.monthlyBudgetTotal != null
+      ? `Budgetplan maand totaal: ${eur.format(context.budgetPlan.monthlyBudgetTotal)}`
+      : "Budgetplan maand totaal: onbekend",
+    context.budgetPlan.weeklyBudgetTotal != null
+      ? `Budgetplan week totaal: ${eur.format(context.budgetPlan.weeklyBudgetTotal)}`
+      : "Budgetplan week totaal: onbekend",
+    context.budgetPlan.fixedCostsBudget != null
+      ? `Budgetplan vaste lasten: ${eur.format(context.budgetPlan.fixedCostsBudget)}`
+      : "",
+    context.budgetPlan.subscriptionsBudget != null
+      ? `Budgetplan abonnementen: ${eur.format(context.budgetPlan.subscriptionsBudget)}`
+      : "",
+    context.budgetPlan.variableBudget != null
+      ? `Budgetplan variabel budget: ${eur.format(context.budgetPlan.variableBudget)}`
+      : "",
+    context.budgetPlan.variableSubcategoriesBudgetTotal != null
+      ? `Budgetplan variabele subcategorieën samen: ${eur.format(context.budgetPlan.variableSubcategoriesBudgetTotal)}`
+      : "",
+    context.budgetPlan.appliedSavingsTarget != null
+      ? `Budgetplan spaardoel: ${eur.format(context.budgetPlan.appliedSavingsTarget)}`
+      : "",
+    context.budgetPlan.currentWeekBudget != null
+      ? `Budgetplan huidige weekbudget: ${eur.format(context.budgetPlan.currentWeekBudget)}`
+      : "",
+    context.budgetPlan.currentWeekActual != null
+      ? `Budgetplan huidige week uitgegeven: ${eur.format(context.budgetPlan.currentWeekActual)}`
+      : "",
+    context.budgetPlan.currentWeekRemaining != null
+      ? `Budgetplan huidige week resterend: ${eur.format(context.budgetPlan.currentWeekRemaining)}`
+      : "",
     context.budget.remainingVariableBudget != null
       ? `Resterend variabel budget: ${eur.format(context.budget.remainingVariableBudget)}`
       : "Resterend variabel budget: onbekend",
@@ -411,9 +512,26 @@ function looksLikeBudgetSpaceQuestion(input: string) {
   return (
     text.includes("ruimte") ||
     text.includes("uitgeven") ||
+    text.includes("uitgegeven") ||
+    text.includes("besteed") ||
     text.includes("kan ik nog") ||
     text.includes("bestedingsruimte") ||
     text.includes("budget")
+  );
+}
+
+function looksLikeCategorySpendQuestion(input: string) {
+  const text = normalizeText(input);
+  return (
+    text.includes("hoeveel heb ik aan") ||
+    text.includes("hoeveel aan") ||
+    text.includes("uitgegeven aan") ||
+    text.includes("besteed aan") ||
+    text.includes("gaf ik aan") ||
+    text.includes("aan boodschappen") ||
+    text.includes("aan eten") ||
+    text.includes("aan supermarkt") ||
+    text.includes("aan vervoer")
   );
 }
 
@@ -434,6 +552,7 @@ type SpendingQuestionType = "space_summary" | "spending_decision";
 function classifySpendingQuestionType(input: string): SpendingQuestionType | null {
   const text = normalizeText(input);
   if (looksLikeProblemOrBugQuestion(text)) return null;
+  if (looksLikeCategorySpendQuestion(text)) return "spending_decision";
   if (!looksLikeBudgetSpaceQuestion(text)) return null;
 
   const isSpaceSummaryQuestion =
@@ -1028,15 +1147,21 @@ export async function requestHelpAssistantReply({
         issueFlowActive: isIssueFlowActive,
       })
     : null;
+  const fallbackSpendingType =
+    latestUserMessage && !isIssueFlowActive
+      ? classifySpendingQuestionType(latestUserMessage.text)
+      : null;
   const route: HelpAssistantTurnRoute =
     isIssueFlowActive
       ? "issue_intake"
-      : routeDecision?.route || "general";
+      : routeDecision?.route === "general" && fallbackSpendingType
+        ? "spending_advice"
+        : routeDecision?.route || "general";
   const isIssueIntakeQuestion = route === "issue_intake";
   const isSpendingAdviceQuestion = route === "spending_advice";
   const spendingQuestionType =
     latestUserMessage && isSpendingAdviceQuestion
-      ? classifySpendingQuestionType(latestUserMessage.text) || "spending_decision"
+      ? fallbackSpendingType || "spending_decision"
       : null;
   const spendingPromptVariant = spendingQuestionType
     ? selectSpendingPromptVariant(spendingQuestionType)
