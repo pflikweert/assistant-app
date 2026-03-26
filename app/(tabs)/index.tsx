@@ -1,12 +1,12 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
-import { FinanceLoadingSplash } from "@/components/ui/finance-loading-splash";
 import { FinanceHeaderActions } from "@/components/ui/finance-header-actions";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SquareAccentBlock } from "@/components/ui/square-accent-block";
 import { FinanceBudgetProgressBar } from "@/components/ui/finance-budget-progress-bar";
+import { SplashLoader } from "@/components/motions/SplashLoader";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import {
   getMonthVariableBudgetUsageText,
@@ -401,11 +401,7 @@ export default function DashboardScreen() {
       />
 
       {isBootstrapping ? (
-        <FinanceLoadingSplash
-          title="Gegevens laden"
-          subtitle="We zetten je overzicht klaar."
-          note="Even geduld."
-        />
+        <SplashLoader label="Gegevens laden…" />
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}

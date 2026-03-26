@@ -151,6 +151,14 @@ export type BuildHelpAssistantContextInput = {
   screenContext?: HelpAssistantScreenContextData | null;
 };
 
+export type HelpAssistantUserProfile = {
+  email?: string | null;
+  user_metadata?: {
+    name?: string | null;
+    full_name?: string | null;
+  } | null;
+} | null | undefined;
+
 function normalizeRouteName(value: string | null | undefined, fallback: string) {
   const normalized = String(value || "").trim();
   if (!normalized) return fallback;
@@ -239,6 +247,31 @@ function sanitizeScreenContext(
   }
 
   return null;
+}
+
+function normalizeDisplayName(value: string | null | undefined) {
+  return String(value || "")
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function resolveHelpAssistantDisplayName(user: HelpAssistantUserProfile) {
+  const metadataName = normalizeDisplayName(user?.user_metadata?.full_name)
+    || normalizeDisplayName(user?.user_metadata?.name);
+  if (metadataName) return metadataName;
+
+  const localPart = String(user?.email || "").split("@")[0] || "";
+  const normalizedLocalPart = normalizeDisplayName(localPart);
+  if (normalizedLocalPart) return normalizedLocalPart;
+
+  return "";
+}
+
+export function resolveHelpAssistantFirstName(user: HelpAssistantUserProfile) {
+  const displayName = resolveHelpAssistantDisplayName(user);
+  if (!displayName) return "";
+  return displayName.split(" ").filter(Boolean)[0] || "";
 }
 
 export function buildHelpAssistantContext({

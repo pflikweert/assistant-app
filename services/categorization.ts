@@ -887,7 +887,12 @@ async function requestOpenAICategories(
 
   await waitForOpenAIRateLimitWindow(estimatedTokens);
 
-  const response = await postOpenAIChatCompletion(payload);
+  const response = await postOpenAIChatCompletion(payload, {
+    useCase: "transaction_categorization",
+    agentMode: "classification",
+    responseMode: "json_schema",
+    fallbackEnabled: true,
+  });
 
   updateOpenAIRateLimitStateFromHeaders(response.headers);
 

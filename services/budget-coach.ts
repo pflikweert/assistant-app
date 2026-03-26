@@ -408,7 +408,12 @@ async function requestAutomaticSavingsTarget(
 
   await waitForOpenAIRateLimitWindow(estimatedTokens);
 
-  const response = await postOpenAIChatCompletion(payload);
+  const response = await postOpenAIChatCompletion(payload, {
+    useCase: "budget_coach",
+    agentMode: "analysis",
+    responseMode: "json_schema",
+    fallbackEnabled: true,
+  });
 
   updateOpenAIRateLimitStateFromHeaders(response.headers);
 
@@ -594,7 +599,12 @@ async function requestCoachReport(
 
   await waitForOpenAIRateLimitWindow(estimatedTokens);
 
-  const response = await postOpenAIChatCompletion(payload);
+  const response = await postOpenAIChatCompletion(payload, {
+    useCase: "budget_coach",
+    agentMode: "analysis",
+    responseMode: "json_schema",
+    fallbackEnabled: true,
+  });
 
   updateOpenAIRateLimitStateFromHeaders(response.headers);
 

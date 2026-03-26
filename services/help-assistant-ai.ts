@@ -3,6 +3,10 @@ import type {
   HelpAssistantThreadState,
 } from "@/services/help-assistant-chat";
 import {
+  classifyHelpAssistantIntent,
+  type HelpAssistantClassifiedIntent,
+} from "@/services/help-assistant-intent";
+import {
   buildHelpAssistantScreenContextLines,
   type HelpAssistantContext,
 } from "@/services/help-assistant-context";
@@ -28,53 +32,96 @@ const eur = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
 });
-const GENERAL_ASSISTANT_SYSTEM_PROMPT = [
-  "Je bent de Budio Assistent in een Nederlandse budget- en financiële app.",
-  "Je helpt met vier vraagtypes: schermuitleg, probleemhulp, feedback/feature-signalen en algemene financiële meedenkvraagstukken.",
+const HELP_ASSISTANT_SYSTEM_PROMPT = [
+  "Je bent de Budio Assistent in een Nederlandse consumenten-app voor budget en financiële sturing.",
+  "Werk volgens de Budio-volgorde: eerst huidige stand, daarna ruimte, daarna risico, daarna advies.",
+  "Beantwoord vragen in zes herkenbare hulpsoorten: schermuitleg, probleemhulp, mogelijke bug, feedback/feature-idee, algemene financiële meedenkvraag, en bestedingsruimte-vragen.",
   "Antwoord altijd in het Nederlands.",
-  "Schrijf kort, duidelijk, vriendelijk en menselijk.",
-  "Gebruik eenvoudige taal voor gewone gebruikers en vermijd technische uitleg tenzij dat echt nodig is.",
-  "Wees product-specifiek: praat over budgetruimte, uitgaven, forecast, vaste lasten, transacties, import en komende maanden als dat relevant is.",
-  "In Budio betekent 'ruimte' standaard: ruimte om nog uit te geven binnen budget en forecast.",
-  "Maak onderscheid tussen wat zeker is en wat alleen afgeleid is uit context.",
-  "Als data ontbreekt of onzeker is, zeg dat expliciet.",
-  "Als je iets niet zeker weet, gebruik formuleringen zoals: 'op basis van wat ik nu zie' of 'voor zover je gegevens compleet zijn'.",
-  "Geef nooit absolute garanties over geld, budgetten of toekomstige uitkomsten.",
-  "Verzin nooit cijfers, transacties, categorieën, datums of conclusies die niet in de context staan.",
-  "Bij probleemmeldingen: help eerst praktisch en rustig in plaats van direct technisch te escaleren.",
-  "Als iets op een bug lijkt, benoem dat voorzichtig.",
-  "Als iets op feedback of een feature-idee lijkt, vat dat kort samen in producttaal.",
-  "Houd antwoorden compact: meestal 3 tot 6 zinnen, tenzij een gestructureerd formaat is gevraagd.",
-  "Gebruik geen markdown headers in het antwoord.",
-  "Gebruik alleen lijstjes als dat echt helpt voor duidelijkheid.",
+  "Houd antwoorden kort, duidelijk en menselijk.",
+  "Gebruik eenvoudige taal die past bij gewone gebruikers zonder financiële vaktaal.",
+  "In Budio betekent 'ruimte': ruimte om nog uit te geven binnen budget en forecast.",
+  "Forecast is altijd een verwachting, geen zekerheid.",
+  "Gebruik alleen gegevens die expliciet in de actuele context staan.",
+  "Verzin nooit bedragen, datums, transacties, categorieën of conclusies.",
+  "Herhaal geen oude cijfers uit eerdere berichten als ze niet opnieuw in de context staan.",
+  "Bij onzekerheid zeg je dit expliciet, bijvoorbeeld: 'op basis van wat ik nu zie' of 'voor zover je gegevens compleet zijn'.",
+  "Geef nooit absolute garanties over geld of toekomstige uitkomsten.",
+  "Bij probleemhulp: begin praktisch met rustige stappen; vraag pas daarna om extra details als dat nodig is.",
+  "Bij mogelijke bug: benoem voorzichtig dat het op een app-fout kan lijken en geef een concrete vervolgstap.",
+  "Bij feedback/feature-idee: vat het idee kort samen in producttaal en bevestig wat het oplost.",
+  "Laat technische interne termen niet rauw zien aan de gebruiker; vertaal ze naar gewone taal.",
+  "Gebruik maximaal 3-6 zinnen tenzij de vraag expliciet om structuur vraagt.",
 ].join(" ");
 const SPENDING_ADVICE_SYSTEM_PROMPT = [
-  "Je bent de Budio AI Buddy voor bestedingsruimte en financiële keuzes.",
-  "Je taak is voorzichtig en bruikbaar meedenken over de vraag of de gebruiker nog geld kan uitgeven.",
-  "Baseer je antwoord primair op budgetruimte, forecast, komende vaste lasten, geplande inkomsten en zichtbare risico's.",
-  "Stuur niet op los saldo alleen; saldo zonder context is onvoldoende.",
-  "Beoordeel altijd vanuit drie tijdslagen: nu, later deze maand en begin volgende maand.",
-  "Gebruik alleen cijfers en feiten die expliciet in de huidige context staan.",
-  "Verzin nooit bedragen, buffers, risico's of inkomsten.",
-  "Hergebruik geen cijfers uit eerdere berichten als die niet opnieuw in de actuele context staan.",
-  "Als data ontbreekt, benoem dat duidelijk als onzekerheid of beperking.",
-  "Als data onzeker is, zeg letterlijk: 'op basis van wat ik nu zie'.",
-  "Geef geen absolute zekerheid en doe niet alsof je financieel professioneel advies geeft.",
-  "Je antwoord moet praktisch, menselijk en voorzichtig zijn.",
-  "Gebruik voor de conclusie altijd één van deze richtingen: veilig, haalbaar maar krap, technisch mogelijk maar onverstandig, of onvoldoende data.",
-  "Laat in why kort zien welke contextsignalen het zwaarst wogen.",
-  "Laat in risk expliciet zien wat het risico is later deze maand of volgende maand.",
-  "Laat in nextStep een concrete kleine vervolgstap zien, zoals bedrag verlagen, wachten of ontbrekende data checken.",
-  "Gebruik altijd exact vier verplichte velden in JSON: conclusion, why, risk, nextStep.",
-  "Optioneel mag confidence met waarden low, medium of high.",
-  "Optioneel mag dataGaps als array met korte labels van ontbrekende info.",
-  'Geef alleen JSON als output: {"conclusion":"...","why":"...","risk":"...","nextStep":"...","confidence":"low|medium|high","dataGaps":["..."]}',
+  "Je bent de Budio AI Buddy voor bestedingsruimte-vragen.",
+  "Je taak is voorzichtig, compact en bruikbaar meedenken over uitgavenruimte.",
+  "Budgetruimte, planning en forecast zijn leidend; los saldo is nooit leidend.",
+  "Denk altijd in drie tijdslagen: nu, later deze maand en begin volgende maand.",
+  "Gebruik alleen data die expliciet in de huidige context staat.",
+  "Verzin nooit bedragen, datums, transacties, categorieën of risico's.",
+  "Als data ontbreekt of beperkt is, benoem onzekerheid expliciet.",
+  "Gebruik dan letterlijke veilige formulering: 'op basis van wat ik nu zie'.",
+  "Geef geen absolute zekerheid en geen professioneel financieel advies.",
+  "Vertaal technische signalen naar gewone taal; toon geen ruwe interne veldnamen.",
+  "Je antwoord blijft altijd compact, menselijk en in het Nederlands.",
+  "Geef in JSON ook een meta-blok terug met type='spending_advice' en context met screenId, screenTitle, routeName, platform en periodLabel.",
+  "De bestaande velden conclusion, why, risk en nextStep blijven gewoon op root-niveau aanwezig.",
+  "Output is exact JSON met verplichte velden: conclusion, why, risk, nextStep.",
+  "Optioneel: confidence (low|medium|high) en dataGaps (korte labels).",
+  'Geef uitsluitend JSON terug in dit formaat: {"conclusion":"...","why":"...","risk":"...","nextStep":"...","confidence":"low|medium|high","dataGaps":["..."]}',
+].join(" ");
+
+const SPENDING_SPACE_QUESTION_PROMPT = [
+  "Vraagtype: ruimtevraag (bijv. 'hoeveel ruimte heb ik nog?').",
+  "Start met een directe samenvatting van de beschikbare ruimte binnen budget en forecast voor de gekozen periode.",
+  "Gebruik geen normatief oordeel als hoofdboodschap, tenzij data duidelijk onvoldoende is.",
+  "why: noem kort de belangrijkste contextsignalen die de samenvatting dragen.",
+  "risk: benoem kort het risico voor later deze maand en begin volgende maand.",
+  "nextStep: geef optioneel een kleine vervolgstap die direct helpt.",
+  "Als ruimte niet betrouwbaar te bepalen is, kies in conclusion: 'onvoldoende data'.",
+].join(" ");
+
+const SPENDING_DECISION_QUESTION_PROMPT = [
+  "Vraagtype: uitgavebeslissing (bijv. 'kan ik nog 40 euro uit eten?').",
+  "Geef in conclusion expliciet één richting: veilig, haalbaar maar krap, technisch mogelijk maar onverstandig, of onvoldoende data.",
+  "why: onderbouw kort met budgetruimte + planning + forecastsignalen.",
+  "risk: benoem wat later deze maand of begin volgende maand kan knellen.",
+  "nextStep: geef een concrete kleine vervolgstap, zoals bedrag verlagen, wachten of eerst data controleren.",
+].join(" ");
+
+const ISSUE_INTAKE_SYSTEM_PROMPT = [
+  "Je bent de Budio Assistent voor chat-first idee- en issue-intake.",
+  "Je helpt de gebruiker rustig om een idee, feedback of probleem in gewone taal helder te maken.",
+  "Je chatregel voor de gebruiker is altijd alleen 1 korte verdiepende vraag in gewone taal.",
+  "De samenvatting bewaar je alleen voor de meldkaart en niet voor de chatregel.",
+  "Je stelt die verdiepende vraag altijd, ook als de melding al bijna klaar is.",
+  "Je mag nooit zeggen dat iets al is doorgestuurd, gemeld of opgelost voordat de gebruiker expliciet op versturen klikt.",
+  "Je geeft altijd strict JSON terug met exact deze structuur:",
+  "{",
+  '  "meta": { "type": "idea|issue|feedback|bug|general", "subtype": "idea|issue|feedback|bug|general", "confidence": "low|medium|high", "state": "collecting|ready_to_review", "needsClarification": true, "context": { "screenId": "...", "screenTitle": "...", "routeName": "...", "platform": "...", "periodLabel": "..." } },',
+  '  "answerText": "korte chatreactie in gewone taal",',
+  '  "summary": "korte conceptsamenvatting",',
+  '  "featureArea": "korte productplek of schermnaam",',
+  '  "userNeed": "wat de gebruiker wil of wat er misgaat",',
+  '  "proposedChange": "wat Budio volgens de gebruiker moet doen",',
+  '  "followUpQuestion": "één korte verdiepende vraag in gewone taal",',
+  '  "isReadyForSubmission": true',
+  "}",
+  "Gebruik geen technische labels als zichtbare uitleg. De meta-velden zijn alleen voor de app.",
+  "Laat `answerText` alleen de verdiepende vraag bevatten; geen samenvattende inleiding, geen technische labels, en nooit 'ik geef dit door' of iets vergelijkbaars.",
+  "Als de melding nog niet concreet genoeg is, zet state op collecting en needsClarification op true.",
+  "Als de melding concreet genoeg is voor een reviewkaart, zet state op ready_to_review en isReadyForSubmission op true.",
+  "Als het om een idee gaat, kies type/subtype idea. Als het om een probleem of bug gaat, kies issue of bug.",
+  "Als het om feedback gaat, kies feedback.",
 ].join(" ");
 
 // Centrale prompt-library, zodat we later eenvoudig use-cases zoals bug triage of issue drafts kunnen toevoegen.
 const PROMPT_LIBRARY = {
-  generalAssistant: GENERAL_ASSISTANT_SYSTEM_PROMPT,
+  generalAssistant: HELP_ASSISTANT_SYSTEM_PROMPT,
   spendingAdvice: SPENDING_ADVICE_SYSTEM_PROMPT,
+  spendingSpaceQuestion: SPENDING_SPACE_QUESTION_PROMPT,
+  spendingDecisionQuestion: SPENDING_DECISION_QUESTION_PROMPT,
+  issueIntake: ISSUE_INTAKE_SYSTEM_PROMPT,
 } as const;
 
 const SYSTEM_PROMPT = PROMPT_LIBRARY.generalAssistant;
@@ -94,6 +141,7 @@ export type HelpAssistantAIRequest = {
   thread: HelpAssistantThreadState;
   userMessageId?: string;
   unifiedFinancialContext?: UnifiedFinancialAdviceContext | null;
+  issueFlowActive?: boolean;
 };
 
 export type HelpAssistantAIResponse = {
@@ -101,6 +149,7 @@ export type HelpAssistantAIResponse = {
   model: string;
   responseId: string | null;
   unifiedFinancialContext?: UnifiedFinancialAdviceContext | null;
+  issueIntake?: HelpAssistantIssueDraftResponse | null;
 };
 
 type SpendingAdviceSections = {
@@ -108,6 +157,39 @@ type SpendingAdviceSections = {
   why: string;
   risk: string;
   nextStep: string;
+};
+
+type HelpAssistantStructuredResponseType =
+  | "general"
+  | "idea"
+  | "issue"
+  | "feedback"
+  | "bug";
+
+type HelpAssistantStructuredResponseContext = {
+  screenId: string;
+  screenTitle: string;
+  routeName: string;
+  platform: string;
+  periodLabel: string | null;
+};
+
+type HelpAssistantIssueDraftResponse = {
+  meta: {
+    type: HelpAssistantStructuredResponseType;
+    subtype: "general" | "idea" | "issue" | "feedback" | "bug";
+    confidence: "low" | "medium" | "high";
+    state: "collecting" | "ready_to_review";
+    needsClarification: boolean;
+    context: HelpAssistantStructuredResponseContext;
+  };
+  answerText: string;
+  summary: string;
+  featureArea: string;
+  userNeed: string;
+  proposedChange: string;
+  isReadyForSubmission: boolean;
+  followUpQuestion?: string;
 };
 
 export type SpendingAdviceResponseSchema = SpendingAdviceSections & {
@@ -151,9 +233,44 @@ function buildContextPrompt(context: HelpAssistantContext) {
   ].join("\n");
 }
 
+function parseJsonObject(content: string) {
+  const trimmed = content.trim();
+  if (!trimmed) return null;
+
+  const candidates = [trimmed];
+  const fenceMatch = /```(?:json)?\s*([\s\S]*?)```/i.exec(trimmed);
+  if (fenceMatch?.[1]) candidates.push(fenceMatch[1].trim());
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as Record<string, unknown>;
+    } catch {
+      // keep trying other candidates
+    }
+  }
+
+  return null;
+}
+
+function cleanInlineText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 function buildUnifiedFinancialContextPrompt(
   context: UnifiedFinancialAdviceContext,
 ) {
+  const currentMonthRiskLabel = toRiskSignalLabel({
+    riskFlag: context.forecastCurrentMonth.riskFlag,
+    cashRiskFlag: context.forecastCurrentMonth.cashRiskFlag,
+  });
+  const nextMonthRiskLabel = toRiskSignalLabel({
+    riskFlag: context.forecastNextMonth.riskFlag,
+    cashRiskFlag: context.forecastNextMonth.cashRiskFlag,
+  });
+  const readableDataGaps = context.quality.dataGaps
+    .map((gap) => toReadableDataGapLabel(gap))
+    .filter(Boolean);
+
   const lines = [
     `Periode: ${context.period.label}`,
     `Periode-key: ${context.period.key}`,
@@ -204,7 +321,7 @@ function buildUnifiedFinancialContextPrompt(
         )}`
       : "",
     context.forecastCurrentMonth.hasData
-      ? `Huidige maand forecast status: ${context.forecastCurrentMonth.riskFlag} / ${context.forecastCurrentMonth.cashRiskFlag}`
+      ? `Huidige maand risicosignaal: ${currentMonthRiskLabel}`
       : "Huidige maand forecast status: beperkt",
     context.forecastNextMonth.hasData
       ? `Begin volgende maand (${context.forecastNextMonth.monthLabel}) verwacht eindsaldo: ${eur.format(
@@ -212,11 +329,11 @@ function buildUnifiedFinancialContextPrompt(
         )}`
       : "",
     context.forecastNextMonth.hasData
-      ? `Volgende maand risico: ${context.forecastNextMonth.riskFlag} / ${context.forecastNextMonth.cashRiskFlag}`
+      ? `Begin volgende maand risicosignaal: ${nextMonthRiskLabel}`
       : "Volgende maand forecast: ontbreekt of beperkt",
     `Context confidence: ${context.quality.confidence}`,
-    context.quality.dataGaps.length
-      ? `Interne datagaten: ${context.quality.dataGaps.join(", ")}`
+    readableDataGaps.length
+      ? `Datakwaliteit: ${readableDataGaps.join(", ")}`
       : "Interne datagaten: geen",
   ];
 
@@ -229,6 +346,17 @@ function getLatestUserMessage(thread: HelpAssistantThreadState) {
     if (message.role === "user") return message;
   }
   return null;
+}
+
+function hasRepeatedUserQuestion(thread: HelpAssistantThreadState) {
+  const recentUserMessages = thread.messages.filter(
+    (message) => message.role === "user",
+  );
+  if (recentUserMessages.length < 2) return false;
+
+  const last = recentUserMessages[recentUserMessages.length - 1];
+  const previous = recentUserMessages[recentUserMessages.length - 2];
+  return normalizeText(last.text) === normalizeText(previous.text);
 }
 
 function normalizeText(value: string) {
@@ -249,8 +377,224 @@ function looksLikeBudgetSpaceQuestion(input: string) {
   );
 }
 
+function looksLikeProblemOrBugQuestion(input: string) {
+  const text = normalizeText(input);
+  return (
+    text.includes("waarom klopt") ||
+    text.includes("klopt dit niet") ||
+    text.includes("ik zie een fout") ||
+    text.includes("dit werkt niet") ||
+    text.includes("bug") ||
+    text.includes("error")
+  );
+}
+
+type SpendingQuestionType = "space_summary" | "spending_decision";
+
+function classifySpendingQuestionType(input: string): SpendingQuestionType | null {
+  const text = normalizeText(input);
+  if (looksLikeProblemOrBugQuestion(text)) return null;
+  if (!looksLikeBudgetSpaceQuestion(text)) return null;
+
+  const isSpaceSummaryQuestion =
+    text.includes("hoeveel ruimte") ||
+    text.includes("ruimte heb ik nog") ||
+    text.includes("ruimte over") ||
+    text.includes("hoeveel kan ik nog");
+
+  if (isSpaceSummaryQuestion) return "space_summary";
+  return "spending_decision";
+}
+
 export function isFinancialAdviceQuestion(input: string) {
-  return looksLikeBudgetSpaceQuestion(input);
+  return classifySpendingQuestionType(input) !== null;
+}
+
+function classifyIssueIntakeType(
+  intent: HelpAssistantClassifiedIntent | undefined,
+): HelpAssistantStructuredResponseType | null {
+  if (intent === "feature_request") return "idea";
+  if (intent === "mogelijke_bug") return "issue";
+  if (intent === "feedback") return "feedback";
+  return null;
+}
+
+function buildIssueIntakePrompt(context: HelpAssistantContext) {
+  return [
+    "Beoordeel of de gebruiker een idee, feedback, probleem of bug beschrijft.",
+    "Vat de kern samen in gewone taal, kort en geruststellend.",
+    "Als de melding nog vaag is, stel hooguit 1 korte verduidelijkende vraag.",
+    "Als de melding concreet genoeg is, maak dan een compacte samenvatting die klaar is om te reviewen.",
+    "Zorg dat featureArea een begrijpelijke productplek of schermnaam is.",
+    "Gebruik answerText voor de chatreactie die de gebruiker ziet.",
+    "Gebruik summary voor de korte conceptsamenvatting.",
+    "",
+    `Context:\n${buildContextPrompt(context)}`,
+  ].join("\n");
+}
+
+function parseIssueIntakeResponse(
+  content: string,
+): HelpAssistantIssueDraftResponse | null {
+  const parsed = parseJsonObject(content);
+  if (!parsed) return null;
+
+  const answerText = String(parsed.answerText || "").trim();
+  const summary = String(parsed.summary || "").trim();
+  const featureArea = String(parsed.featureArea || "").trim();
+  const userNeed = String(parsed.userNeed || "").trim();
+  const proposedChange = String(parsed.proposedChange || "").trim();
+  const isReadyForSubmission = Boolean(parsed.isReadyForSubmission);
+  const meta = parsed.meta;
+
+  if (!answerText || !summary || !featureArea || !userNeed || !proposedChange) {
+    return null;
+  }
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+
+  const typedMeta = meta as Record<string, unknown>;
+  const type = String(typedMeta.type || "").trim();
+  const subtype = String(typedMeta.subtype || "").trim();
+  const confidence = String(typedMeta.confidence || "").trim();
+  const state = String(typedMeta.state || "").trim();
+  const needsClarification = Boolean(typedMeta.needsClarification);
+  const context = typedMeta.context;
+
+  if (!["general", "idea", "issue", "feedback", "bug"].includes(type)) return null;
+  if (!["general", "idea", "issue", "feedback", "bug"].includes(subtype)) return null;
+  if (!["low", "medium", "high"].includes(confidence)) return null;
+  if (!["collecting", "ready_to_review"].includes(state)) return null;
+  if (!context || typeof context !== "object" || Array.isArray(context)) return null;
+
+  const typedContext = context as Record<string, unknown>;
+  const screenId = String(typedContext.screenId || "").trim();
+  const screenTitle = String(typedContext.screenTitle || "").trim();
+  const routeName = String(typedContext.routeName || "").trim();
+  const platform = String(typedContext.platform || "").trim();
+  const periodLabelRaw = typedContext.periodLabel;
+  const periodLabel =
+    typeof periodLabelRaw === "string"
+      ? periodLabelRaw.trim() || null
+      : periodLabelRaw == null
+        ? null
+        : String(periodLabelRaw || "").trim() || null;
+
+  if (!screenId || !screenTitle || !routeName || !platform) return null;
+
+  return {
+    meta: {
+      type: type as HelpAssistantStructuredResponseType,
+      subtype: subtype as "general" | "idea" | "issue" | "feedback" | "bug",
+      confidence: confidence as "low" | "medium" | "high",
+      state: state as "collecting" | "ready_to_review",
+      needsClarification,
+      context: {
+        screenId,
+        screenTitle,
+        routeName,
+        platform,
+        periodLabel,
+      },
+    },
+    answerText: buildIssueIntakeAnswerText({
+      type: type as HelpAssistantStructuredResponseType,
+      featureArea,
+      followUpQuestion:
+        typeof parsed.followUpQuestion === "string"
+          ? parsed.followUpQuestion.trim() || undefined
+          : undefined,
+    }),
+    summary,
+    featureArea,
+    userNeed,
+    proposedChange,
+    isReadyForSubmission,
+    followUpQuestion:
+      typeof parsed.followUpQuestion === "string"
+        ? parsed.followUpQuestion.trim() || undefined
+        : undefined,
+  };
+}
+
+function buildIssueIntakeAnswerText(input: {
+  type: HelpAssistantStructuredResponseType;
+  featureArea: string;
+  followUpQuestion?: string;
+}) {
+  const followUpQuestion =
+    cleanInlineText(input.followUpQuestion || "") ||
+    buildDeepeningQuestion({
+      type: input.type,
+      featureArea: input.featureArea,
+    });
+
+  return followUpQuestion;
+}
+
+function buildDeepeningQuestion(input: {
+  type: HelpAssistantStructuredResponseType;
+  featureArea: string;
+}) {
+  const featureArea = cleanInlineText(input.featureArea || "");
+  const areaLower = featureArea.toLowerCase();
+  const locationPhrase =
+    areaLower === "dashboard"
+      ? "op het dashboard"
+      : featureArea
+        ? `aan ${areaLower}`
+        : "hier";
+
+  if (input.type === "bug") {
+    return "Waar merk je dit het duidelijkst en wat gebeurt er nu precies?";
+  }
+
+  if (input.type === "feedback") {
+    return `Wat zou voor jou het belangrijkste verschil maken ${locationPhrase}?`;
+  }
+
+  if (featureArea) {
+    return `Wat zou je graag willen toevoegen of veranderen ${locationPhrase}?`;
+  }
+
+  return "Kun je nog iets meer vertellen wat je precies in gedachten hebt?";
+}
+
+function selectSpendingPromptVariant(type: SpendingQuestionType) {
+  if (type === "space_summary") {
+    return PROMPT_LIBRARY.spendingSpaceQuestion;
+  }
+  return PROMPT_LIBRARY.spendingDecisionQuestion;
+}
+
+function toRiskSignalLabel(input: {
+  riskFlag: "none" | "deficit_warning";
+  cashRiskFlag: "none" | "cash_gap_warning";
+}) {
+  if (
+    input.riskFlag === "deficit_warning" &&
+    input.cashRiskFlag === "cash_gap_warning"
+  ) {
+    return "tekortsignaal en kans op tijdelijk kastekort";
+  }
+  if (input.riskFlag === "deficit_warning") {
+    return "tekortsignaal voor deze periode";
+  }
+  if (input.cashRiskFlag === "cash_gap_warning") {
+    return "kans op tijdelijk kastekort";
+  }
+  return "geen direct risicosignaal";
+}
+
+function toReadableDataGapLabel(label: string) {
+  const mapping: Record<string, string> = {
+    periode_niet_specifiek: "periode was niet expliciet gekozen",
+    budgetruimte_onvolledig: "budgetruimte is deels onvolledig",
+    planning_signalen_beperkt: "planning-signalen zijn beperkt",
+    forecast_signalen_beperkt: "forecast-signalen zijn beperkt",
+    volgende_maand_forecast_ontbreekt:
+      "begin volgende maand heeft nog beperkte forecastdata",
+  };
+  return mapping[label] || "";
 }
 
 function parseRequestedAmountFromQuestion(input: string) {
@@ -434,11 +778,27 @@ export async function requestHelpAssistantReply({
   context,
   thread,
   unifiedFinancialContext,
+  issueFlowActive,
 }: HelpAssistantAIRequest): Promise<HelpAssistantAIResponse> {
   const latestUserMessage = getLatestUserMessage(thread);
-  const isSpendingAdviceQuestion = latestUserMessage
-    ? looksLikeBudgetSpaceQuestion(latestUserMessage.text)
-    : false;
+  const latestUserIntent = latestUserMessage
+    ? classifyHelpAssistantIntent(latestUserMessage.text)
+    : null;
+  const isIssueFlowActive = Boolean(issueFlowActive);
+  const issueIntakeType = classifyIssueIntakeType(latestUserIntent?.intent);
+  const isIssueIntakeQuestion = Boolean(issueIntakeType) || isIssueFlowActive;
+  const classifiedAsSpendingAdvice =
+    latestUserMessage?.metadata.classification?.intent === "spending_advice";
+  const spendingQuestionType = latestUserMessage
+    ? classifiedAsSpendingAdvice
+      ? classifySpendingQuestionType(latestUserMessage.text) || "spending_decision"
+      : classifySpendingQuestionType(latestUserMessage.text)
+    : null;
+  const isSpendingAdviceQuestion =
+    spendingQuestionType !== null && !isIssueIntakeQuestion;
+  const spendingPromptVariant = spendingQuestionType
+    ? selectSpendingPromptVariant(spendingQuestionType)
+    : null;
 
   const requestedAmount =
     isSpendingAdviceQuestion && latestUserMessage
@@ -458,11 +818,38 @@ export async function requestHelpAssistantReply({
           unifiedFinancialContext: resolvedFinancialContext,
         })
       : null;
+  const repeatedQuestion = hasRepeatedUserQuestion(thread);
+  const signalHints = latestUserMessage
+    ? {
+        confidence:
+          latestUserMessage.metadata.classification?.confidence ||
+          latestUserIntent?.confidence,
+        repeatedQuestion,
+        issueFlowIncomplete: Boolean(
+          latestUserMessage.metadata.issueDraftCandidate &&
+            thread.pendingIssueDraftIds.includes(latestUserMessage.id),
+        ),
+      }
+    : { repeatedQuestion };
 
   const openAIMessages = [
     { role: "system", content: SYSTEM_PROMPT },
     ...(isSpendingAdviceQuestion
-      ? [{ role: "system", content: SPENDING_ADVICE_SYSTEM_PROMPT }]
+      ? [
+          { role: "system", content: SPENDING_ADVICE_SYSTEM_PROMPT },
+          ...(spendingPromptVariant
+            ? [{ role: "system", content: spendingPromptVariant }]
+            : []),
+        ]
+      : []),
+    ...(isIssueIntakeQuestion
+      ? [
+          { role: "system", content: PROMPT_LIBRARY.issueIntake },
+          {
+            role: "system",
+            content: buildIssueIntakePrompt(context),
+          },
+        ]
       : []),
     {
       role: "system",
@@ -499,6 +886,8 @@ export async function requestHelpAssistantReply({
     temperature: 0.2,
     response_format: isSpendingAdviceQuestion
       ? { type: "json_object" }
+      : isIssueIntakeQuestion
+        ? { type: "json_object" }
       : undefined,
     messages: openAIMessages,
   };
@@ -509,8 +898,34 @@ export async function requestHelpAssistantReply({
         ? await postHelpAssistantSpendingAdviceCompletion({
             openAIRequest,
             safeFallback: toProxyFallback(spendingFallback),
+            meta: {
+              useCase: "help_spending_advice",
+              routeName: context.routeName,
+              screenId: context.screenId,
+              screenTitle: context.screenTitle,
+              platform: context.platform,
+              periodLabel: context.selectedPeriod?.label || undefined,
+              agentMode: "chat",
+              responseMode: "json_object",
+              fallbackEnabled: true,
+              signalHints,
+            },
           })
-        : await postOpenAIChatCompletion(openAIRequest);
+        : await postOpenAIChatCompletion(openAIRequest, {
+            useCase: "help_general",
+            routeName: context.routeName,
+            screenId: context.screenId,
+            screenTitle: context.screenTitle,
+            platform: context.platform,
+            periodLabel: context.selectedPeriod?.label || undefined,
+            agentMode: "chat",
+            responseMode:
+              isSpendingAdviceQuestion || isIssueIntakeQuestion
+                ? "json_object"
+                : "text",
+            fallbackEnabled: true,
+            signalHints,
+          });
 
     const raw = await response.text();
     let parsed: ChatCompletionResponse | null = null;
@@ -532,15 +947,29 @@ export async function requestHelpAssistantReply({
     }
 
     const payload = (parsed || {}) as ChatCompletionResponse;
+    const responseText = String(
+      payload.choices?.[0]?.message?.content || "",
+    ).trim();
+    const issueIntakeResponse = isIssueIntakeQuestion
+      ? parseIssueIntakeResponse(responseText)
+      : null;
+    const issueIntakeFallbackText =
+      "Vertel gerust wat je in gedachten hebt. Ik help je het kort en duidelijk te maken.";
+
     return {
-      answerText: parseAnswerText(payload, {
-        spendingAdviceQuestion: isSpendingAdviceQuestion,
-        fallback: spendingFallback || undefined,
-        unifiedFinancialContext: resolvedFinancialContext,
-      }),
+      answerText:
+        issueIntakeResponse?.answerText ||
+        (isIssueIntakeQuestion
+          ? issueIntakeFallbackText
+          : parseAnswerText(payload, {
+              spendingAdviceQuestion: isSpendingAdviceQuestion,
+              fallback: spendingFallback || undefined,
+              unifiedFinancialContext: resolvedFinancialContext,
+            })),
       model: String(payload.model || DEFAULT_MODEL),
       responseId: payload.id || null,
       unifiedFinancialContext: resolvedFinancialContext,
+      issueIntake: issueIntakeResponse,
     };
   } catch {
     if (isSpendingAdviceQuestion && spendingFallback) {
@@ -549,6 +978,7 @@ export async function requestHelpAssistantReply({
         model: "local-safe-fallback-spending-v1",
         responseId: null,
         unifiedFinancialContext: resolvedFinancialContext,
+        issueIntake: null,
       };
     }
 

@@ -1,5 +1,6 @@
 import { getSession } from "./supabase";
 import { getApiBaseUrl } from "./api-base";
+import type { AiProxyMeta } from "./ai-use-cases";
 
 const OPENAI_PROXY_PATH = "/api/openai/chat-completions";
 
@@ -36,17 +37,22 @@ async function postOpenAIProxy(body: unknown) {
   return response;
 }
 
-export async function postOpenAIChatCompletion(body: unknown) {
-  return postOpenAIProxy(body);
+export async function postOpenAIChatCompletion(
+  body: unknown,
+  meta?: AiProxyMeta,
+) {
+  return postOpenAIProxy(meta ? { openai: body, meta } : body);
 }
 
 export async function postHelpAssistantSpendingAdviceCompletion(input: {
   openAIRequest: unknown;
   safeFallback: SpendingAdviceProxyFallback;
+  meta?: AiProxyMeta;
 }) {
   return postOpenAIProxy({
     openai: input.openAIRequest,
     meta: {
+      ...(input.meta || {}),
       useCase: "help_spending_advice",
       safeFallback: input.safeFallback,
     },

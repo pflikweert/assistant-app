@@ -66,7 +66,7 @@ function buildBaseQuickActions(
     {
       id: "report_bug",
       label: "Ik zie een fout",
-      description: "Start een lokale foutmelding als concept.",
+      description: "Start een gesprek over een probleem of bug.",
       behavior: "start_local_thread",
       intent: "bug_report",
       target: "issue_draft",
@@ -75,7 +75,7 @@ function buildBaseQuickActions(
     {
       id: "share_idea",
       label: "Ik heb een idee",
-      description: "Start een lokaal idee/concept voor feedback.",
+      description: "Start een gesprek over een idee of verbetering.",
       behavior: "start_local_thread",
       intent: "feature_idea",
       target: "issue_draft",

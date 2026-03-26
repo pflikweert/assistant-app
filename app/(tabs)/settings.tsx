@@ -10,6 +10,7 @@ import {
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { useSession } from "@/app/_layout";
+import { useAdminAccess } from "@/services/admin-access";
 import {
     clearQueuedCategorizationQueue,
     clearTransactionData,
@@ -290,6 +291,7 @@ function SectionHeader({ title }: { title: string }) {
 export default function SettingsScreen() {
   const router = useRouter();
   const { logout, user } = useSession();
+  const adminAccess = useAdminAccess();
   const [isClearing, setIsClearing] = React.useState(false);
   const [isSigningOut, setIsSigningOut] = React.useState(false);
   const [showCleanupScopeSheet, setShowCleanupScopeSheet] =
@@ -518,6 +520,17 @@ export default function SettingsScreen() {
 
           <SectionHeader title="Beheer" />
           <View style={styles.card}>
+            {adminAccess.loading ? null : adminAccess.isAdmin ? (
+              <>
+                <SettingsRow
+                  iconName="shield"
+                  label="Budio beheer"
+                  subtitle="Assistent review, AI-verbruik en route-instellingen"
+                  onPress={() => router.push("/admin" as Href)}
+                />
+                <View style={styles.divider} />
+              </>
+            ) : null}
             <SettingsRow
               iconName="tune"
               label="Categorie-indeling"

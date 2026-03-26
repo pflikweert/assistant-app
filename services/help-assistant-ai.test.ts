@@ -211,6 +211,108 @@ describe("help-assistant-ai spending advice", () => {
     expect(result.answerText).toBe("Hier is je schermuitleg.");
   });
 
+  it("keeps budget mismatch questions on regular proxy path", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-2b",
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              message: { content: "Laten we samen stap voor stap je budget controleren." },
+            },
+          ],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "budget",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        remainingVariableBudget: 120,
+        hasForecastData: true,
+      },
+    });
+
+    const result = await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("Waarom klopt mijn budget niet?"),
+    });
+
+    expect(postHelpAssistantSpendingAdviceCompletionMock).not.toHaveBeenCalled();
+    expect(resolveUnifiedFinancialAdviceContextMock).not.toHaveBeenCalled();
+    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(1);
+    expect(result.answerText).toContain("budget");
+  });
+
+  it("parses issue intake JSON with type and context metadata", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-issue-1",
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  meta: {
+                    type: "idea",
+                    subtype: "idea",
+                    confidence: "high",
+                    state: "ready_to_review",
+                    needsClarification: false,
+                    context: {
+                      screenId: "dashboard",
+                      screenTitle: "Dashboard",
+                      routeName: "/dashboard",
+                      platform: "web",
+                      periodLabel: "maart 2026",
+                    },
+                  },
+                  answerText:
+                    "Wat zou je graag willen toevoegen of veranderen op het dashboard?",
+                  summary: "Grafiek voor dashboard",
+                  featureArea: "Dashboard",
+                  userNeed: "Je wilt grafieken zien op het dashboard",
+                  proposedChange: "een grafiek laat de forecast zien",
+                  isReadyForSubmission: true,
+                }),
+              },
+            },
+          ],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    const result = await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage(
+        "ik zou mijn budget van de hele maand in een grafiek willen zien",
+      ),
+    });
+
+    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(1);
+    expect(result.issueIntake?.meta.type).toBe("idea");
+    expect(result.issueIntake?.meta.context.screenId).toBe("dashboard");
+    expect(result.issueIntake?.summary).toContain("Grafiek");
+    expect(result.answerText).toBe(
+      "Wat zou je graag willen toevoegen of veranderen op het dashboard?",
+    );
+    expect(result.answerText).not.toContain("geef dit door");
+  });
+
   it("uses context-based data gaps instead of model-invented data gaps", async () => {
     postHelpAssistantSpendingAdviceCompletionMock.mockResolvedValue({
       ok: true,

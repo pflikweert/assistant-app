@@ -1,4 +1,9 @@
 import type { HelpAssistantContext } from "@/services/help-assistant-context";
+import {
+  classifyHelpAssistantIntent,
+  classifyIntentFromQuickAction,
+  type HelpAssistantIntentClassification,
+} from "@/services/help-assistant-intent";
 import type {
   HelpAssistantQuickAction,
   HelpAssistantQuickActionId,
@@ -20,6 +25,7 @@ export type HelpAssistantMessageMetadata = {
   source: HelpAssistantMessageSource;
   intent: HelpAssistantQuickActionIntent | "general_help";
   target: HelpAssistantQuickActionTarget | "general_help";
+  classification?: HelpAssistantIntentClassification;
   quickActionId?: HelpAssistantQuickActionId;
   routeName: string;
   screenId: HelpAssistantContext["screenId"];
@@ -55,6 +61,7 @@ type MessageTemplateInput = {
   source: HelpAssistantMessageSource;
   intent: HelpAssistantMessageMetadata["intent"];
   target: HelpAssistantMessageMetadata["target"];
+  classification?: HelpAssistantIntentClassification;
   quickActionId?: HelpAssistantQuickActionId;
 };
 
@@ -69,6 +76,12 @@ export type ApplyComposerMessageResult = {
   thread: HelpAssistantThreadState;
   userMessageId?: string;
   assistantPlaceholderId?: string;
+};
+
+type AppendLocalAssistantInfoInput = {
+  thread: HelpAssistantThreadState;
+  context: HelpAssistantContext;
+  text: string;
 };
 
 function nowIso() {
@@ -87,6 +100,7 @@ function buildMessage({
   source,
   intent,
   target,
+  classification,
   quickActionId,
 }: MessageTemplateInput): HelpAssistantMessage {
   const normalized = text.trim();
@@ -101,6 +115,7 @@ function buildMessage({
       source,
       intent,
       target,
+      classification,
       quickActionId,
       routeName: context.routeName,
       screenId: context.screenId,
@@ -133,12 +148,14 @@ function appendMessage(
   thread: HelpAssistantThreadState,
   message: HelpAssistantMessage,
 ): HelpAssistantThreadState {
+  const isUserMessage = message.role === "user";
   return {
     messages: [...thread.messages, message],
-    pendingIssueDraftIds: message.metadata.issueDraftCandidate
+    pendingIssueDraftIds: isUserMessage && message.metadata.issueDraftCandidate
       ? [...thread.pendingIssueDraftIds, message.id]
       : thread.pendingIssueDraftIds,
-    pendingSpendingAdviceIds: message.metadata.spendingAdviceCandidate
+    pendingSpendingAdviceIds:
+      isUserMessage && message.metadata.spendingAdviceCandidate
       ? [...thread.pendingSpendingAdviceIds, message.id]
       : thread.pendingSpendingAdviceIds,
   };
@@ -179,6 +196,13 @@ export function submitComposerMessageLocally(
 ): ApplyComposerMessageResult {
   const normalized = rawText.trim();
   if (!normalized) return { thread };
+  const classification = classifyHelpAssistantIntent(normalized);
+  const target =
+    classification.intent === "mogelijke_bug" ||
+    classification.intent === "feedback" ||
+    classification.intent === "feature_request"
+      ? ("issue_draft" as const)
+      : ("general_help" as const);
 
   const userMessage = buildMessage({
     text: normalized,
@@ -187,7 +211,8 @@ export function submitComposerMessageLocally(
     context,
     source: "composer",
     intent: "general_help",
-    target: "general_help",
+    target,
+    classification,
   });
 
   const exchange = appendLocalExchange(thread, userMessage, context);
@@ -218,6 +243,10 @@ export function applyQuickActionLocally(
     source: "quick_action",
     intent: action.intent,
     target: action.target,
+    classification: classifyIntentFromQuickAction({
+      quickActionIntent: action.intent,
+      quickActionId: action.id,
+    }),
     quickActionId: action.id,
   });
 
@@ -288,4 +317,25 @@ export function resolveAssistantMessageError(
       };
     }),
   };
+}
+
+export function appendLocalAssistantInfoMessage({
+  thread,
+  context,
+  text,
+}: AppendLocalAssistantInfoInput): HelpAssistantThreadState {
+  const normalized = text.trim();
+  if (!normalized) return thread;
+
+  const assistantMessage = buildMessage({
+    text: normalized,
+    role: "assistant",
+    status: "ready",
+    context,
+    source: "local_placeholder",
+    intent: "general_help",
+    target: "general_help",
+  });
+
+  return appendMessage(thread, assistantMessage);
 }

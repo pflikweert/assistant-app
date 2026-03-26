@@ -1,8 +1,7 @@
-import { AppIcon } from "@/components/ui/app-icon";
 import type { HelpAssistantQuickAction } from "@/services/help-assistant-quick-actions";
 import { FinColors } from "@/constants/theme";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 type HelpAssistantQuickActionsProps = {
   actions: HelpAssistantQuickAction[];
@@ -22,16 +21,7 @@ export function HelpAssistantQuickActions({
           accessibilityRole="button"
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
         >
-          <View style={styles.topRow}>
-            <AppIcon
-              name="auto-awesome"
-              size={15}
-              color={FinColors.textSecondary}
-              variant="outlined"
-            />
-            <Text style={styles.label}>{action.label}</Text>
-          </View>
-          <Text style={styles.description}>{action.description}</Text>
+          <Text style={styles.label}>{action.label}</Text>
         </Pressable>
       ))}
     </View>
@@ -40,34 +30,32 @@ export function HelpAssistantQuickActions({
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: 10,
-  },
-  topRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    flexWrap: "wrap",
+    gap: 8,
   },
   button: {
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     backgroundColor: FinColors.bgCard,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    gap: 8,
+    outlineWidth: 0,
+    ...(Platform.OS === "web"
+      ? ({
+          outlineStyle: "none",
+        } as any)
+      : null),
   },
   buttonPressed: {
     opacity: 0.84,
   },
   label: {
-    fontSize: 14,
+    fontSize: 16,
+    lineHeight: 20,
     color: FinColors.textPrimary,
-    fontWeight: "700",
+    fontWeight: "500",
     flexShrink: 1,
-  },
-  description: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: FinColors.textSecondary,
   },
 });

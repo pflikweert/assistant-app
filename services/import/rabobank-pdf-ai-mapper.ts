@@ -155,6 +155,11 @@ async function requestOpenAI(prompt: string) {
           },
           { role: "user", content: prompt },
         ],
+      }, {
+        useCase: "import_pdf_mapping",
+        agentMode: "extraction",
+        responseMode: "json_object",
+        fallbackEnabled: true,
       });
 
       if (!response.ok) {

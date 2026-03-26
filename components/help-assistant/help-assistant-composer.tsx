@@ -21,13 +21,21 @@ export function HelpAssistantComposer({
 
   return (
     <View style={styles.shell}>
+      <View style={styles.leadingIconWrap}>
+        <AppIcon
+          name="format-list-bulleted"
+          size={16}
+          color={FinColors.textMuted}
+          variant="outlined"
+        />
+      </View>
       <TextInput
         value={value}
         onChangeText={onChangeText}
-        placeholder="Typ je vraag..."
-        placeholderTextColor={FinColors.textMuted}
-        multiline
-        textAlignVertical="top"
+        placeholder="Stel je vraag aan Budio..."
+        placeholderTextColor="rgba(95,90,84,0.55)"
+        multiline={false}
+        textAlignVertical="center"
         returnKeyType="send"
         submitBehavior="submit"
         onSubmitEditing={handleSubmit}
@@ -50,9 +58,9 @@ export function HelpAssistantComposer({
         style={({ pressed }) => [styles.sendButton, pressed && styles.sendButtonPressed]}
       >
         <AppIcon
-          name="north-east"
+          name="north"
           size={18}
-          color={FinColors.textPrimary}
+          color="#ffffff"
           variant="outlined"
         />
       </Pressable>
@@ -62,37 +70,62 @@ export function HelpAssistantComposer({
 
 const styles = StyleSheet.create({
   shell: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 10,
-    minHeight: 72,
+    borderRadius: 999,
+    borderWidth: 0,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 8,
+    minHeight: 58,
     flexDirection: "row",
-    gap: 10,
-    alignItems: "flex-end",
+    gap: 8,
+    alignItems: "center",
+    outlineWidth: 0,
+    ...(Platform.OS === "web"
+      ? ({
+          outlineStyle: "none",
+        } as any)
+      : null),
+  },
+  leadingIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
   input: {
     flex: 1,
-    minHeight: 50,
-    maxHeight: 120,
+    minHeight: 40,
+    maxHeight: 40,
     color: FinColors.textPrimary,
-    fontSize: 15,
+    fontSize: 16,
     lineHeight: 20,
+    fontWeight: "400",
+    paddingTop: 0,
+    paddingBottom: 0,
+    outlineWidth: 0,
+    ...(Platform.OS === "web"
+      ? ({
+          outlineStyle: "none",
+        } as any)
+      : null),
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: FinColors.warningBorder,
-    backgroundColor: FinColors.yellowSoft,
+    backgroundColor: FinColors.warningText,
+    outlineWidth: 0,
+    ...(Platform.OS === "web"
+      ? ({
+          outlineStyle: "none",
+        } as any)
+      : null),
   },
   sendButtonPressed: {
-    opacity: 0.84,
+    opacity: 0.9,
   },
 });

@@ -1,15 +1,23 @@
 import "dotenv/config";
 
 import http from "node:http";
+import { Buffer } from "node:buffer";
 
 import openAiHandler from "../api/openai/chat-completions.ts";
+import adminHandler from "../api/admin/index.ts";
 import resetPasswordLogHandler from "../api/auth/reset-password-log.ts";
+import githubIssuesHandler from "../api/github/issues.ts";
 
 const routes = new Map([
+  ["OPTIONS /api/admin", adminHandler],
+  ["GET /api/admin", adminHandler],
+  ["PATCH /api/admin", adminHandler],
   ["OPTIONS /api/openai/chat-completions", openAiHandler],
   ["POST /api/openai/chat-completions", openAiHandler],
   ["OPTIONS /api/auth/reset-password-log", resetPasswordLogHandler],
   ["POST /api/auth/reset-password-log", resetPasswordLogHandler],
+  ["OPTIONS /api/github/issues", githubIssuesHandler],
+  ["POST /api/github/issues", githubIssuesHandler],
 ]);
 
 function resolveListenPort() {

@@ -46,6 +46,33 @@ import React, {
 } from "react";
 import { AppState, LogBox, type AppStateStatus } from "react-native";
 import "react-native-reanimated";
+
+function patchReactDevToolsVersion() {
+  if (process.env.NODE_ENV === "production") return;
+  if (typeof window === "undefined") return;
+
+  const hook = (window as typeof window & {
+    __REACT_DEVTOOLS_GLOBAL_HOOK__?: {
+      inject?: (renderer: { version?: string }) => unknown;
+      __budioVersionPatched?: boolean;
+    };
+  }).__REACT_DEVTOOLS_GLOBAL_HOOK__;
+
+  if (!hook || hook.__budioVersionPatched || typeof hook.inject !== "function") {
+    return;
+  }
+
+  const originalInject = hook.inject.bind(hook);
+  hook.inject = (renderer) => {
+    if (renderer && typeof renderer.version === "string" && !renderer.version.trim()) {
+      renderer.version = React.version || "19.1.0";
+    }
+    return originalInject(renderer);
+  };
+  hook.__budioVersionPatched = true;
+}
+
+patchReactDevToolsVersion();
 // Session context
 type SessionContextType = {
   session: Session | null;
@@ -392,6 +419,12 @@ function RootNavigator() {
         />
         <Stack.Screen
           name="category-budget-groups"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="admin/index"
           options={{
             headerShown: false,
           }}

@@ -138,6 +138,21 @@ Niet bedoeld voor:
 - Relatie met andere pagina's:
   - toegangspunt voor beheerflows
 
+### Route: `app/admin/index.tsx`
+
+- Status: `Actief`
+- Doel van deze pagina: compacte Budio-beheeromgeving voor AI-inzicht en configuratie
+- Voor wie / wanneer: alleen voor admingebruikers
+- Kernfunctionaliteiten:
+  - review inbox voor assistentfrictie
+  - AI-verbruik met live OpenAI totalen en 10-minuten cache
+  - per-use-case route- en modelinstellingen
+- Belangrijkste acties:
+  - review-item bekijken en status wijzigen
+  - AI-route-instellingen aanpassen
+- Relatie met andere pagina's:
+  - ontsloten vanuit `Instellingen`
+
 ### Route: `app/(tabs)/_layout.tsx`
 
 - Status: `Technisch/Hulproute`
@@ -441,7 +456,7 @@ Niet bedoeld voor:
 - `services/supabase.ts` (`kernlogica`): Supabase client en platformconfig.
 - `services/current-user.ts` (`kernlogica`): huidige user-id/identity-resolutie.
 - `services/api-base.ts` (`helper`): basis voor API-calls buiten pure DB-queries.
-- `services/openai-proxy.ts` (`kernlogica`): veilige proxylaag voor AI-calls.
+- `services/openai-proxy.ts` (`kernlogica`): veilige proxylaag voor AI-calls, use-case metadata en centrale telemetrie.
 - `services/pattern-normalization.ts` (`helper`): tekstnormalisatie voor matching/dedupe.
 
 ### Transacties & categorisatie
@@ -688,7 +703,11 @@ Niet bedoeld voor:
 | `services/insights-upcoming-moments.ts`        | kernlogica | Komende momenten selectie                     | Insights-selectoren         |
 | `services/latest-known-balance.ts`             | kernlogica | Laatste bekende saldo bron                    | Insights-selectoren         |
 | `services/month-forecast-summary.ts`           | kernlogica | Maandforecast-summary loader                  | Forecast & risico           |
-| `services/openai-proxy.ts`                     | kernlogica | Proxylaag naar AI endpoint                    | Infra & basislaag           |
+| `services/openai-proxy.ts`                     | kernlogica | Proxylaag naar AI endpoint en AI-telemetrie   | Infra & basislaag           |
+| `services/admin-access.ts`                     | helper     | Adminrol en toegangsbepaling                  | Beheerlagen                 |
+| `services/ai-route-settings.ts`                | helper     | Laden en wijzigen van AI route-instellingen   | Beheerlagen                 |
+| `services/ai-review-inbox.ts`                  | helper     | Review-inbox ophalen en bijwerken             | Beheerlagen                 |
+| `services/ai-usage.ts`                         | helper     | AI-verbruiksoverzicht                         | Beheerlagen                 |
 | `services/own-account-transfer-heuristics.ts`  | helper     | Heuristieken interne overboekingen            | Bankrekeningen              |
 | `services/pattern-normalization.ts`            | helper     | Tekstnormalisatie voor matching               | Infra & basislaag           |
 | `services/rare-subscriptions.ts`               | helper     | Detectie minder frequente abonnementspatronen | Subscriptions & herhaling   |

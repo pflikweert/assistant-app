@@ -1,9 +1,14 @@
+import { useSession } from "@/app/_layout";
 import { HelpAssistantComposer } from "@/components/help-assistant/help-assistant-composer";
+import { AiAssistantResponse } from "@/components/help-assistant/ai-assistant-response";
 import { HelpAssistantEmptyThread } from "@/components/help-assistant/help-assistant-empty-thread";
+import { HelpAssistantIssueDraftPreviewCard } from "@/components/help-assistant/help-assistant-issue-draft-preview";
 import { HelpAssistantMarkdown } from "@/components/help-assistant/help-assistant-markdown";
 import { HelpAssistantQuickActions } from "@/components/help-assistant/help-assistant-quick-actions";
+import { AppIcon } from "@/components/ui/app-icon";
 import {
   applyQuickActionLocally,
+  appendLocalAssistantInfoMessage,
   createInitialHelpAssistantThreadState,
   type HelpAssistantThreadState,
   resolveAssistantMessageError,
@@ -16,10 +21,18 @@ import {
 } from "@/services/help-assistant-ai";
 import type { UnifiedFinancialAdviceContext } from "@/services/help-assistant-financial-context";
 import {
+  createInitialHelpAssistantIssueFlowState,
+  isHelpAssistantIssueTriggerMessage,
+  helpAssistantIssueFlowReducer,
+  type HelpAssistantIssueFlowStructuredResponse,
+} from "@/services/help-assistant-issue-flow";
+import { createHelpAssistantIssueFromDraft } from "@/services/help-assistant-issue-submit";
+import {
   listHelpAssistantQuickActions,
   type HelpAssistantQuickAction,
 } from "@/services/help-assistant-quick-actions";
 import {
+  resolveHelpAssistantFirstName,
   type HelpAssistantContext,
 } from "@/services/help-assistant-context";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
@@ -38,10 +51,24 @@ export function HelpAssistantSheet({
   context,
   onClose,
 }: HelpAssistantSheetProps) {
+  const { user } = useSession();
   const [composerValue, setComposerValue] = React.useState("");
   const [thread, setThread] = React.useState(createInitialHelpAssistantThreadState);
   const [sessionFinancialContext, setSessionFinancialContext] =
     React.useState<UnifiedFinancialAdviceContext | null>(null);
+  const [typedCompletedByMessageId, setTypedCompletedByMessageId] =
+    React.useState<Record<string, boolean>>({});
+  const [creatingIssue, setCreatingIssue] = React.useState(false);
+  const [issueFlowState, dispatchIssueFlow] = React.useReducer(
+    helpAssistantIssueFlowReducer,
+    undefined,
+    createInitialHelpAssistantIssueFlowState,
+  );
+  const latestStructuredIssueResponseRef =
+    React.useRef<HelpAssistantIssueFlowStructuredResponse | null>(null);
+  const composerValueRef = React.useRef(composerValue);
+  const issueFlowStateRef = React.useRef(issueFlowState);
+  const issueRequestAnchorRef = React.useRef<string | null>(null);
   const threadRef = React.useRef(thread);
   const scrollRef = React.useRef<ScrollView>(null);
   const quickActions = React.useMemo(
@@ -53,10 +80,91 @@ export function HelpAssistantSheet({
     if (!message) return "0";
     return `${thread.messages.length}:${message.id}:${message.status}:${message.text.length}`;
   }, [thread.messages]);
+  const latestAssistantMessageId = React.useMemo(() => {
+    const latestAssistantMessage = [...thread.messages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    return latestAssistantMessage?.id ?? null;
+  }, [thread.messages]);
+  const userFirstName = React.useMemo(
+    () => resolveHelpAssistantFirstName(user),
+    [user],
+  );
+  const greetingTitle = userFirstName ? `Hoi ${userFirstName},` : "Hoi,";
+  const userMessageLabel = userFirstName
+    ? userFirstName.toUpperCase()
+    : "JIJ";
+  const shouldShowQuickActions = thread.messages.length === 0;
+  const latestIssueAnchorMessageId = React.useMemo(() => {
+    for (let index = thread.messages.length - 1; index >= 0; index -= 1) {
+      const message = thread.messages[index];
+      if (message.role === "user" && isHelpAssistantIssueTriggerMessage(message, context)) {
+        return message.id;
+      }
+    }
+    return null;
+  }, [context, thread.messages]);
+  const activeIssueDraft =
+    issueFlowState.activeDraft && issueFlowState.status !== "idle"
+      ? issueFlowState.activeDraft
+      : null;
+  const shouldShowIssueDraftPreview = Boolean(activeIssueDraft);
 
   React.useEffect(() => {
     threadRef.current = thread;
   }, [thread]);
+
+  React.useEffect(() => {
+    composerValueRef.current = composerValue;
+  }, [composerValue]);
+
+  React.useEffect(() => {
+    issueFlowStateRef.current = issueFlowState;
+  }, [issueFlowState]);
+
+  React.useEffect(() => {
+    if (!visible) return;
+    if (
+      (issueFlowState.status === "submitted" ||
+        issueFlowState.status === "cancelled") &&
+      latestIssueAnchorMessageId === issueFlowState.anchorMessageId
+    ) {
+      return;
+    }
+
+    const hasIssueSignal = Boolean(
+      issueFlowState.status === "collecting" ||
+        issueFlowState.status === "ready_to_review" ||
+        issueFlowState.status === "submitting" ||
+      thread.messages.some(
+          (message) =>
+            message.role === "user" &&
+            (isHelpAssistantIssueTriggerMessage(message, context) ||
+              message.metadata.issueDraftCandidate ||
+              message.metadata.classification?.intent === "mogelijke_bug" ||
+              message.metadata.classification?.intent === "feedback" ||
+              message.metadata.classification?.intent === "feature_request"),
+        ),
+    );
+
+    if (!hasIssueSignal) return;
+
+    dispatchIssueFlow({
+      type: "sync",
+      thread,
+      context,
+      composerValue,
+      structuredResponse: latestStructuredIssueResponseRef.current,
+    });
+  }, [
+    composerValue,
+    context,
+    issueFlowState.anchorMessageId,
+    issueFlowState.status,
+    latestIssueAnchorMessageId,
+    thread,
+    visible,
+  ]);
 
   const scrollToLatestMessage = React.useCallback(() => {
     requestAnimationFrame(() => {
@@ -72,6 +180,11 @@ export function HelpAssistantSheet({
   React.useEffect(() => {
     if (visible) return;
     setSessionFinancialContext(null);
+    setTypedCompletedByMessageId({});
+    setCreatingIssue(false);
+    latestStructuredIssueResponseRef.current = null;
+    issueRequestAnchorRef.current = null;
+    dispatchIssueFlow({ type: "reset" });
   }, [visible]);
 
   const requestAssistantReply = React.useCallback(
@@ -79,6 +192,8 @@ export function HelpAssistantSheet({
       const latestUserMessage = [...threadSnapshot.messages]
         .reverse()
         .find((message) => message.role === "user");
+      const requestAnchorMessageId = latestUserMessage?.id || null;
+      issueRequestAnchorRef.current = requestAnchorMessageId;
       const shouldUseFinancialSessionContext = Boolean(
         latestUserMessage && isFinancialAdviceQuestion(latestUserMessage.text),
       );
@@ -87,6 +202,10 @@ export function HelpAssistantSheet({
         const reply = await requestHelpAssistantReply({
           context,
           thread: threadSnapshot,
+          issueFlowActive:
+            issueFlowStateRef.current.status === "collecting" ||
+            issueFlowStateRef.current.status === "ready_to_review" ||
+            issueFlowStateRef.current.status === "submitting",
           unifiedFinancialContext: shouldUseFinancialSessionContext
             ? sessionFinancialContext
             : null,
@@ -97,6 +216,20 @@ export function HelpAssistantSheet({
           reply.unifiedFinancialContext
         ) {
           setSessionFinancialContext(reply.unifiedFinancialContext);
+        }
+        if (
+          reply.issueIntake &&
+          requestAnchorMessageId &&
+          issueRequestAnchorRef.current === requestAnchorMessageId
+        ) {
+          latestStructuredIssueResponseRef.current = reply.issueIntake;
+          dispatchIssueFlow({
+            type: "sync",
+            thread: threadSnapshot,
+            context,
+            composerValue: composerValueRef.current,
+            structuredResponse: reply.issueIntake,
+          });
         }
         setThread((current) =>
           resolveAssistantMessageSuccess(
@@ -121,13 +254,16 @@ export function HelpAssistantSheet({
 
   const handleQuickActionPress = React.useCallback(
     (action: HelpAssistantQuickAction) => {
-      if (action.behavior === "prefill_composer") {
-        setComposerValue(action.seedText);
-        return;
-      }
-
       setComposerValue("");
-      const result = applyQuickActionLocally(threadRef.current, context, action);
+      const directSendAction: HelpAssistantQuickAction = {
+        ...action,
+        behavior: "start_local_thread",
+      };
+      const result = applyQuickActionLocally(
+        threadRef.current,
+        context,
+        directSendAction,
+      );
       setThread(result.thread);
       if (result.assistantPlaceholderId) {
         void requestAssistantReply(result.assistantPlaceholderId, result.thread);
@@ -136,7 +272,63 @@ export function HelpAssistantSheet({
     [context, requestAssistantReply],
   );
 
+  const handleCreateIssueDraft = React.useCallback(async () => {
+    if (!activeIssueDraft) return;
+    if (
+      issueFlowState.status === "submitted" ||
+      issueFlowState.status === "cancelled"
+    ) {
+      return;
+    }
+    if (creatingIssue) return;
+    setCreatingIssue(true);
+    dispatchIssueFlow({ type: "request_submit" });
+    try {
+      await createHelpAssistantIssueFromDraft(activeIssueDraft);
+      dispatchIssueFlow({ type: "mark_submitted" });
+      latestStructuredIssueResponseRef.current = null;
+      issueRequestAnchorRef.current = null;
+      setThread((current) =>
+        appendLocalAssistantInfoMessage({
+          thread: current,
+          context,
+          text: "Ik heb dit doorgestuurd naar Budio.",
+        }),
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Issue aanmaken via server is mislukt.";
+      setThread((current) =>
+        appendLocalAssistantInfoMessage({
+          thread: current,
+          context,
+          text: `Doorsturen lukte niet: ${message}`,
+        }),
+      );
+      dispatchIssueFlow({ type: "mark_submit_failed", errorMessage: message });
+    } finally {
+      setCreatingIssue(false);
+    }
+  }, [activeIssueDraft, context, creatingIssue, issueFlowState.status]);
+
+  const handleEditIssueDraft = React.useCallback(() => {
+    if (!activeIssueDraft) return;
+    setComposerValue(activeIssueDraft.sourceMessageText);
+  }, [activeIssueDraft]);
+
+  const handleCancelIssueDraft = React.useCallback(() => {
+    if (!activeIssueDraft) return;
+    dispatchIssueFlow({ type: "cancel" });
+    latestStructuredIssueResponseRef.current = null;
+    issueRequestAnchorRef.current = null;
+    setComposerValue("");
+  }, [activeIssueDraft]);
+
   const handleSubmit = React.useCallback(() => {
+    if (creatingIssue) return;
+
     const result = submitComposerMessageLocally(
       threadRef.current,
       context,
@@ -147,7 +339,12 @@ export function HelpAssistantSheet({
     if (result.assistantPlaceholderId) {
       void requestAssistantReply(result.assistantPlaceholderId, result.thread);
     }
-  }, [composerValue, context, requestAssistantReply]);
+  }, [
+    composerValue,
+    context,
+    creatingIssue,
+    requestAssistantReply,
+  ]);
 
   return (
     <FinanceBottomSheetShell
@@ -157,13 +354,34 @@ export function HelpAssistantSheet({
       bodyStyle={styles.bodyShell}
       footerStyle={styles.footer}
       footer={
-        <HelpAssistantComposer
-          value={composerValue}
-          onChangeText={setComposerValue}
-          onSubmit={handleSubmit}
-        />
+        <View style={styles.footerStack}>
+          {shouldShowQuickActions ? (
+            <HelpAssistantQuickActions
+              actions={quickActions}
+              onPressAction={handleQuickActionPress}
+            />
+          ) : null}
+          <HelpAssistantComposer
+            value={composerValue}
+            onChangeText={setComposerValue}
+            onSubmit={handleSubmit}
+          />
+        </View>
       }
-    >
+      >
+      {shouldShowIssueDraftPreview && activeIssueDraft ? (
+        <View style={styles.issueDraftStickyWrap}>
+          <HelpAssistantIssueDraftPreviewCard
+            draft={activeIssueDraft}
+            isSubmitting={creatingIssue}
+            isSubmitted={issueFlowState.status === "submitted"}
+            onCreateIssue={handleCreateIssueDraft}
+            onEditFirst={handleEditIssueDraft}
+            onCancel={handleCancelIssueDraft}
+          />
+        </View>
+      ) : null}
+
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
@@ -175,21 +393,29 @@ export function HelpAssistantSheet({
           scrollToLatestMessage();
         }}
       >
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Snelle acties</Text>
-          <HelpAssistantQuickActions
-            actions={quickActions}
-            onPressAction={handleQuickActionPress}
-          />
+        <View style={styles.hero}>
+          <Text style={styles.heroTitle}>{greetingTitle}</Text>
+          <Text style={styles.heroSubtitle}>
+            Hoe kan ik je vandaag helpen met je financiële groei?
+          </Text>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Gesprek</Text>
-          {thread.messages.length === 0 ? (
-            <HelpAssistantEmptyThread />
-          ) : (
-            <View style={styles.threadWrap}>
-              {thread.messages.map((message) => (
+        {thread.messages.length === 0 ? (
+          <HelpAssistantEmptyThread />
+        ) : (
+          <View style={styles.threadWrap}>
+            {thread.messages.map((message) => {
+              const isAssistant = message.role === "assistant";
+              const isLatestAssistant = message.id === latestAssistantMessageId;
+              const isPending = message.status === "pending";
+              const isReady = message.status === "ready";
+              const isTypedCompleted = typedCompletedByMessageId[message.id] === true;
+              const shouldRenderLiveAssistant =
+                isAssistant &&
+                isLatestAssistant &&
+                (isPending || (isReady && !isTypedCompleted));
+
+              return (
                 <View
                   key={message.id}
                   style={[
@@ -199,25 +425,71 @@ export function HelpAssistantSheet({
                       : styles.threadBubbleAssistant,
                   ]}
                 >
-                  <HelpAssistantMarkdown
-                    text={message.text}
-                    tone={message.role === "user" ? "user" : "assistant"}
-                  />
-                  <Text style={styles.threadMeta}>
-                    {message.role === "assistant" ? "Assistent" : "Jij"} ·{" "}
-                    {message.metadata.source}
-                    {message.metadata.issueDraftCandidate
-                      ? " · issue-kandidaat"
-                      : ""}
-                    {message.metadata.spendingAdviceCandidate
-                      ? " · spending-vraag"
-                      : ""}
-                  </Text>
+                  {message.role === "assistant" ? (
+                    <View style={styles.assistantMessageWrap}>
+                      <View style={styles.assistantHeaderRow}>
+                        <View style={styles.assistantAvatar}>
+                          <AppIcon
+                            name="smart-toy"
+                            size={14}
+                            color={FinColors.textPrimary}
+                            variant="outlined"
+                          />
+                        </View>
+                        <Text style={styles.assistantLabel}>BUDIO</Text>
+                      </View>
+
+                      {isPending ? (
+                        <AiAssistantResponse
+                          isLoading
+                          text=""
+                          theme={{
+                            primary: FinColors.green,
+                            text: FinColors.textPrimary,
+                          }}
+                          style={styles.assistantLiveResponse}
+                        />
+                      ) : (
+                        <View style={styles.assistantBubbleSurface}>
+                          {shouldRenderLiveAssistant ? (
+                            <AiAssistantResponse
+                              isLoading={false}
+                              text={message.text}
+                              theme={{
+                                primary: FinColors.green,
+                                text: FinColors.textPrimary,
+                              }}
+                              onTypingComplete={() => {
+                                setTypedCompletedByMessageId((current) => ({
+                                  ...current,
+                                  [message.id]: true,
+                                }));
+                              }}
+                              style={styles.assistantLiveResponse}
+                            />
+                          ) : (
+                            <HelpAssistantMarkdown
+                              text={message.text}
+                              tone="assistant"
+                            />
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  ) : (
+                    <View style={styles.userMessageWrap}>
+                      <Text style={styles.userLabel}>{userMessageLabel}</Text>
+                      <HelpAssistantMarkdown
+                        text={message.text}
+                        tone="user"
+                      />
+                    </View>
+                  )}
                 </View>
-              ))}
-            </View>
-          )}
-        </View>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
     </FinanceBottomSheetShell>
   );
@@ -231,46 +503,102 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    gap: 18,
-    paddingBottom: 8,
+    gap: 20,
+    paddingBottom: 16,
   },
-  section: {
-    gap: 10,
+  issueDraftStickyWrap: {
+    marginBottom: 12,
   },
-  sectionLabel: {
-    fontSize: 12,
-    letterSpacing: 0.7,
-    textTransform: "uppercase",
-    fontWeight: "700",
+  hero: {
+    gap: 8,
+    paddingTop: 2,
+  },
+  heroTitle: {
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+    color: FinColors.textPrimary,
+  },
+  heroSubtitle: {
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: "400",
     color: FinColors.textMuted,
   },
   threadWrap: {
-    gap: 8,
+    gap: 14,
   },
   threadBubble: {
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   threadBubbleUser: {
     alignSelf: "flex-end",
-    maxWidth: "86%",
+    maxWidth: "78%",
+    borderWidth: 1,
     borderColor: FinColors.warningBorder,
     backgroundColor: FinColors.yellowSoft,
   },
   threadBubbleAssistant: {
     alignSelf: "flex-start",
-    maxWidth: "90%",
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
+    width: "100%",
+    maxWidth: "92%",
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    paddingHorizontal: 0,
+    paddingVertical: 2,
+    borderRadius: 0,
   },
-  threadMeta: {
-    marginTop: 6,
-    fontSize: 11,
+  assistantMessageWrap: {
+    gap: 8,
+  },
+  assistantHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  assistantAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: FinColors.yellow,
+  },
+  assistantLabel: {
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: "600",
+    letterSpacing: 0.5,
     color: FinColors.textMuted,
   },
+  assistantBubbleSurface: {
+    borderRadius: 28,
+    backgroundColor: "#e9e9ea",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  userMessageWrap: {
+    gap: 6,
+  },
+  userLabel: {
+    alignSelf: "flex-end",
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "600",
+    letterSpacing: 0.4,
+    color: FinColors.textMuted,
+  },
+  assistantLiveResponse: {
+    marginHorizontal: 0,
+    marginVertical: 0,
+  },
   footer: {
-    marginTop: 12,
+    marginTop: 14,
+  },
+  footerStack: {
+    gap: 12,
   },
 });
