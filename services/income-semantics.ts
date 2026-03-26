@@ -65,6 +65,11 @@ const GOVERNMENT_BENEFIT_HINTS = [
   "huurtoeslag",
   "zorgtoeslag",
   "kinderopvangtoeslag",
+  "kinderbijslag",
+  "pleegvergoeding",
+  "tegemoetkoming schoolkosten",
+  "persoonsgebonden budget",
+  "pgb",
   "uitkering",
 ];
 const TAX_REFUND_HINTS = [

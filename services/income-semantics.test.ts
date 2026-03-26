@@ -39,6 +39,42 @@ describe("resolveIncomeSemantics", () => {
     });
   });
 
+  it("treats toeslagen and tegemoetkomingen as structural government income", () => {
+    const result = resolveIncomeSemantics({
+      amount: 312.4,
+      counterparty: "Belastingdienst",
+      details: "Huurtoeslag december",
+      categoryKey: null,
+      analysisCategory: "income_variable",
+    });
+
+    expect(result).toMatchObject({
+      kind: "structural_government",
+      budgetBucket: "structuralOther",
+      analysisCategory: "income_structural",
+      forecastEligible: true,
+      countsAsIncome: true,
+    });
+  });
+
+  it("keeps explicit benefit leaf categories structural even with stale analysis", () => {
+    const result = resolveIncomeSemantics({
+      amount: 410,
+      counterparty: "Gemeente",
+      details: "Persoonsgebonden budget",
+      categoryKey: "income_benefits_pgb",
+      analysisCategory: "income_variable",
+    });
+
+    expect(result).toMatchObject({
+      kind: "structural_government",
+      budgetBucket: "structuralOther",
+      analysisCategory: "income_structural",
+      forecastEligible: true,
+      countsAsIncome: true,
+    });
+  });
+
   it("treats positive bijdrage zvw settlements as cost refunds", () => {
     const result = resolveIncomeSemantics({
       amount: 129.44,
