@@ -69,7 +69,7 @@ export function buildForecastCarryoverFromLatestKnownBalance(
     sourceMoneyLayer: "operational",
     targetMoneyLayer: "operational",
     amount: snapshot.balance,
-    certainty: normalizeForecastCertainty("high"),
+    certainty: normalizeForecastCertainty("booked"),
     sourceEventType: "correction",
     sourceLabel: snapshot.date,
     reason: "Laatste bekende saldo",

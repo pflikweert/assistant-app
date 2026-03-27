@@ -1,11 +1,13 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { requireCurrentUserId } from "@/services/current-user";
-import { listBankAccountBudgetFlags } from "@/services/bank-accounts";
+import { listBankAccounts, listBankAccountBudgetFlags } from "@/services/bank-accounts";
 import { createBudgetPlanRequestDescriptors } from "@/services/forecast-budget-plan-requests";
+import { buildForecastMonthStateFromEvents, buildForecastMonthMath } from "@/services/forecast-month-math";
 import {
   deriveIncomeSourcesFromTransactions,
   mergeForecastIncomeSources,
 } from "@/services/forecast-derived-income-sources";
+import { normalizeForecastEventsForMonth } from "@/services/forecast-event-normalization";
 import { resolveForecastExpenseBaselines } from "@/services/forecast-expense-baseline";
 import { estimateRecentExpenseForecastFromHistory } from "@/services/forecast-expense-utils";
 import { resolveExpectedCashflowIncomeBaselineBreakdown } from "@/services/forecast-income-baseline";
@@ -15,7 +17,6 @@ import {
   resolveForecastIncomeBucketForTransaction,
   resolveForecastIncomeBucketFromValue,
 } from "@/services/forecast-income-utils";
-import { buildForecastMonthMath } from "@/services/forecast-month-math";
 import {
   buildForecastTimelineProjection,
   buildScheduledDateForMonth,
@@ -25,12 +26,16 @@ import {
   type ForecastTimelineEvent,
 } from "@/services/forecast-timeline";
 import { buildForecastReferenceContext } from "@/services/forecast-reference";
+import { buildForecastCarryoverFromLatestKnownBalance } from "@/services/latest-known-balance";
 import {
   isBankAccountIncludedInLegacyForecastScope,
   isTransactionExcludedFromLegacyBudgetScope,
   isTransactionIncludedInLegacyForecastScope,
 } from "@/services/financial-semantics";
-import type { ForecastTimelineStorageEventType } from "@/services/forecast-domain";
+import type {
+  ForecastEvent,
+  ForecastTimelineStorageEventType,
+} from "@/services/forecast-domain";
 import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import { detectRareSubscriptionItems } from "@/services/rare-subscriptions";
 import { supabase } from "@/services/supabase";
@@ -1065,54 +1070,100 @@ function normalizeEventKeyPart(value: string) {
 }
 
 function mapEventTypeForStorage(
-  kind: ForecastTimelineEvent["kind"],
+  event: ForecastTimelineEvent | ForecastEvent,
 ): StoredForecastTimelineEvent["event_type"] {
-  if (kind === "income") return "income";
-  if (kind === "fixed_cost") return "fixed_cost";
-  if (kind === "subscription") return "subscription";
+  if ("timelineKind" in event && event.timelineKind) {
+    if (event.timelineKind === "income") return "income";
+    if (event.timelineKind === "subscription") return "subscription";
+    if (event.timelineKind === "fixed_cost") return "fixed_cost";
+    if (event.timelineKind === "savings_transfer") return "savings_transfer";
+  }
+
+  if ("type" in event) {
+    if (event.type === "income") return "income";
+    if (event.type === "expense") return "fixed_cost";
+    if (event.type === "reserve_allocation") return "savings_transfer";
+    return "savings_transfer";
+  }
+
+  if (event.kind === "income") return "income";
+  if (event.kind === "fixed_cost") return "fixed_cost";
+  if (event.kind === "subscription") return "subscription";
   return "savings_transfer";
+}
+
+function mapCertaintyToTimelineConfidence(
+  certainty: ForecastEvent["certainty"],
+): StoredForecastTimelineEvent["confidence"] {
+  if (certainty === "booked" || certainty === "committed") return "high";
+  return "medium";
 }
 
 function buildTimelineEventRows(params: {
   row: StoredForecastSummary;
   userId: string;
-  events: ForecastTimelineEvent[];
+  events: (ForecastTimelineEvent | ForecastEvent)[];
   computedAtIso: string;
 }): StoredForecastTimelineEvent[] {
   const { row, userId, events, computedAtIso } = params;
-  const mapped: StoredForecastTimelineEvent[] = events.map((event) => {
-    const eventType = mapEventTypeForStorage(event.kind);
+  const mapped: StoredForecastTimelineEvent[] = [];
+
+  for (const event of events) {
+    const eventType = mapEventTypeForStorage(event);
+    if (
+      "type" in event &&
+      (event.type === "internal_transfer" || event.type === "correction")
+    ) {
+      continue;
+    }
     const normalizedLabel = normalizeEventKeyPart(event.label) || "event";
     const eventKey = [
-      event.source,
+      "timelineSource" in event && event.timelineSource
+        ? event.timelineSource
+        : "source" in event
+          ? event.source
+          : "derived",
       eventType,
       event.date,
       normalizedLabel,
     ].join("|");
 
-    return {
+    const amount = event.amount;
+    const confidence = "confidence" in event
+      ? event.confidence
+      : mapCertaintyToTimelineConfidence(event.certainty);
+    mapped.push({
       user_id: userId,
       month_start: row.monthStart,
       event_key: eventKey,
       event_date: event.date,
       event_type: eventType,
       label: event.label,
-      amount: round2(event.amount),
-      source: event.source,
-      confidence: event.confidence,
+      amount: round2(amount),
+      source:
+        "timelineSource" in event && event.timelineSource
+          ? event.timelineSource
+          : "source" in event
+            ? event.source
+            : "derived",
+      confidence,
       fingerprint: [
-        event.source,
+        "timelineSource" in event && event.timelineSource
+          ? event.timelineSource
+          : "source" in event
+            ? event.source
+            : "derived",
         eventType,
         event.date,
         normalizedLabel,
-        round2(event.amount),
-        event.confidence,
-        event.incomeBucket || "none",
+        round2(amount),
+        confidence,
+        "incomeBucket" in event && event.incomeBucket ? event.incomeBucket : "none",
       ].join("|"),
       computed_at: computedAtIso,
       updated_at: computedAtIso,
-    };
-  });
+    });
+  }
 
   if (
     row.lowestExpectedBalanceDate &&
@@ -1225,6 +1276,7 @@ export async function recomputeCurrentMonthCashflowForecast(
   const [
     { categories, categoryMap },
     transactions,
+    bankAccounts,
     incomeSources,
     profiles,
     budgetPlanEntries,
@@ -1236,6 +1288,10 @@ export async function recomputeCurrentMonthCashflowForecast(
         dateToIso(latestMonthEndExclusive),
         userId,
       ),
+      listBankAccounts().catch((error) => {
+        console.warn("[forecast] bank accounts unavailable", error);
+        return [] as Awaited<ReturnType<typeof listBankAccounts>>;
+      }),
       fetchIncomeSources(userId).catch((error) => {
         console.warn("[forecast] income sources unavailable", error);
         return [] as IncomeSourceRow[];
@@ -1248,6 +1304,9 @@ export async function recomputeCurrentMonthCashflowForecast(
     ]);
 
   const budgetPlanByMonthStartIso = new Map(budgetPlanEntries);
+  const bankAccountsById = new Map(
+    bankAccounts.map((account) => [account.id, account]),
+  );
 
   const resolvedIncomeSources = mergeForecastIncomeSources(
     incomeSources,
@@ -1271,7 +1330,9 @@ export async function recomputeCurrentMonthCashflowForecast(
 
   const forecastRows: StoredForecastSummary[] = [];
   const timelineRows: StoredForecastTimelineEvent[] = [];
-  let chainedStartingBalance: number | null = null;
+  let chainedOpeningOperationalBalance: number | null = null;
+  let chainedOpeningReservedBalance: number | null = 0;
+  let chainedOpeningNetWorth: number | null = null;
 
   for (const monthStart of requestedMonths) {
     const monthStartIso = dateToIso(monthStart);
@@ -1392,19 +1453,24 @@ export async function recomputeCurrentMonthCashflowForecast(
       monthToDateExpenses,
     });
 
-    const startingBalance =
+    const openingOperationalBalance =
       monthDiff > 0
-        ? chainedStartingBalance
+        ? chainedOpeningOperationalBalance
         : getLatestStartingBalanceFromTransactions(transactions, monthStartIso);
-    const knownBalance = monthDiff > 0
-      ? ({
-          balance: startingBalance,
-          balanceDate: dateToIso(addDays(monthStart, -1)),
-        } satisfies BalanceAnchor)
-      : getLatestKnownBalanceFromTransactions(transactions, referenceIso);
+    const openingReservedBalance =
+      monthDiff > 0 ? chainedOpeningReservedBalance : 0;
+    const openingNetWorth =
+      monthDiff > 0 ? chainedOpeningNetWorth : openingOperationalBalance;
+    const knownBalance =
+      monthDiff > 0
+        ? ({
+            balance: openingOperationalBalance,
+            balanceDate: dateToIso(addDays(monthStart, -1)),
+          } satisfies BalanceAnchor)
+        : getLatestKnownBalanceFromTransactions(transactions, referenceIso);
 
-    const math = buildForecastMonthMath({
-      startingBalance,
+    const legacyMath = buildForecastMonthMath({
+      startingBalance: openingOperationalBalance,
       currentBalanceAnchor: knownBalance.balance,
       bookedIncomeTotal: booked.incomeTotal,
       bookedForecastEligibleIncomeTotal: booked.includedForecastEligibleIncomeTotal,
@@ -1425,15 +1491,51 @@ export async function recomputeCurrentMonthCashflowForecast(
       remainingCommittedSavingsOutflowTotal,
     });
 
+    const timelineEventsForProjection = [
+      ...expenseEvents.values(),
+      ...recurringSavingsEvents.values(),
+      ...includedIncomeEvents,
+    ] as ForecastTimelineEvent[];
+
+    const normalizedEvents = normalizeForecastEventsForMonth({
+      monthStart,
+      monthEndExclusive,
+      referenceDate,
+      categoryMap,
+      bankAccountsById,
+      bookedTransactions: transactions,
+      timelineEvents: timelineEventsForProjection,
+      carryover: buildForecastCarryoverFromLatestKnownBalance({
+        balance: knownBalance.balance,
+        date: knownBalance.balanceDate,
+      }),
+    });
+
+    const eventMonthState = buildForecastMonthStateFromEvents({
+      opening: {
+        monthStart: monthStartIso,
+        referenceDate: referenceIso,
+        currentBalanceDate: knownBalance.balanceDate,
+        openingOperationalBalance,
+        openingReservedBalance,
+        openingNetWorth,
+        carryover: buildForecastCarryoverFromLatestKnownBalance({
+          balance: knownBalance.balance,
+          date: knownBalance.balanceDate,
+        }),
+      },
+      events: normalizedEvents,
+      freeToSpendCarryover:
+        openingOperationalBalance == null
+          ? null
+          : round2(openingOperationalBalance - openingReservedBalance),
+    });
+
     const timelineProjection = buildForecastTimelineProjection({
       currentBalanceAnchor: knownBalance.balance,
       referenceDate,
       monthEndExclusive,
-      events: [
-        ...expenseEvents.values(),
-        ...recurringSavingsEvents.values(),
-        ...includedIncomeEvents,
-      ] as ForecastTimelineEvent[],
+      events: normalizedEvents,
     });
 
     const expectedIncomeStructuralTotal = round2(
@@ -1451,52 +1553,89 @@ export async function recomputeCurrentMonthCashflowForecast(
       ),
     );
 
+    const monthState = {
+      ...eventMonthState,
+      expectedIncomeTotal: legacyMath.expectedIncomeTotal,
+      remainingExpectedIncomeTotal: legacyMath.remainingExpectedIncomeTotal,
+      remainingExpectedExpenseTotal: legacyMath.remainingExpectedExpenseTotal,
+      remainingExpectedSavingsOutflowTotal:
+        legacyMath.remainingExpectedSavingsOutflowTotal,
+      // De expliciete maandstate volgt nu de genormaliseerde eventlaag.
+      expectedIncome: eventMonthState.expectedIncome,
+      expectedExpenses: eventMonthState.expectedExpenses,
+      expectedFixedCosts: legacyMath.expectedFixedCosts,
+      expectedSubscriptions: legacyMath.expectedSubscriptions,
+      expectedVariableCosts: legacyMath.expectedVariableCosts,
+      expectedInternalTransfers: eventMonthState.expectedInternalTransfers,
+      expectedReserveAllocations: eventMonthState.expectedReserveAllocations,
+      expectedEndReservedBalance: eventMonthState.expectedEndReservedBalance,
+      expectedEndNetWorth: eventMonthState.expectedEndNetWorth,
+      expectedEndOperationalBalance: eventMonthState.expectedEndOperationalBalance,
+      expectedEndBalance: eventMonthState.expectedEndOperationalBalance,
+      riskFlag: eventMonthState.riskFlag,
+      cashRiskFlag: eventMonthState.cashRiskFlag,
+      nextExpectedEventDate: eventMonthState.nextExpectedEventDate,
+      nextExpectedEventLabel: eventMonthState.nextExpectedEventLabel,
+      lowestExpectedBalance: eventMonthState.lowestExpectedBalance,
+      lowestExpectedBalanceDate: eventMonthState.lowestExpectedBalanceDate,
+      upcomingCommittedIncomeTotal:
+        eventMonthState.upcomingCommittedIncomeTotal,
+      upcomingCommittedExpenseTotal:
+        eventMonthState.upcomingCommittedExpenseTotal,
+      freeToSpend:
+        budgetPlanForMonth
+          ? Math.max(
+              (budgetPlanForMonth.flowSummary?.variableBudget ?? 0) -
+                (budgetPlanForMonth.monthToDateExpenses?.variableCosts ?? 0),
+              0,
+            )
+          : eventMonthState.freeToSpendCarryover,
+    };
+
     const topCostBuckets = buildTopCostBuckets({
-      expectedFixedCosts: math.expectedFixedCosts,
-      expectedSubscriptions: math.expectedSubscriptions,
-      expectedVariableCosts: math.expectedVariableCosts,
-      expectedSavingsOutflowTotal: math.expectedSavingsOutflowTotal,
+      expectedFixedCosts: legacyMath.expectedFixedCosts,
+      expectedSubscriptions: legacyMath.expectedSubscriptions,
+      expectedVariableCosts: legacyMath.expectedVariableCosts,
+      expectedSavingsOutflowTotal: legacyMath.expectedSavingsOutflowTotal,
     });
 
     const row: StoredForecastSummary = {
       monthStart: monthStartIso,
       forecastReferenceDate: referenceIso,
-      startingBalance,
+      startingBalance: openingOperationalBalance,
       currentBalanceAnchor: knownBalance.balance,
       currentBalanceAnchorDate: knownBalance.balanceDate,
       bookedIncomeTotal: booked.incomeTotal,
       bookedExpenseTotal: booked.expenseTotal,
       bookedSavingsOutflowTotal: booked.savingsOutflowTotal,
-      remainingExpectedIncomeTotal: math.remainingExpectedIncomeTotal,
-      remainingExpectedExpenseTotal: math.remainingExpectedExpenseTotal,
+      remainingExpectedIncomeTotal: monthState.remainingExpectedIncomeTotal,
+      remainingExpectedExpenseTotal: monthState.remainingExpectedExpenseTotal,
       remainingExpectedSavingsOutflowTotal:
-        math.remainingExpectedSavingsOutflowTotal,
-      expectedIncomeTotal: math.expectedIncomeTotal,
+        monthState.remainingExpectedSavingsOutflowTotal,
+      expectedIncomeTotal: monthState.expectedIncomeTotal,
       expectedIncomeStructuralTotal,
       expectedIncomeVariableTotal,
-      expectedExpenseTotal: math.expectedExpenseTotal,
-      expectedSavingsOutflowTotal: math.expectedSavingsOutflowTotal,
-      expectedCashOutTotal: math.expectedCashOutTotal,
-      expectedFixedCosts: math.expectedFixedCosts,
-      expectedSubscriptions: math.expectedSubscriptions,
-      expectedVariableCosts: math.expectedVariableCosts,
-      upcomingCommittedIncomeTotal:
-        timelineProjection.upcomingCommittedIncomeTotal,
-      upcomingCommittedExpenseTotal:
-        timelineProjection.upcomingCommittedExpenseTotal,
+      expectedExpenseTotal: monthState.expectedExpenses,
+      expectedSavingsOutflowTotal: legacyMath.expectedSavingsOutflowTotal,
+      expectedCashOutTotal: legacyMath.expectedCashOutTotal,
+      expectedFixedCosts: monthState.expectedFixedCosts,
+      expectedSubscriptions: monthState.expectedSubscriptions,
+      expectedVariableCosts: monthState.expectedVariableCosts,
+      upcomingCommittedIncomeTotal: monthState.upcomingCommittedIncomeTotal,
+      upcomingCommittedExpenseTotal: monthState.upcomingCommittedExpenseTotal,
       upcomingCommittedSavingsOutflowTotal:
         timelineProjection.upcomingCommittedSavingsOutflowTotal,
-      lowestExpectedBalance: timelineProjection.lowestExpectedBalance,
-      lowestExpectedBalanceDate: timelineProjection.lowestExpectedBalanceDate,
-      nextExpectedEventDate: timelineProjection.nextExpectedEventDate,
-      nextExpectedEventLabel: timelineProjection.nextExpectedEventLabel,
+      lowestExpectedBalance: monthState.lowestExpectedBalance,
+      lowestExpectedBalanceDate: monthState.lowestExpectedBalanceDate,
+      nextExpectedEventDate: monthState.nextExpectedEventDate,
+      nextExpectedEventLabel: monthState.nextExpectedEventLabel,
       avgGroceries: expenseHistoryForecast.variable.groceries,
       avgFuel: expenseHistoryForecast.variable.fuel,
       avgSmoking: expenseHistoryForecast.variable.smoking,
       avgOtherVariable: expenseHistoryForecast.variable.other,
-      expectedEndOfMonthBalance: math.expectedEndOfMonthBalance,
-      riskFlag: math.riskFlag,
-      cashRiskFlag: timelineProjection.cashRiskFlag,
+      expectedEndOfMonthBalance: monthState.expectedEndBalance,
+      riskFlag: monthState.riskFlag,
+      cashRiskFlag: monthState.cashRiskFlag,
       topCostBuckets,
     };
 
@@ -1509,7 +1648,9 @@ export async function recomputeCurrentMonthCashflowForecast(
         computedAtIso: new Date().toISOString(),
       }),
     );
-    chainedStartingBalance = row.expectedEndOfMonthBalance;
+    chainedOpeningOperationalBalance = monthState.expectedEndOperationalBalance;
+    chainedOpeningReservedBalance = monthState.expectedEndReservedBalance;
+    chainedOpeningNetWorth = monthState.expectedEndNetWorth;
   }
 
   const upsertRows = forecastRows.map((row) => toStoredForecastRow(row, userId));

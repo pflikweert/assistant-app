@@ -1,3 +1,4 @@
+import type { ForecastEvent } from "@/services/forecast-domain";
 import type { ForecastIncomeBucket, RecurringType } from "@/types/categorization";
 
 export type ForecastTimelineEvent = {
@@ -26,7 +27,7 @@ export type ForecastTimelineEvent = {
 };
 
 export type ForecastTimelineProjection = {
-  events: ForecastTimelineEvent[];
+  events: ForecastTimelineProjectionEvent[];
   upcomingCommittedIncomeTotal: number;
   upcomingCommittedExpenseTotal: number;
   upcomingCommittedSavingsOutflowTotal: number;
@@ -36,6 +37,8 @@ export type ForecastTimelineProjection = {
   lowestExpectedBalanceDate: string | null;
   cashRiskFlag: "none" | "cash_gap_warning";
 };
+
+type ForecastTimelineProjectionEvent = ForecastTimelineEvent | ForecastEvent;
 
 function dateToIso(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -62,6 +65,36 @@ function clamp(value: number, min: number, max: number) {
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function hasNormalizedForecastEventShape(
+  event: ForecastTimelineProjectionEvent,
+): event is ForecastEvent {
+  return "type" in event;
+}
+
+function resolveProjectionEventAmount(event: ForecastTimelineProjectionEvent) {
+  if (hasNormalizedForecastEventShape(event)) {
+    if (event.type === "income") return round2(Math.abs(event.amount));
+    if (event.type === "expense") return -round2(Math.abs(event.amount));
+    if (event.type === "reserve_allocation") {
+      return -round2(Math.abs(event.amount));
+    }
+    return 0;
+  }
+
+  return round2(event.amount);
+}
+
+function resolveProjectionEventKind(event: ForecastTimelineProjectionEvent) {
+  if (hasNormalizedForecastEventShape(event)) {
+    if (event.type === "income") return "income" as const;
+    if (event.type === "reserve_allocation") return "savings_transfer" as const;
+    if (event.type === "expense") return "expense" as const;
+    return null;
+  }
+
+  return event.kind;
 }
 
 function toUtcDate(isoDate: string) {
@@ -168,7 +201,7 @@ export function buildForecastTimelineProjection(params: {
   currentBalanceAnchor: number | null;
   referenceDate: Date;
   monthEndExclusive: Date;
-  events: ForecastTimelineEvent[];
+  events: ForecastTimelineProjectionEvent[];
 }) {
   const { currentBalanceAnchor, referenceDate, monthEndExclusive, events } = params;
   const referenceIso = dateToIso(referenceDate);
@@ -178,30 +211,29 @@ export function buildForecastTimelineProjection(params: {
     .filter((event) => event.date > referenceIso && event.date < monthEndIso)
     .sort((left, right) => {
       if (left.date !== right.date) return left.date.localeCompare(right.date);
-      if (left.amount !== right.amount) return left.amount - right.amount;
+      const leftAmount = resolveProjectionEventAmount(left);
+      const rightAmount = resolveProjectionEventAmount(right);
+      if (leftAmount !== rightAmount) return leftAmount - rightAmount;
       return left.label.localeCompare(right.label, "nl");
     });
 
   const upcomingCommittedIncomeTotal = round2(
     futureEvents
-      .filter((event) => event.amount > 0)
-      .reduce((sum, event) => sum + event.amount, 0),
+      .filter((event) => resolveProjectionEventKind(event) === "income")
+      .reduce((sum, event) => sum + Math.abs(resolveProjectionEventAmount(event)), 0),
   );
   const upcomingCommittedExpenseTotal = round2(
     futureEvents
-      .filter(
-        (event) =>
-          event.amount < 0 && event.kind !== "savings_transfer",
-      )
-      .reduce((sum, event) => sum + Math.abs(event.amount), 0),
+      .filter((event) => {
+        const kind = resolveProjectionEventKind(event);
+        return kind === "fixed_cost" || kind === "subscription" || kind === "expense";
+      })
+      .reduce((sum, event) => sum + Math.abs(resolveProjectionEventAmount(event)), 0),
   );
   const upcomingCommittedSavingsOutflowTotal = round2(
     futureEvents
-      .filter(
-        (event) =>
-          event.amount < 0 && event.kind === "savings_transfer",
-      )
-      .reduce((sum, event) => sum + Math.abs(event.amount), 0),
+      .filter((event) => resolveProjectionEventKind(event) === "savings_transfer")
+      .reduce((sum, event) => sum + Math.abs(resolveProjectionEventAmount(event)), 0),
   );
 
   let runningBalance =
@@ -211,7 +243,7 @@ export function buildForecastTimelineProjection(params: {
 
   for (const event of futureEvents) {
     if (runningBalance == null) break;
-    runningBalance = round2(runningBalance + event.amount);
+    runningBalance = round2(runningBalance + resolveProjectionEventAmount(event));
     if (
       lowestExpectedBalance == null ||
       runningBalance < lowestExpectedBalance

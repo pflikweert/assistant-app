@@ -30,7 +30,12 @@ export const FORECAST_TIMELINE_STORAGE_EVENT_TYPES = [
 export type ForecastTimelineStorageEventType =
   (typeof FORECAST_TIMELINE_STORAGE_EVENT_TYPES)[number];
 
-export const FORECAST_CERTAINTIES = ["low", "medium", "high"] as const;
+export const FORECAST_CERTAINTIES = [
+  "booked",
+  "committed",
+  "inferred",
+  "estimated",
+] as const;
 export type ForecastCertainty = (typeof FORECAST_CERTAINTIES)[number];
 
 export const FORECAST_MONEY_LAYERS = [
@@ -74,9 +79,23 @@ export type ForecastEvent = {
   label: string;
   accountRole: ForecastAccountRole;
   ownerScope: ForecastOwnerScope;
+  timelineKind?: "income" | "fixed_cost" | "subscription" | "savings_transfer" | null;
+  timelineSource?:
+    | "income_source"
+    | "recurring_history"
+    | "subscription_profile"
+    | "rare_subscription"
+    | "derived"
+    | null;
   carryover?: ForecastCarryover | null;
   referenceId?: string | null;
   sourceLabel?: string | null;
+};
+
+export type ForecastLayerBalanceSnapshot = {
+  operational: number | null;
+  reserved: number | null;
+  netWorth: number | null;
 };
 
 export const FORECAST_OWNER_SCOPES = [
@@ -93,10 +112,21 @@ export type ForecastMonthState = {
   referenceDate: string | null;
   currentBalanceDate: string | null;
   status: ForecastMonthStatus;
+  openingOperationalBalance: number | null;
+  openingReservedBalance: number | null;
+  openingNetWorth: number | null;
   currentBalance: number | null;
   reservedBalance: number | null;
   netWorth: number | null;
   freeToSpend: number | null;
+  expectedIncome: number | null;
+  expectedExpenses: number | null;
+  expectedInternalTransfers: number | null;
+  expectedReserveAllocations: number | null;
+  expectedEndOperationalBalance: number | null;
+  expectedEndReservedBalance: number | null;
+  expectedEndNetWorth: number | null;
+  freeToSpendCarryover: number | null;
   expectedEndBalance: number | null;
   lowestExpectedBalance: number | null;
   lowestExpectedBalanceDate: string | null;
@@ -156,7 +186,7 @@ export function normalizeForecastMoneyLayer(
 
 export function normalizeForecastCertainty(
   value: unknown,
-  fallback: ForecastCertainty = "medium",
+  fallback: ForecastCertainty = "estimated",
 ): ForecastCertainty {
   const normalized = normalizeToken(value);
   if (
@@ -166,5 +196,8 @@ export function normalizeForecastCertainty(
   ) {
     return normalized as ForecastCertainty;
   }
+  if (normalized === "high") return "booked";
+  if (normalized === "medium") return "committed";
+  if (normalized === "low") return "inferred";
   return fallback;
 }

@@ -353,11 +353,9 @@ function buildFromTimelineEvents(input: {
         subtitle: buildMomentSubtitle(event, matchedSignal),
         amountLabel: buildAmountLabel(
           event.amount,
-          event.amount > 0 ? "income" : event.eventType === "income" ? "income" : "expense",
+          event.eventType === "income" ? "income" : "expense",
         ),
-        amountTone: (event.amount > 0 ? "income" : "expense") as
-          | "income"
-          | "expense",
+        amountTone: event.eventType === "income" ? "income" : "expense",
       } satisfies InsightsUpcomingMoment;
     })
     .filter((item): item is InsightsUpcomingMoment => item !== null);

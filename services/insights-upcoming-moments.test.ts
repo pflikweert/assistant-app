@@ -235,6 +235,30 @@ describe("buildInsightsUpcomingMoments", () => {
     expect(result[2]?.subtitle).toBe("Vaste lasten zorgverzekering");
   });
 
+  it("toont kosten als uitgave, ook als de timelinebron een positief bedrag bevat", () => {
+    const selectedMonth = buildMonthOption("2026-03");
+    const result = buildInsightsUpcomingMoments({
+      forecast: buildForecast({}),
+      timelineEvents: [
+        timelineEvent({
+          eventKey: "fixed-positive-1",
+          eventDate: "2026-03-28",
+          eventType: "fixed_cost",
+          label: "Huur",
+          amount: 1200,
+          source: "recurring_history",
+          confidence: "high",
+        }),
+      ],
+      selectedMonth,
+      now: new Date("2026-03-11T12:00:00.000Z"),
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.amountLabel.startsWith("-")).toBe(true);
+    expect(result[0]?.amountTone).toBe("expense");
+  });
+
   it("gebruikt de echte categorie uit het transactiesignaal als subtitel", () => {
     const selectedMonth = buildMonthOption("2026-03");
     const result = buildInsightsUpcomingMoments({

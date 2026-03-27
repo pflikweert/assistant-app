@@ -1,4 +1,5 @@
 import { supabase } from "@/services/supabase";
+import type { ForecastEvent } from "@/services/forecast-domain";
 
 export type ForecastTimelineEventRecord = {
   eventKey: string;
@@ -20,6 +21,65 @@ export type ForecastTimelineEventRecord = {
   confidence: "medium" | "high";
   fingerprint: string;
 };
+
+export function mapForecastTimelineEventRecordToForecastEvent(
+  record: ForecastTimelineEventRecord,
+): ForecastEvent | null {
+  if (record.eventType === "milestone_lowest_balance") return null;
+
+  const amount = Math.abs(Number(record.amount || 0));
+  const label = String(record.label || "").trim() || "Onbekend";
+
+  if (record.eventType === "income") {
+    return {
+      id: record.eventKey,
+      date: record.eventDate,
+      type: "income",
+      certainty: record.confidence === "high" ? "booked" : "committed",
+      moneyLayer: "operational",
+      amount,
+      label,
+      accountRole: "operational",
+      ownerScope: "personal",
+      timelineKind: "income",
+      timelineSource: record.source,
+      sourceLabel: label,
+    };
+  }
+
+  if (record.eventType === "savings_transfer") {
+    return {
+      id: record.eventKey,
+      date: record.eventDate,
+      type: "reserve_allocation",
+      certainty: record.confidence === "high" ? "booked" : "committed",
+      moneyLayer: "reserved",
+      amount,
+      label,
+      accountRole: "reserve",
+      ownerScope: "personal",
+      timelineKind: "savings_transfer",
+      timelineSource: record.source,
+      sourceLabel: label,
+    };
+  }
+
+  return {
+    id: record.eventKey,
+    date: record.eventDate,
+    type: record.eventType === "subscription" ? "expense" : "expense",
+    certainty: record.confidence === "high" ? "booked" : "inferred",
+    moneyLayer: "operational",
+    amount,
+    label,
+    accountRole: "operational",
+    ownerScope: "personal",
+    timelineKind:
+      record.eventType === "subscription" ? "subscription" : "fixed_cost",
+    timelineSource: record.source,
+    sourceLabel: label,
+  };
+}
 
 function isMissingRelationError(error: unknown) {
   const code = String((error as { code?: string } | null)?.code || "");

@@ -31,9 +31,9 @@ function resolveMonthStatus(
 }
 
 function resolveCertainty(summary: InsightsForecastSummary | null): ForecastCertainty {
-  if (!summary) return "low";
-  if (summary.expectedEndBalance == null) return "medium";
-  return "high";
+  if (!summary) return "estimated";
+  if (summary.expectedEndBalance == null) return "inferred";
+  return "committed";
 }
 
 function buildCarryoverFromSummary(
@@ -47,7 +47,7 @@ function buildCarryoverFromSummary(
     sourceMoneyLayer: "operational",
     targetMoneyLayer: "operational",
     amount: summary.currentBalanceAnchor,
-    certainty: normalizeForecastCertainty("high"),
+    certainty: normalizeForecastCertainty("booked"),
     sourceEventType: "correction",
     sourceLabel: summary.currentBalanceAnchorDate || null,
     reason: "Laatste bekende saldo",
@@ -72,10 +72,33 @@ export function buildForecastMonthStateFromLegacySummary(
     referenceDate: summary.forecastReferenceDate,
     currentBalanceDate: summary.currentBalanceAnchorDate,
     status: resolveMonthStatus(summary),
+    openingOperationalBalance: summary.currentBalanceAnchor,
+    openingReservedBalance: 0,
+    openingNetWorth:
+      summary.currentBalanceAnchor == null ? null : summary.currentBalanceAnchor,
     currentBalance: summary.currentBalanceAnchor,
-    reservedBalance: null,
-    netWorth: null,
+    reservedBalance: 0,
+    netWorth:
+      summary.currentBalanceAnchor == null ? null : summary.currentBalanceAnchor,
     freeToSpend: budgetPlan
+      ? Math.max(
+          (budgetPlan.flowSummary?.variableBudget ?? 0) -
+            (budgetPlan.monthToDateExpenses?.variableCosts ?? 0),
+          0,
+        )
+      : null,
+    expectedIncome: summary.expectedIncomeTotal,
+    expectedExpenses: [
+      summary.expectedFixedCosts,
+      summary.expectedSubscriptions,
+      summary.expectedVariableCosts,
+    ].reduce((total, value) => total + (value || 0), 0),
+    expectedInternalTransfers: 0,
+    expectedReserveAllocations: summary.remainingExpectedSavingsOutflowTotal,
+    expectedEndOperationalBalance: summary.expectedEndBalance,
+    expectedEndReservedBalance: 0,
+    expectedEndNetWorth: summary.expectedEndBalance,
+    freeToSpendCarryover: budgetPlan
       ? Math.max(
           (budgetPlan.flowSummary?.variableBudget ?? 0) -
             (budgetPlan.monthToDateExpenses?.variableCosts ?? 0),
