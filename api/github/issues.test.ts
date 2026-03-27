@@ -6,7 +6,7 @@ import {
   normalizeGithubRepoName,
   sanitizeLabel,
   sanitizeText,
-} from "./issues";
+} from "./issues.ts";
 
 describe("github issue payload helpers", () => {
   it("redacts sensitive data and normalizes labels", () => {

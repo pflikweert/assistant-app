@@ -1,8 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import {
-  resolveHelpAssistantDisplayName,
-  type HelpAssistantUserProfile,
-} from "@/services/help-assistant-context";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -37,6 +33,33 @@ type IssueReporter = {
   userId: string;
   displayName: string;
 };
+
+type HelpAssistantUserProfile = {
+  email?: string | null;
+  user_metadata?: {
+    name?: string | null;
+    full_name?: string | null;
+  } | null;
+} | null | undefined;
+
+function normalizeDisplayName(value: string | null | undefined) {
+  return String(value || "")
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolveHelpAssistantDisplayName(user: HelpAssistantUserProfile) {
+  const metadataName = normalizeDisplayName(user?.user_metadata?.full_name)
+    || normalizeDisplayName(user?.user_metadata?.name);
+  if (metadataName) return metadataName;
+
+  const localPart = String(user?.email || "").split("@")[0] || "";
+  const normalizedLocalPart = normalizeDisplayName(localPart);
+  if (normalizedLocalPart) return normalizedLocalPart;
+
+  return "";
+}
 
 function getSupabaseAuthClient() {
   const url = process.env.SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL;

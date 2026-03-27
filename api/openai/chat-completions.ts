@@ -6,7 +6,7 @@ import {
   type AiProxyMeta,
   type AiRouteSetting,
   type AiUseCase,
-} from "../../services/ai-use-cases";
+} from "../../services/ai-use-cases.ts";
 import {
   buildAiReviewCandidates,
   buildAiUsageLogRow,
