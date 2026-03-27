@@ -227,6 +227,11 @@ Exit-criteria:
 
 ### Daarna oppakken
 
+- Forecastfundament fase 2 uitbouwen:
+  - nieuwe semantieklaag doorzetten naar een echte genormaliseerde eventlaag
+  - `reserved balance` en `net worth` expliciet modelleren in selectors en adapters
+  - budget-inclusie loskoppelen van forecast- en net-worth-inclusie zonder bestaande schermcontracten direct te breken
+  - pas daarna database/persistence-velden en reads/writes aanpassen
 - `Rekeningen koppelen` daadwerkelijk uitbouwen:
   - per gevonden rekening een echte matchflow tonen
   - nieuwe rekening aanmaken vanuit een gedeelde sheet

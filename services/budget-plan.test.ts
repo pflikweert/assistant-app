@@ -27,6 +27,10 @@ vi.mock("@/services/current-user", () => ({
   requireCurrentUserId: vi.fn(async () => "test-user"),
 }));
 
+vi.mock("@/services/bank-accounts", () => ({
+  listBankAccountBudgetFlags: vi.fn(async () => new Map()),
+}));
+
 vi.mock("@/services/budget-plan-repository", () => ({
   getBudgetCategoryOverrides: vi.fn(async () => []),
   getBudgetPlanSettings: vi.fn(async () => ({

@@ -1,5 +1,6 @@
 import * as Crypto from "expo-crypto";
 
+import { applyForecastAccountRules, resolveForecastAccountRules } from "@/services/forecast-account-rules";
 import { supabase } from "@/services/supabase";
 import { requireCurrentUserId } from "@/services/current-user";
 
@@ -21,6 +22,10 @@ export type BankAccount = {
   account_masked: string | null;
   is_active: boolean;
   include_in_budget?: boolean;
+  forecast_role?: import("@/services/forecast-domain").ForecastAccountRole;
+  include_in_cashflow?: boolean;
+  include_in_net_worth?: boolean;
+  owner_scope?: import("@/services/forecast-domain").ForecastOwnerScope;
 };
 
 export const ACCOUNT_TYPES: BankAccountType[] = [
@@ -57,6 +62,20 @@ export async function hashAccountNumber(value: string): Promise<string> {
   );
 }
 
+function toBankAccountRecord(row: Record<string, unknown>): BankAccount {
+  return applyForecastAccountRules({
+    id: String(row.id || ""),
+    name: String(row.name || ""),
+    account_type: (row.account_type || "other") as BankAccountType,
+    provider: row.provider ? String(row.provider) : null,
+    currency: String(row.currency || "EUR"),
+    account_masked: row.account_masked ? String(row.account_masked) : null,
+    is_active: row.is_active !== false,
+    include_in_budget:
+      row.include_in_budget == null ? undefined : Boolean(row.include_in_budget),
+  });
+}
+
 export async function listBankAccounts(): Promise<BankAccount[]> {
   const userId = await requireCurrentUserId();
   return listBankAccountsForUser(userId);
@@ -74,7 +93,7 @@ export async function listBankAccountsForUser(
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data || []) as BankAccount[];
+  return ((data || []) as Record<string, unknown>[]).map(toBankAccountRecord);
 }
 
 export async function listBankAccountHashes(userId?: string): Promise<string[]> {
@@ -151,7 +170,7 @@ export async function createBankAccount(
     throw error || new Error("Failed to insert bank account.");
   }
 
-  return data as BankAccount;
+  return toBankAccountRecord(data as Record<string, unknown>);
 }
 
 export async function findBankAccountByHash(
@@ -168,7 +187,7 @@ export async function findBankAccountByHash(
     .maybeSingle();
 
   if (error) throw error;
-  return (data || null) as BankAccount | null;
+  return data ? toBankAccountRecord(data as Record<string, unknown>) : null;
 }
 
 export async function updateBankAccount(
@@ -209,7 +228,7 @@ export async function updateBankAccount(
     throw error || new Error("Failed to update bank account.");
   }
 
-  return data as BankAccount;
+  return toBankAccountRecord(data as Record<string, unknown>);
 }
 
 export async function getBankAccountTransactionCount(
@@ -261,7 +280,12 @@ export async function listBankAccountBudgetFlags(
 ): Promise<Map<string, boolean>> {
   const resolvedUserId = userId || (await requireCurrentUserId());
   const accounts = await listBankAccountsForUser(resolvedUserId);
-  return new Map(accounts.map((account) => [account.id, account.include_in_budget !== false]));
+  return new Map(
+    accounts.map((account) => [
+      account.id,
+      resolveForecastAccountRules(account).include_in_budget,
+    ]),
+  );
 }
 
 export function isBankAccountIncludedInBudget(

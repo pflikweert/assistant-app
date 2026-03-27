@@ -1,5 +1,9 @@
 import { requireCurrentUserId } from "@/services/current-user";
 import { ensureForecastFresh } from "@/services/forecast-refresh";
+import {
+  adaptForecastMonthStateToLegacySummary,
+  buildForecastMonthStateFromLegacySummary,
+} from "@/services/forecast-summary-adapter";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import { supabase } from "@/services/supabase";
 
@@ -91,7 +95,7 @@ export async function loadMonthForecastSummary(params: {
     }
 
     const row = result.data as Record<string, unknown>;
-    return {
+    const legacySummary: InsightsForecastSummary = {
       monthStart: String(row.month_start || monthStartIso),
       forecastReferenceDate: row.forecast_reference_date
         ? String(row.forecast_reference_date)
@@ -160,6 +164,10 @@ export async function loadMonthForecastSummary(params: {
           ? null
           : Number(row.expected_variable_costs),
     };
+
+    const monthState = buildForecastMonthStateFromLegacySummary(legacySummary);
+    // TODO: fase B vervangt deze roundtrip door een echte domeinbron.
+    return adaptForecastMonthStateToLegacySummary(monthState);
   } catch (error) {
     console.error("[forecast-summary] load error", error);
     return null;

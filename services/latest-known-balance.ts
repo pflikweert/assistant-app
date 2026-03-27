@@ -1,4 +1,8 @@
 import { requireCurrentUserId } from "@/services/current-user";
+import {
+  type ForecastCarryover,
+  normalizeForecastCertainty,
+} from "@/services/forecast-domain";
 import { supabase } from "@/services/supabase";
 
 export type LatestKnownBalanceSnapshot = {
@@ -51,6 +55,24 @@ export function resolveLatestKnownBalanceSnapshot(
   return {
     balance: latest?.balance ?? null,
     date: latest?.date ?? null,
+  };
+}
+
+export function buildForecastCarryoverFromLatestKnownBalance(
+  snapshot: LatestKnownBalanceSnapshot,
+): ForecastCarryover | null {
+  if (snapshot.balance == null) return null;
+
+  return {
+    sourceMonthStart: null,
+    targetMonthStart: null,
+    sourceMoneyLayer: "operational",
+    targetMoneyLayer: "operational",
+    amount: snapshot.balance,
+    certainty: normalizeForecastCertainty("high"),
+    sourceEventType: "correction",
+    sourceLabel: snapshot.date,
+    reason: "Laatste bekende saldo",
   };
 }
 

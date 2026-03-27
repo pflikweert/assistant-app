@@ -1,6 +1,7 @@
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinColors } from "@/constants/theme";
+import { ForecastAccountMeta } from "@/components/bank-accounts/forecast-account-meta";
 import {
   ACCOUNT_TYPES,
   createBankAccount,
@@ -121,6 +122,17 @@ export function BankAccountFormSheet({
     isEdit && account?.account_masked
       ? `Laat leeg om ${account.account_masked} te behouden.`
       : null;
+  const forecastMetaAccount = {
+    account_type: accountType,
+    forecast_role: isEdit ? account?.forecast_role : undefined,
+    include_in_budget: includeInBudget,
+    include_in_cashflow: isEdit ? account?.include_in_cashflow : undefined,
+    include_in_net_worth: isEdit ? account?.include_in_net_worth : undefined,
+    is_active: isEdit ? Boolean(account?.is_active) : isActive,
+    owner_scope: isEdit ? account?.owner_scope : undefined,
+    provider: provider.trim() || providerLabel || null,
+    name: name.trim() || null,
+  };
 
   const handleSave = React.useCallback(async () => {
     const trimmedName = name.trim();
@@ -376,6 +388,13 @@ export function BankAccountFormSheet({
         </View>
 
         <View style={styles.fieldBlock}>
+          <Text style={styles.fieldLabel}>Forecastoverzicht</Text>
+          <View style={styles.forecastMetaCard}>
+            <ForecastAccountMeta account={forecastMetaAccount} />
+          </View>
+        </View>
+
+        <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>Opties</Text>
           <View style={styles.toggleRow}>
             <View style={styles.toggleTextWrap}>
@@ -469,6 +488,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: FinColors.textPrimary,
     fontWeight: "800",
+  },
+  forecastMetaCard: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 24,
+    padding: 14,
   },
   fieldHint: {
     fontSize: 12,

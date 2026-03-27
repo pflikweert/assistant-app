@@ -11,10 +11,7 @@ import {
     resolveLockedVariableMainCategories,
 } from "@/services/budget-lock-utils";
 import { requireCurrentUserId } from "@/services/current-user";
-import {
-  isBankAccountIncludedInBudget,
-  listBankAccountBudgetFlags,
-} from "@/services/bank-accounts";
+import { listBankAccountBudgetFlags } from "@/services/bank-accounts";
 import {
     getBudgetCategoryOverrides,
     getBudgetPlanSettings,
@@ -28,6 +25,11 @@ import {
     resolveBaseWeeklyMainCategoryBudgetsByDailyMonthRates,
 } from "@/services/budget-week-utils";
 import { resolveIncomeSemantics } from "@/services/income-semantics";
+import {
+  isBankAccountIncludedInLegacyBudgetScope,
+  isTransactionExcludedFromLegacyBudgetScope,
+  isTransactionIncludedInLegacyBudgetScope,
+} from "@/services/financial-semantics";
 import { supabase } from "@/services/supabase";
 import type {
     AnalysisCategory,
@@ -850,7 +852,15 @@ function computeExpenseTotalsByMonth(
   const byMonth = new Map<string, BudgetExpenseBreakdown>();
 
   for (const row of rows) {
-    if (row.budget_excluded) continue;
+    if (
+      isTransactionExcludedFromLegacyBudgetScope({
+        budgetExcluded: row.budget_excluded,
+        analysisMainGroup: row.analysis_main_group,
+        analysisCategory: row.analysis_category,
+      })
+    ) {
+      continue;
+    }
 
     const amount = asNumber(row.amount, 0);
 
@@ -1620,7 +1630,15 @@ function buildExpenseDetailItems(
 
   for (const row of monthRows) {
     if (row.amount >= 0) continue;
-    if (row.budget_excluded) continue;
+    if (
+      isTransactionExcludedFromLegacyBudgetScope({
+        budgetExcluded: row.budget_excluded,
+        analysisMainGroup: row.analysis_main_group,
+        analysisCategory: row.analysis_category,
+      })
+    ) {
+      continue;
+    }
     const categoryMeta = resolveCategoryMetaForTransaction(row, categoryMap);
     const resolvedBucket = resolveExpenseBucket(row, categoryMeta);
     if (resolvedBucket !== bucket) continue;
@@ -1685,7 +1703,15 @@ function buildOutsideBudgetExpenseSummary(
 
   for (const row of monthRows) {
     if (row.amount >= 0) continue;
-    if (!row.budget_excluded) continue;
+    if (
+      isTransactionIncludedInLegacyBudgetScope({
+        budgetExcluded: row.budget_excluded,
+        analysisMainGroup: row.analysis_main_group,
+        analysisCategory: row.analysis_category,
+      })
+    ) {
+      continue;
+    }
 
     const categoryMeta = resolveCategoryMetaForTransaction(row, categoryMap);
     const bucket = resolveExpenseBucket(row, categoryMeta);
@@ -1771,7 +1797,15 @@ function computeWeeklyVariablePlan(
     let total = 0;
     for (const row of weekRows) {
       if (row.amount >= 0) continue;
-      if (row.budget_excluded) continue;
+      if (
+        isTransactionExcludedFromLegacyBudgetScope({
+          budgetExcluded: row.budget_excluded,
+          analysisMainGroup: row.analysis_main_group,
+          analysisCategory: row.analysis_category,
+        })
+      ) {
+        continue;
+      }
       const txDate = parseIsoDateUtc(row.date);
       if (txDate < range.start || txDate >= range.endExclusive) continue;
       const categoryMeta = resolveCategoryMetaForTransaction(row, categoryMap);
@@ -1786,7 +1820,15 @@ function computeWeeklyVariablePlan(
     let total = 0;
     for (const row of weekRows) {
       if (row.amount >= 0) continue;
-      if (row.budget_excluded) continue;
+      if (
+        isTransactionExcludedFromLegacyBudgetScope({
+          budgetExcluded: row.budget_excluded,
+          analysisMainGroup: row.analysis_main_group,
+          analysisCategory: row.analysis_category,
+        })
+      ) {
+        continue;
+      }
       const txDate = parseIsoDateUtc(row.date);
       if (txDate < range.start || txDate >= range.endExclusive) continue;
       const categoryMeta = resolveCategoryMetaForTransaction(row, categoryMap);
@@ -1867,7 +1909,15 @@ function buildWeeklySpendBreakdown(
 
     for (const row of weekRows) {
       if (row.amount >= 0) continue;
-      if (row.budget_excluded) continue;
+      if (
+        isTransactionExcludedFromLegacyBudgetScope({
+          budgetExcluded: row.budget_excluded,
+          analysisMainGroup: row.analysis_main_group,
+          analysisCategory: row.analysis_category,
+        })
+      ) {
+        continue;
+      }
       const txDate = parseIsoDateUtc(row.date);
       if (txDate < range.start || txDate >= range.endExclusive) continue;
 
@@ -1956,7 +2006,11 @@ async function fetchTransactionsInRange(
     const page = ((data || []) as Record<string, unknown>[])
       .map((row) => {
         const bankAccountId = row.bank_account_id ? String(row.bank_account_id) : null;
-        if (!isBankAccountIncludedInBudget(bankAccountId, budgetFlags)) {
+        if (
+          !isBankAccountIncludedInLegacyBudgetScope(
+            budgetFlags.get(bankAccountId || "") !== false,
+          )
+        ) {
           return null;
         }
 
@@ -2041,7 +2095,15 @@ function computeBreakdowns(
   const expenses = emptyExpenseBreakdown();
 
   for (const row of rows) {
-    if (row.budget_excluded) continue;
+    if (
+      isTransactionExcludedFromLegacyBudgetScope({
+        budgetExcluded: row.budget_excluded,
+        analysisMainGroup: row.analysis_main_group,
+        analysisCategory: row.analysis_category,
+      })
+    ) {
+      continue;
+    }
     const amount = asNumber(row.amount, 0);
     if (amount === 0) continue;
 
@@ -2243,10 +2305,34 @@ export async function computeBudgetPlan(
   const weekRows = transactions.filter(
     (row) => row.date >= weekWindowStartIso && row.date < weekWindowEndIso,
   );
-  const includedTrendRows = trendRows.filter((row) => !row.budget_excluded);
-  const includedMonthRows = monthRows.filter((row) => !row.budget_excluded);
-  const includedWeekRows = weekRows.filter((row) => !row.budget_excluded);
-  const excludedMonthRows = monthRows.filter((row) => row.budget_excluded);
+  const includedTrendRows = trendRows.filter((row) =>
+    isTransactionIncludedInLegacyBudgetScope({
+      budgetExcluded: row.budget_excluded,
+      analysisMainGroup: row.analysis_main_group,
+      analysisCategory: row.analysis_category,
+    }),
+  );
+  const includedMonthRows = monthRows.filter((row) =>
+    isTransactionIncludedInLegacyBudgetScope({
+      budgetExcluded: row.budget_excluded,
+      analysisMainGroup: row.analysis_main_group,
+      analysisCategory: row.analysis_category,
+    }),
+  );
+  const includedWeekRows = weekRows.filter((row) =>
+    isTransactionIncludedInLegacyBudgetScope({
+      budgetExcluded: row.budget_excluded,
+      analysisMainGroup: row.analysis_main_group,
+      analysisCategory: row.analysis_category,
+    }),
+  );
+  const excludedMonthRows = monthRows.filter((row) =>
+    isTransactionExcludedFromLegacyBudgetScope({
+      budgetExcluded: row.budget_excluded,
+      analysisMainGroup: row.analysis_main_group,
+      analysisCategory: row.analysis_category,
+    }),
+  );
 
   const observedDays = daysBetween(trendStart, baselineObservationEndExclusive);
   const daysInCurrentMonth = daysBetween(monthStart, monthEndExclusive);

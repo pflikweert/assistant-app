@@ -1,9 +1,6 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { requireCurrentUserId } from "@/services/current-user";
-import {
-  isBankAccountIncludedInBudget,
-  listBankAccountBudgetFlags,
-} from "@/services/bank-accounts";
+import { listBankAccountBudgetFlags } from "@/services/bank-accounts";
 import { createBudgetPlanRequestDescriptors } from "@/services/forecast-budget-plan-requests";
 import {
   deriveIncomeSourcesFromTransactions,
@@ -28,6 +25,12 @@ import {
   type ForecastTimelineEvent,
 } from "@/services/forecast-timeline";
 import { buildForecastReferenceContext } from "@/services/forecast-reference";
+import {
+  isBankAccountIncludedInLegacyForecastScope,
+  isTransactionExcludedFromLegacyBudgetScope,
+  isTransactionIncludedInLegacyForecastScope,
+} from "@/services/financial-semantics";
+import type { ForecastTimelineStorageEventType } from "@/services/forecast-domain";
 import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import { detectRareSubscriptionItems } from "@/services/rare-subscriptions";
 import { supabase } from "@/services/supabase";
@@ -138,12 +141,7 @@ type StoredForecastTimelineEvent = {
   month_start: string;
   event_key: string;
   event_date: string;
-  event_type:
-    | "income"
-    | "fixed_cost"
-    | "subscription"
-    | "savings_transfer"
-    | "milestone_lowest_balance";
+  event_type: ForecastTimelineStorageEventType;
   label: string;
   amount: number;
   source:
@@ -331,7 +329,11 @@ async function fetchTransactionsInRange(
     const page = ((data || []) as Record<string, unknown>[])
       .map((row) => {
         const bankAccountId = row.bank_account_id ? String(row.bank_account_id) : null;
-        if (!isBankAccountIncludedInBudget(bankAccountId, budgetFlags)) {
+        if (
+          !isBankAccountIncludedInLegacyForecastScope(
+            budgetFlags.get(bankAccountId || "") !== false,
+          )
+        ) {
           return null;
         }
 
@@ -561,7 +563,15 @@ function buildRecurringHistoryEvents(params: {
 
   for (const tx of transactions) {
     if (tx.date > referenceIso) continue;
-    if (tx.budget_excluded) continue;
+    if (
+      !isTransactionIncludedInLegacyForecastScope({
+        budgetExcluded: tx.budget_excluded,
+        analysisMainGroup: tx.analysis_main_group,
+        analysisCategory: tx.analysis_category,
+      })
+    ) {
+      continue;
+    }
 
     if (direction === "income") {
       if (!isForecastEligibleIncomeTransaction(tx, categoryMap)) continue;
@@ -925,7 +935,15 @@ function summarizeBookedMonthTransactions(params: {
   for (const tx of transactions) {
     if (tx.date < monthStartIso || tx.date >= monthEndIso) continue;
     if (tx.date > referenceIso) continue;
-    if (tx.budget_excluded) continue;
+    if (
+      isTransactionExcludedFromLegacyBudgetScope({
+        budgetExcluded: tx.budget_excluded,
+        analysisMainGroup: tx.analysis_main_group,
+        analysisCategory: tx.analysis_category,
+      })
+    ) {
+      continue;
+    }
 
     if (tx.amount > 0) {
       const semantics = resolveIncomeSemanticsForTransaction(tx, categoryMap);

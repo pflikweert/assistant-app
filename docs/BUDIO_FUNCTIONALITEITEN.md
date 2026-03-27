@@ -2,7 +2,7 @@
 
 ## Versieblok
 
-- Datum: 26 maart 2026
+- Datum: 27 maart 2026
 - Doel: complete contextbron voor mensen en AI
 - Doelgroep van dit document: productpartners, testers, investeerders, nieuwe teamleden, AI-assistenten
 - Productstatus: actieve consumentenfinance-app met doorlopende verfijning
@@ -550,6 +550,163 @@ Niet bedoeld voor:
 - `services/forecast-expense-utils.ts` (`helper`): expensehulpfuncties.
 - `services/forecast-expense-source-display.ts` (`helper`): displaylabels forecastbron.
 - `services/month-forecast-summary.ts` (`kernlogica`): compacte maandforecast-read voor surfaces.
+
+## Forecastmodel: volledige werking
+
+Deze sectie beschrijft hoe het forecastmodel nu technisch en productmatig werkt, gebaseerd op de huidige implementatie.
+
+### 1) Doel en output van het model
+
+Het model maakt per maand een conservatieve cashflowverwachting met:
+
+- verwachte inkomsten en uitgaven (gesplitst naar vaste lasten, abonnementen, variabele kosten en spaaruitstroom)
+- verwacht eindsaldo van de maand
+- laagste verwachte saldo binnen de maand
+- eerstvolgend verwacht moment
+- risico-indicatoren:
+  - `riskFlag`: `deficit_warning` als verwacht eindsaldo negatief is
+  - `cashRiskFlag`: `cash_gap_warning` als tussentijds (timeline) saldo onder nul komt
+
+### 2) Wanneer forecast wordt herberekend
+
+De orchestration zit in `services/forecast-refresh.ts`:
+
+- forecast kan `dirty` worden gezet bij relevante mutaties (bijv. budgetsave, categorisatie, abonnementswijziging)
+- `ensureForecastFresh(...)` herberekent alleen als:
+  - status dirty is, of
+  - er nog geen berekening is, of
+  - de laatste berekening ouder is dan max-age (standaard 6 uur), of
+  - `force` is gevraagd
+- meerdere gelijktijdige refreshes voor dezelfde gebruiker worden gededuped via een in-flight map
+
+### 3) Maandscope en referentiedatum
+
+In `services/forecasting.ts`:
+
+- aangevraagde maand in het verleden: alleen die maand wordt berekend
+- huidige of toekomstige maand: huidige maand + vooruitkijkvenster (standaard t/m 6 maanden vooruit)
+- per maand wordt een `forecastReferenceDate` bepaald:
+  - verleden: laatste dag van die maand
+  - huidige maand: vandaag
+  - toekomstige maand: dag voor maandstart
+
+Dit bepaalt welke transacties al "geboekt" tellen en welke events nog "komend" zijn.
+
+### 4) Databronnen die worden ingelezen
+
+Voor de berekening worden parallel opgehaald:
+
+- transacties (met lookback van 760 dagen) uit `transactions`
+- categorieen uit `categories`
+- persisted income sources uit `forecast_income_sources`
+- actieve subscription profiles uit `subscription_profiles`
+- budgetplan per forecastmaand via `computeBudgetPlan(...)`
+
+Belangrijk:
+
+- transacties van rekeningen die niet meetellen in budget worden vooraf uitgesloten
+- transacties met `budget_excluded = true` tellen niet mee in forecastberekeningen
+
+### 5) Income-opbouw (baseline + committed events)
+
+Income komt uit twee lagen:
+
+1. Baseline (`services/forecast-income-baseline.ts`)
+- voorkeur is budgetplan-basis (trend/preview) als die beschikbaar is
+- anders fallback naar income sources die qua frequentie in die maand vallen
+- include/exclude per income-bucket (`salary`, `childBudget`, `structuralOther`, `variable`) wordt toegepast
+
+2. Committed income events (`services/forecasting.ts` + `services/forecast-timeline.ts`)
+- recurrente inkomens worden afgeleid uit transacties (frequentie + verwachte dag)
+- persisted income sources worden gemerged met afgeleide bronnen (`services/forecast-derived-income-sources.ts`)
+- al waargenomen inkomsten in de maand worden niet nogmaals als toekomst-event toegevoegd
+
+### 6) Expense-opbouw (baseline + committed events)
+
+Expense-basis komt uit `services/forecast-expense-baseline.ts`:
+
+- bronkeuze via budgetinstelling `forecastExpenseSource`:
+  - `budget_settings`: gebruik budgetflowwaarden als primaire baseline
+  - `trend`: gebruik trend/history als primaire baseline
+- maand-tot-nu uitgaven vormen een harde ondergrens (niet lager voorspellen dan al uitgegeven)
+- voor variabele kosten kan extra projectie worden gebruikt:
+  - maand-tot-nu variabel + resterend weekbudget uit budgetplan
+
+Historycomponent komt uit `services/forecast-expense-utils.ts`:
+
+- recente afgeronde maanden (standaard 2) met gewogen gemiddelde (recentste maand weegt zwaarder)
+- onderverdeling variabel: `groceries`, `fuel`, `smoking`, `other`
+
+Committed expense events:
+
+- recurrente vaste lasten/abonnementen uit transactiehistorie
+- actieve subscription profiles als extra abonnementsevents
+- rare subscriptions als aanvullende signalen
+- aparte committed events voor spaaruitstroom (`savings_transfer`)
+
+### 7) Geboekte maandtotalen (month-to-date)
+
+`summarizeBookedMonthTransactions(...)` telt voor de maand t/m referentiedatum:
+
+- geboekte inkomsten (incl. uitgesplitst structureel/variabel)
+- geboekte forecast-eligible inkomsten (met income-bucket include-regels)
+- geboekte uitgaven per type (`fixed_costs`, `subscriptions`, `variable_costs`)
+- geboekte spaaruitstroom (`savings_transfer`)
+
+### 8) Rekenkern naar maanduitkomst
+
+`services/forecast-month-math.ts` combineert booked + baseline + committed:
+
+- `remainingExpectedIncomeTotal` = max(committed income, income baseline - booked eligible income, 0)
+- elk expense-blok gebruikt een conservatieve max-benadering:
+  - max(booked + committed, baseline, booked)
+- `expectedEndOfMonthBalance`:
+  - met `startingBalance`: start + expected income - expected cash out
+  - anders met `currentBalanceAnchor`: anchor + resterende income - resterende expense - resterende savings
+
+Voor toekomstige maanden wordt startbalans gechained:
+
+- expected eindsaldo maand N wordt startsaldo voor maand N+1
+
+### 9) Timeline-projection en cash-risico
+
+`services/forecast-timeline.ts` bouwt de volgorde van toekomstige events:
+
+- alleen events na referentiedatum en binnen gekozen maand
+- running balance vanaf `currentBalanceAnchor`
+- laagste punt in de reeks wordt opgeslagen als `lowestExpectedBalance` + datum
+- `cashRiskFlag` wordt `cash_gap_warning` zodra dat laagste punt negatief is
+
+Daarnaast worden samenvattingen bepaald:
+
+- `upcomingCommittedIncomeTotal`
+- `upcomingCommittedExpenseTotal`
+- `upcomingCommittedSavingsOutflowTotal`
+- `nextExpectedEventDate` + `nextExpectedEventLabel`
+
+### 10) Persist en readpad
+
+Persist:
+
+- maandsamenvatting naar `monthly_cashflow_forecasts` (upsert op `user_id,month_start`)
+- timeline-events naar `forecast_timeline_events` (eerst clearen per maand, dan insert)
+- bij ontbrekende kolommen/tabellen wordt defensief gefallbacked waar mogelijk
+
+Readpad:
+
+- `services/month-forecast-summary.ts` roept eerst `ensureForecastFresh(...)` aan
+- leest daarna de maandrij uit `monthly_cashflow_forecasts`
+- `services/forecast-timeline-events.ts` leest timeline-events voor Insights
+- `services/insights-upcoming-moments.ts` vertaalt events naar betekenisvolle `Komende momenten`-kaarten
+
+### 11) Conservatieve ontwerpkeuzes (belangrijk voor review)
+
+Het model kiest bewust voor voorzichtigheid:
+
+- geen event als het deze maand al waargenomen is
+- bij twijfel liever baseline/boeking als ondergrens dan optimistische afleiding
+- verwachting wordt niet als zekerheid gepresenteerd (risicoflags en copy blijven probabilistisch)
+- schema-safe fallbacks bij migraties of ontbrekende tabellen/kolommen
 
 ### Insights-selectoren
 

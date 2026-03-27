@@ -1,5 +1,9 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { applyBudgetWeekRebalanceGuardrails } from "@/services/budget-week-guardrails";
+import {
+  buildFinancialBalanceSnapshot,
+  type FinancialBalanceSnapshot,
+} from "@/services/financial-semantics";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import { loadMonthForecastSummary } from "@/services/month-forecast-summary";
 import type { BudgetPlanComputation } from "@/types/categorization";
@@ -20,6 +24,7 @@ export async function loadBudgetPlanForSurface(params: {
 }): Promise<{
   plan: BudgetPlanComputation;
   forecast: InsightsForecastSummary | null;
+  balances: FinancialBalanceSnapshot;
 }> {
   const {
     referenceDate,
@@ -44,12 +49,18 @@ export async function loadBudgetPlanForSurface(params: {
       : Promise.resolve(forecastSummary),
   ]);
 
-  return {
-    forecast: loadedForecast,
-    plan: applyBudgetWeekRebalanceGuardrails({
+  const plan = applyBudgetWeekRebalanceGuardrails({
       plan: rawPlan,
       forecast: loadedForecast,
       now: timelineReference,
+    });
+
+  return {
+    forecast: loadedForecast,
+    plan,
+    balances: buildFinancialBalanceSnapshot({
+      forecast: loadedForecast,
+      plan,
     }),
   };
 }

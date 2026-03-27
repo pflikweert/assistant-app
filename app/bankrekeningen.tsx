@@ -1,4 +1,5 @@
 import { BankAccountFormSheet } from "@/components/bank-accounts/bank-account-form-sheet";
+import { ForecastAccountMeta } from "@/components/bank-accounts/forecast-account-meta";
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
@@ -407,6 +408,8 @@ export default function BankrekeningenScreen() {
                   <Text style={styles.accountNumberText}>
                     {account.account_masked || "Geen rekeningnummer bekend"}
                   </Text>
+
+                  <ForecastAccountMeta account={account} variant="chips" />
 
                   <View style={styles.accountCardFooter}>
                     <StatusChip
