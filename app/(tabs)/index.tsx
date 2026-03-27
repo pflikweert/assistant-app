@@ -6,7 +6,6 @@ import {
   DashboardBudgetOverviewCard,
 } from "@/components/dashboard/dashboard-overview-card";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
-import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceHeaderActions } from "@/components/ui/finance-header-actions";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { AppIcon } from "@/components/ui/app-icon";
@@ -24,6 +23,7 @@ import {
   parseRunningBalance,
   resolveLatestKnownBalanceSnapshot,
 } from "@/services/latest-known-balance";
+import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import type {
@@ -116,8 +116,9 @@ export default function DashboardScreen() {
   const [categories, setCategories] = React.useState<CategoryRecord[]>([]);
   const [budgetPlan, setBudgetPlan] =
     React.useState<BudgetPlanComputation | null>(null);
+  const [dashboardBalances, setDashboardBalances] =
+    React.useState<FinancialSurfaceBalanceSnapshot | null>(null);
   const [budgetSchemaMissing, setBudgetSchemaMissing] = React.useState(false);
-  const [balance, setBalance] = React.useState<number | null>(null);
   const [isBootstrapping, setIsBootstrapping] = React.useState(true);
   const budgetLoadInFlight = React.useRef(false);
   const isFocused = useIsFocused();
@@ -130,8 +131,8 @@ export default function DashboardScreen() {
 
   const hasTransactions = transactions.length > 0;
   const dashboardBudgetOverview = React.useMemo(
-    () => buildDashboardBudgetOverviewModel(budgetPlan),
-    [budgetPlan],
+    () => buildDashboardBudgetOverviewModel(budgetPlan, dashboardBalances),
+    [budgetPlan, dashboardBalances],
   );
 
   const recentTransactions = React.useMemo<DashboardTxRow[]>(
@@ -160,30 +161,32 @@ export default function DashboardScreen() {
         dashboardBudgetOverview.monthSnapshot.tone === "neutral"
           ? null
           : dashboardBudgetOverview.monthSnapshot.tone,
-      remainingVariableBudget: dashboardBudgetOverview.monthSnapshot.remaining,
+      remainingVariableBudget: dashboardBudgetOverview.remainingMonthlyBudget,
       spentVariableBudget: dashboardBudgetOverview.monthSnapshot.spent,
       totalVariableBudget: dashboardBudgetOverview.monthSnapshot.budget,
       weekStatusLabel: dashboardBudgetOverview.weekSnapshot.label,
       weekRiskTone: dashboardBudgetOverview.weekSnapshot.tone,
-      weekRemainingBudget: dashboardBudgetOverview.weekSnapshot.remaining,
+      weekRemainingBudget: dashboardBudgetOverview.weeklyBudgetRemaining,
       weekTempoDelta: dashboardBudgetOverview.weekSnapshot.tempoDelta,
       expectedFixedCosts: budgetPlan?.flowSummary.fixedCostsBudget ?? null,
       expectedSubscriptions: budgetPlan?.flowSummary.subscriptionsBudget ?? null,
-      hasForecastData: false,
+      hasForecastData:
+        dashboardBalances?.expectedEndOperationalBalance.amount != null,
     }),
     [
       budgetPlan?.flowSummary.fixedCostsBudget,
       budgetPlan?.flowSummary.subscriptionsBudget,
+      dashboardBalances?.expectedEndOperationalBalance.amount,
       dashboardBudgetOverview.monthSnapshot.budget,
       dashboardBudgetOverview.monthSnapshot.label,
-      dashboardBudgetOverview.monthSnapshot.remaining,
       dashboardBudgetOverview.monthSnapshot.spent,
       dashboardBudgetOverview.monthSnapshot.state,
       dashboardBudgetOverview.monthSnapshot.tone,
       dashboardBudgetOverview.weekSnapshot.label,
-      dashboardBudgetOverview.weekSnapshot.remaining,
+      dashboardBudgetOverview.weeklyBudgetRemaining,
       dashboardBudgetOverview.weekSnapshot.tone,
       dashboardBudgetOverview.weekSnapshot.tempoDelta,
+      dashboardBudgetOverview.remainingMonthlyBudget,
       dashboardPeriodLabel,
     ],
   );
@@ -248,8 +251,7 @@ export default function DashboardScreen() {
 
       if (!rows.length) {
         setTransactions([]);
-        setBalance(null);
-        return;
+        return null;
       }
 
       setTransactions(recentRows);
@@ -261,35 +263,41 @@ export default function DashboardScreen() {
         }[],
       ).balance;
 
-      setBalance(latestBalance);
+      return latestBalance;
     } catch (error) {
       console.error("[dashboard] load error", error);
+      return null;
     }
   }, []);
 
-  const loadBudget = React.useCallback(async () => {
+  const loadBudget = React.useCallback(async (currentBalanceOverride?: number | null) => {
     if (budgetSchemaMissing) {
       setBudgetPlan(null);
+      setDashboardBalances(null);
       return;
     }
     if (budgetLoadInFlight.current) return;
 
     budgetLoadInFlight.current = true;
     try {
-      const { plan } = await loadBudgetPlanForSurface({
+      const { plan, balances } = await loadBudgetPlanForSurface({
         referenceDate: new Date(),
         planKey: "default",
+        currentBalanceOverride,
       });
       setBudgetPlan(plan);
+      setDashboardBalances(balances);
     } catch (error) {
       if (isMissingRelationError(error)) {
         setBudgetSchemaMissing(true);
         setBudgetPlan(null);
+        setDashboardBalances(null);
         return;
       }
 
       console.error("[dashboard] budget load error", error);
       setBudgetPlan(null);
+      setDashboardBalances(null);
     } finally {
       budgetLoadInFlight.current = false;
     }
@@ -297,7 +305,9 @@ export default function DashboardScreen() {
 
   const loadInitialDashboard = React.useCallback(async () => {
     try {
-      await Promise.all([loadCategories(), loadDashboard(), loadBudget()]);
+      await loadCategories();
+      const latestBalance = await loadDashboard();
+      await loadBudget(latestBalance);
     } finally {
       setIsBootstrapping(false);
     }
@@ -314,17 +324,10 @@ export default function DashboardScreen() {
   }, [isBootstrapping, isFocused, loadCategories]);
 
   React.useEffect(() => {
-    if (!isFocused || isBootstrapping) return;
-    void loadDashboard();
-    void loadBudget();
-  }, [isBootstrapping, isFocused, loadBudget, loadDashboard]);
-
-  React.useEffect(() => {
     if (!isFocused || !backgroundStatus.lastCompletedAt || isBootstrapping)
       return;
     void loadCategories();
-    void loadDashboard();
-    void loadBudget();
+    void loadDashboard().then((latestBalance) => loadBudget(latestBalance));
   }, [
     backgroundStatus.lastCompletedAt,
     isBootstrapping,
@@ -355,16 +358,17 @@ export default function DashboardScreen() {
                 dashboardBudgetOverview.monthSnapshot.tone === "neutral"
                   ? null
                   : dashboardBudgetOverview.monthSnapshot.tone,
-              remainingVariableBudget: dashboardBudgetOverview.monthSnapshot.remaining,
+              remainingVariableBudget: dashboardBudgetOverview.remainingMonthlyBudget,
               spentVariableBudget: dashboardBudgetOverview.monthSnapshot.spent,
               totalVariableBudget: dashboardBudgetOverview.monthSnapshot.budget,
               weekStatusLabel: dashboardBudgetOverview.weekSnapshot.label,
               weekRiskTone: dashboardBudgetOverview.weekSnapshot.tone,
-              weekRemainingBudget: dashboardBudgetOverview.weekSnapshot.remaining,
+              weekRemainingBudget: dashboardBudgetOverview.weeklyBudgetRemaining,
               weekTempoDelta: dashboardBudgetOverview.weekSnapshot.tempoDelta,
               expectedFixedCosts: budgetPlan?.flowSummary.fixedCostsBudget ?? null,
               expectedSubscriptions: budgetPlan?.flowSummary.subscriptionsBudget ?? null,
-              hasForecastData: false,
+              hasForecastData:
+                dashboardBalances?.expectedEndOperationalBalance.amount != null,
             }}
           />
         }
@@ -377,26 +381,12 @@ export default function DashboardScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scroll}
         >
-          <FinanceHeroShell
-            eyebrow="Dashboard"
-            title="Overzicht"
-            subtitle="Je actuele geldstand staat direct onder de hero, daarna volgen maand en week."
-            titleStyle={styles.heroTitle}
-            subtitleStyle={styles.heroSupport}
-          />
-
           <View style={styles.contentMax}>
             <View style={styles.mainStack}>
               <DashboardBalanceSummary
-                balance={balance}
+                surfaceBalances={dashboardBalances}
+                monthLabel={dashboardPeriodLabel}
                 hasTransactions={hasTransactions}
-              />
-
-              <DashboardAssistantCallout
-                selectedPeriod={{
-                  label: dashboardPeriodLabel,
-                }}
-                screenContext={dashboardHelpAssistantScreenContext}
               />
 
               <DashboardBudgetOverviewCard
@@ -453,6 +443,13 @@ export default function DashboardScreen() {
                   ))
                 )}
               </View>
+
+              <DashboardAssistantCallout
+                selectedPeriod={{
+                  label: dashboardPeriodLabel,
+                }}
+                screenContext={dashboardHelpAssistantScreenContext}
+              />
             </View>
           </View>
         </ScrollView>
@@ -475,20 +472,8 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   scroll: {
+    paddingTop: 80,
     paddingBottom: 128,
-  },
-  heroTitle: {
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: "900",
-    color: FinColors.textPrimary,
-    letterSpacing: -0.8,
-  },
-  heroSupport: {
-    maxWidth: 720,
-    fontSize: 18,
-    lineHeight: 26,
-    color: FinColors.textSecondary,
   },
   contentMax: {
     width: "100%",
@@ -497,8 +482,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   mainStack: {
-    paddingTop: 24,
-    gap: 32,
+    paddingTop: 0,
+    gap: 24,
   },
   sectionHeader: {
     flexDirection: "row",

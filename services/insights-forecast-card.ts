@@ -1,7 +1,6 @@
 import type { FinanceStatusTone } from "@/components/ui/finance-status-chip";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import { getInsightsDisplayExpectedEndBalance } from "@/services/insights-remaining-month";
-import type { TransactionMonthOption } from "@/services/transaction-month-options";
 import type { BudgetPlanComputation } from "@/types/categorization";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
@@ -14,17 +13,16 @@ type ForecastStatusLabel = "Verwacht positief" | "Krap maar haalbaar" | "Let op"
 export type InsightsForecastCardModel = {
   title: string;
   amountLabel: string;
+  currentOperationalValue: string;
+  freeToSpendNowValue: string | null;
+  reservedValue: string | null;
   statusLabel: ForecastStatusLabel;
   statusTone: FinanceStatusTone;
-  lowestBalanceLabel: string;
-  lowestBalanceDateLabel: string | null;
+  lowestOperationalPointValue: string;
+  lowestOperationalPointDateLabel: string | null;
   explanation: string;
   isFallback: boolean;
 };
-
-function getCurrentMonthKey(now = new Date()) {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
 
 function formatShortDate(value: string | null) {
   if (!value) return null;
@@ -36,12 +34,12 @@ function formatShortDate(value: string | null) {
   });
 }
 
-function resolveStatus(forecast: InsightsForecastSummary): {
+function resolveStatus(expectedEnd: number | null, forecast: InsightsForecastSummary): {
   label: ForecastStatusLabel;
   tone: FinanceStatusTone;
 } {
-  const expectedEnd = forecast.expectedEndBalance ?? null;
-  const lowest = forecast.lowestExpectedBalance ?? null;
+  const lowest =
+    forecast.lowestOperationalPointInMonth ?? forecast.lowestExpectedBalance ?? null;
   const hasDeficit =
     forecast.riskFlag === "deficit_warning" ||
     (expectedEnd != null && expectedEnd < 0);
@@ -67,71 +65,75 @@ function buildExplanation(forecast: InsightsForecastSummary | null) {
     return "We kunnen nog geen betrouwbare maandverwachting maken.";
   }
 
-  const income = forecast.expectedIncomeTotal;
-  const fixed = forecast.expectedFixedCosts;
-  const subscriptions = forecast.expectedSubscriptions;
-  const variable = forecast.expectedVariableCosts;
+  const currentOperational = forecast.currentOperationalBalance ?? null;
+  const reserved = forecast.currentReservedBalance ?? null;
+  const freeToSpendNow = forecast.freeToSpendNow ?? null;
 
-  if (
-    income == null ||
-    fixed == null ||
-    subscriptions == null ||
-    variable == null
-  ) {
+  const parts = [
+    currentOperational == null ? null : `Huidig saldo ${fmt.format(currentOperational)}`,
+    reserved != null && reserved > 0 ? `Gereserveerd ${fmt.format(reserved)}` : null,
+    freeToSpendNow == null ? null : `Vrij besteedbaar ${fmt.format(freeToSpendNow)}`,
+  ].filter(Boolean);
+
+  if (!parts.length) {
     return "Deze verwachting combineert bekende inkomsten, vaste lasten, abonnementen en verwachte variabele uitgaven.";
   }
 
-  return `Op basis van bekende inkomsten (${fmt.format(income)}) en verwachte uitgaven: ${fmt.format(
-    fixed,
-  )} vaste lasten, ${fmt.format(subscriptions)} abonnementen en ${fmt.format(
-    variable,
-  )} variabele uitgaven.`;
+  return parts.join(" · ");
 }
 
 export function buildInsightsForecastCard(input: {
   forecast: InsightsForecastSummary | null;
   budgetPlan: BudgetPlanComputation | null;
-  selectedMonth: TransactionMonthOption;
   currentBalanceOverride?: number | null;
 }): InsightsForecastCardModel {
-  const { forecast, budgetPlan, selectedMonth, currentBalanceOverride } = input;
-  const isHistoricalMonth = selectedMonth.key < getCurrentMonthKey();
-  const title = isHistoricalMonth ? "Eindsaldo deze maand" : "Verwacht eindsaldo";
-  const displayExpectedEndBalance = isHistoricalMonth
-    ? forecast?.expectedEndBalance ?? null
-    : getInsightsDisplayExpectedEndBalance({
-        forecast,
-        budgetPlan,
-        currentBalanceOverride,
-      });
+  const { forecast, budgetPlan, currentBalanceOverride } = input;
+  const title = "Verwacht eindsaldo";
+  const displayExpectedEndBalance = getInsightsDisplayExpectedEndBalance({
+    forecast,
+    budgetPlan,
+    currentBalanceOverride,
+  });
 
   if (!forecast || displayExpectedEndBalance == null) {
     return {
       title,
       amountLabel: "Nog niet beschikbaar",
+      currentOperationalValue: "Nog niet beschikbaar",
+      freeToSpendNowValue: null,
+      reservedValue: null,
       statusLabel: "Neutraal",
       statusTone: "neutral",
-      lowestBalanceLabel: "Nog niet beschikbaar",
-      lowestBalanceDateLabel: null,
+      lowestOperationalPointValue: "Nog niet beschikbaar",
+      lowestOperationalPointDateLabel: null,
       explanation: "We kunnen nog geen betrouwbare maandverwachting maken.",
       isFallback: true,
     };
   }
 
-  const status = resolveStatus({
-    ...forecast,
-    expectedEndBalance: displayExpectedEndBalance,
-  });
+  const currentOperational = forecast.currentOperationalBalance ?? null;
+  const reserved = forecast.currentReservedBalance ?? null;
+  const freeToSpendNow = forecast.freeToSpendNow ?? null;
+  const status = resolveStatus(displayExpectedEndBalance, forecast);
   return {
     title,
     amountLabel: fmt.format(displayExpectedEndBalance),
+    currentOperationalValue:
+      currentOperational == null ? "Niet bekend" : fmt.format(currentOperational),
+    freeToSpendNowValue:
+      freeToSpendNow == null ? null : fmt.format(freeToSpendNow),
+    reservedValue: reserved == null ? null : fmt.format(reserved),
     statusLabel: status.label,
     statusTone: status.tone,
-    lowestBalanceLabel:
-      forecast.lowestExpectedBalance == null
+    lowestOperationalPointValue:
+      // Lowest point stays a separate monthly minimum; never swap it with the
+      // headline end balance.
+      (forecast.lowestOperationalPointInMonth ?? forecast.lowestExpectedBalance) == null
         ? "Niet beschikbaar"
-        : fmt.format(forecast.lowestExpectedBalance),
-    lowestBalanceDateLabel: formatShortDate(forecast.lowestExpectedBalanceDate),
+        : fmt.format(
+            forecast.lowestOperationalPointInMonth ?? forecast.lowestExpectedBalance ?? null,
+          ),
+    lowestOperationalPointDateLabel: formatShortDate(forecast.lowestExpectedBalanceDate),
     explanation: buildExplanation(forecast),
     isFallback: false,
   };

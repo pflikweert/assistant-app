@@ -100,6 +100,59 @@ describe("buildForecastMonthStateFromEvents", () => {
     expect(projection.lowestExpectedBalance).toBe(1000);
   });
 
+  it("houdt lowest point apart van de month-end balance", () => {
+    const state = buildForecastMonthStateFromEvents({
+      opening: {
+        monthStart: "2026-03-01",
+        referenceDate: "2026-03-10",
+        currentBalanceDate: "2026-03-09",
+        openingOperationalBalance: 1000,
+        openingReservedBalance: 0,
+        openingNetWorth: 1000,
+        carryover: null,
+      },
+      events: [
+        {
+          id: "expense-early",
+          date: "2026-03-12",
+          type: "expense",
+          certainty: "booked",
+          moneyLayer: "operational",
+          amount: 450,
+          label: "Vaste last",
+          accountRole: "operational",
+          ownerScope: "personal",
+        },
+        {
+          id: "income-mid",
+          date: "2026-03-20",
+          type: "income",
+          certainty: "booked",
+          moneyLayer: "operational",
+          amount: 300,
+          label: "Inkomende betaling",
+          accountRole: "operational",
+          ownerScope: "personal",
+        },
+        {
+          id: "expense-late",
+          date: "2026-03-28",
+          type: "expense",
+          certainty: "booked",
+          moneyLayer: "operational",
+          amount: 100,
+          label: "Variabele uitgave",
+          accountRole: "operational",
+          ownerScope: "personal",
+        },
+      ],
+    });
+
+    expect(state.expectedEndOperationalBalance).toBe(750);
+    expect(state.lowestExpectedBalance).toBe(550);
+    expect(state.expectedEndOperationalBalance).not.toBe(state.lowestExpectedBalance);
+  });
+
   it("laat correction events de eindstand ongemoeid", () => {
     const state = buildForecastMonthStateFromEvents({
       opening: {

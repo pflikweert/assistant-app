@@ -27,6 +27,39 @@ function endOfMonthExclusive(date: Date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
 }
 
+function buildMonthOpeningState(params: {
+  monthStart: Date;
+  referenceDate: Date;
+  openingOperationalBalance: number | null;
+  openingReservedBalance: number | null;
+  openingNetWorth: number | null;
+}): ForecastMonthOpeningState {
+  const {
+    monthStart,
+    referenceDate,
+    openingOperationalBalance,
+    openingReservedBalance,
+    openingNetWorth,
+  } = params;
+  return {
+    monthStart: dateToIso(monthStart),
+    referenceDate: dateToIso(referenceDate),
+    currentBalanceDate: dateToIso(addMonths(monthStart, -1)),
+    openingOperationalBalance,
+    openingReservedBalance,
+    openingNetWorth,
+    carryover: null,
+  };
+}
+
+function extractNextMonthOpeningState(monthState: ForecastMonthState) {
+  return {
+    openingOperationalBalance: monthState.expectedEndOperationalBalance,
+    openingReservedBalance: monthState.expectedEndReservedBalance,
+    openingNetWorth: monthState.expectedEndNetWorth,
+  };
+}
+
 export function rollForwardForecastMonths(
   input: ForecastRollForwardInput,
 ): ForecastMonthState[] {
@@ -40,26 +73,24 @@ export function rollForwardForecastMonths(
       : openingOperationalBalance + openingReservedBalance);
 
   for (const monthStart of input.months) {
-    const monthStartIso = dateToIso(monthStart);
-    const opening: ForecastMonthOpeningState = {
-      monthStart: monthStartIso,
-      referenceDate: dateToIso(input.referenceDate),
-      currentBalanceDate: dateToIso(addMonths(monthStart, -1)),
+    const opening = buildMonthOpeningState({
+      monthStart,
+      referenceDate: input.referenceDate,
       openingOperationalBalance,
       openingReservedBalance,
       openingNetWorth,
-      carryover: null,
-    };
+    });
 
     const monthState = buildForecastMonthStateFromEvents({
       opening,
-      events: input.monthEventsByMonthStart.get(monthStartIso) || [],
+      events: input.monthEventsByMonthStart.get(opening.monthStart) || [],
     });
 
     states.push(monthState);
-    openingOperationalBalance = monthState.expectedEndOperationalBalance;
-    openingReservedBalance = monthState.expectedEndReservedBalance;
-    openingNetWorth = monthState.expectedEndNetWorth;
+    const nextOpening = extractNextMonthOpeningState(monthState);
+    openingOperationalBalance = nextOpening.openingOperationalBalance;
+    openingReservedBalance = nextOpening.openingReservedBalance;
+    openingNetWorth = nextOpening.openingNetWorth;
   }
 
   return states;

@@ -306,7 +306,7 @@ describe("help-assistant-ai spending advice", () => {
       postHelpAssistantSpendingAdviceCompletionMock.mock.calls[0]?.[0]
         ?.openAIRequest;
     const promptText = JSON.stringify(openAIRequest?.messages || []);
-    expect(promptText).toContain("Actueel saldo");
+    expect(promptText).toContain("Actuele operationele stand");
     expect(promptText).toContain("Huidige maand uitgaven totaal");
     expect(promptText).toContain("Maandverdeling uitgaven");
     expect(promptText).toContain("Weekverdeling uitgaven");

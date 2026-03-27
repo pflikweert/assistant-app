@@ -28,6 +28,7 @@ const {
 
     const query = {
       select: vi.fn(() => query),
+      delete: vi.fn(() => query),
       eq: vi.fn((...args: unknown[]) => {
         entry.filters.push({ method: "eq", args });
         return query;
@@ -37,6 +38,9 @@ const {
         entry.upserts.push({ payload, options });
         return nextResponse();
       }),
+      then: vi.fn((onFulfilled, onRejected) =>
+        Promise.resolve(nextResponse()).then(onFulfilled, onRejected),
+      ),
     };
 
     return query;
@@ -67,6 +71,7 @@ vi.mock("@/services/supabase", () => ({
 
 let ensureForecastFresh: typeof import("./forecast-refresh").ensureForecastFresh;
 let markForecastDirty: typeof import("./forecast-refresh").markForecastDirty;
+let resetAndRecomputeForecast: typeof import("./forecast-refresh").resetAndRecomputeForecast;
 let requestForecastRefresh: typeof import("./forecast-refresh").requestForecastRefresh;
 let shouldRefreshForecast: typeof import("./forecast-refresh").shouldRefreshForecast;
 
@@ -76,6 +81,7 @@ describe("forecast-refresh", () => {
     ({
       ensureForecastFresh,
       markForecastDirty,
+      resetAndRecomputeForecast,
       requestForecastRefresh,
       shouldRefreshForecast,
     } = await import("./forecast-refresh"));
@@ -195,6 +201,50 @@ describe("forecast-refresh", () => {
       user_id: "user-123",
       is_dirty: true,
       last_reason: "categorization_batch",
+    });
+  });
+
+  it("wipes forecast artefacts and recomputes from scratch", async () => {
+    responseQueue.push(
+      { data: null, error: null },
+      { data: null, error: null },
+      { data: null, error: null },
+      { data: null, error: null },
+    );
+    recomputeMock.mockResolvedValue({
+      monthStart: "2026-03-01",
+    });
+
+    const status = await resetAndRecomputeForecast({
+      reason: "manual_refresh",
+      referenceDate: new Date("2026-03-17T12:00:00.000Z"),
+    });
+
+    expect(recomputeMock).toHaveBeenCalledTimes(1);
+    expect(status.isDirty).toBe(false);
+    expect(queryLog.map((entry) => entry.table)).toEqual([
+      "forecast_refresh_state",
+      "monthly_cashflow_forecasts",
+      "forecast_timeline_events",
+      "forecast_refresh_state",
+    ]);
+    expect(queryLog[0]?.upserts[0]?.payload).toMatchObject({
+      user_id: "user-123",
+      is_dirty: true,
+      last_reason: "manual_refresh",
+    });
+    expect(queryLog[1]?.filters[0]).toMatchObject({
+      method: "eq",
+      args: ["user_id", "user-123"],
+    });
+    expect(queryLog[2]?.filters[0]).toMatchObject({
+      method: "eq",
+      args: ["user_id", "user-123"],
+    });
+    expect(queryLog[3]?.upserts[0]?.payload).toMatchObject({
+      user_id: "user-123",
+      is_dirty: false,
+      last_reason: "manual_refresh",
     });
   });
 

@@ -1,4 +1,5 @@
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
+import { resolveForecastDisplayExpectedEndBalance } from "@/services/insights-remaining-month";
 import type {
   AnalysisCategory,
   AnalysisMainGroup,
@@ -16,6 +17,10 @@ export type FinancialBalanceValue = {
   source:
     | "forecast_anchor"
     | "budget_remaining"
+    | "derived"
+    | "zero"
+    | "value"
+    | "not_configured"
     | "not_modeled_yet"
     | "unavailable";
 };
@@ -24,6 +29,17 @@ export type FinancialBalanceSnapshot = Record<
   FinancialBalanceDimension,
   FinancialBalanceValue
 >;
+
+export type FinancialSurfaceBalanceSnapshot = FinancialBalanceSnapshot & {
+  currentOperationalBalance: FinancialBalanceValue;
+  currentReservedBalance: FinancialBalanceValue;
+  currentNetWorth: FinancialBalanceValue;
+  freeToSpendNow: FinancialBalanceValue;
+  expectedEndOperationalBalance: FinancialBalanceValue;
+  expectedEndNetWorth: FinancialBalanceValue;
+  carryoverIntoNextMonth: FinancialBalanceValue;
+  lowestOperationalPointInMonth: FinancialBalanceValue;
+};
 
 export type FinancialScopeState = {
   budget: boolean;
@@ -146,16 +162,76 @@ function round2(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function resolveReservedBalanceValue(forecast: InsightsForecastSummary | null) {
+  if (!forecast) {
+    return {
+      amount: null as number | null,
+      source: "unavailable" as const,
+    };
+  }
+
+  if (forecast.currentReservedBalance == null) {
+    return {
+      amount: null as number | null,
+      source: "not_configured" as const,
+    };
+  }
+
+  if (forecast.currentReservedBalance === 0) {
+    return {
+      amount: 0 as number,
+      source: "zero" as const,
+    };
+  }
+
+  return {
+    amount: round2(forecast.currentReservedBalance),
+    source: "value" as const,
+  };
+}
+
 export function buildFinancialBalanceSnapshot(params: {
   forecast: InsightsForecastSummary | null;
   plan: BudgetPlanComputation | null;
-}): FinancialBalanceSnapshot {
-  const { forecast, plan } = params;
+  currentBalanceOverride?: number | null;
+}): FinancialSurfaceBalanceSnapshot {
+  const { forecast, plan, currentBalanceOverride } = params;
 
   const operationalBalance =
-    forecast?.currentBalanceAnchor == null
+    currentBalanceOverride ??
+    forecast?.currentOperationalBalance ??
+    forecast?.currentBalanceAnchor ??
+    null;
+  const reservedBalance = resolveReservedBalanceValue(forecast);
+  const netWorth = forecast?.currentNetWorth ?? null;
+  // freeToSpendNow is the operational room after reserved money.
+  // It is intentionally separate from month budget and week budget:
+  // those come from the budget surface, while this field is only about
+  // what remains in the current operational layer right now.
+  const freeToSpendNow =
+    reservedBalance.amount == null
       ? null
-      : round2(forecast.currentBalanceAnchor);
+      : currentBalanceOverride != null
+        ? round2(currentBalanceOverride - reservedBalance.amount)
+        : forecast?.freeToSpendNow != null
+        ? forecast.freeToSpendNow
+        : operationalBalance == null
+          ? null
+          : round2(operationalBalance - reservedBalance.amount);
+  const expectedEndOperationalBalance = resolveForecastDisplayExpectedEndBalance({
+    forecast,
+    budgetPlan: plan,
+    currentBalanceOverride: operationalBalance,
+  });
+  const expectedEndNetWorth =
+    forecast?.expectedEndNetWorth ?? expectedEndOperationalBalance;
+  const carryoverIntoNextMonth =
+    forecast?.carryoverIntoNextMonth ?? expectedEndOperationalBalance;
+  // Lowest operational point is the month minimum, not the month-end balance.
+  // Keep it on a separate surface field so dashboards cannot substitute it
+  // for the headline operational forecast.
+  const lowestOperationalPointInMonth =
+    forecast?.lowestOperationalPointInMonth ?? forecast?.lowestExpectedBalance ?? null;
 
   const freeToSpend =
     plan == null
@@ -167,21 +243,75 @@ export function buildFinancialBalanceSnapshot(params: {
 
   return {
     operationalBalance: {
-      amount: operationalBalance,
-      source:
-        operationalBalance == null ? "unavailable" : "forecast_anchor",
+      amount: operationalBalance == null ? null : round2(operationalBalance),
+      source: operationalBalance == null ? "unavailable" : "forecast_anchor",
     },
     reservedBalance: {
-      amount: null,
-      source: "not_modeled_yet",
+      amount: reservedBalance.amount,
+      source: reservedBalance.source,
     },
     netWorth: {
-      amount: null,
-      source: "not_modeled_yet",
+      amount: netWorth == null ? null : round2(netWorth),
+      source: netWorth == null ? "not_modeled_yet" : "forecast_anchor",
     },
     freeToSpend: {
       amount: freeToSpend,
       source: freeToSpend == null ? "unavailable" : "budget_remaining",
+    },
+    currentOperationalBalance: {
+      amount: operationalBalance == null ? null : round2(operationalBalance),
+      source: operationalBalance == null ? "unavailable" : "forecast_anchor",
+    },
+    currentReservedBalance: {
+      amount: reservedBalance.amount,
+      source: reservedBalance.source,
+    },
+    currentNetWorth: {
+      amount: netWorth == null ? null : round2(netWorth),
+      source: netWorth == null ? "not_modeled_yet" : "forecast_anchor",
+    },
+    freeToSpendNow: {
+      amount: freeToSpendNow == null ? null : round2(freeToSpendNow),
+      source:
+        freeToSpendNow == null
+          ? "unavailable"
+          : currentBalanceOverride != null
+            ? "derived"
+            : forecast?.freeToSpendNow != null
+            ? "forecast_anchor"
+            : "derived",
+    },
+    expectedEndOperationalBalance: {
+      amount:
+        expectedEndOperationalBalance == null
+          ? null
+          : round2(expectedEndOperationalBalance),
+      source:
+        expectedEndOperationalBalance == null
+          ? "unavailable"
+          : "forecast_anchor",
+    },
+    expectedEndNetWorth: {
+      amount:
+        expectedEndNetWorth == null ? null : round2(expectedEndNetWorth),
+      source:
+        expectedEndNetWorth == null ? "unavailable" : "forecast_anchor",
+    },
+    carryoverIntoNextMonth: {
+      amount:
+        carryoverIntoNextMonth == null ? null : round2(carryoverIntoNextMonth),
+      source:
+        carryoverIntoNextMonth == null ? "unavailable" : "forecast_anchor",
+    },
+    lowestOperationalPointInMonth: {
+      amount:
+        lowestOperationalPointInMonth == null
+          ? null
+          : round2(lowestOperationalPointInMonth),
+      source:
+        lowestOperationalPointInMonth == null
+          ? "unavailable"
+          : "forecast_anchor",
     },
   };
 }

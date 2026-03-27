@@ -5,6 +5,7 @@ import {
   type ForecastMonthStatus,
   normalizeForecastCertainty,
 } from "@/services/forecast-domain";
+import { resolveForecastDisplayExpectedEndBalance } from "@/services/insights-remaining-month";
 import {
   buildForecastCarryoverFromLatestKnownBalance,
   type LatestKnownBalanceSnapshot,
@@ -14,43 +15,56 @@ import type { BudgetPlanComputation } from "@/types/categorization";
 
 function resolveMonthStatus(
   summary: InsightsForecastSummary | null,
+  resolvedExpectedEndOperationalBalance: number | null,
 ): ForecastMonthStatus {
   if (!summary) return "unknown";
   if (summary.riskFlag === "deficit_warning") return "stressed";
   if (summary.cashRiskFlag === "cash_gap_warning") return "projected";
   if (
-    summary.expectedEndBalance == null &&
-    summary.currentBalanceAnchor == null
+    resolvedExpectedEndOperationalBalance == null &&
+    (summary.currentOperationalBalance ?? summary.currentBalanceAnchor) == null
   ) {
     return "unknown";
   }
-  if (summary.nextExpectedEventDate == null && summary.lowestExpectedBalance == null) {
+  if (
+    summary.nextExpectedEventDate == null &&
+    (summary.lowestOperationalPointInMonth ?? summary.lowestExpectedBalance) == null
+  ) {
     return "observed";
   }
   return "projected";
 }
 
-function resolveCertainty(summary: InsightsForecastSummary | null): ForecastCertainty {
+function resolveCertainty(
+  summary: InsightsForecastSummary | null,
+  resolvedExpectedEndOperationalBalance: number | null,
+): ForecastCertainty {
   if (!summary) return "estimated";
-  if (summary.expectedEndBalance == null) return "inferred";
+  if (resolvedExpectedEndOperationalBalance == null) {
+    return "inferred";
+  }
   return "committed";
 }
 
 function buildCarryoverFromSummary(
   summary: InsightsForecastSummary | null,
 ): ForecastCarryover | null {
-  if (!summary || summary.currentBalanceAnchor == null) return null;
+  // Legacy compatibility only: this carryover is reconstructed from the
+  // stored summary row until the new domain state is the only source of truth.
+  const currentOperationalBalance =
+    summary?.currentOperationalBalance ?? summary?.currentBalanceAnchor ?? null;
+  if (!summary || currentOperationalBalance == null) return null;
 
   return {
     sourceMonthStart: summary.monthStart,
     targetMonthStart: summary.monthStart,
     sourceMoneyLayer: "operational",
     targetMoneyLayer: "operational",
-    amount: summary.currentBalanceAnchor,
+    amount: currentOperationalBalance,
     certainty: normalizeForecastCertainty("booked"),
     sourceEventType: "correction",
     sourceLabel: summary.currentBalanceAnchorDate || null,
-    reason: "Laatste bekende saldo",
+    reason: "Laatste bekende operationele stand",
   };
 }
 
@@ -61,25 +75,39 @@ export function buildForecastMonthStateFromLegacySummary(
 ): ForecastMonthState | null {
   if (!summary) return null;
 
+  // Fallback-only bridge: derive the canonical month state from legacy rows,
+  // but never let old aliases replace the operational end balance.
   const carryover =
     buildCarryoverFromSummary(summary) ||
     (latestKnownBalance
       ? buildForecastCarryoverFromLatestKnownBalance(latestKnownBalance)
       : null);
+  const currentOperationalBalance =
+    summary.currentOperationalBalance ?? summary.currentBalanceAnchor ?? null;
+  const resolvedExpectedEndOperationalBalance =
+    resolveForecastDisplayExpectedEndBalance({
+      forecast: summary,
+      budgetPlan: budgetPlan ?? null,
+      currentBalanceOverride: currentOperationalBalance,
+    });
 
   return {
     monthStart: summary.monthStart,
     referenceDate: summary.forecastReferenceDate,
     currentBalanceDate: summary.currentBalanceAnchorDate,
-    status: resolveMonthStatus(summary),
-    openingOperationalBalance: summary.currentBalanceAnchor,
-    openingReservedBalance: 0,
+    status: resolveMonthStatus(summary, resolvedExpectedEndOperationalBalance),
+    openingOperationalBalance: currentOperationalBalance,
+    openingReservedBalance: summary.currentReservedBalance ?? null,
     openingNetWorth:
-      summary.currentBalanceAnchor == null ? null : summary.currentBalanceAnchor,
-    currentBalance: summary.currentBalanceAnchor,
-    reservedBalance: 0,
+      summary.currentNetWorth ??
+      summary.currentOperationalBalance ??
+      summary.currentBalanceAnchor,
+    currentBalance: currentOperationalBalance,
+    reservedBalance: summary.currentReservedBalance ?? null,
     netWorth:
-      summary.currentBalanceAnchor == null ? null : summary.currentBalanceAnchor,
+      summary.currentNetWorth ??
+      summary.currentOperationalBalance ??
+      summary.currentBalanceAnchor,
     freeToSpend: budgetPlan
       ? Math.max(
           (budgetPlan.flowSummary?.variableBudget ?? 0) -
@@ -95,9 +123,10 @@ export function buildForecastMonthStateFromLegacySummary(
     ].reduce((total, value) => total + (value || 0), 0),
     expectedInternalTransfers: 0,
     expectedReserveAllocations: summary.remainingExpectedSavingsOutflowTotal,
-    expectedEndOperationalBalance: summary.expectedEndBalance,
-    expectedEndReservedBalance: 0,
-    expectedEndNetWorth: summary.expectedEndBalance,
+    expectedEndOperationalBalance: resolvedExpectedEndOperationalBalance,
+    expectedEndReservedBalance: summary.currentReservedBalance ?? null,
+    expectedEndNetWorth:
+      summary.expectedEndNetWorth ?? resolvedExpectedEndOperationalBalance,
     freeToSpendCarryover: budgetPlan
       ? Math.max(
           (budgetPlan.flowSummary?.variableBudget ?? 0) -
@@ -105,8 +134,9 @@ export function buildForecastMonthStateFromLegacySummary(
           0,
         )
       : null,
-    expectedEndBalance: summary.expectedEndBalance,
-    lowestExpectedBalance: summary.lowestExpectedBalance,
+    expectedEndBalance: resolvedExpectedEndOperationalBalance,
+    lowestExpectedBalance:
+      summary.lowestOperationalPointInMonth ?? summary.lowestExpectedBalance,
     lowestExpectedBalanceDate: summary.lowestExpectedBalanceDate,
     nextExpectedEventDate: summary.nextExpectedEventDate,
     nextExpectedEventLabel: summary.nextExpectedEventLabel,
@@ -122,7 +152,7 @@ export function buildForecastMonthStateFromLegacySummary(
     expectedVariableCosts: summary.expectedVariableCosts,
     riskFlag: summary.riskFlag,
     cashRiskFlag: summary.cashRiskFlag,
-    certainty: resolveCertainty(summary),
+    certainty: resolveCertainty(summary, resolvedExpectedEndOperationalBalance),
     carryover,
     events: [],
   };
@@ -133,6 +163,7 @@ export function adaptForecastMonthStateToLegacySummary(
 ): InsightsForecastSummary | null {
   if (!state) return null;
 
+  // Legacy compatibility adapter only.
   return {
     monthStart: state.monthStart,
     forecastReferenceDate: state.referenceDate,
@@ -141,7 +172,18 @@ export function adaptForecastMonthStateToLegacySummary(
     cashRiskFlag: state.cashRiskFlag,
     riskFlag: state.riskFlag,
     expectedEndBalance: state.expectedEndBalance,
+    currentOperationalBalance: state.currentBalance,
+    currentReservedBalance: state.reservedBalance,
+    currentNetWorth: state.netWorth,
+    freeToSpendNow:
+      state.currentBalance == null || state.reservedBalance == null
+        ? null
+        : state.currentBalance - state.reservedBalance,
+    expectedEndOperationalBalance: state.expectedEndOperationalBalance,
+    expectedEndNetWorth: state.expectedEndNetWorth,
+    carryoverIntoNextMonth: state.expectedEndOperationalBalance,
     lowestExpectedBalance: state.lowestExpectedBalance,
+    lowestOperationalPointInMonth: state.lowestExpectedBalance,
     lowestExpectedBalanceDate: state.lowestExpectedBalanceDate,
     nextExpectedEventDate: state.nextExpectedEventDate,
     nextExpectedEventLabel: state.nextExpectedEventLabel,

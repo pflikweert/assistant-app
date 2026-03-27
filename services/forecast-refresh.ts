@@ -43,6 +43,16 @@ function isMissingRelationError(error: unknown) {
   return code === "42P01" || code === "PGRST205";
 }
 
+function isMissingColumnError(error: unknown) {
+  const code = String((error as { code?: string } | null)?.code || "");
+  const message = String((error as { message?: string } | null)?.message || "").toLowerCase();
+  return (
+    code === "42703" ||
+    code === "PGRST204" ||
+    (message.includes("column") && message.includes("does not exist"))
+  );
+}
+
 function emptyForecastRefreshStatus(): ForecastRefreshStatus {
   return {
     isDirty: true,
@@ -144,6 +154,34 @@ function buildSyntheticStatus(
     ...(current || emptyForecastRefreshStatus()),
     ...patch,
   };
+}
+
+function cancelScheduledForecastRefresh(userId: string) {
+  const existing = scheduledRefreshes.get(userId);
+  if (existing) {
+    clearTimeout(existing.timer);
+    scheduledRefreshes.delete(userId);
+  }
+}
+
+async function deleteForecastArtifactsForUser(userId: string) {
+  const monthlyDelete = await supabase
+    .from("monthly_cashflow_forecasts")
+    .delete()
+    .eq("user_id", userId);
+
+  if (monthlyDelete.error && !isMissingRelationError(monthlyDelete.error) && !isMissingColumnError(monthlyDelete.error)) {
+    throw monthlyDelete.error;
+  }
+
+  const timelineDelete = await supabase
+    .from("forecast_timeline_events")
+    .delete()
+    .eq("user_id", userId);
+
+  if (timelineDelete.error && !isMissingRelationError(timelineDelete.error) && !isMissingColumnError(timelineDelete.error)) {
+    throw timelineDelete.error;
+  }
 }
 
 export async function getForecastRefreshStatus(
@@ -276,10 +314,7 @@ export async function requestForecastRefresh(
 
   await markForecastDirty(options.reason, { userId });
 
-  const existing = scheduledRefreshes.get(userId);
-  if (existing) {
-    clearTimeout(existing.timer);
-  }
+  cancelScheduledForecastRefresh(userId);
 
   if (options.eager) {
     scheduledRefreshes.delete(userId);
@@ -308,4 +343,36 @@ export async function requestForecastRefresh(
     reason: options.reason,
     referenceDate,
   });
+}
+
+export async function resetAndRecomputeForecast(options: {
+  referenceDate?: Date;
+  reason?: ForecastRefreshReason;
+} = {}) {
+  const userId = await requireCurrentUserId();
+  const referenceDate = options.referenceDate || new Date();
+  const reason = options.reason || "manual_refresh";
+
+  cancelScheduledForecastRefresh(userId);
+
+  const existingRefresh = inFlightRefreshes.get(userId);
+  if (existingRefresh) {
+    try {
+      await existingRefresh;
+    } catch {
+      // Een lopende refresh hoeft deze reset niet te blokkeren;
+      // we bouwen hierna bewust alles opnieuw op.
+    }
+  }
+
+  await markForecastDirty(reason, { userId });
+  await deleteForecastArtifactsForUser(userId);
+
+  try {
+    await recomputeCurrentMonthCashflowForecast(referenceDate);
+    return await markForecastRefreshSuccess(userId, reason);
+  } catch (error) {
+    await markForecastRefreshFailure(userId, reason, error);
+    throw error;
+  }
 }

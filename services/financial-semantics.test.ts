@@ -19,11 +19,22 @@ function buildForecast(
     forecastReferenceDate: "2026-03-27",
     currentBalanceAnchor: input?.currentBalanceAnchor ?? 1480.32,
     currentBalanceAnchorDate: input?.currentBalanceAnchorDate ?? "2026-03-27",
+    currentOperationalBalance:
+      input?.currentOperationalBalance ?? input?.currentBalanceAnchor ?? 1480.32,
+    currentReservedBalance: input?.currentReservedBalance ?? 180,
+    currentNetWorth: input?.currentNetWorth ?? 1700.48,
+    freeToSpendNow: input?.freeToSpendNow ?? 1340.48,
     cashRiskFlag: input?.cashRiskFlag ?? "none",
     riskFlag: input?.riskFlag ?? "none",
     expectedEndBalance: input?.expectedEndBalance ?? 1695.12,
+    expectedEndOperationalBalance:
+      input?.expectedEndOperationalBalance ?? input?.expectedEndBalance ?? 1695.12,
+    expectedEndNetWorth:
+      input?.expectedEndNetWorth ?? input?.expectedEndOperationalBalance ?? input?.expectedEndBalance ?? 1695.12,
     lowestExpectedBalance: input?.lowestExpectedBalance ?? 1260.1,
     lowestExpectedBalanceDate: input?.lowestExpectedBalanceDate ?? "2026-03-29",
+    lowestOperationalPointInMonth:
+      input?.lowestOperationalPointInMonth ?? input?.lowestExpectedBalance ?? 1260.1,
     nextExpectedEventDate: input?.nextExpectedEventDate ?? "2026-03-30",
     nextExpectedEventLabel: input?.nextExpectedEventLabel ?? "Salaris",
     expectedIncomeTotal: input?.expectedIncomeTotal ?? 3200,
@@ -115,7 +126,16 @@ describe("financial semantics", () => {
 
   it("bouwt een conservatieve balanssnapshot met expliciete geldbetekenis", () => {
     const snapshot = buildFinancialBalanceSnapshot({
-      forecast: buildForecast({ currentBalanceAnchor: 1520.48 }),
+      forecast: buildForecast({
+        currentBalanceAnchor: 1520.48,
+        currentOperationalBalance: 1520.48,
+        currentReservedBalance: 180,
+        currentNetWorth: 1700.48,
+        freeToSpendNow: 1340.48,
+        expectedEndOperationalBalance: 1600.48,
+        expectedEndNetWorth: 1780.48,
+        lowestOperationalPointInMonth: 1290.12,
+      }),
       plan: buildPlan({ variableBudget: 700, variableSpent: 260.25 }),
     });
 
@@ -127,13 +147,142 @@ describe("financial semantics", () => {
       amount: 439.75,
       source: "budget_remaining",
     });
+    expect(snapshot.currentOperationalBalance).toEqual({
+      amount: 1520.48,
+      source: "forecast_anchor",
+    });
+    expect(snapshot.freeToSpendNow).toEqual({
+      amount: 1340.48,
+      source: "forecast_anchor",
+    });
+    expect(snapshot.expectedEndOperationalBalance).toEqual({
+      amount: 1735.48,
+      source: "forecast_anchor",
+    });
+    expect(snapshot.expectedEndOperationalBalance).not.toEqual(
+      snapshot.lowestOperationalPointInMonth,
+    );
     expect(snapshot.reservedBalance).toEqual({
-      amount: null,
-      source: "not_modeled_yet",
+      amount: 180,
+      source: "value",
     });
     expect(snapshot.netWorth).toEqual({
-      amount: null,
-      source: "not_modeled_yet",
+      amount: 1700.48,
+      source: "forecast_anchor",
     });
+  });
+
+  it("laat free-to-spend leeg als reserved state niet is gemodelleerd", () => {
+    const forecast = buildForecast({
+      currentBalanceAnchor: 1520.48,
+      currentOperationalBalance: 1520.48,
+      freeToSpendNow: 1340.48,
+    });
+    forecast.currentReservedBalance = null;
+    forecast.freeToSpendNow = 999.99;
+
+    const snapshot = buildFinancialBalanceSnapshot({
+      forecast,
+      plan: buildPlan({ variableBudget: 700, variableSpent: 260.25 }),
+    });
+
+    expect(snapshot.currentReservedBalance).toEqual({
+      amount: null,
+      source: "not_configured",
+    });
+    expect(snapshot.reservedBalance).toEqual({
+      amount: null,
+      source: "not_configured",
+    });
+    expect(snapshot.currentOperationalBalance).toEqual({
+      amount: 1520.48,
+      source: "forecast_anchor",
+    });
+    expect(snapshot.freeToSpendNow).toEqual({
+      amount: null,
+      source: "unavailable",
+    });
+    expect(snapshot.freeToSpend).toEqual({
+      amount: 439.75,
+      source: "budget_remaining",
+    });
+  });
+
+  it("onderscheidt een expliciete nul-reserved van ontbrekende data", () => {
+    const snapshot = buildFinancialBalanceSnapshot({
+      forecast: buildForecast({
+        currentReservedBalance: 0,
+        freeToSpendNow: null,
+      }),
+      plan: buildPlan({ variableBudget: 700, variableSpent: 260.25 }),
+    });
+
+    expect(snapshot.currentReservedBalance).toEqual({
+      amount: 0,
+      source: "zero",
+    });
+    expect(snapshot.reservedBalance).toEqual({
+      amount: 0,
+      source: "zero",
+    });
+    expect(snapshot.freeToSpendNow.amount).not.toBeNull();
+  });
+
+  it("gebruikt de berekende operationele eindstand wanneer legacy eindwaarde afwijkt", () => {
+    const snapshot = buildFinancialBalanceSnapshot({
+      forecast: buildForecast({
+        currentBalanceAnchor: 2748.36,
+        currentOperationalBalance: 2748.36,
+        expectedEndBalance: 359.85,
+        expectedEndOperationalBalance: 359.85,
+        remainingExpectedIncomeTotal: 0.33,
+        remainingExpectedExpenseTotal: 945.38,
+        remainingExpectedSavingsOutflowTotal: 0,
+      }),
+      plan: buildPlan({ variableBudget: 700, variableSpent: 260.25 }),
+    });
+
+    expect(snapshot.expectedEndOperationalBalance).toEqual({
+      amount: 1803.31,
+      source: "forecast_anchor",
+    });
+    expect(snapshot.expectedEndOperationalBalance).not.toEqual(
+      snapshot.lowestOperationalPointInMonth,
+    );
+  });
+
+  it("gebruikt de actuele operationele override boven een stalen forecast-basis", () => {
+    const snapshot = buildFinancialBalanceSnapshot({
+      forecast: buildForecast({
+        currentBalanceAnchor: 359.85,
+        currentOperationalBalance: 359.85,
+        currentReservedBalance: 0,
+        freeToSpendNow: 359.85,
+        expectedEndBalance: 359.85,
+        expectedEndOperationalBalance: 359.85,
+        remainingExpectedIncomeTotal: 0.33,
+        remainingExpectedExpenseTotal: 945.38,
+        remainingExpectedSavingsOutflowTotal: 0,
+        lowestOperationalPointInMonth: 392.82,
+      }),
+      plan: buildPlan({ variableBudget: 700, variableSpent: 260.25 }),
+      currentBalanceOverride: 2748.36,
+    });
+
+    expect(snapshot.currentOperationalBalance).toEqual({
+      amount: 2748.36,
+      source: "forecast_anchor",
+    });
+    expect(snapshot.freeToSpendNow).toEqual({
+      amount: 2748.36,
+      source: "derived",
+    });
+    expect(snapshot.expectedEndOperationalBalance).toEqual({
+      amount: 1803.31,
+      source: "forecast_anchor",
+    });
+    expect(snapshot.expectedEndOperationalBalance).not.toEqual(
+      snapshot.lowestOperationalPointInMonth,
+    );
   });
 });

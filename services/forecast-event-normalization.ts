@@ -12,14 +12,14 @@ const OWN_ACCOUNT_TRANSFER_HINTS = [
   "tb eigen rekening",
 ];
 
-type ForecastAccountLike = {
+type ForecastAccountInputLike = {
   account_type?: string | null;
   name?: string | null;
   provider?: string | null;
   is_active?: boolean | null;
 };
 
-type ForecastTransactionLike = {
+type BookedTransactionInput = {
   id: string;
   date: string;
   amount: number;
@@ -74,8 +74,8 @@ export type ForecastEventNormalizationInput = {
   monthEndExclusive: Date;
   referenceDate: Date;
   categoryMap: Map<string, CategoryRecord>;
-  bankAccountsById?: Map<string, ForecastAccountLike>;
-  bookedTransactions?: ForecastTransactionLike[];
+  bankAccountsById?: Map<string, ForecastAccountInputLike>;
+  bookedTransactions?: BookedTransactionInput[];
   timelineEvents?: ForecastTimelineEventLike[];
   carryover?: ForecastCarryover | null;
 };
@@ -103,7 +103,7 @@ function hasOwnAccountTransferHint(input: {
   return OWN_ACCOUNT_TRANSFER_HINTS.some((hint) => haystack.includes(hint));
 }
 
-function resolveAccountRulesLike(account: ForecastAccountLike) {
+function resolveForecastAccountMetadata(account: ForecastAccountInputLike) {
   const normalizedText = normalizeText(`${account.name || ""} ${account.provider || ""}`);
   const accountType = normalizeText(account.account_type);
 
@@ -130,19 +130,21 @@ function resolveAccountRulesLike(account: ForecastAccountLike) {
   })();
 
   return {
-    forecast_role: forecastRole,
-    owner_scope: ownerScope,
+    forecastRole,
+    ownerScope,
   };
 }
 
-function accountRulesForTransaction(
-  tx: ForecastTransactionLike,
-  bankAccountsById?: Map<string, ForecastAccountLike>,
+function resolveBookedTransactionAccountMetadata(
+  tx: BookedTransactionInput,
+  bankAccountsById?: Map<string, ForecastAccountInputLike>,
 ) {
   const account = tx.bank_account_id
     ? bankAccountsById?.get(tx.bank_account_id) || null
     : null;
-  return resolveAccountRulesLike(
+  // Tijdelijke read-time inferentie: zolang accountrollen nog niet persistent
+  // zijn, bepalen we ze hier op basis van bestaande accountmetadata.
+  return resolveForecastAccountMetadata(
     account || {
       account_type: "other",
       name: null,
@@ -160,17 +162,17 @@ function buildForecastEventId(parts: (string | null | undefined)[]) {
 }
 
 function resolveBookedTransactionEvent(
-  tx: ForecastTransactionLike,
+  tx: BookedTransactionInput,
   categoryMap: Map<string, CategoryRecord>,
-  bankAccountsById?: Map<string, ForecastAccountLike>,
+  bankAccountsById?: Map<string, ForecastAccountInputLike>,
 ): ForecastEvent | null {
   if (tx.amount === 0) return null;
   if (tx.budget_excluded) return null;
 
   const semantics = resolveIncomeSemanticsForTransaction(tx, categoryMap);
-  const accountRules = accountRulesForTransaction(tx, bankAccountsById);
-  const ownerScope = accountRules.owner_scope;
-  const accountRole = accountRules.forecast_role;
+  const accountMetadata = resolveBookedTransactionAccountMetadata(tx, bankAccountsById);
+  const ownerScope = accountMetadata.ownerScope;
+  const accountRole = accountMetadata.forecastRole;
   const label = String(tx.counterparty || tx.details.split("|")[0] || tx.details || "").trim() || "Onbekend";
   const baseId = buildForecastEventId([tx.id, tx.date, label]);
 

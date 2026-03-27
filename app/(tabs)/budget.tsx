@@ -73,7 +73,7 @@ import {
   formatForecastExpenseSourceLabel,
   getForecastExpenseSourceDescription,
 } from "@/services/forecast-expense-source-display";
-import type { InsightsForecastSummary } from "@/services/insights-month-context";
+import type { ForecastSurfaceSummary } from "@/services/budget-plan-surface";
 import type {
   BudgetCategoryKey,
   BudgetForecastExpenseSource,
@@ -923,8 +923,8 @@ export default function BudgetScreen() {
     Record<string, string>
   >({});
   const [monthSummaryModalOpen, setMonthSummaryModalOpen] = React.useState(false);
-  const [assistantForecastSummary, setAssistantForecastSummary] =
-    React.useState<InsightsForecastSummary | null>(null);
+  const [assistantForecastSurface, setAssistantForecastSurface] =
+    React.useState<ForecastSurfaceSummary | null>(null);
   const [expandedMonthSummaryCategories, setExpandedMonthSummaryCategories] =
     React.useState<string[]>([]);
   const [detailSection, setDetailSection] = React.useState<
@@ -1002,17 +1002,17 @@ export default function BudgetScreen() {
         referenceDate.setUTCDate(referenceDate.getUTCDate() - 1);
       }
 
-      const { plan, forecast } = await loadBudgetPlanForSurface({
+      const surface = await loadBudgetPlanForSurface({
         referenceDate,
         planKey: "default",
         timelineReference: new Date(),
       });
-      setBudgetPlan(plan);
-      setAssistantForecastSummary(forecast);
+      setBudgetPlan(surface.plan);
+      setAssistantForecastSurface(surface);
     } catch (error) {
       console.warn("[budget] load error", error);
       setBudgetPlan(null);
-      setAssistantForecastSummary(null);
+      setAssistantForecastSurface(null);
     } finally {
       budgetLoadInFlight.current = false;
       setLoading(false);
@@ -2782,15 +2782,18 @@ export default function BudgetScreen() {
               weekRemainingBudget: focusWeekSnapshot.remaining,
               weekTempoDelta: focusWeekSnapshot.tempoDelta,
               upcomingCommittedExpenseTotal:
-                assistantForecastSummary?.upcomingCommittedExpenseTotal ?? null,
-              expectedFixedCosts: assistantForecastSummary?.expectedFixedCosts ?? null,
+                assistantForecastSurface?.forecast?.upcomingCommittedExpenseTotal ?? null,
+              expectedFixedCosts:
+                assistantForecastSurface?.forecast?.expectedFixedCosts ?? null,
               expectedSubscriptions:
-                assistantForecastSummary?.expectedSubscriptions ?? null,
+                assistantForecastSurface?.forecast?.expectedSubscriptions ?? null,
               forecastExpectedEndBalance:
-                assistantForecastSummary?.expectedEndBalance ?? null,
+                assistantForecastSurface?.balances.expectedEndOperationalBalance.amount ??
+                null,
               forecastLowestExpectedBalance:
-                assistantForecastSummary?.lowestExpectedBalance ?? null,
-              hasForecastData: assistantForecastSummary != null,
+                assistantForecastSurface?.balances.lowestOperationalPointInMonth.amount ??
+                null,
+              hasForecastData: assistantForecastSurface != null,
             }}
           />
         }
@@ -3767,7 +3770,7 @@ export default function BudgetScreen() {
                     </Text>
                   </View>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Gereserveerd weekbudget</Text>
+                    <Text style={styles.summaryLabel}>Weekbudget totaal</Text>
                     <Text style={styles.summaryValue}>
                       {fmt.format(selectedWeekDetail.week.budget)}
                     </Text>

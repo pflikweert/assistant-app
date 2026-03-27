@@ -24,6 +24,25 @@ export function FinanceForecastSummaryCard({
         {model.amountLabel}
       </Text>
 
+      <View style={styles.metaGrid}>
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel}>Huidig saldo</Text>
+          <Text style={styles.metaValue}>{model.currentOperationalValue}</Text>
+        </View>
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel}>Vrij besteedbaar</Text>
+          <Text style={styles.metaValue}>
+            {model.freeToSpendNowValue ?? "Niet beschikbaar"}
+          </Text>
+        </View>
+        <View style={styles.metaItem}>
+          <Text style={styles.metaLabel}>Gereserveerd</Text>
+          <Text style={styles.metaValue}>
+            {model.reservedValue ?? "Niet beschikbaar"}
+          </Text>
+        </View>
+      </View>
+
       <View style={styles.lowestCard}>
         <View style={styles.lowestLabelRow}>
           <View style={styles.lowestIconWrap}>
@@ -34,11 +53,13 @@ export function FinanceForecastSummaryCard({
               variant="outlined"
             />
           </View>
-          <Text style={styles.lowestLabel}>Laagste saldo</Text>
+          <Text style={styles.lowestLabel}>Laagste punt</Text>
         </View>
-        <Text style={styles.lowestAmount}>{model.lowestBalanceLabel}</Text>
-        {model.lowestBalanceDateLabel ? (
-          <Text style={styles.lowestDate}>Rond {model.lowestBalanceDateLabel}</Text>
+        <Text style={styles.lowestAmount}>{model.lowestOperationalPointValue}</Text>
+        {model.lowestOperationalPointDateLabel ? (
+          <Text style={styles.lowestDate}>
+            Rond {model.lowestOperationalPointDateLabel}
+          </Text>
         ) : null}
       </View>
 
@@ -98,6 +119,34 @@ const styles = StyleSheet.create({
     fontSize: 28,
     lineHeight: 34,
     letterSpacing: -0.4,
+  },
+  metaGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  metaItem: {
+    minWidth: 92,
+    flexGrow: 1,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  metaLabel: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    color: "rgba(255,255,255,0.58)",
+    textTransform: "uppercase",
+  },
+  metaValue: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.92)",
   },
   lowestCard: {
     marginTop: 2,

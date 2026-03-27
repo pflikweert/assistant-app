@@ -32,7 +32,12 @@ function resolveAvailableHeadroom(
   plan: BudgetPlanComputation,
   forecast: InsightsForecastSummary | null,
 ) {
+  if (forecast?.expectedEndOperationalBalance != null) {
+    return Math.max(roundEuro(forecast.expectedEndOperationalBalance), 0);
+  }
+
   if (forecast?.expectedEndBalance != null) {
+    // Legacy alias only. Keep this behind the canonical operational balance.
     return Math.max(roundEuro(forecast.expectedEndBalance), 0);
   }
   return Math.max(roundEuro(plan.projectedMonthNet || 0), 0);
@@ -92,8 +97,8 @@ export function applyBudgetWeekRebalanceGuardrails(params: {
   }
 
   if (
-    forecast?.expectedEndBalance != null &&
-    forecast.expectedEndBalance < 0
+    forecast?.expectedEndOperationalBalance != null &&
+    forecast.expectedEndOperationalBalance < 0
   ) {
     return plan;
   }

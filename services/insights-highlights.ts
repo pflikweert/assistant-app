@@ -1,4 +1,5 @@
 import { getMonthVariableBudgetSnapshot } from "@/services/budget-risk";
+import { resolveForecastDisplayExpectedEndBalance } from "@/services/insights-remaining-month";
 import {
   shouldSuppressRepeatedInsight,
   type InsightsHighlightHistoryState,
@@ -479,18 +480,25 @@ function buildStableMonthCandidate(input: {
   forecast: InsightsForecastSummary | null;
 }): Candidate | null {
   const { selectedMonthKey, selectedMonthLabel, monthSnapshot, forecast } = input;
+  const expectedEndOperationalBalance = resolveForecastDisplayExpectedEndBalance({
+    forecast,
+    budgetPlan: null,
+  });
 
   const hasStrongRisk =
     forecast?.riskFlag === "deficit_warning" ||
     forecast?.cashRiskFlag === "cash_gap_warning" ||
-    (forecast?.expectedEndBalance != null && forecast.expectedEndBalance < 0);
+    (expectedEndOperationalBalance != null && expectedEndOperationalBalance < 0);
 
   if (hasStrongRisk || monthSnapshot.tone !== "good") return null;
 
   const confidence = clampConfidence(
     64 +
-      (forecast?.expectedEndBalance != null
-        ? Math.min(8, Math.round(Math.max(forecast.expectedEndBalance, 0) / 200))
+      (expectedEndOperationalBalance != null
+        ? Math.min(
+            8,
+            Math.round(Math.max(expectedEndOperationalBalance, 0) / 200),
+          )
         : 0),
   );
 
@@ -499,8 +507,8 @@ function buildStableMonthCandidate(input: {
     type: "reassurance",
     title: "Vaste lasten gedekt",
     description:
-      forecast?.expectedEndBalance != null
-        ? `Je maand lijkt stabiel. Verwacht eindsaldo: ${fmt.format(forecast.expectedEndBalance)}.`
+      expectedEndOperationalBalance != null
+        ? `Je maand lijkt stabiel. Verwacht eindsaldo: ${fmt.format(expectedEndOperationalBalance)}.`
         : `Je maand ${selectedMonthLabel.toLowerCase()} loopt voorlopig stabiel.`,
     signalSource: "ai-influenced",
     confidence,
@@ -511,7 +519,7 @@ function buildStableMonthCandidate(input: {
       monthSnapshot.tone,
       monthSnapshot.state,
       roundToBucket(monthSnapshot.remaining || 0, 25),
-      roundToBucket(forecast?.expectedEndBalance ?? 0, 50),
+      roundToBucket(expectedEndOperationalBalance ?? 0, 50),
     ].join("|"),
     family: "stability",
   };

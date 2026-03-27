@@ -13,6 +13,39 @@ function sum(values: number[]) {
   return values.reduce((total, value) => total + value, 0);
 }
 
+function getProjectedForecastEvents(input: ForecastMonthEventMathInput) {
+  const sortedEvents = [...input.events].sort((left, right) => {
+    if (left.date !== right.date) return left.date.localeCompare(right.date);
+    if (left.type !== right.type) return left.type.localeCompare(right.type);
+    if (left.amount !== right.amount) return left.amount - right.amount;
+    return left.label.localeCompare(right.label, "nl");
+  });
+
+  if (input.opening.referenceDate == null) return sortedEvents;
+  return sortedEvents.filter((event) => event.date > input.opening.referenceDate);
+}
+
+function resolveProjectedForecastTotals(events: ForecastEvent[]) {
+  return {
+    expectedIncome: round2(
+      sum(events.filter((event) => event.type === "income").map((event) => Math.abs(event.amount))),
+    ),
+    expectedExpenses: round2(
+      sum(events.filter((event) => event.type === "expense").map((event) => Math.abs(event.amount))),
+    ),
+    expectedInternalTransfers: round2(
+      sum(events.filter((event) => event.type === "internal_transfer").map((event) => Math.abs(event.amount))),
+    ),
+    expectedReserveAllocations: round2(
+      sum(
+        events
+          .filter((event) => event.type === "reserve_allocation")
+          .map((event) => Math.abs(event.amount)),
+      ),
+    ),
+  };
+}
+
 export type ForecastMonthMathInput = {
   startingBalance: number | null;
   currentBalanceAnchor: number | null;
@@ -155,13 +188,6 @@ function resolveMonthStateStatus(params: {
 export function buildForecastMonthStateFromEvents(
   input: ForecastMonthEventMathInput,
 ): ForecastMonthState {
-  const sortedEvents = [...input.events].sort((left, right) => {
-    if (left.date !== right.date) return left.date.localeCompare(right.date);
-    if (left.type !== right.type) return left.type.localeCompare(right.type);
-    if (left.amount !== right.amount) return left.amount - right.amount;
-    return left.label.localeCompare(right.label, "nl");
-  });
-
   const openingOperationalBalance = resolveOpeningBalance(
     input.opening.openingOperationalBalance,
     input.opening.openingOperationalBalance ?? input.opening.openingNetWorth ?? 0,
@@ -187,13 +213,9 @@ export function buildForecastMonthStateFromEvents(
   let lowestExpectedBalance = running.operational;
   let lowestExpectedBalanceDate = running.operational == null ? null : input.opening.currentBalanceDate;
 
-  const futureEvents =
-    input.opening.referenceDate == null
-      ? sortedEvents
-      : sortedEvents.filter((event) => event.date > input.opening.referenceDate);
-  const projectionEvents = futureEvents;
+  const projectedEvents = getProjectedForecastEvents(input);
 
-  for (const event of projectionEvents) {
+  for (const event of projectedEvents) {
     running = applyEventImpact(running, event);
     if (running.operational == null) continue;
     if (lowestExpectedBalance == null || running.operational < lowestExpectedBalance) {
@@ -210,24 +232,9 @@ export function buildForecastMonthStateFromEvents(
       ? null
       : round2(expectedEndOperationalBalance - expectedEndReservedBalance);
 
-  const expectedIncome = round2(
-    sum(projectionEvents.filter((event) => event.type === "income").map((event) => Math.abs(event.amount))),
-  );
-  const expectedExpenses = round2(
-    sum(projectionEvents.filter((event) => event.type === "expense").map((event) => Math.abs(event.amount))),
-  );
-  const expectedInternalTransfers = round2(
-    sum(projectionEvents.filter((event) => event.type === "internal_transfer").map((event) => Math.abs(event.amount))),
-  );
-  const expectedReserveAllocations = round2(
-    sum(
-      projectionEvents
-        .filter((event) => event.type === "reserve_allocation")
-        .map((event) => Math.abs(event.amount)),
-    ),
-  );
+  const projectedTotals = resolveProjectedForecastTotals(projectedEvents);
 
-  const certainty = sortedEvents.reduce<ForecastMonthState["certainty"]>(
+  const certainty = projectedEvents.reduce<ForecastMonthState["certainty"]>(
     (next, event) => {
       if (event.certainty === "estimated") return "estimated";
       if (event.certainty === "inferred" && next !== "estimated") return "inferred";
@@ -248,9 +255,9 @@ export function buildForecastMonthStateFromEvents(
       : "none";
   const nextExpectedEvent =
     input.opening.referenceDate == null
-      ? sortedEvents[0] || null
-      : sortedEvents.find((event) => event.date > input.opening.referenceDate) ||
-        sortedEvents[0] ||
+      ? projectedEvents[0] || null
+      : projectedEvents.find((event) => event.date > input.opening.referenceDate) ||
+        projectedEvents[0] ||
         null;
 
   return {
@@ -260,7 +267,7 @@ export function buildForecastMonthStateFromEvents(
     status: resolveMonthStateStatus({
       riskFlag,
       cashRiskFlag,
-      hasForecastEvents: sortedEvents.length > 0,
+      hasForecastEvents: projectedEvents.length > 0,
       openingKnown: openingOperationalBalance != null,
     }),
     openingOperationalBalance,
@@ -270,10 +277,10 @@ export function buildForecastMonthStateFromEvents(
     reservedBalance: openingReservedBalance,
     netWorth: openingNetWorth,
     freeToSpend: input.freeToSpendCarryover ?? freeToSpendCarryover,
-    expectedIncome: round2(expectedIncome),
-    expectedExpenses: round2(expectedExpenses),
-    expectedInternalTransfers: round2(expectedInternalTransfers),
-    expectedReserveAllocations: round2(expectedReserveAllocations),
+    expectedIncome: projectedTotals.expectedIncome,
+    expectedExpenses: projectedTotals.expectedExpenses,
+    expectedInternalTransfers: projectedTotals.expectedInternalTransfers,
+    expectedReserveAllocations: projectedTotals.expectedReserveAllocations,
     expectedEndOperationalBalance,
     expectedEndReservedBalance,
     expectedEndNetWorth,
@@ -283,20 +290,20 @@ export function buildForecastMonthStateFromEvents(
     lowestExpectedBalanceDate,
     nextExpectedEventDate: nextExpectedEvent?.date || null,
     nextExpectedEventLabel: nextExpectedEvent?.label || null,
-    expectedIncomeTotal: round2(expectedIncome),
+    expectedIncomeTotal: projectedTotals.expectedIncome,
     remainingExpectedIncomeTotal: null,
     remainingExpectedExpenseTotal: null,
     remainingExpectedSavingsOutflowTotal: null,
     upcomingCommittedIncomeTotal: round2(
       sum(
-        futureEvents
+        projectedEvents
           .filter((event) => event.type === "income")
           .map((event) => Math.abs(event.amount)),
       ),
     ),
     upcomingCommittedExpenseTotal: round2(
       sum(
-        futureEvents
+        projectedEvents
           .filter((event) => event.type === "expense")
           .map((event) => Math.abs(event.amount)),
       ),
@@ -308,7 +315,7 @@ export function buildForecastMonthStateFromEvents(
     cashRiskFlag,
     certainty,
     carryover: input.opening.carryover,
-    events: projectionEvents,
+    events: projectedEvents,
   };
 }
 

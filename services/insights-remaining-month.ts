@@ -20,6 +20,13 @@ function getFallbackRemainingVariableExpenseEstimate(params: {
   return round2(Math.max(forecast.expectedVariableCosts - variableSpent, 0));
 }
 
+function resolveExplicitForecastEndBalance(
+  forecast: InsightsForecastSummary | null,
+) {
+  if (!forecast) return null;
+  return forecast.expectedEndOperationalBalance ?? forecast.expectedEndBalance ?? null;
+}
+
 export function getInsightsRemainingVariableExpenseEstimate(params: {
   forecast: InsightsForecastSummary | null;
   budgetPlan: BudgetPlanComputation | null;
@@ -79,7 +86,7 @@ export function getInsightsRemainingMonthNetTotal(params: {
   );
 }
 
-export function getInsightsDisplayExpectedEndBalance(params: {
+export function resolveForecastDisplayExpectedEndBalance(params: {
   forecast: InsightsForecastSummary | null;
   budgetPlan: BudgetPlanComputation | null;
   currentBalanceOverride?: number | null;
@@ -87,15 +94,36 @@ export function getInsightsDisplayExpectedEndBalance(params: {
   const { forecast } = params;
   if (!forecast) return null;
 
+  const explicitExpectedEndBalance = resolveExplicitForecastEndBalance(forecast);
   const remainingNet = getInsightsRemainingMonthNetTotal(params);
   const effectiveCurrentBalance =
     params.currentBalanceOverride != null
       ? params.currentBalanceOverride
-      : forecast.currentBalanceAnchor;
+      : forecast.currentOperationalBalance ?? forecast.currentBalanceAnchor;
 
-  if (effectiveCurrentBalance == null || remainingNet == null) {
-    return forecast.expectedEndBalance;
+  if (effectiveCurrentBalance != null && remainingNet != null) {
+    const computedExpectedEndBalance = round2(
+      effectiveCurrentBalance + remainingNet,
+    );
+
+    if (explicitExpectedEndBalance == null) {
+      return computedExpectedEndBalance;
+    }
+
+    if (Math.abs(explicitExpectedEndBalance - computedExpectedEndBalance) > 0.01) {
+      return computedExpectedEndBalance;
+    }
+
+    return explicitExpectedEndBalance;
   }
 
-  return round2(effectiveCurrentBalance + remainingNet);
+  return explicitExpectedEndBalance;
+}
+
+export function getInsightsDisplayExpectedEndBalance(params: {
+  forecast: InsightsForecastSummary | null;
+  budgetPlan: BudgetPlanComputation | null;
+  currentBalanceOverride?: number | null;
+}) {
+  return resolveForecastDisplayExpectedEndBalance(params);
 }

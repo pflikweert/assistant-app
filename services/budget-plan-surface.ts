@@ -8,6 +8,13 @@ import type { InsightsForecastSummary } from "@/services/insights-month-context"
 import { loadMonthForecastSummary } from "@/services/month-forecast-summary";
 import type { BudgetPlanComputation } from "@/types/categorization";
 
+// Canonical surface contract shared by Dashboard, Insights and Budget.
+export type ForecastSurfaceSummary = {
+  plan: BudgetPlanComputation;
+  forecast: InsightsForecastSummary | null;
+  balances: FinancialBalanceSnapshot;
+};
+
 function startOfMonthIso(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -20,18 +27,16 @@ export async function loadBudgetPlanForSurface(params: {
   timelineReference?: Date;
   forecastReason?: string;
   forecastSummary?: InsightsForecastSummary | null;
+  currentBalanceOverride?: number | null;
   userId?: string;
-}): Promise<{
-  plan: BudgetPlanComputation;
-  forecast: InsightsForecastSummary | null;
-  balances: FinancialBalanceSnapshot;
-}> {
+}): Promise<ForecastSurfaceSummary> {
   const {
     referenceDate,
     planKey = "default",
     timelineReference = new Date(),
     forecastReason,
     forecastSummary,
+    currentBalanceOverride,
     userId,
   } = params;
 
@@ -61,6 +66,7 @@ export async function loadBudgetPlanForSurface(params: {
     balances: buildFinancialBalanceSnapshot({
       forecast: loadedForecast,
       plan,
+      currentBalanceOverride,
     }),
   };
 }

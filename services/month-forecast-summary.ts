@@ -4,6 +4,7 @@ import {
   adaptForecastMonthStateToLegacySummary,
   buildForecastMonthStateFromLegacySummary,
 } from "@/services/forecast-summary-adapter";
+import { loadLatestKnownBalanceSnapshot } from "@/services/latest-known-balance";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import { supabase } from "@/services/supabase";
 
@@ -44,6 +45,10 @@ function resolveForecastReason(monthStartIso: string, now = new Date()) {
   return "budget_surface_future";
 }
 
+function isCurrentMonth(monthStartIso: string, referenceDate: Date) {
+  return monthStartIso === startOfMonthIso(referenceDate);
+}
+
 export async function loadMonthForecastSummary(params: {
   monthStartIso: string;
   referenceDate: Date;
@@ -53,12 +58,12 @@ export async function loadMonthForecastSummary(params: {
   const { monthStartIso, referenceDate, userId } = params;
 
   try {
+    const resolvedUserId = userId || (await requireCurrentUserId());
+
     await ensureForecastFresh({
       reason: params.reason || resolveForecastReason(monthStartIso),
       referenceDate,
     }).catch(() => null);
-
-    const resolvedUserId = userId || (await requireCurrentUserId());
 
     const fetchLatest = async () =>
       supabase
@@ -94,7 +99,45 @@ export async function loadMonthForecastSummary(params: {
       return null;
     }
 
-    const row = result.data as Record<string, unknown>;
+    let row = result.data as Record<string, unknown>;
+
+    // Current-month forecasts should follow the latest known operational anchor.
+    // If that anchor moved, force a recompute so the canonical low point is
+    // rebuilt from the same forecast eventset as the headline.
+    if (isCurrentMonth(monthStartIso, referenceDate)) {
+      const latestKnownBalance = await loadLatestKnownBalanceSnapshot(resolvedUserId).catch(
+        () => null,
+      );
+      const storedAnchor =
+        row.current_balance_anchor == null ? null : Number(row.current_balance_anchor);
+      const latestAnchor = latestKnownBalance?.balance ?? null;
+      const shouldRefreshForAnchor =
+        latestAnchor != null &&
+        (storedAnchor == null || Math.abs(storedAnchor - latestAnchor) > 0.01);
+
+      if (shouldRefreshForAnchor) {
+        await ensureForecastFresh({
+          reason: params.reason || resolveForecastReason(monthStartIso),
+          referenceDate,
+          force: true,
+        }).catch(() => null);
+
+        result = await fetchLatest();
+        if (result.error) {
+          if (isMissingRelationError(result.error)) {
+            return null;
+          }
+          throw result.error;
+        }
+
+        if (!result.data) {
+          return null;
+        }
+
+        row = result.data as Record<string, unknown>;
+      }
+    }
+
     const legacySummary: InsightsForecastSummary = {
       monthStart: String(row.month_start || monthStartIso),
       forecastReferenceDate: row.forecast_reference_date

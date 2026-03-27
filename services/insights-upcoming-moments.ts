@@ -189,7 +189,7 @@ function buildMomentSubtitle(
   signal: ReferenceSignal | null,
 ) {
   if (event.eventType === "milestone_lowest_balance") {
-    return `${confidenceCopy(event.confidence)} moment van minste saldo`;
+    return `${confidenceCopy(event.confidence)} moment van laagste operationele stand`;
   }
 
   const categoryLabel = cleanDetails(signal?.categoryLabel);
@@ -335,8 +335,8 @@ function buildFromTimelineEvents(input: {
           dateIso: event.eventDate,
           dayLabel: labels.dayLabel,
           monthLabel: labels.monthLabel,
-          title: "Laagste saldo verwacht",
-          subtitle: `${confidenceCopy(event.confidence)} moment van minste saldo`,
+          title: "Laagste punt verwacht",
+          subtitle: `${confidenceCopy(event.confidence)} moment van laagste operationele stand`,
           amountLabel: buildAmountLabel(event.amount, "neutral"),
           amountTone: "neutral" as const,
         } satisfies InsightsUpcomingMoment;
@@ -398,7 +398,7 @@ export function buildInsightsUpcomingMoments(input: {
 
   if (
     forecast.lowestExpectedBalanceDate &&
-    forecast.lowestExpectedBalance != null &&
+    (forecast.lowestOperationalPointInMonth ?? forecast.lowestExpectedBalance) != null &&
     forecast.lowestExpectedBalanceDate > referenceIso
   ) {
     const labels = toDayMonthLabels(forecast.lowestExpectedBalanceDate);
@@ -408,9 +408,12 @@ export function buildInsightsUpcomingMoments(input: {
         dateIso: forecast.lowestExpectedBalanceDate,
         dayLabel: labels.dayLabel,
         monthLabel: labels.monthLabel,
-        title: "Laagste saldo verwacht",
-        subtitle: "Moment van minste saldo",
-        amountLabel: buildAmountLabel(forecast.lowestExpectedBalance, "neutral"),
+        title: "Laagste punt verwacht",
+        subtitle: "Moment van laagste operationele stand",
+        amountLabel: buildAmountLabel(
+          forecast.lowestOperationalPointInMonth ?? forecast.lowestExpectedBalance,
+          "neutral",
+        ),
         amountTone: "neutral",
       },
     ];

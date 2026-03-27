@@ -344,10 +344,10 @@ export function buildHelpAssistantScreenContextLines(
         ? `Verwachte vaste lasten + abonnementen: ${Math.round(fixedAndSubscriptions)} EUR`
         : "",
       details.forecastExpectedEndBalance != null
-        ? `Forecast eindsaldo: ${Math.round(details.forecastExpectedEndBalance)} EUR`
+        ? `Forecast operationele stand: ${Math.round(details.forecastExpectedEndBalance)} EUR`
         : "",
       details.forecastLowestExpectedBalance != null
-        ? `Laagste verwachte saldo: ${Math.round(details.forecastLowestExpectedBalance)} EUR`
+        ? `Laagste operationele punt: ${Math.round(details.forecastLowestExpectedBalance)} EUR`
         : "",
       details.hasForecastData
         ? "Forecast betrouwbaarheid: gebaseerd op huidige bekende data."
@@ -396,7 +396,7 @@ export function buildHelpAssistantScreenContextLines(
         ? `Resterende maand netto: ${Math.round(details.remainingMonthNetTotal)} EUR`
         : "",
       details.remainingMonthExpectedEndBalance != null
-        ? `Verwacht eindsaldo maand: ${Math.round(details.remainingMonthExpectedEndBalance)} EUR`
+        ? `Verwachte operationele stand maand: ${Math.round(details.remainingMonthExpectedEndBalance)} EUR`
         : "",
       details.hasForecastData
         ? "Forecast betrouwbaarheid: gebaseerd op huidige bekende data."

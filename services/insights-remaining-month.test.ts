@@ -17,9 +17,13 @@ function buildForecast(
     forecastReferenceDate: "2026-03-25",
     currentBalanceAnchor: input?.currentBalanceAnchor ?? 428.41,
     currentBalanceAnchorDate: input?.currentBalanceAnchorDate ?? "2026-03-25",
+    currentOperationalBalance:
+      input?.currentOperationalBalance ?? input?.currentBalanceAnchor ?? 428.41,
     cashRiskFlag: input?.cashRiskFlag ?? "none",
     riskFlag: input?.riskFlag ?? "none",
     expectedEndBalance: input?.expectedEndBalance ?? 861.75,
+    expectedEndOperationalBalance:
+      input?.expectedEndOperationalBalance ?? input?.expectedEndBalance ?? 861.75,
     lowestExpectedBalance: input?.lowestExpectedBalance ?? null,
     lowestExpectedBalanceDate: input?.lowestExpectedBalanceDate ?? null,
     nextExpectedEventDate: input?.nextExpectedEventDate ?? null,
@@ -70,11 +74,13 @@ describe("insights remaining month helpers", () => {
     );
   });
 
-  it("kan een actueler saldo gebruiken dan het forecast-anker", () => {
+  it("valt terug op het actuele saldo als de forecast-eindstand nog ontbreekt", () => {
     const forecast = buildForecast({
       currentBalanceAnchor: 428.41,
       currentBalanceAnchorDate: "2026-03-24",
     });
+    forecast.expectedEndBalance = null;
+    forecast.expectedEndOperationalBalance = null;
     const budgetPlan = buildBudgetPlan();
 
     expect(
@@ -84,5 +90,54 @@ describe("insights remaining month helpers", () => {
         currentBalanceOverride: 531.82,
       }),
     ).toBe(2275.87);
+  });
+
+  it("houdt de expliciete forecast-eindstand wanneer die gelijk is aan de berekening", () => {
+    const forecast = buildForecast({
+      currentBalanceAnchor: 428.41,
+      expectedEndBalance: 861.75,
+      expectedEndOperationalBalance: 861.75,
+      remainingExpectedIncomeTotal: 500,
+      remainingExpectedExpenseTotal: 170.07,
+      remainingExpectedSavingsOutflowTotal: 0,
+      expectedVariableCosts: 0,
+    });
+    const budgetPlan = buildBudgetPlan({
+      variableSpent: 0,
+      weeklyRemaining: [],
+    });
+
+    expect(
+      getInsightsDisplayExpectedEndBalance({
+        forecast,
+        budgetPlan,
+        currentBalanceOverride: 531.82,
+      }),
+    ).toBe(861.75);
+  });
+
+  it("vervangt een stalen legacy eindwaarde wanneer de operationele maandmutatie anders uitkomt", () => {
+    const forecast = buildForecast({
+      currentBalanceAnchor: 2748.36,
+      currentOperationalBalance: 2748.36,
+      expectedEndBalance: 359.85,
+      expectedEndOperationalBalance: 359.85,
+      remainingExpectedIncomeTotal: 0.33,
+      remainingExpectedExpenseTotal: 945.38,
+      remainingExpectedSavingsOutflowTotal: 0,
+      expectedVariableCosts: 214,
+    });
+    const budgetPlan = buildBudgetPlan({
+      variableSpent: 214,
+      weeklyRemaining: [],
+    });
+
+    expect(
+      getInsightsDisplayExpectedEndBalance({
+        forecast,
+        budgetPlan,
+        currentBalanceOverride: 2748.36,
+      }),
+    ).toBe(1803.31);
   });
 });

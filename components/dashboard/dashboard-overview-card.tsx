@@ -2,6 +2,7 @@ import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceBudgetProgressBar } from "@/components/ui/finance-budget-progress-bar";
 import { FinanceStatusChip, type FinanceStatusTone } from "@/components/ui/finance-status-chip";
 import { FinColors } from "@/constants/theme";
+import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import {
   getMonthVariableBudgetSnapshot,
   getMonthVariableBudgetUsageText,
@@ -86,11 +87,13 @@ export type DashboardBudgetOverviewModel = {
   referenceDate: Date;
   monthBadgeLabel: string;
   monthSnapshot: ReturnType<typeof getMonthVariableBudgetSnapshot>;
+  remainingMonthlyBudget: number | null;
   monthProgressLabel: string | null;
-  monthGoalLabel: string | null;
   monthUsageText: string;
+  lowestOperationalPointLabel: string | null;
   currentWeekPlan: BudgetWeekPlanRow | null;
   weekSnapshot: ReturnType<typeof getWeekBudgetSnapshot>;
+  weeklyBudgetRemaining: number | null;
   weekRangeLabel: string | null;
   weekRemainingDaysLabel: string | null;
   weekProgressLabel: string | null;
@@ -100,28 +103,33 @@ export type DashboardBudgetOverviewModel = {
 
 export function buildDashboardBudgetOverviewModel(
   budgetPlan: BudgetPlanComputation | null,
+  forecastSurface: FinancialSurfaceBalanceSnapshot | null = null,
   referenceDate = budgetPlan ? new Date(budgetPlan.referenceDate) : new Date(),
 ): DashboardBudgetOverviewModel {
   const monthSnapshot = getMonthVariableBudgetSnapshot(budgetPlan);
   const currentWeekPlan =
     budgetPlan?.weeklyVariablePlan.find((week) => week.isCurrentWeek) ?? null;
   const weekSnapshot = getWeekBudgetSnapshot(currentWeekPlan, referenceDate);
+  const lowestOperationalPoint =
+    forecastSurface?.lowestOperationalPointInMonth.amount ?? null;
 
   return {
     referenceDate,
     monthBadgeLabel: formatMonthBadgeLabel(referenceDate),
     monthSnapshot,
+    remainingMonthlyBudget: monthSnapshot.remaining,
     monthProgressLabel:
       monthSnapshot.state === "no_data"
         ? null
         : `${Math.round(monthSnapshot.progress * 100)}% verbruikt`,
-    monthGoalLabel:
-      monthSnapshot.budget == null
-        ? null
-        : `Doel: ${euroFormatter.format(monthSnapshot.budget)}`,
     monthUsageText: getMonthVariableBudgetUsageText(monthSnapshot, euroFormatter),
+    lowestOperationalPointLabel:
+      lowestOperationalPoint == null
+        ? null
+        : `Laagste punt ${euroFormatter.format(lowestOperationalPoint)}`,
     currentWeekPlan,
     weekSnapshot,
+    weeklyBudgetRemaining: weekSnapshot.remaining,
     weekRangeLabel: currentWeekPlan
       ? formatWeekRangeLabel(
           currentWeekPlan.startDate,
@@ -140,7 +148,7 @@ export function buildDashboardBudgetOverviewModel(
         : `${Math.round(weekSnapshot.progress * 100)}% van weekbudget`,
     weekUsageText:
       weekSnapshot.spent != null && weekSnapshot.budget != null
-        ? `${euroFormatter.format(weekSnapshot.spent)} uitgegeven van ${euroFormatter.format(weekSnapshot.budget)} richtbedrag`
+        ? `${euroFormatter.format(weekSnapshot.spent)} uitgegeven van ${euroFormatter.format(weekSnapshot.budget)} weekbudget`
         : "Weekbudget volgt zodra je budget actief is",
     weekTempoMessage: getWeekTempoMessage(currentWeekPlan, referenceDate),
   };
@@ -163,13 +171,13 @@ export function DashboardBudgetOverviewCard({
     <View style={[styles.card, style]}>
       <View style={styles.monthHeaderRow}>
         <View style={styles.monthHeaderText}>
-          <Text style={styles.sectionEyebrow}>Nog te besteden (maand)</Text>
+          <Text style={styles.sectionEyebrow}>Resterend maandbudget</Text>
           <Text style={styles.monthTitle}>
             {month.state === "no_data"
               ? "Nog geen data"
-              : month.remaining == null
+              : model.remainingMonthlyBudget == null
                 ? "Nog geen variabel budget"
-                : euroFormatter.format(month.remaining)}
+                : euroFormatter.format(model.remainingMonthlyBudget)}
           </Text>
         </View>
         <View style={styles.monthBadge}>
@@ -193,8 +201,10 @@ export function DashboardBudgetOverviewCard({
           <Text style={styles.progressMetaText}>
             {model.monthProgressLabel || "Nog geen maandbudget"}
           </Text>
-          {model.monthGoalLabel ? (
-            <Text style={styles.progressMetaText}>{model.monthGoalLabel}</Text>
+          {model.lowestOperationalPointLabel ? (
+            <Text style={styles.progressMetaText}>
+              {model.lowestOperationalPointLabel}
+            </Text>
           ) : null}
         </View>
         <Text style={styles.usageText}>{model.monthUsageText}</Text>
@@ -222,9 +232,9 @@ export function DashboardBudgetOverviewCard({
       <View style={styles.weekSummaryRow}>
         <View style={styles.weekSummaryMain}>
           <Text style={styles.weekRemaining}>
-            {week.remaining == null
+            {model.weeklyBudgetRemaining == null
               ? "Nog geen data"
-              : `${euroFormatter.format(week.remaining)} resterend`}
+              : `${euroFormatter.format(model.weeklyBudgetRemaining)} resterend`}
           </Text>
           <Text style={styles.weekUsageText}>{model.weekUsageText}</Text>
         </View>

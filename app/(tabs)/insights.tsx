@@ -220,18 +220,18 @@ export default function InsightsScreen() {
         forecast,
         budgetPlan,
         selectedMonth,
+        currentBalanceOverride: latestKnownBalance.balance,
       }),
-    [budgetPlan, forecast, selectedMonth],
+    [budgetPlan, forecast, latestKnownBalance.balance, selectedMonth],
   );
   const forecastCard = React.useMemo<InsightsForecastCardModel>(
     () =>
       buildInsightsForecastCard({
         forecast,
         budgetPlan,
-        selectedMonth,
         currentBalanceOverride: latestKnownBalance.balance,
       }),
-    [budgetPlan, forecast, latestKnownBalance.balance, selectedMonth],
+    [budgetPlan, forecast, latestKnownBalance.balance],
   );
   const categorySummary = React.useMemo(
     () =>
@@ -295,6 +295,7 @@ export default function InsightsScreen() {
   const loadBudgetSurface = React.useCallback(
     async (
       userId: string,
+      currentBalanceOverride?: number | null,
     ): Promise<{
       forecast: InsightsForecastSummary | null;
       plan: BudgetPlanComputation | null;
@@ -311,6 +312,7 @@ export default function InsightsScreen() {
           planKey: "default",
           timelineReference: new Date(),
           forecastReason: reason,
+          currentBalanceOverride,
           userId,
         });
 
@@ -432,20 +434,20 @@ export default function InsightsScreen() {
 
   const refreshInsights = React.useCallback(async () => {
     const userId = await requireCurrentUserId();
-    const [budgetSurface, insightSignals, highlightHistory] =
-      await Promise.all([
-        loadBudgetSurface(userId),
-        loadInsightSignals(userId),
-        loadInsightsHighlightHistory(userId, selectedMonth.key),
-      ]);
-    const forecastSummary = budgetSurface.forecast;
-    const budgetSummary = budgetSurface.plan;
     const liveBalanceSnapshot = await loadLatestKnownBalanceSnapshot(userId).catch(
       (error) => {
         console.warn("[insights] latest balance load error", error);
         return { balance: null, date: null } satisfies LatestKnownBalanceSnapshot;
       },
     );
+    const [budgetSurface, insightSignals, highlightHistory] =
+      await Promise.all([
+        loadBudgetSurface(userId, liveBalanceSnapshot.balance),
+        loadInsightSignals(userId),
+        loadInsightsHighlightHistory(userId, selectedMonth.key),
+      ]);
+    const forecastSummary = budgetSurface.forecast;
+    const budgetSummary = budgetSurface.plan;
 
     setForecast(forecastSummary);
     setBudgetPlan(budgetSummary);
@@ -687,25 +689,29 @@ export default function InsightsScreen() {
           contentContainerStyle={styles.remainingMonthSheet}
         >
           <Text style={styles.remainingMonthIntro}>
-            We rekenen vanaf je laatste bekende saldo en laten daarna zien wat er
-            deze maand waarschijnlijk nog bijkomt en afgaat.
+            We rekenen vanaf je laatste bekende operationele stand en laten
+            daarna zien wat er deze maand waarschijnlijk nog bijkomt en afgaat.
           </Text>
 
           <View style={styles.remainingMonthAnchorCard}>
             <Text style={styles.remainingMonthSectionEyebrow}>
-              Waar je nu staat
+              Huidig saldo
             </Text>
             <Text style={styles.remainingMonthAnchorValue}>
               {formatAmount(
-                latestKnownBalance.balance ?? forecast?.currentBalanceAnchor ?? null,
+                latestKnownBalance.balance ??
+                  forecast?.currentOperationalBalance ??
+                  forecast?.currentBalanceAnchor ??
+                  null,
               )}
             </Text>
             <Text style={styles.remainingMonthAnchorMeta}>
-              {latestKnownBalance.date || forecast?.currentBalanceAnchorDate
-                ? `Laatste bekende saldo op ${formatSheetDate(
+              {latestKnownBalance.date ||
+              forecast?.currentBalanceAnchorDate
+                ? `Laatste bekende operationele stand op ${formatSheetDate(
                     latestKnownBalance.date ?? forecast?.currentBalanceAnchorDate ?? null,
                   )}`
-                : "Laatste bekende saldo in je forecast"}
+                : "Laatste bekende operationele stand in je forecast"}
             </Text>
           </View>
 
@@ -813,20 +819,20 @@ export default function InsightsScreen() {
               {formatSignedAmount(remainingMonthNetTotal)}
             </Text>
             <Text style={styles.remainingMonthNetMeta}>
-              Dit is wat er vanaf nu per saldo waarschijnlijk nog bijkomt of afgaat.
+              Dit is wat er vanaf nu waarschijnlijk nog bijkomt of afgaat op je operationele stand.
             </Text>
           </View>
 
           <View style={styles.remainingMonthHighlight}>
             <Text style={styles.remainingMonthHighlightLabel}>
-              Verwacht saldo eind {selectedMonth.monthLabel}
+              Verwacht eindsaldo eind {selectedMonth.monthLabel}
             </Text>
             <Text style={styles.remainingMonthHighlightValue}>
               {formatAmount(remainingMonthExpectedEndBalance)}
             </Text>
             <Text style={styles.remainingMonthHighlightMeta}>
               {`${formatAmount(
-                latestKnownBalance.balance ?? forecast?.currentBalanceAnchor ?? null,
+                forecast?.currentOperationalBalance ?? null,
               )} nu ${
                 remainingMonthNetTotal != null && remainingMonthNetTotal >= 0
                   ? "+"
@@ -835,7 +841,7 @@ export default function InsightsScreen() {
                 remainingMonthNetTotal == null
                   ? null
                   : Math.abs(remainingMonthNetTotal),
-              )} verwachte mutatie`}
+              )} verwachte mutatie op operationele stand`}
             </Text>
           </View>
         </ScrollView>

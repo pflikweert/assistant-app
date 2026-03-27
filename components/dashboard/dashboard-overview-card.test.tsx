@@ -7,6 +7,7 @@ import {
   buildDashboardBudgetOverviewModel,
   DashboardBudgetOverviewCard,
 } from "./dashboard-overview-card";
+import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import type { BudgetPlanComputation } from "@/types/categorization";
 
 vi.mock("@/components/ui/app-icon", () => ({
@@ -35,6 +36,12 @@ function normalizeWhitespace(value: string) {
 
 describe("DashboardBudgetOverviewCard", () => {
   it("toont maand- en weekinformatie samen zonder data te verliezen", () => {
+    const forecastSurface = {
+      lowestOperationalPointInMonth: {
+        amount: 1280,
+        source: "forecast_anchor",
+      },
+    } as unknown as FinancialSurfaceBalanceSnapshot;
     const model = buildDashboardBudgetOverviewModel({
       referenceDate: "2026-05-15",
       flowSummary: {
@@ -67,7 +74,13 @@ describe("DashboardBudgetOverviewCard", () => {
           overrunAmount: 0,
         },
       ],
-    } as unknown as BudgetPlanComputation);
+    } as unknown as BudgetPlanComputation, forecastSurface);
+
+    expect(model.remainingMonthlyBudget).toBe(540);
+    expect(model.weeklyBudgetRemaining).toBe(27);
+    expect(normalizeWhitespace(model.lowestOperationalPointLabel ?? "")).toBe(
+      `Laagste punt ${normalizeWhitespace(euroFormatter.format(1280))}`,
+    );
 
     let tree!: renderer.ReactTestRenderer;
     act(() => {
@@ -83,12 +96,12 @@ describe("DashboardBudgetOverviewCard", () => {
         .join(" "),
     );
 
-    expect(text).toContain("Nog te besteden (maand)");
+    expect(text).toContain("Resterend maandbudget");
     expect(text).toContain("MEI");
     expect(text).toContain("Op schema");
     expect(text).toContain(normalizeWhitespace(euroFormatter.format(540)));
     expect(text).toContain("65% verbruikt");
-    expect(text).toContain(`Doel: ${normalizeWhitespace(euroFormatter.format(1550))}`);
+    expect(text).toContain(`Laagste punt ${normalizeWhitespace(euroFormatter.format(1280))}`);
     expect(text).toContain("Weekbudget status");
     expect(text).toContain("11 mei - 17 mei");
     expect(text).toContain(normalizeWhitespace(euroFormatter.format(27)));

@@ -1,5 +1,6 @@
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
+import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -28,65 +29,192 @@ function formatBalanceParts(value: number) {
   };
 }
 
+function formatCompactBalance(value: number) {
+  const parts = formatBalanceParts(value);
+  return `${parts.currency}${parts.integer}${parts.decimal}${parts.fraction}`;
+}
+
 type DashboardBalanceSummaryProps = {
-  balance: number | null;
+  surfaceBalances: FinancialSurfaceBalanceSnapshot | null;
+  monthLabel: string;
   hasTransactions: boolean;
 };
 
+function resolveFreeToSpendStatusText(
+  surfaceBalances: FinancialSurfaceBalanceSnapshot | null,
+) {
+  const operational = surfaceBalances?.currentOperationalBalance.amount ?? null;
+  const reserved = surfaceBalances?.currentReservedBalance ?? null;
+
+  if (operational == null) {
+    return "Vrij besteedbaar volgt zodra de actuele stand bekend is.";
+  }
+
+  if (reserved?.source === "unavailable" || reserved?.source === "not_configured") {
+    return "Vrij besteedbaar volgt zodra gereserveerd geld bekend is.";
+  }
+
+  return "Vrij besteedbaar volgt zodra de operationele ruimte volledig kan worden bepaald.";
+}
+
 export function DashboardBalanceSummary({
-  balance,
+  surfaceBalances,
+  monthLabel,
   hasTransactions,
 }: DashboardBalanceSummaryProps) {
-  const formatted = balance == null ? null : formatBalanceParts(balance);
+  const operational = surfaceBalances?.currentOperationalBalance.amount ?? null;
+  const reserved = surfaceBalances?.currentReservedBalance;
+  const freeToSpendNow = surfaceBalances?.freeToSpendNow.amount ?? null;
+  const expectedEnd = surfaceBalances?.expectedEndOperationalBalance.amount ?? null;
+  const netWorth = surfaceBalances?.currentNetWorth.amount ?? null;
+  const primaryFormatted =
+    freeToSpendNow == null ? null : formatBalanceParts(freeToSpendNow);
+  // This is operational room only. Month and week budget are shown elsewhere,
+  // so the empty state should explain why this operational layer cannot yet be
+  // determined instead of borrowing budget language.
+  const freeToSpendStatusText =
+    freeToSpendNow == null ? resolveFreeToSpendStatusText(surfaceBalances) : null;
+  const supportValues = [
+    {
+      label: "Huidig saldo",
+      value: operational,
+    },
+    {
+      label: "Gereserveerd",
+      value: reserved?.amount ?? null,
+    },
+    {
+      label: "Totaal vermogen",
+      value: netWorth,
+    },
+  ];
+
+  const statusLabel =
+    expectedEnd == null
+      ? `Forecast volgt voor ${monthLabel}`
+      : expectedEnd < 0
+        ? `Let op voor ${monthLabel}`
+        : `Je zit op schema voor ${monthLabel}`;
 
   return (
-    <View style={styles.section}>
-      <Text style={styles.label}>Huidig saldo</Text>
-      <Text style={[styles.amount, !hasTransactions && styles.amountMuted]}>
-        {formatted ? (
-          <>
-            <Text style={styles.currency}>{formatted.currency}</Text>
-            <Text style={styles.integer}>{formatted.integer}</Text>
-            <Text style={styles.decimal}>{formatted.decimal}</Text>
-            <Text style={styles.fraction}>{formatted.fraction}</Text>
-          </>
+    <View style={styles.card}>
+      <View style={styles.centerStack}>
+        <Text style={styles.kicker}>Vrij besteedbaar</Text>
+
+        {primaryFormatted ? (
+          <Text style={[styles.amount, !hasTransactions && styles.amountMuted]}>
+            <Text style={styles.currency}>{primaryFormatted.currency}</Text>
+            <Text style={styles.integer}>{primaryFormatted.integer}</Text>
+            <Text style={styles.decimal}>{primaryFormatted.decimal}</Text>
+            <Text style={styles.fraction}>{primaryFormatted.fraction}</Text>
+          </Text>
         ) : (
-          "Nog geen data"
+          <View style={styles.amountFallbackWrap}>
+            <Text style={[styles.amount, styles.amountMuted]}>
+              Nog niet vast te stellen
+            </Text>
+            {freeToSpendStatusText ? (
+              <Text style={styles.amountHint}>{freeToSpendStatusText}</Text>
+            ) : null}
+          </View>
         )}
-      </Text>
-      <View style={styles.statusPill}>
-        <AppIcon
-          name="trending-up"
-          size={16}
-          color={FinColors.green}
-          variant="outlined"
-        />
-        <Text style={styles.statusText}>
-          {hasTransactions ? "Actueel" : "Nog geen transacties"}
-        </Text>
+
+        <View style={styles.forecastPill}>
+          <Text style={styles.forecastPillLabel}>Verwacht eindsaldo:</Text>
+          <Text style={styles.forecastPillValue}>
+            {expectedEnd == null ? "n.b." : formatCompactBalance(expectedEnd)}
+          </Text>
+        </View>
+
+        <View style={styles.supportGrid}>
+          {supportValues.map((item, index) => (
+            <View
+              key={item.label}
+              style={[
+                styles.supportItem,
+                index < supportValues.length - 1 && styles.supportItemDivider,
+              ]}
+            >
+              <Text style={styles.supportLabel}>{item.label}</Text>
+              <Text style={styles.supportValue}>
+                {item.value == null ? "n.b." : formatCompactBalance(item.value)}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.statusCard}>
+          <View style={styles.statusIconWrap}>
+            <AppIcon
+              name={
+                expectedEnd != null && expectedEnd < 0
+                  ? "warning"
+                  : "check-circle-outline"
+              }
+              size={16}
+              color={FinColors.warningText}
+              variant="outlined"
+            />
+          </View>
+          <Text style={styles.statusText}>{statusLabel}</Text>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  section: {
-    gap: 12,
+  card: {
+    backgroundColor: "transparent",
+    paddingHorizontal: 22,
+    paddingVertical: 24,
   },
-  label: {
-    fontSize: 12,
+  centerStack: {
+    alignItems: "center",
+    gap: 16,
+  },
+  kicker: {
+    fontSize: 11,
     lineHeight: 14,
-    fontWeight: "800",
-    color: FinColors.textMuted,
+    fontWeight: "900",
+    color: "#9a9a9a",
     textTransform: "uppercase",
-    letterSpacing: 1.4,
+    letterSpacing: 2.1,
+  },
+  forecastPill: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 999,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.08)",
+    paddingHorizontal: 20,
+    paddingVertical: 11,
+    boxShadow: "0px 4px 10px rgba(17,17,17,0.03)",
+    elevation: 0,
+  },
+  forecastPillLabel: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "700",
+    color: "#666666",
+  },
+  forecastPillValue: {
+    fontSize: 17,
+    lineHeight: 20,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
   },
   amount: {
-    fontSize: 52,
-    lineHeight: 58,
+    textAlign: "center",
+    fontSize: 66,
+    lineHeight: 70,
     fontWeight: "900",
     color: FinColors.textPrimary,
-    letterSpacing: -1.8,
+    letterSpacing: -2.4,
   },
   amountMuted: {
     fontSize: 20,
@@ -94,47 +222,99 @@ const styles = StyleSheet.create({
     color: FinColors.textMuted,
     letterSpacing: 0,
   },
+  amountFallbackWrap: {
+    alignItems: "center",
+    gap: 6,
+  },
+  amountHint: {
+    maxWidth: 280,
+    textAlign: "center",
+    fontSize: 12,
+    lineHeight: 16,
+    color: FinColors.textMuted,
+  },
   currency: {
-    fontSize: 52,
-    lineHeight: 58,
+    fontSize: 66,
+    lineHeight: 70,
     fontWeight: "900",
     color: FinColors.textPrimary,
-    letterSpacing: -1.8,
+    letterSpacing: -2.4,
   },
   integer: {
-    fontSize: 52,
-    lineHeight: 58,
+    fontSize: 66,
+    lineHeight: 70,
     fontWeight: "900",
     color: FinColors.textPrimary,
-    letterSpacing: -1.8,
+    letterSpacing: -2.4,
   },
   decimal: {
-    fontSize: 52,
-    lineHeight: 58,
+    fontSize: 66,
+    lineHeight: 70,
     fontWeight: "900",
-    color: FinColors.textMuted,
-    letterSpacing: -1.8,
+    color: "#6b6b6b",
+    letterSpacing: -2.4,
   },
   fraction: {
-    fontSize: 52,
-    lineHeight: 58,
+    fontSize: 66,
+    lineHeight: 70,
     fontWeight: "900",
-    color: FinColors.textMuted,
-    letterSpacing: -1.8,
+    color: "#6b6b6b",
+    letterSpacing: -2.4,
   },
-  statusPill: {
-    alignSelf: "flex-start",
+  supportGrid: {
+    flexDirection: "row",
+    alignSelf: "stretch",
+    marginTop: 8,
+  },
+  supportItem: {
+    flexGrow: 1,
+    alignItems: "center",
+    gap: 2,
+    paddingHorizontal: 10,
+  },
+  supportItemDivider: {
+    borderRightWidth: 1,
+    borderRightColor: "rgba(17,17,17,0.09)",
+  },
+  supportLabel: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "900",
+    letterSpacing: 0.9,
+    color: "#9a9a9a",
+    textTransform: "uppercase",
+  },
+  supportValue: {
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: "900",
+    color: FinColors.textPrimary,
+    letterSpacing: -0.8,
+  },
+  statusCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    alignSelf: "center",
+    borderRadius: 22,
     backgroundColor: FinColors.yellowSoft,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    boxShadow: "0px 8px 16px rgba(242,201,76,0.18)",
+    elevation: 1,
+  },
+  statusIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.42)",
   },
   statusText: {
-    fontSize: 15,
-    lineHeight: 18,
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "800",
     color: FinColors.warningText,
   },

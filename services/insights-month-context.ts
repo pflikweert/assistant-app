@@ -1,4 +1,5 @@
 import { getMonthVariableBudgetSnapshot } from "@/services/budget-risk";
+import { resolveForecastDisplayExpectedEndBalance } from "@/services/insights-remaining-month";
 import type { TransactionMonthOption } from "@/services/transaction-month-options";
 import type { BudgetPlanComputation } from "@/types/categorization";
 
@@ -14,11 +15,18 @@ export type InsightsForecastSummary = {
   forecastReferenceDate: string | null;
   currentBalanceAnchor: number | null;
   currentBalanceAnchorDate: string | null;
+  currentOperationalBalance?: number | null;
+  currentReservedBalance?: number | null;
+  currentNetWorth?: number | null;
+  freeToSpendNow?: number | null;
   cashRiskFlag: "none" | "cash_gap_warning";
   riskFlag: "none" | "deficit_warning";
   expectedEndBalance: number | null;
+  expectedEndOperationalBalance?: number | null;
+  expectedEndNetWorth?: number | null;
   lowestExpectedBalance: number | null;
   lowestExpectedBalanceDate: string | null;
+  lowestOperationalPointInMonth?: number | null;
   nextExpectedEventDate: string | null;
   nextExpectedEventLabel: string | null;
   expectedIncomeTotal: number | null;
@@ -30,6 +38,7 @@ export type InsightsForecastSummary = {
   expectedFixedCosts: number | null;
   expectedSubscriptions: number | null;
   expectedVariableCosts: number | null;
+  carryoverIntoNextMonth?: number | null;
 };
 
 export type InsightsMonthContextSummary = {
@@ -82,15 +91,25 @@ export function buildInsightsMonthContextSummary(input: {
   forecast: InsightsForecastSummary | null;
   budgetPlan: BudgetPlanComputation | null;
   selectedMonth: TransactionMonthOption;
+  currentBalanceOverride?: number | null;
 }): InsightsMonthContextSummary {
-  const { forecast, budgetPlan, selectedMonth } = input;
+  const { forecast, budgetPlan, selectedMonth, currentBalanceOverride } = input;
   const monthSnapshot = getMonthVariableBudgetSnapshot(budgetPlan);
   const currentMonthKey = getCurrentMonthKey();
   const isHistoricalMonth = selectedMonth.key < currentMonthKey;
+  const expectedEndOperationalBalance = resolveForecastDisplayExpectedEndBalance({
+    forecast,
+    budgetPlan,
+    currentBalanceOverride,
+  });
+  const lowestOperationalPoint =
+    // Lowest point is the monthly minimum, not the forecast end balance.
+    // Keep this distinct from the headline operational forecast.
+    forecast?.lowestOperationalPointInMonth ?? forecast?.lowestExpectedBalance ?? null;
 
   const hasDeficitRisk =
     forecast?.riskFlag === "deficit_warning" ||
-    (forecast?.expectedEndBalance != null && forecast.expectedEndBalance < 0);
+    (expectedEndOperationalBalance != null && expectedEndOperationalBalance < 0);
   const hasCashGapRisk = forecast?.cashRiskFlag === "cash_gap_warning";
   const budgetIsCritical = monthSnapshot.tone === "critical";
   const budgetNeedsAttention = monthSnapshot.tone === "watch";
@@ -147,23 +166,24 @@ export function buildInsightsMonthContextSummary(input: {
   }
 
   let summaryLine = "Je maandbeeld ziet er stabiel uit op basis van wat nu bekend is.";
-  if (hasDeficitRisk && forecast?.expectedEndBalance != null) {
-    summaryLine = `Als dit tempo zo bleef, kwam je uit op ${fmt.format(forecast.expectedEndBalance)} eindsaldo.`;
+  if (hasDeficitRisk && expectedEndOperationalBalance != null) {
+    summaryLine = `Als dit tempo zo bleef, kwam je operationele stand uit op ${fmt.format(expectedEndOperationalBalance)}.`;
   } else if (hasCashGapRisk && forecast?.lowestExpectedBalanceDate) {
-    summaryLine = `Rond ${formatShortDate(forecast.lowestExpectedBalanceDate)} kon je saldo tijdelijk krap worden.`;
+    summaryLine = `Rond ${formatShortDate(forecast.lowestExpectedBalanceDate)} kon je operationele stand tijdelijk krap worden.`;
+  } else if (lowestOperationalPoint != null && forecast?.lowestExpectedBalanceDate) {
+    summaryLine = `Rond ${formatShortDate(forecast.lowestExpectedBalanceDate)} lag je laagste operationele punt op ${fmt.format(lowestOperationalPoint)}.`;
   } else if (
     monthSnapshot.state !== "no_data" &&
     monthSnapshot.state !== "no_budget" &&
     monthSnapshot.remaining != null
   ) {
     if (monthSnapshot.remaining < 0) {
-      summaryLine = `Je zat ${fmt.format(Math.abs(monthSnapshot.remaining))} boven je variabele maandruimte.`;
+      summaryLine = `Je zat ${fmt.format(Math.abs(monthSnapshot.remaining))} boven je maandbudget.`;
     } else {
-      summaryLine = `Je had nog ongeveer ${fmt.format(monthSnapshot.remaining)} variabele ruimte in deze maand.`;
+      summaryLine = `Je had nog ongeveer ${fmt.format(monthSnapshot.remaining)} maandbudget over.`;
     }
   } else if (monthSnapshot.state === "no_budget") {
-    summaryLine =
-      "Stel je variabele maandbudget in, dan krijg je hier direct gerichte bijsturing.";
+    summaryLine = "Stel je maandbudget in, dan krijg je hier direct gerichte bijsturing.";
   }
 
   return {

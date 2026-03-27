@@ -96,7 +96,7 @@ describe("buildInsightsUpcomingMoments", () => {
     });
 
     expect(result.length).toBeGreaterThan(0);
-    expect(result.some((item) => item.title.includes("Laagste saldo"))).toBe(true);
+    expect(result.some((item) => item.title.includes("Laagste punt"))).toBe(true);
   });
 
   it("begrenst lijst tot maximaal vier regels", () => {
@@ -184,7 +184,7 @@ describe("buildInsightsUpcomingMoments", () => {
           eventKey: "low-1",
           eventDate: "2026-03-24",
           eventType: "milestone_lowest_balance",
-          label: "Laagste saldo verwacht",
+          label: "Laagste punt verwacht",
           amount: 820,
           source: "derived",
           confidence: "high",
@@ -228,7 +228,7 @@ describe("buildInsightsUpcomingMoments", () => {
     });
 
     expect(result).toHaveLength(3);
-    expect(result[0]?.title).toContain("Laagste saldo");
+    expect(result[0]?.title).toContain("Laagste punt");
     expect(result[1]?.title).toBe("Salaris Werkgever BV");
     expect(result[1]?.subtitle).toBe("Verwacht salaris");
     expect(result[2]?.title).toBe("Zilveren Kruis Zorgverzekeringen NV");

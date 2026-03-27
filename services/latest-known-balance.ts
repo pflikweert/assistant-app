@@ -72,7 +72,7 @@ export function buildForecastCarryoverFromLatestKnownBalance(
     certainty: normalizeForecastCertainty("booked"),
     sourceEventType: "correction",
     sourceLabel: snapshot.date,
-    reason: "Laatste bekende saldo",
+    reason: "Laatste bekende operationele stand",
   };
 }
 

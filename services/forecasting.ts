@@ -237,6 +237,23 @@ function parseSaldoValue(metadata: Record<string, unknown>) {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function parseBalanceSequence(metadata: Record<string, unknown>) {
+  const rawSeq = String(metadata["Volgnr"] || "").replace(/^0+/, "");
+  return Number.parseInt(rawSeq || "0", 10) || 0;
+}
+
+function compareBalanceCandidates(left: ForecastTx, right: ForecastTx) {
+  if (left.date !== right.date) {
+    return right.date.localeCompare(left.date);
+  }
+
+  const leftSeq = parseBalanceSequence(left.metadata);
+  const rightSeq = parseBalanceSequence(right.metadata);
+  if (leftSeq !== rightSeq) return rightSeq - leftSeq;
+
+  return right.id.localeCompare(left.id);
+}
+
 function weightedRecentAverage(values: number[]) {
   if (!values.length) return 0;
   if (values.length === 1) return round2(values[0]);
@@ -489,7 +506,9 @@ function getLatestStartingBalanceFromTransactions(
   transactions: ForecastTx[],
   monthStartIso: string,
 ) {
-  for (const tx of transactions) {
+  const ordered = [...transactions].sort(compareBalanceCandidates);
+
+  for (const tx of ordered) {
     if (tx.date >= monthStartIso) continue;
     const balance = parseSaldoValue(tx.metadata);
     if (balance != null) return balance;
@@ -502,7 +521,9 @@ function getLatestKnownBalanceFromTransactions(
   transactions: ForecastTx[],
   referenceIso: string,
 ): BalanceAnchor {
-  for (const tx of transactions) {
+  const ordered = [...transactions].sort(compareBalanceCandidates);
+
+  for (const tx of ordered) {
     if (tx.date > referenceIso) continue;
     const balance = parseSaldoValue(tx.metadata);
     if (balance != null) {
@@ -1175,7 +1196,7 @@ function buildTimelineEventRows(params: {
       event_key: `derived|milestone_lowest_balance|${row.lowestExpectedBalanceDate}`,
       event_date: row.lowestExpectedBalanceDate,
       event_type: "milestone_lowest_balance",
-      label: "Laagste saldo verwacht",
+      label: "Laagste punt verwacht",
       amount: round2(row.lowestExpectedBalance),
       source: "derived",
       confidence: "high",
@@ -1453,10 +1474,15 @@ export async function recomputeCurrentMonthCashflowForecast(
       monthToDateExpenses,
     });
 
+    const currentKnownBalance =
+      monthDiff === 0
+        ? getLatestKnownBalanceFromTransactions(transactions, referenceIso)
+        : null;
     const openingOperationalBalance =
       monthDiff > 0
         ? chainedOpeningOperationalBalance
-        : getLatestStartingBalanceFromTransactions(transactions, monthStartIso);
+        : currentKnownBalance.balance ??
+          getLatestStartingBalanceFromTransactions(transactions, monthStartIso);
     const openingReservedBalance =
       monthDiff > 0 ? chainedOpeningReservedBalance : 0;
     const openingNetWorth =
@@ -1467,8 +1493,10 @@ export async function recomputeCurrentMonthCashflowForecast(
             balance: openingOperationalBalance,
             balanceDate: dateToIso(addDays(monthStart, -1)),
           } satisfies BalanceAnchor)
-        : getLatestKnownBalanceFromTransactions(transactions, referenceIso);
+        : currentKnownBalance;
 
+    // Tijdelijke compatibiliteitslaag: legacy totalen blijven bestaan zolang
+    // bestaande selectors nog op de oude forecast-shape leunen.
     const legacyMath = buildForecastMonthMath({
       startingBalance: openingOperationalBalance,
       currentBalanceAnchor: knownBalance.balance,
@@ -1497,6 +1525,11 @@ export async function recomputeCurrentMonthCashflowForecast(
       ...includedIncomeEvents,
     ] as ForecastTimelineEvent[];
 
+    const openingCarryover = buildForecastCarryoverFromLatestKnownBalance({
+      balance: knownBalance.balance,
+      date: knownBalance.balanceDate,
+    });
+
     const normalizedEvents = normalizeForecastEventsForMonth({
       monthStart,
       monthEndExclusive,
@@ -1505,10 +1538,7 @@ export async function recomputeCurrentMonthCashflowForecast(
       bankAccountsById,
       bookedTransactions: transactions,
       timelineEvents: timelineEventsForProjection,
-      carryover: buildForecastCarryoverFromLatestKnownBalance({
-        balance: knownBalance.balance,
-        date: knownBalance.balanceDate,
-      }),
+      carryover: openingCarryover,
     });
 
     const eventMonthState = buildForecastMonthStateFromEvents({
@@ -1519,10 +1549,7 @@ export async function recomputeCurrentMonthCashflowForecast(
         openingOperationalBalance,
         openingReservedBalance,
         openingNetWorth,
-        carryover: buildForecastCarryoverFromLatestKnownBalance({
-          balance: knownBalance.balance,
-          date: knownBalance.balanceDate,
-        }),
+        carryover: openingCarryover,
       },
       events: normalizedEvents,
       freeToSpendCarryover:
@@ -1531,6 +1558,8 @@ export async function recomputeCurrentMonthCashflowForecast(
           : round2(openingOperationalBalance - openingReservedBalance),
     });
 
+    // Tijdelijke bridge: timeline en summary delen wel dezelfde eventbasis,
+    // maar de opslagvorm blijft legacy totdat Fase C de persistence vervangt.
     const timelineProjection = buildForecastTimelineProjection({
       currentBalanceAnchor: knownBalance.balance,
       referenceDate,

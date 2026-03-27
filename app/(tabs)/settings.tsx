@@ -26,6 +26,7 @@ import {
 import {
   ensureForecastFresh,
   getForecastRefreshStatus,
+  resetAndRecomputeForecast,
 } from "@/services/forecast-refresh";
 import {
   resolveTransactionCleanupScopeInfo,
@@ -302,6 +303,17 @@ export default function SettingsScreen() {
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string>("");
   const [isRefreshingForecast, setIsRefreshingForecast] = React.useState(false);
+  const [isResettingForecast, setIsResettingForecast] = React.useState(false);
+  const [showForecastResetConfirmModal, setShowForecastResetConfirmModal] =
+    React.useState(false);
+  const [showForecastResetSuccessModal, setShowForecastResetSuccessModal] =
+    React.useState(false);
+  const [showForecastResetErrorModal, setShowForecastResetErrorModal] =
+    React.useState(false);
+  const [forecastResetErrorMessage, setForecastResetErrorMessage] =
+    React.useState<string | null>(null);
+  const [forecastResetSuccessMessage, setForecastResetSuccessMessage] =
+    React.useState("");
   const [cleanupScope, setCleanupScope] =
     React.useState<TransactionCleanupScope>("current_month");
   const [forecastRefreshStatus, setForecastRefreshStatus] =
@@ -435,6 +447,39 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleResetForecast = () => {
+    if (isResettingForecast) return;
+    setShowForecastResetConfirmModal(true);
+  };
+
+  const handleConfirmResetForecast = async () => {
+    if (isResettingForecast) return;
+    setIsResettingForecast(true);
+    try {
+      const status = await resetAndRecomputeForecast({
+        reason: "manual_refresh",
+        referenceDate: new Date(),
+      });
+      setForecastRefreshStatus(status);
+      setForecastResetSuccessMessage(
+        "De forecast is gewist en opnieuw berekend.",
+      );
+      setShowForecastResetConfirmModal(false);
+      setShowForecastResetSuccessModal(true);
+    } catch (resetError) {
+      const resetMessage =
+        resetError instanceof Error
+          ? resetError.message
+          : "Forecast opnieuw opbouwen mislukt";
+      setForecastResetErrorMessage(resetMessage);
+      setShowForecastResetConfirmModal(false);
+      setShowForecastResetErrorModal(true);
+      await loadForecastStatus();
+    } finally {
+      setIsResettingForecast(false);
+    }
+  };
+
   return (
     <View style={styles.root}>
       <FinanceScreenBackdrop tone="warm" />
@@ -559,6 +604,25 @@ export default function SettingsScreen() {
                 ) : undefined
               }
             />
+            {adminAccess.loading ? null : adminAccess.isAdmin ? (
+              <>
+                <View style={styles.divider} />
+                <SettingsRow
+                  iconName="delete-outline"
+                  label="Forecast opnieuw opbouwen"
+                  subtitle="Wis forecastdata en bereken meteen opnieuw"
+                  onPress={handleResetForecast}
+                  rightElement={
+                    isResettingForecast ? (
+                      <ActivityIndicator
+                        size="small"
+                        color={FinColors.green}
+                      />
+                    ) : undefined
+                  }
+                />
+              </>
+            ) : null}
             {forecastRefreshStatus?.lastError ? (
               <>
                 <View style={styles.divider} />
@@ -570,6 +634,26 @@ export default function SettingsScreen() {
               </>
             ) : null}
           </View>
+
+          <ConfirmCleanupModal
+            visible={showForecastResetConfirmModal}
+            isClearing={isResettingForecast}
+            title="Forecast opnieuw opbouwen?"
+            body="Dit wist de forecastdata van je huidige account en laat de forecast daarna direct opnieuw berekenen. Transacties en budget blijven staan."
+            confirmLabel="Opnieuw opbouwen"
+            onConfirm={handleConfirmResetForecast}
+            onCancel={() => setShowForecastResetConfirmModal(false)}
+          />
+          <SuccessModal
+            visible={showForecastResetSuccessModal}
+            message={forecastResetSuccessMessage}
+            onClose={() => setShowForecastResetSuccessModal(false)}
+          />
+          <ErrorModal
+            visible={showForecastResetErrorModal}
+            error={forecastResetErrorMessage}
+            onClose={() => setShowForecastResetErrorModal(false)}
+          />
 
           <SectionHeader title="Data" />
           <View style={styles.card}>

@@ -1,6 +1,5 @@
 import { buildInsightsForecastCard } from "@/services/insights-forecast-card";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
-import type { TransactionMonthOption } from "@/services/transaction-month-options";
 import type { BudgetPlanComputation } from "@/types/categorization";
 import { describe, expect, it } from "vitest";
 
@@ -8,46 +7,6 @@ const fmt = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
 });
-
-function getCurrentMonthKey(now = new Date()) {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function getPreviousMonthKey(currentKey: string) {
-  const [yearValue, monthValue] = currentKey.split("-");
-  const year = Number(yearValue);
-  const month = Number(monthValue);
-  const date = new Date(year, month - 2, 1);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function buildMonthOption(monthKey: string): TransactionMonthOption {
-  const [yearValue, monthValue] = monthKey.split("-");
-  const year = Number(yearValue);
-  const month = Number(monthValue);
-  const start = new Date(year, month - 1, 1);
-  const end = new Date(year, month, 1);
-  const toIso = (date: Date) =>
-    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-      date.getDate(),
-    ).padStart(2, "0")}`;
-
-  return {
-    key: monthKey,
-    label: start.toLocaleDateString("nl-NL", {
-      month: "long",
-      year: "numeric",
-    }),
-    monthLabel: start.toLocaleDateString("nl-NL", {
-      month: "long",
-    }),
-    startIso: toIso(start),
-    endIso: toIso(end),
-    year,
-    month,
-    isCurrentMonth: monthKey === getCurrentMonthKey(),
-  };
-}
 
 function buildForecast(
   input: Partial<InsightsForecastSummary>,
@@ -57,11 +16,21 @@ function buildForecast(
     forecastReferenceDate: input.forecastReferenceDate ?? "2026-03-10",
     currentBalanceAnchor: input.currentBalanceAnchor ?? null,
     currentBalanceAnchorDate: input.currentBalanceAnchorDate ?? null,
+    currentOperationalBalance: input.currentOperationalBalance ?? input.currentBalanceAnchor ?? null,
+    currentReservedBalance: input.currentReservedBalance ?? 0,
+    currentNetWorth: input.currentNetWorth ?? input.currentBalanceAnchor ?? null,
+    freeToSpendNow: input.freeToSpendNow ?? input.currentBalanceAnchor ?? null,
     cashRiskFlag: input.cashRiskFlag ?? "none",
     riskFlag: input.riskFlag ?? "none",
     expectedEndBalance: input.expectedEndBalance ?? 600,
+    expectedEndOperationalBalance:
+      input.expectedEndOperationalBalance ?? input.expectedEndBalance ?? 600,
+    expectedEndNetWorth:
+      input.expectedEndNetWorth ?? input.expectedEndOperationalBalance ?? input.expectedEndBalance ?? 600,
     lowestExpectedBalance: input.lowestExpectedBalance ?? 260,
     lowestExpectedBalanceDate: input.lowestExpectedBalanceDate ?? "2026-03-22",
+    lowestOperationalPointInMonth:
+      input.lowestOperationalPointInMonth ?? input.lowestExpectedBalance ?? 260,
     nextExpectedEventDate: input.nextExpectedEventDate ?? "2026-03-25",
     nextExpectedEventLabel: input.nextExpectedEventLabel ?? "Salaris verwacht",
     expectedIncomeTotal: input.expectedIncomeTotal ?? 3600,
@@ -97,7 +66,6 @@ describe("buildInsightsForecastCard", () => {
     const result = buildInsightsForecastCard({
       forecast: null,
       budgetPlan: null,
-      selectedMonth: buildMonthOption(getCurrentMonthKey()),
     });
 
     expect(result.isFallback).toBe(true);
@@ -111,7 +79,6 @@ describe("buildInsightsForecastCard", () => {
         lowestExpectedBalance: 380,
       }),
       budgetPlan: null,
-      selectedMonth: buildMonthOption(getCurrentMonthKey()),
     });
 
     expect(result.statusLabel).toBe("Verwacht positief");
@@ -126,7 +93,6 @@ describe("buildInsightsForecastCard", () => {
         cashRiskFlag: "cash_gap_warning",
       }),
       budgetPlan: null,
-      selectedMonth: buildMonthOption(getCurrentMonthKey()),
     });
 
     expect(result.statusLabel).toBe("Krap maar haalbaar");
@@ -140,7 +106,6 @@ describe("buildInsightsForecastCard", () => {
         riskFlag: "deficit_warning",
       }),
       budgetPlan: null,
-      selectedMonth: buildMonthOption(getCurrentMonthKey()),
     });
 
     expect(result.statusLabel).toBe("Let op");
@@ -148,14 +113,12 @@ describe("buildInsightsForecastCard", () => {
   });
 
   it("gebruikt historische titel bij oude maand", () => {
-    const previousKey = getPreviousMonthKey(getCurrentMonthKey());
     const result = buildInsightsForecastCard({
       forecast: buildForecast({ expectedEndBalance: 350 }),
       budgetPlan: null,
-      selectedMonth: buildMonthOption(previousKey),
     });
 
-    expect(result.title).toBe("Eindsaldo deze maand");
+    expect(result.title).toBe("Verwacht eindsaldo");
   });
 
   it("gebruikt dezelfde resterende-maand berekening als de modal", () => {
@@ -164,18 +127,80 @@ describe("buildInsightsForecastCard", () => {
         currentBalanceAnchor: 100,
         currentBalanceAnchorDate: "2026-03-25",
         expectedEndBalance: 130,
+        expectedEndOperationalBalance: 130,
         remainingExpectedIncomeTotal: 80,
         remainingExpectedExpenseTotal: 50,
         remainingExpectedSavingsOutflowTotal: 0,
         expectedVariableCosts: 30,
+        currentOperationalBalance: 100,
+        currentReservedBalance: 20,
+        freeToSpendNow: 80,
+        lowestOperationalPointInMonth: 90,
       }),
       budgetPlan: buildBudgetPlan({
         variableSpent: 0,
         weeklyRemaining: [10],
       }),
-      selectedMonth: buildMonthOption(getCurrentMonthKey()),
     });
 
     expect(result.amountLabel).toBe(fmt.format(150));
+    expect(result.currentOperationalValue).toBe(fmt.format(100));
+    expect(result.freeToSpendNowValue).toBe(fmt.format(80));
+    expect(result.reservedValue).toBe(fmt.format(20));
+    expect(result.lowestOperationalPointValue).toBe(fmt.format(90));
+    expect(result.explanation).toContain("Vrij besteedbaar");
+  });
+
+  it("toont de expliciete expected-end balance en houdt lowest point apart", () => {
+    const result = buildInsightsForecastCard({
+      forecast: buildForecast({
+        currentBalanceAnchor: 2748.36,
+        currentOperationalBalance: 2748.36,
+        freeToSpendNow: 2748.36,
+        currentReservedBalance: 0,
+        expectedEndBalance: 1803.31,
+        expectedEndOperationalBalance: 1803.31,
+        remainingExpectedIncomeTotal: 0.33,
+        remainingExpectedExpenseTotal: 945.38,
+        remainingExpectedSavingsOutflowTotal: 0,
+        lowestExpectedBalance: 392.82,
+        lowestOperationalPointInMonth: 392.82,
+        expectedVariableCosts: 214,
+      }),
+      budgetPlan: buildBudgetPlan({
+        variableSpent: 214,
+        weeklyRemaining: [],
+      }),
+    });
+
+    expect(result.amountLabel).toBe(fmt.format(1803.31));
+    expect(result.lowestOperationalPointValue).toBe(fmt.format(392.82));
+    expect(result.amountLabel).not.toBe(result.lowestOperationalPointValue);
+  });
+
+  it("overrulet een stalen legacy eindwaarde met de berekende operationele maandmutatie", () => {
+    const result = buildInsightsForecastCard({
+      forecast: buildForecast({
+        currentBalanceAnchor: 2748.36,
+        currentOperationalBalance: 2748.36,
+        currentReservedBalance: 0,
+        expectedEndBalance: 359.85,
+        expectedEndOperationalBalance: 359.85,
+        remainingExpectedIncomeTotal: 0.33,
+        remainingExpectedExpenseTotal: 945.38,
+        remainingExpectedSavingsOutflowTotal: 0,
+        lowestOperationalPointInMonth: 392.82,
+        lowestExpectedBalance: 392.82,
+        expectedVariableCosts: 214,
+      }),
+      budgetPlan: buildBudgetPlan({
+        variableSpent: 214,
+        weeklyRemaining: [],
+      }),
+    });
+
+    expect(result.amountLabel).toBe(fmt.format(1803.31));
+    expect(result.amountLabel).not.toBe(fmt.format(359.85));
+    expect(result.lowestOperationalPointValue).toBe(fmt.format(392.82));
   });
 });

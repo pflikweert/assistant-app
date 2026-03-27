@@ -366,8 +366,8 @@ function buildUnifiedFinancialContextPrompt(
       ? "Periode-selectie: fallback gebruikt (huidige maand)."
       : "Periode-selectie: expliciet gekozen periode.",
     context.currentBalance.balance != null
-      ? `Actueel saldo: ${eur.format(context.currentBalance.balance)}${context.currentBalance.date ? ` (laatst bekend op ${context.currentBalance.date})` : ""}`
-      : "Actueel saldo: onbekend",
+      ? `Actuele operationele stand: ${eur.format(context.currentBalance.balance)}${context.currentBalance.date ? ` (laatst bekend op ${context.currentBalance.date})` : ""}`
+      : "Actuele operationele stand: onbekend",
     context.spending.currentMonthTotal != null
       ? `Huidige maand uitgaven totaal: ${eur.format(context.spending.currentMonthTotal)}`
       : "Huidige maand uitgaven totaal: onbekend",
@@ -447,12 +447,12 @@ function buildUnifiedFinancialContextPrompt(
         )}`
       : "",
     context.forecastCurrentMonth.expectedEndBalance != null
-      ? `Forecast eindsaldo maand: ${eur.format(
+      ? `Forecast operationele stand maand: ${eur.format(
           context.forecastCurrentMonth.expectedEndBalance,
         )}`
       : "",
     context.forecastCurrentMonth.lowestExpectedBalance != null
-      ? `Laagste verwachte saldo: ${eur.format(
+      ? `Laagste operationele punt: ${eur.format(
           context.forecastCurrentMonth.lowestExpectedBalance,
         )}`
       : "",
@@ -465,7 +465,7 @@ function buildUnifiedFinancialContextPrompt(
       ? `Huidige maand risicosignaal: ${currentMonthRiskLabel}`
       : "Huidige maand forecast status: beperkt",
     context.forecastNextMonth.hasData
-      ? `Begin volgende maand (${context.forecastNextMonth.monthLabel}) verwacht eindsaldo: ${eur.format(
+      ? `Begin volgende maand (${context.forecastNextMonth.monthLabel}) verwachte operationele stand: ${eur.format(
           context.forecastNextMonth.expectedEndBalance || 0,
         )}`
       : "",

@@ -87,7 +87,7 @@ describe("forecast summary adapter", () => {
         certainty: "booked",
         sourceEventType: "correction",
         sourceLabel: "2026-03-27",
-        reason: "Laatste bekende saldo",
+        reason: "Laatste bekende operationele stand",
       },
       events: [],
     };
@@ -123,10 +123,57 @@ describe("forecast summary adapter", () => {
       referenceDate: "2026-03-27",
       currentBalanceDate: "2026-03-27",
       currentBalance: 1425.5,
-      expectedEndBalance: 1610.25,
+      expectedEndBalance: 1725.5,
       lowestExpectedBalance: 1350,
       nextExpectedEventLabel: "Salaris",
       freeToSpend: 460,
     });
+  });
+
+  it("houdt reserved state null als die niet expliciet gemodelleerd is", () => {
+    const legacy = buildLegacySummary({
+      currentReservedBalance: null,
+    });
+
+    const state = buildForecastMonthStateFromLegacySummary(legacy);
+    const summary = adaptForecastMonthStateToLegacySummary(state);
+
+    expect(state?.openingReservedBalance).toBeNull();
+    expect(state?.reservedBalance).toBeNull();
+    expect(state?.expectedEndReservedBalance).toBeNull();
+    expect(summary?.currentReservedBalance).toBeNull();
+    expect(summary?.freeToSpendNow).toBeNull();
+  });
+
+  it("normaliseert een stalen legacy eindwaarde naar de berekende operationele maandstand", () => {
+    const legacy = buildLegacySummary({
+      currentBalanceAnchor: 2748.36,
+      currentBalanceAnchorDate: "2026-03-27",
+      currentOperationalBalance: 2748.36,
+      expectedEndBalance: 359.85,
+      expectedEndOperationalBalance: 359.85,
+      remainingExpectedIncomeTotal: 0.33,
+      remainingExpectedExpenseTotal: 945.38,
+      remainingExpectedSavingsOutflowTotal: 0,
+      lowestExpectedBalance: 392.82,
+      lowestOperationalPointInMonth: 392.82,
+    });
+    const budgetPlan = {
+      flowSummary: {
+        variableBudget: 700,
+      },
+      monthToDateExpenses: {
+        variableCosts: 260.25,
+      },
+    } as unknown as BudgetPlanComputation;
+
+    const state = buildForecastMonthStateFromLegacySummary(legacy, budgetPlan);
+    const summary = adaptForecastMonthStateToLegacySummary(state);
+
+    expect(state?.expectedEndOperationalBalance).toBe(1803.31);
+    expect(state?.expectedEndBalance).toBe(1803.31);
+    expect(summary?.expectedEndOperationalBalance).toBe(1803.31);
+    expect(summary?.expectedEndBalance).toBe(1803.31);
+    expect(summary?.lowestOperationalPointInMonth).toBe(392.82);
   });
 });

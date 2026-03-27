@@ -27,30 +27,40 @@ function buildForecast(options: {
   riskFlag?: InsightsForecastSummary["riskFlag"];
   cashRiskFlag?: InsightsForecastSummary["cashRiskFlag"];
   expectedEndBalance?: number | null;
+  expectedEndOperationalBalance?: number | null;
   lowestExpectedBalance?: number | null;
   lowestExpectedBalanceDate?: string | null;
+  currentOperationalBalance?: number | null;
+  remainingExpectedIncomeTotal?: number | null;
+  remainingExpectedExpenseTotal?: number | null;
+  remainingExpectedSavingsOutflowTotal?: number | null;
+  expectedVariableCosts?: number | null;
 }) {
   return {
     monthStart: "2026-03-01",
     forecastReferenceDate: null,
     currentBalanceAnchor: null,
     currentBalanceAnchorDate: null,
+    currentOperationalBalance: options.currentOperationalBalance ?? null,
     riskFlag: options.riskFlag ?? "none",
     cashRiskFlag: options.cashRiskFlag ?? "none",
     expectedEndBalance: options.expectedEndBalance ?? null,
+    expectedEndOperationalBalance:
+      options.expectedEndOperationalBalance ?? options.expectedEndBalance ?? null,
     lowestExpectedBalance: options.lowestExpectedBalance ?? null,
     lowestExpectedBalanceDate: options.lowestExpectedBalanceDate ?? null,
     nextExpectedEventDate: null,
     nextExpectedEventLabel: null,
     expectedIncomeTotal: null,
-    remainingExpectedIncomeTotal: null,
-    remainingExpectedExpenseTotal: null,
-    remainingExpectedSavingsOutflowTotal: null,
+    remainingExpectedIncomeTotal: options.remainingExpectedIncomeTotal ?? null,
+    remainingExpectedExpenseTotal: options.remainingExpectedExpenseTotal ?? null,
+    remainingExpectedSavingsOutflowTotal:
+      options.remainingExpectedSavingsOutflowTotal ?? null,
     upcomingCommittedIncomeTotal: null,
     upcomingCommittedExpenseTotal: null,
     expectedFixedCosts: null,
     expectedSubscriptions: null,
-    expectedVariableCosts: null,
+    expectedVariableCosts: options.expectedVariableCosts ?? null,
   } satisfies InsightsForecastSummary;
 }
 
@@ -134,7 +144,7 @@ describe("buildInsightsMonthContextSummary", () => {
     expect(summary.statusTone).toBe("critical");
     expect(summary.statusLabel).toBe("Krap");
     expect(summary.contextLine).toContain("onder druk");
-    expect(summary.summaryLine).toContain("eindsaldo");
+    expect(summary.summaryLine).toContain("operationele stand");
   });
 
   it("geeft Op schema bij stabiele maand en voldoende ruimte", () => {
@@ -154,6 +164,37 @@ describe("buildInsightsMonthContextSummary", () => {
     expect(summary.statusTone).toBe("good");
     expect(summary.statusLabel).toBe("Op schema");
     expect(summary.contextLine).toContain("loopt rustig");
+    expect(summary.summaryLine).toContain("maandbudget");
+  });
+
+  it("gebruikt de actuele balansoverride voor de maandverwachting", () => {
+    const selectedMonth = getMonthOptionByKey(getCurrentMonthKey());
+    const summary = buildInsightsMonthContextSummary({
+      forecast: buildForecast({
+        currentBalanceAnchor: 359.85,
+        currentOperationalBalance: 359.85,
+        expectedEndBalance: 359.85,
+        expectedEndOperationalBalance: 359.85,
+        riskFlag: "deficit_warning",
+        remainingExpectedIncomeTotal: 0.33,
+        remainingExpectedExpenseTotal: 945.38,
+        remainingExpectedSavingsOutflowTotal: 0,
+        expectedVariableCosts: 214,
+        lowestExpectedBalanceDate: "2026-03-22",
+        lowestOperationalPointInMonth: 392.82,
+      }),
+      budgetPlan: buildBudgetPlan({
+        variableBudget: 1000,
+        variableSpent: 0,
+        monthProgress: 0.5,
+      }),
+      selectedMonth,
+      currentBalanceOverride: 2748.36,
+    });
+
+    expect(summary.statusTone).toBe("critical");
+    expect(summary.summaryLine).toContain("1.803,31");
+    expect(summary.summaryLine).not.toContain("359,85");
   });
 
   it("maakt contextzin terugkijkend voor afgeronde maand", () => {

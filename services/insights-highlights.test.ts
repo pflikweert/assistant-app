@@ -319,11 +319,12 @@ describe("selectInsightsHighlights", () => {
       ],
       previousMonthTransactions: [tx({ counterparty: "Albert Heijn", amount: -32 })],
       lookbackTransactions: [tx({ counterparty: "Albert Heijn", amount: -25, date: "2026-02-10" })],
-      latestTransactionDateIso: "2026-03-23",
+      latestTransactionDateIso: "2026-03-27",
       history: history({
         meaningKey: "new-counterparty-cost",
         fingerprint: "new-cost|2026-03|nieuwe dienst|60|2",
         signalSource: "hard",
+        seenAt: "2026-03-27T00:00:00.000Z",
       }),
     });
 

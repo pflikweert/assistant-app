@@ -150,4 +150,32 @@ describe("buildForecastMonthMath", () => {
     expect(result.expectedVariableCosts).toBe(420);
     expect(result.remainingExpectedExpenseTotal).toBe(140);
   });
+
+  it("reconstructs the maart reference case to 1803.31 without double-counting variable spend", () => {
+    const result = buildForecastMonthMath({
+      startingBalance: 2748.36,
+      currentBalanceAnchor: 2748.36,
+      bookedIncomeTotal: 0,
+      bookedForecastEligibleIncomeTotal: 0,
+      bookedExpenseTotal: 945.38,
+      bookedSavingsOutflowTotal: 0,
+      bookedFixedCosts: 731.38,
+      bookedSubscriptions: 0,
+      bookedVariableCosts: 214,
+      expectedIncomeBaseline: 0.33,
+      remainingCommittedIncomeTotal: 0.33,
+      expectedFixedCostsBaseline: 731.38,
+      expectedSubscriptionsBaseline: 0,
+      expectedVariableCostsBaseline: 214,
+      projectedVariableCostsTotal: null,
+      expectedSavingsOutflowBaseline: 0,
+      remainingCommittedFixedCosts: 0,
+      remainingCommittedSubscriptions: 0,
+      remainingCommittedSavingsOutflowTotal: 0,
+    });
+
+    expect(result.expectedIncomeTotal).toBe(0.33);
+    expect(result.expectedExpenseTotal).toBe(945.38);
+    expect(result.expectedEndOfMonthBalance).toBe(1803.31);
+  });
 });
