@@ -157,4 +157,55 @@ describe("normalizeForecastEventsForMonth", () => {
     expect(events[1]?.moneyLayer).toBe("reserved");
     expect(events[2]?.certainty).toBe("booked");
   });
+
+  it("respecteert een expliciete owner_scope op bankrekeningen", () => {
+    const bankAccountsById = new Map<string, TestBankAccount>([
+      [
+        "shared-1",
+        {
+          id: "shared-1",
+          name: "Vakantiepot",
+          account_type: "checking",
+          provider: "ING",
+          currency: "EUR",
+          account_masked: null,
+          is_active: true,
+          include_in_budget: true,
+          include_in_cashflow: true,
+          include_in_net_worth: true,
+          forecast_role: "shared",
+          owner_scope: "shared",
+        },
+      ],
+    ]);
+
+    const events = normalizeForecastEventsForMonth({
+      monthStart: new Date("2026-03-01T00:00:00.000Z"),
+      monthEndExclusive: new Date("2026-04-01T00:00:00.000Z"),
+      referenceDate: new Date("2026-03-10T00:00:00.000Z"),
+      categoryMap: new Map(),
+      bankAccountsById,
+      bookedTransactions: [
+        {
+          id: "shared-expense",
+          date: "2026-03-20",
+          amount: -45,
+          details: "Boodschappen",
+          counterparty: "Supermarkt",
+          analysis_main_group: "expense",
+          analysis_category: "variable_costs",
+          recurring: false,
+          recurring_type: null,
+          category_id_auto: null,
+          category_id_user: null,
+          bank_account_id: "shared-1",
+          budget_excluded: false,
+          metadata: {},
+        },
+      ],
+      timelineEvents: [],
+    });
+
+    expect(events[0]?.ownerScope).toBe("shared");
+  });
 });

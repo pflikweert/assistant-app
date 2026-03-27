@@ -1,6 +1,10 @@
 import { requireCurrentUserId } from "@/services/current-user";
 import { ensureForecastFresh } from "@/services/forecast-refresh";
 import {
+  normalizeMoneyViewScope,
+  type MoneyViewScope,
+} from "@/services/finance-scope";
+import {
   adaptForecastMonthStateToLegacySummary,
   buildForecastMonthStateFromLegacySummary,
 } from "@/services/forecast-summary-adapter";
@@ -53,9 +57,11 @@ export async function loadMonthForecastSummary(params: {
   monthStartIso: string;
   referenceDate: Date;
   reason?: string;
+  moneyViewScope?: MoneyViewScope;
   userId?: string;
 }): Promise<InsightsForecastSummary | null> {
   const { monthStartIso, referenceDate, userId } = params;
+  const moneyViewScope = normalizeMoneyViewScope(params.moneyViewScope);
 
   try {
     const resolvedUserId = userId || (await requireCurrentUserId());
@@ -63,16 +69,18 @@ export async function loadMonthForecastSummary(params: {
     await ensureForecastFresh({
       reason: params.reason || resolveForecastReason(monthStartIso),
       referenceDate,
+      moneyViewScope,
     }).catch(() => null);
 
     const fetchLatest = async () =>
       supabase
         .from("monthly_cashflow_forecasts")
         .select(
-          "month_start,forecast_reference_date,current_balance_anchor,current_balance_anchor_date,cash_risk_flag,risk_flag,expected_end_of_month_balance,lowest_expected_balance,lowest_expected_balance_date,next_expected_event_date,next_expected_event_label,expected_income_total,remaining_expected_income_total,remaining_expected_expense_total,remaining_expected_savings_outflow_total,upcoming_committed_income_total,upcoming_committed_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs",
+          "month_start,scope_view,forecast_reference_date,current_balance_anchor,current_balance_anchor_date,cash_risk_flag,risk_flag,expected_end_of_month_balance,lowest_expected_balance,lowest_expected_balance_date,next_expected_event_date,next_expected_event_label,expected_income_total,remaining_expected_income_total,remaining_expected_expense_total,remaining_expected_savings_outflow_total,upcoming_committed_income_total,upcoming_committed_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs",
         )
         .eq("user_id", resolvedUserId)
         .eq("month_start", monthStartIso)
+        .eq("scope_view", moneyViewScope)
         .maybeSingle();
 
     const fetchLegacy = async () =>
@@ -96,21 +104,42 @@ export async function loadMonthForecastSummary(params: {
     }
 
     if (!result.data) {
-      return null;
+      await ensureForecastFresh({
+        reason: params.reason || resolveForecastReason(monthStartIso),
+        referenceDate,
+        force: true,
+        moneyViewScope,
+      }).catch(() => null);
+
+      result = await fetchLatest();
+      if (result.error) {
+        if (isMissingRelationError(result.error)) {
+          return null;
+        }
+        throw result.error;
+      }
+
+      if (!result.data) {
+        return null;
+      }
     }
 
     let row = result.data as Record<string, unknown>;
+    let scopedLatestKnownBalance: Awaited<
+      ReturnType<typeof loadLatestKnownBalanceSnapshot>
+    > | null = null;
 
     // Current-month forecasts should follow the latest known operational anchor.
     // If that anchor moved, force a recompute so the canonical low point is
     // rebuilt from the same forecast eventset as the headline.
     if (isCurrentMonth(monthStartIso, referenceDate)) {
-      const latestKnownBalance = await loadLatestKnownBalanceSnapshot(resolvedUserId).catch(
-        () => null,
-      );
+      scopedLatestKnownBalance = await loadLatestKnownBalanceSnapshot(
+        resolvedUserId,
+        moneyViewScope,
+      ).catch(() => null);
       const storedAnchor =
         row.current_balance_anchor == null ? null : Number(row.current_balance_anchor);
-      const latestAnchor = latestKnownBalance?.balance ?? null;
+      const latestAnchor = scopedLatestKnownBalance?.balance ?? null;
       const shouldRefreshForAnchor =
         latestAnchor != null &&
         (storedAnchor == null || Math.abs(storedAnchor - latestAnchor) > 0.01);
@@ -120,6 +149,7 @@ export async function loadMonthForecastSummary(params: {
           reason: params.reason || resolveForecastReason(monthStartIso),
           referenceDate,
           force: true,
+          moneyViewScope,
         }).catch(() => null);
 
         result = await fetchLatest();
@@ -143,6 +173,9 @@ export async function loadMonthForecastSummary(params: {
       forecastReferenceDate: row.forecast_reference_date
         ? String(row.forecast_reference_date)
         : null,
+      scopeView: row.scope_view
+        ? normalizeMoneyViewScope(row.scope_view, moneyViewScope)
+        : moneyViewScope,
       currentBalanceAnchor:
         row.current_balance_anchor == null
           ? null
@@ -208,7 +241,11 @@ export async function loadMonthForecastSummary(params: {
           : Number(row.expected_variable_costs),
     };
 
-    const monthState = buildForecastMonthStateFromLegacySummary(legacySummary);
+    const monthState = buildForecastMonthStateFromLegacySummary(
+      legacySummary,
+      null,
+      scopedLatestKnownBalance,
+    );
     // TODO: fase B vervangt deze roundtrip door een echte domeinbron.
     return adaptForecastMonthStateToLegacySummary(monthState);
   } catch (error) {

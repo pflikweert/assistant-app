@@ -11,7 +11,12 @@ import {
     resolveLockedVariableMainCategories,
 } from "@/services/budget-lock-utils";
 import { requireCurrentUserId } from "@/services/current-user";
-import { listBankAccountBudgetFlags } from "@/services/bank-accounts";
+import {
+  isAccountIncludedInBudgetMoneyViewScope,
+  normalizeMoneyViewScope,
+  type MoneyViewScope,
+} from "@/services/finance-scope";
+import { listBankAccountsForUser } from "@/services/bank-accounts";
 import {
     getBudgetCategoryOverrides,
     getBudgetPlanSettings,
@@ -25,11 +30,7 @@ import {
     resolveBaseWeeklyMainCategoryBudgetsByDailyMonthRates,
 } from "@/services/budget-week-utils";
 import { resolveIncomeSemantics } from "@/services/income-semantics";
-import {
-  isBankAccountIncludedInLegacyBudgetScope,
-  isTransactionExcludedFromLegacyBudgetScope,
-  isTransactionIncludedInLegacyBudgetScope,
-} from "@/services/financial-semantics";
+import { isTransactionExcludedFromLegacyBudgetScope, isTransactionIncludedInLegacyBudgetScope } from "@/services/financial-semantics";
 import { supabase } from "@/services/supabase";
 import type {
     AnalysisCategory,
@@ -1979,9 +1980,13 @@ async function fetchTransactionsInRange(
   startIso: string,
   endIso: string,
   userId?: string,
+  moneyViewScope: MoneyViewScope = "personal",
 ): Promise<BudgetTx[]> {
   const resolvedUserId = userId || (await requireCurrentUserId());
-  const budgetFlags = await listBankAccountBudgetFlags(resolvedUserId);
+  const bankAccounts = await listBankAccountsForUser(resolvedUserId);
+  const bankAccountsById = new Map(
+    bankAccounts.map((account) => [account.id, account]),
+  );
   const rows: BudgetTx[] = [];
   let offset = 0;
 
@@ -2006,11 +2011,19 @@ async function fetchTransactionsInRange(
     const page = ((data || []) as Record<string, unknown>[])
       .map((row) => {
         const bankAccountId = row.bank_account_id ? String(row.bank_account_id) : null;
+        const bankAccount = bankAccountId
+          ? bankAccountsById.get(bankAccountId) || null
+          : null;
         if (
-          !isBankAccountIncludedInLegacyBudgetScope(
-            budgetFlags.get(bankAccountId || "") !== false,
+          bankAccount &&
+          !isAccountIncludedInBudgetMoneyViewScope(
+            bankAccount,
+            normalizeMoneyViewScope(moneyViewScope),
           )
         ) {
+          return null;
+        }
+        if (!bankAccount && moneyViewScope === "observation") {
           return null;
         }
 
@@ -2232,6 +2245,7 @@ export async function computeBudgetPlan(
   reference = new Date(),
   planKey = "default",
   timelineReference = new Date(),
+  moneyViewScope: MoneyViewScope = "personal",
 ): Promise<BudgetPlanComputation> {
   const referenceDay = startOfUtcDay(reference);
   const timelineReferenceDay = startOfUtcDay(timelineReference);
@@ -2287,7 +2301,12 @@ export async function computeBudgetPlan(
     nextMonthBudgetValues,
   ] = await Promise.all([
     fetchCategoryMap(),
-    fetchTransactionsInRange(dateToIso(dataStart), dateToIso(dataEndExclusive)),
+    fetchTransactionsInRange(
+      dateToIso(dataStart),
+      dateToIso(dataEndExclusive),
+      undefined,
+      moneyViewScope,
+    ),
     getBudgetPlanSettings(planKey),
     getBudgetCategoryOverrides(planKey),
     getMonthlyBudgetValues(monthStartIso, planKey),

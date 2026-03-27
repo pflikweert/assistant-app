@@ -1,7 +1,6 @@
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinColors } from "@/constants/theme";
-import { ForecastAccountMeta } from "@/components/bank-accounts/forecast-account-meta";
 import {
   ACCOUNT_TYPES,
   createBankAccount,
@@ -9,6 +8,11 @@ import {
   type BankAccount,
   type BankAccountType,
 } from "@/services/bank-accounts";
+import {
+  resolveForecastAccountRules,
+  type ForecastAccountRules,
+} from "@/services/forecast-account-rules";
+import type { ForecastAccountRole, ForecastOwnerScope } from "@/services/forecast-domain";
 import React from "react";
 import {
   ActivityIndicator,
@@ -52,6 +56,126 @@ const ACCOUNT_TYPE_LABELS: Record<BankAccountType, string> = {
   other: "Overig",
 };
 
+const OWNER_SCOPE_OPTIONS: { value: ForecastOwnerScope; label: string }[] = [
+  { value: "personal", label: "Persoonlijk" },
+  { value: "shared", label: "Samen" },
+  { value: "child", label: "Kind" },
+  { value: "external", label: "Extern" },
+];
+
+const FORECAST_ROLE_OPTIONS: { value: ForecastAccountRole; label: string }[] = [
+  { value: "operational", label: "Operationeel" },
+  { value: "reserve", label: "Reserve" },
+  { value: "goal", label: "Doel" },
+  { value: "shared", label: "Gedeeld" },
+  { value: "observation_only", label: "Alleen bekijken" },
+  { value: "excluded", label: "Uitgesloten" },
+];
+
+type BankAccountFormMeaningState = {
+  ownerScope: ForecastOwnerScope;
+  includeInBudget: boolean;
+  includeInNetWorth: boolean;
+  includeInCashflow: boolean;
+  forecastRole: ForecastAccountRole;
+};
+
+function getScopeLabel(scope: ForecastOwnerScope): string {
+  switch (scope) {
+    case "shared":
+      return "samen";
+    case "child":
+      return "kind";
+    case "external":
+      return "extern";
+    case "personal":
+    default:
+      return "persoonlijk";
+  }
+}
+
+export function buildLiveSummaryText(input: BankAccountFormMeaningState) {
+  const scopeLabel = getScopeLabel(input.ownerScope);
+  const usages: string[] = [];
+  if (input.includeInBudget) usages.push("budgetten");
+  if (input.includeInNetWorth) usages.push("totale vermogen");
+  if (input.includeInCashflow) usages.push("vooruitzichten");
+
+  if (!usages.length) {
+    return `Deze rekening (${scopeLabel}) telt nu niet mee in budget, vermogen of vooruitzichten.`;
+  }
+
+  if (usages.length === 1) {
+    return `Deze rekening (${scopeLabel}) wordt gebruikt voor je ${usages[0]}.`;
+  }
+
+  if (usages.length === 2) {
+    return `Deze rekening (${scopeLabel}) wordt gebruikt voor je ${usages[0]} en ${usages[1]}.`;
+  }
+
+  return `Deze rekening (${scopeLabel}) wordt gebruikt voor je ${usages[0]}, je ${usages[1]} en ${usages[2]}.`;
+}
+
+export function isForecastToggleRelevant(input: {
+  ownerScope: ForecastOwnerScope;
+  accountType: BankAccountType;
+  forecastRole: ForecastAccountRole;
+}) {
+  if (input.ownerScope === "external") return false;
+  if (input.accountType === "credit" || input.accountType === "loan") return false;
+  return (
+    input.forecastRole !== "excluded" &&
+    input.forecastRole !== "observation_only"
+  );
+}
+
+export function resolveDefaultsForCreate(
+  accountType: BankAccountType,
+): ForecastAccountRules {
+  if (accountType === "savings") {
+    return resolveForecastAccountRules({
+      account_type: accountType,
+      owner_scope: "personal",
+      include_in_budget: false,
+      include_in_cashflow: false,
+      include_in_net_worth: true,
+      forecast_role: "reserve",
+    });
+  }
+
+  return resolveForecastAccountRules({
+    account_type: accountType,
+    owner_scope: "personal",
+    include_in_budget: true,
+    include_in_cashflow: true,
+    include_in_net_worth: true,
+    forecast_role: "operational",
+  });
+}
+
+export function buildBankAccountFormInitialMeaning(params: {
+  mode: BankAccountFormMode;
+  accountType: BankAccountType;
+  account?: BankAccount | null;
+}) {
+  const { mode, accountType, account } = params;
+  if (mode === "edit" && account) {
+    const rules = resolveForecastAccountRules({
+      account_type: account.account_type,
+      provider: account.provider,
+      name: account.name,
+      owner_scope: account.owner_scope,
+      forecast_role: account.forecast_role,
+      include_in_budget: account.include_in_budget,
+      include_in_cashflow: account.include_in_cashflow,
+      include_in_net_worth: account.include_in_net_worth,
+      is_active: account.is_active,
+    });
+    return rules;
+  }
+  return resolveDefaultsForCreate(accountType);
+}
+
 function buildDefaultName(providerLabel?: string | null) {
   const trimmedProvider = String(providerLabel || "").trim();
   if (!trimmedProvider) return "Bankrekening";
@@ -80,7 +204,13 @@ export function BankAccountFormSheet({
   const [accountNumber, setAccountNumber] = React.useState("");
   const [accountType, setAccountType] = React.useState<BankAccountType>("checking");
   const [showAccountTypeDropdown, setShowAccountTypeDropdown] = React.useState(false);
+  const [showForecastRoleDropdown, setShowForecastRoleDropdown] = React.useState(false);
+  const [ownerScope, setOwnerScope] = React.useState<ForecastOwnerScope>("personal");
+  const [forecastRole, setForecastRole] = React.useState<ForecastAccountRole>("operational");
   const [includeInBudget, setIncludeInBudget] = React.useState(true);
+  const [includeInNetWorth, setIncludeInNetWorth] = React.useState(true);
+  const [includeInCashflow, setIncludeInCashflow] = React.useState(true);
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [isActive, setIsActive] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [fieldErrors, setFieldErrors] = React.useState<FormFieldErrors>({});
@@ -97,13 +227,34 @@ export function BankAccountFormSheet({
     setProvider(isEdit ? account?.provider || "" : providerLabel || "");
     setAccountNumber(isEdit ? "" : sourceAccountNumber || "");
     setAccountType(isEdit ? account?.account_type || "checking" : "checking");
-    setIncludeInBudget(isEdit ? account?.include_in_budget !== false : true);
+    const initialMeaning = buildBankAccountFormInitialMeaning({
+      mode,
+      accountType: isEdit ? account?.account_type || "checking" : "checking",
+      account,
+    });
+    setOwnerScope(initialMeaning.owner_scope);
+    setForecastRole(initialMeaning.forecast_role);
+    setIncludeInBudget(initialMeaning.include_in_budget);
+    setIncludeInNetWorth(initialMeaning.include_in_net_worth);
+    setIncludeInCashflow(initialMeaning.include_in_cashflow);
     setIsActive(isEdit ? Boolean(account?.is_active) : true);
+    setAdvancedOpen(false);
     setShowAccountTypeDropdown(false);
+    setShowForecastRoleDropdown(false);
     setSaving(false);
     setFieldErrors({});
     setSubmitError(null);
-  }, [account, isEdit, providerLabel, sourceAccountNumber, visible]);
+  }, [account, isEdit, mode, providerLabel, sourceAccountNumber, visible]);
+
+  React.useEffect(() => {
+    if (!visible || isEdit) return;
+    const defaults = resolveDefaultsForCreate(accountType);
+    setOwnerScope(defaults.owner_scope);
+    setForecastRole(defaults.forecast_role);
+    setIncludeInBudget(defaults.include_in_budget);
+    setIncludeInNetWorth(defaults.include_in_net_worth);
+    setIncludeInCashflow(defaults.include_in_cashflow);
+  }, [accountType, isEdit, visible]);
 
   const resolvedTitle =
     title ||
@@ -122,18 +273,18 @@ export function BankAccountFormSheet({
     isEdit && account?.account_masked
       ? `Laat leeg om ${account.account_masked} te behouden.`
       : null;
-  const forecastMetaAccount = {
-    account_type: accountType,
-    forecast_role: isEdit ? account?.forecast_role : undefined,
-    include_in_budget: includeInBudget,
-    include_in_cashflow: isEdit ? account?.include_in_cashflow : undefined,
-    include_in_net_worth: isEdit ? account?.include_in_net_worth : undefined,
-    is_active: isEdit ? Boolean(account?.is_active) : isActive,
-    owner_scope: isEdit ? account?.owner_scope : undefined,
-    provider: provider.trim() || providerLabel || null,
-    name: name.trim() || null,
-  };
-
+  const forecastRelevant = isForecastToggleRelevant({
+    ownerScope,
+    accountType,
+    forecastRole,
+  });
+  const liveSummary = buildLiveSummaryText({
+    ownerScope,
+    includeInBudget,
+    includeInNetWorth,
+    includeInCashflow: forecastRelevant ? includeInCashflow : false,
+    forecastRole,
+  });
   const handleSave = React.useCallback(async () => {
     const trimmedName = name.trim();
     const trimmedProvider = provider.trim();
@@ -163,6 +314,10 @@ export function BankAccountFormSheet({
             provider: trimmedProvider || null,
             accountType,
             includeInBudget,
+            includeInNetWorth,
+            includeInCashflow: forecastRelevant ? includeInCashflow : false,
+            ownerScope,
+            forecastRole,
             isActive,
             ...(trimmedAccountNumber ? { accountNumber: trimmedAccountNumber } : {}),
           })
@@ -172,6 +327,10 @@ export function BankAccountFormSheet({
             provider: trimmedProvider || providerLabel || null,
             accountNumber: trimmedAccountNumber || null,
             includeInBudget,
+            includeInNetWorth,
+            includeInCashflow: forecastRelevant ? includeInCashflow : false,
+            ownerScope,
+            forecastRole,
             isActive,
           });
       onSaved(savedAccount);
@@ -192,13 +351,18 @@ export function BankAccountFormSheet({
     accountNumber,
     accountType,
     includeInBudget,
+    includeInCashflow,
+    includeInNetWorth,
     isActive,
     isEdit,
     name,
+    ownerScope,
     onClose,
     onSaved,
     provider,
     providerLabel,
+    forecastRelevant,
+    forecastRole,
   ]);
 
   return (
@@ -264,6 +428,10 @@ export function BankAccountFormSheet({
             </Text>
           </View>
         ) : null}
+
+        <View style={styles.fieldBlock}>
+          <Text style={styles.sectionLabel}>Basisgegevens</Text>
+        </View>
 
         <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>Geef je rekening een naam</Text>
@@ -388,50 +556,212 @@ export function BankAccountFormSheet({
         </View>
 
         <View style={styles.fieldBlock}>
-          <Text style={styles.fieldLabel}>Forecastoverzicht</Text>
-          <View style={styles.forecastMetaCard}>
-            <ForecastAccountMeta account={forecastMetaAccount} />
+          <Text style={styles.sectionLabel}>Eigenaarschap</Text>
+          <View style={styles.scopeSegmentTrack}>
+            {OWNER_SCOPE_OPTIONS.map((option) => {
+              const active = ownerScope === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="button"
+                  onPress={() => setOwnerScope(option.value)}
+                  style={({ pressed }) => [
+                    styles.scopeSegmentItem,
+                    active ? styles.scopeSegmentItemActive : null,
+                    pressed ? styles.scopeSegmentItemPressed : null,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.scopeSegmentLabel,
+                      active ? styles.scopeSegmentLabelActive : null,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.sectionHint}>
+            Bepaalt in welke financiele ruimtes deze rekening zichtbaar is.
+          </Text>
+        </View>
+
+        <View style={styles.fieldBlock}>
+          <Text style={styles.sectionLabel}>Waar telt deze rekening mee?</Text>
+          <View style={styles.toggleCard}>
+            <View style={styles.toggleRowCard}>
+              <View style={styles.toggleTextWrap}>
+                <Text style={styles.fieldLabel}>Meenemen in budget</Text>
+                <Text style={styles.toggleSubtitle}>
+                  Gebruiken voor je dagelijkse uitgaven.
+                </Text>
+              </View>
+              <Switch
+                value={includeInBudget}
+                onValueChange={setIncludeInBudget}
+                trackColor={{ false: "#d7d7d7", true: "#f1d96a" }}
+                thumbColor={includeInBudget ? FinColors.warningText : "#f4f4f4"}
+                ios_backgroundColor="#d7d7d7"
+              />
+            </View>
+            <View style={styles.toggleRowCard}>
+              <View style={styles.toggleTextWrap}>
+                <Text style={styles.fieldLabel}>Meenemen in vermogen</Text>
+                <Text style={styles.toggleSubtitle}>
+                  Het saldo optellen bij je totaalplaatje.
+                </Text>
+              </View>
+              <Switch
+                value={includeInNetWorth}
+                onValueChange={setIncludeInNetWorth}
+                trackColor={{ false: "#d7d7d7", true: "#f1d96a" }}
+                thumbColor={includeInNetWorth ? FinColors.warningText : "#f4f4f4"}
+                ios_backgroundColor="#d7d7d7"
+              />
+            </View>
+            {forecastRelevant ? (
+              <View style={styles.toggleRowCard}>
+                <View style={styles.toggleTextWrap}>
+                  <Text style={styles.fieldLabel}>Meenemen in forecast</Text>
+                  <Text style={styles.toggleSubtitle}>
+                    Budio kijkt vooruit met dit saldo.
+                  </Text>
+                </View>
+                <Switch
+                  value={includeInCashflow}
+                  onValueChange={setIncludeInCashflow}
+                  trackColor={{ false: "#d7d7d7", true: "#f1d96a" }}
+                  thumbColor={includeInCashflow ? FinColors.warningText : "#f4f4f4"}
+                  ios_backgroundColor="#d7d7d7"
+                />
+              </View>
+            ) : null}
           </View>
         </View>
 
         <View style={styles.fieldBlock}>
-          <Text style={styles.fieldLabel}>Opties</Text>
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleTextWrap}>
-              <Text style={styles.fieldLabel}>Meetellen in budget</Text>
-              <Text style={styles.toggleSubtitle}>
-                Bepaalt of transacties van deze rekening invloed hebben op je budget.
-              </Text>
-            </View>
-            <Switch
-              value={includeInBudget}
-              onValueChange={setIncludeInBudget}
-              trackColor={{ false: "#d7d7d7", true: "#f1d96a" }}
-              thumbColor={includeInBudget ? FinColors.warningText : "#f4f4f4"}
-              ios_backgroundColor="#d7d7d7"
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setAdvancedOpen((current) => !current)}
+            style={({ pressed }) => [
+              styles.advancedToggle,
+              pressed ? styles.advancedTogglePressed : null,
+            ]}
+          >
+            <Text style={styles.advancedToggleText}>Geavanceerde opties</Text>
+            <AppIcon
+              name={advancedOpen ? "expand-less" : "expand-more"}
+              size={20}
+              color={FinColors.textSecondary}
+              variant="outlined"
             />
-          </View>
+          </Pressable>
+          {advancedOpen ? (
+            <View style={styles.advancedCard}>
+              <View style={styles.fieldBlock}>
+                <Text style={styles.fieldLabel}>Rol in forecast</Text>
+                <View style={styles.dropdownWrap}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setShowForecastRoleDropdown((current) => !current)}
+                    style={({ pressed }) => [
+                      styles.dropdownTrigger,
+                      showForecastRoleDropdown && styles.dropdownTriggerOpen,
+                      pressed && styles.dropdownTriggerPressed,
+                    ]}
+                  >
+                    <Text style={styles.dropdownTriggerText}>
+                      {
+                        FORECAST_ROLE_OPTIONS.find((option) => option.value === forecastRole)
+                          ?.label
+                      }
+                    </Text>
+                    <AppIcon
+                      name={showForecastRoleDropdown ? "expand-less" : "expand-more"}
+                      size={20}
+                      color={FinColors.textSecondary}
+                      variant="outlined"
+                    />
+                  </Pressable>
+                  {showForecastRoleDropdown ? (
+                    <View style={styles.dropdownMenu}>
+                      {FORECAST_ROLE_OPTIONS.map((option) => {
+                        const selected = forecastRole === option.value;
+                        return (
+                          <Pressable
+                            key={option.value}
+                            accessibilityRole="button"
+                            onPress={() => {
+                              setForecastRole(option.value);
+                              setShowForecastRoleDropdown(false);
+                            }}
+                            style={({ pressed }) => [
+                              styles.dropdownOption,
+                              selected ? styles.dropdownOptionSelected : null,
+                              pressed ? styles.dropdownOptionPressed : null,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.dropdownOptionText,
+                                selected ? styles.dropdownOptionTextSelected : null,
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                            {selected ? (
+                              <AppIcon
+                                name="check"
+                                size={18}
+                                color={FinColors.warningText}
+                                variant="outlined"
+                              />
+                            ) : null}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+              {showActiveToggle ? (
+                <View style={styles.toggleRowCard}>
+                  <View style={styles.toggleTextWrap}>
+                    <Text style={styles.fieldLabel}>Rekening actief</Text>
+                    <Text style={styles.toggleSubtitle}>
+                      Zet uit om deze rekening te archiveren en uit actieve keuzes te halen.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={isActive}
+                    onValueChange={setIsActive}
+                    trackColor={{ false: "#d7d7d7", true: "#f1d96a" }}
+                    thumbColor={isActive ? FinColors.warningText : "#f4f4f4"}
+                    ios_backgroundColor="#d7d7d7"
+                  />
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
-        {showActiveToggle ? (
-          <View style={styles.fieldBlock}>
-            <View style={styles.toggleRow}>
-              <View style={styles.toggleTextWrap}>
-                <Text style={styles.fieldLabel}>Rekening actief</Text>
-                <Text style={styles.toggleSubtitle}>
-                  Zet uit om deze rekening te archiveren en uit actieve keuzes te halen.
-                </Text>
-              </View>
-              <Switch
-                value={isActive}
-                onValueChange={setIsActive}
-                trackColor={{ false: "#d7d7d7", true: "#f1d96a" }}
-                thumbColor={isActive ? FinColors.warningText : "#f4f4f4"}
-                ios_backgroundColor="#d7d7d7"
+        <View style={styles.fieldBlock}>
+          <Text style={styles.sectionLabel}>In het kort</Text>
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryHeader}>
+              <AppIcon
+                name="info"
+                size={16}
+                color={FinColors.warningText}
+                variant="outlined"
               />
+              <Text style={styles.summaryTitle}>In het kort</Text>
             </View>
+            <Text style={styles.summaryText}>{liveSummary}</Text>
           </View>
-        ) : null}
+        </View>
 
         {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
       </ScrollView>
@@ -489,10 +819,49 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
     fontWeight: "800",
   },
-  forecastMetaCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 24,
-    padding: 14,
+  sectionLabel: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
+    fontWeight: "800",
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
+  },
+  sectionHint: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: FinColors.textSecondary,
+  },
+  scopeSegmentTrack: {
+    flexDirection: "row",
+    gap: 6,
+    padding: 4,
+    borderRadius: 18,
+    backgroundColor: "rgba(17,17,17,0.06)",
+  },
+  scopeSegmentItem: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  scopeSegmentItemActive: {
+    backgroundColor: FinColors.bgBase,
+  },
+  scopeSegmentItemPressed: {
+    opacity: 0.85,
+  },
+  scopeSegmentLabel: {
+    fontSize: 13,
+    lineHeight: 16,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  scopeSegmentLabelActive: {
+    color: FinColors.textPrimary,
+    fontWeight: "800",
   },
   fieldHint: {
     fontSize: 12,
@@ -505,15 +874,22 @@ const styles = StyleSheet.create({
     color: FinColors.red,
     fontWeight: "600",
   },
-  toggleRow: {
+  toggleCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 24,
+    borderRadius: 20,
+    overflow: "hidden",
+  },
+  toggleRowCard: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 0,
     paddingHorizontal: 16,
     paddingVertical: 14,
     flexDirection: "row",
     gap: 16,
     alignItems: "center",
     justifyContent: "space-between",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(17,17,17,0.08)",
   },
   toggleTextWrap: {
     flex: 1,
@@ -523,6 +899,55 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     color: FinColors.textSecondary,
+  },
+  advancedToggle: {
+    borderRadius: 14,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  advancedTogglePressed: {
+    opacity: 0.8,
+  },
+  advancedToggleText: {
+    fontSize: 16,
+    lineHeight: 20,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  advancedCard: {
+    gap: 14,
+    backgroundColor: FinColors.bgCard,
+    borderRadius: 20,
+    padding: 14,
+  },
+  summaryCard: {
+    backgroundColor: FinColors.warningBg,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: FinColors.warningBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  summaryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  summaryTitle: {
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: "800",
+    color: FinColors.warningText,
+  },
+  summaryText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: FinColors.warningText,
+    fontWeight: "600",
   },
   textInput: {
     borderRadius: 18,

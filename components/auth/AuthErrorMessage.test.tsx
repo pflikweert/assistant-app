@@ -13,6 +13,19 @@ vi.mock("expo-router", () => {
   };
 });
 
+vi.mock("expo-image", () => ({
+  Image: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+}));
+
+vi.mock("./auth-screen-shell", () => ({
+  AuthScreenShell: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  authScreenStyles: {
+    button: {},
+    buttonText: {},
+    textLink: {},
+  },
+}));
+
 describe("AuthErrorMessage", () => {
   it("toont juiste foutmelding voor verlopen link", () => {
     expect(getAuthErrorMessage("otp_expired")).toMatch(/verlopen/i);

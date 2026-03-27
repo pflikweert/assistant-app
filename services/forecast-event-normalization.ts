@@ -1,5 +1,6 @@
 import type { ForecastCarryover, ForecastEvent } from "@/services/forecast-domain";
 import { normalizeForecastCertainty } from "@/services/forecast-domain";
+import { resolveForecastAccountRules } from "@/services/forecast-account-rules";
 import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import type { CategoryRecord, RecurringType } from "@/types/categorization";
 
@@ -17,6 +18,18 @@ type ForecastAccountInputLike = {
   name?: string | null;
   provider?: string | null;
   is_active?: boolean | null;
+  owner_scope?: "personal" | "shared" | "child" | "external" | null;
+  forecast_role?:
+    | "operational"
+    | "reserve"
+    | "goal"
+    | "shared"
+    | "observation_only"
+    | "excluded"
+    | null;
+  include_in_cashflow?: boolean | null;
+  include_in_budget?: boolean | null;
+  include_in_net_worth?: boolean | null;
 };
 
 type BookedTransactionInput = {
@@ -104,34 +117,12 @@ function hasOwnAccountTransferHint(input: {
 }
 
 function resolveForecastAccountMetadata(account: ForecastAccountInputLike) {
-  const normalizedText = normalizeText(`${account.name || ""} ${account.provider || ""}`);
-  const accountType = normalizeText(account.account_type);
-
-  const ownerScope = (() => {
-    if (normalizedText.includes("gezamenlijk") || normalizedText.includes("shared")) {
-      return "shared" as const;
-    }
-    if (normalizedText.includes("kind") || normalizedText.includes("child")) {
-      return "child" as const;
-    }
-    if (accountType === "credit" || accountType === "loan") {
-      return "external" as const;
-    }
-    return "personal" as const;
-  })();
-
-  const forecastRole = (() => {
-    if (account.is_active === false) return "observation_only" as const;
-    if (accountType === "savings") return "reserve" as const;
-    if (accountType === "investment") return "goal" as const;
-    if (accountType === "credit" || accountType === "loan") return "excluded" as const;
-    if (ownerScope === "shared") return "shared" as const;
-    return "operational" as const;
-  })();
-
+  // Explicit account metadata wins over the older read-time heuristics so the
+  // same scope/role meaning is used everywhere in the forecast surface.
+  const rules = resolveForecastAccountRules(account);
   return {
-    forecastRole,
-    ownerScope,
+    forecastRole: rules.forecast_role,
+    ownerScope: rules.owner_scope,
   };
 }
 
@@ -144,14 +135,12 @@ function resolveBookedTransactionAccountMetadata(
     : null;
   // Tijdelijke read-time inferentie: zolang accountrollen nog niet persistent
   // zijn, bepalen we ze hier op basis van bestaande accountmetadata.
-  return resolveForecastAccountMetadata(
-    account || {
-      account_type: "other",
-      name: null,
-      provider: null,
-      is_active: true,
-    },
-  );
+  return resolveForecastAccountMetadata(account || {
+    account_type: "other",
+    name: null,
+    provider: null,
+    is_active: true,
+  });
 }
 
 function buildForecastEventId(parts: (string | null | undefined)[]) {

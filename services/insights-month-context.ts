@@ -1,4 +1,5 @@
 import { getMonthVariableBudgetSnapshot } from "@/services/budget-risk";
+import type { MoneyViewScope } from "@/services/finance-scope";
 import { resolveForecastDisplayExpectedEndBalance } from "@/services/insights-remaining-month";
 import type { TransactionMonthOption } from "@/services/transaction-month-options";
 import type { BudgetPlanComputation } from "@/types/categorization";
@@ -12,6 +13,7 @@ export type InsightsMonthStatusTone = "good" | "watch" | "critical" | "neutral";
 
 export type InsightsForecastSummary = {
   monthStart: string;
+  scopeView?: MoneyViewScope;
   forecastReferenceDate: string | null;
   currentBalanceAnchor: number | null;
   currentBalanceAnchorDate: string | null;

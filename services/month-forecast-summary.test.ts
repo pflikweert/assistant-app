@@ -126,13 +126,19 @@ describe("month-forecast-summary", () => {
       referenceDate: new Date("2026-03-27T12:00:00.000Z"),
       userId: "user-123",
       reason: "insights_open",
+      moneyViewScope: "shared",
     });
 
     expect(ensureForecastFreshMock).toHaveBeenCalledTimes(2);
     expect(ensureForecastFreshMock.mock.calls[1][0]).toMatchObject({
       force: true,
       reason: "insights_open",
+      moneyViewScope: "shared",
     });
+    expect(loadLatestKnownBalanceSnapshotMock).toHaveBeenCalledWith(
+      "user-123",
+      "shared",
+    );
     expect(summary?.expectedEndOperationalBalance).toBe(1803.31);
     expect(summary?.lowestOperationalPointInMonth).toBe(392.82);
     expect(summary?.lowestExpectedBalanceDate).toBe("2026-03-28");

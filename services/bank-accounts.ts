@@ -1,8 +1,15 @@
 import * as Crypto from "expo-crypto";
 
 import { applyForecastAccountRules, resolveForecastAccountRules } from "@/services/forecast-account-rules";
+import { isAccountIncludedInBudgetMoneyViewScope } from "@/services/finance-scope";
+import { loadMoneyViewScopePreference } from "@/services/finance-scope-preference";
 import { supabase } from "@/services/supabase";
 import { requireCurrentUserId } from "@/services/current-user";
+
+const BANK_ACCOUNT_SCOPED_SELECT =
+  "id,name,account_type,provider,currency,account_masked,is_active,include_in_budget,forecast_role,include_in_cashflow,include_in_net_worth,owner_scope";
+const BANK_ACCOUNT_LEGACY_SELECT =
+  "id,name,account_type,provider,currency,account_masked,is_active,include_in_budget";
 
 export type BankAccountType =
   | "checking"
@@ -73,7 +80,81 @@ function toBankAccountRecord(row: Record<string, unknown>): BankAccount {
     is_active: row.is_active !== false,
     include_in_budget:
       row.include_in_budget == null ? undefined : Boolean(row.include_in_budget),
+    forecast_role: row.forecast_role
+      ? (String(row.forecast_role) as BankAccount["forecast_role"])
+      : undefined,
+    include_in_cashflow:
+      row.include_in_cashflow == null
+        ? undefined
+        : Boolean(row.include_in_cashflow),
+    include_in_net_worth:
+      row.include_in_net_worth == null
+        ? undefined
+        : Boolean(row.include_in_net_worth),
+    owner_scope: row.owner_scope
+      ? (String(row.owner_scope) as BankAccount["owner_scope"])
+      : undefined,
   });
+}
+
+function isMissingColumnError(error: unknown) {
+  const code = String((error as { code?: string } | null)?.code || "");
+  const message = String(
+    (error as { message?: string } | null)?.message || "",
+  ).toLowerCase();
+
+  if (code === "42703" || code === "PGRST204") return true;
+  return message.includes("column") && message.includes("does not exist");
+}
+
+function isMissingRelationError(error: unknown) {
+  const code = String((error as { code?: string } | null)?.code || "");
+  const message = String(
+    (error as { message?: string } | null)?.message || "",
+  ).toLowerCase();
+
+  if (code === "42P01" || code === "PGRST205") return true;
+  return message.includes("relation") && message.includes("does not exist");
+}
+
+function buildBankAccountPayload(
+  input: CreateBankAccountInput | UpdateBankAccountInput,
+  userId: string,
+  normalizedAccount: string | null,
+  accountHash: string | null,
+  includeScopedFields: boolean,
+) {
+  const basePayload: Record<string, unknown> = {
+    user_id: userId,
+    name: input.name,
+    account_type: input.accountType,
+    provider: input.provider || null,
+    currency: input.currency || "EUR",
+    include_in_budget:
+      input.includeInBudget == null ? true : Boolean(input.includeInBudget),
+    is_active: input.isActive == null ? true : Boolean(input.isActive),
+    account_masked:
+      normalizedAccount != null ? maskAccountNumber(normalizedAccount) : null,
+    account_hash: accountHash,
+  };
+
+  if (!includeScopedFields) {
+    return basePayload;
+  }
+
+  return {
+    ...basePayload,
+    ...resolveForecastAccountRules({
+      account_type: input.accountType,
+      provider: input.provider || null,
+      name: input.name,
+      forecast_role: input.forecastRole ?? undefined,
+      include_in_cashflow: input.includeInCashflow ?? undefined,
+      include_in_budget: input.includeInBudget ?? undefined,
+      include_in_net_worth: input.includeInNetWorth ?? undefined,
+      owner_scope: input.ownerScope ?? undefined,
+    }),
+  };
 }
 
 export async function listBankAccounts(): Promise<BankAccount[]> {
@@ -84,16 +165,20 @@ export async function listBankAccounts(): Promise<BankAccount[]> {
 export async function listBankAccountsForUser(
   userId: string,
 ): Promise<BankAccount[]> {
-  const { data, error } = await supabase
-    .from("bank_accounts")
-    .select(
-      "id,name,account_type,provider,currency,account_masked,is_active,include_in_budget",
-    )
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+  const fetchAccounts = async (select: string) =>
+    supabase
+      .from("bank_accounts")
+      .select(select)
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
 
-  if (error) throw error;
-  return ((data || []) as Record<string, unknown>[]).map(toBankAccountRecord);
+  let result = await fetchAccounts(BANK_ACCOUNT_SCOPED_SELECT);
+  if (result.error && (isMissingColumnError(result.error) || isMissingRelationError(result.error))) {
+    result = await fetchAccounts(BANK_ACCOUNT_LEGACY_SELECT);
+  }
+
+  if (result.error) throw result.error;
+  return ((result.data || []) as Record<string, unknown>[]).map(toBankAccountRecord);
 }
 
 export async function listBankAccountHashes(userId?: string): Promise<string[]> {
@@ -124,6 +209,10 @@ export type CreateBankAccountInput = {
   currency?: string;
   includeInBudget?: boolean;
   isActive?: boolean;
+  forecastRole?: BankAccount["forecast_role"];
+  includeInCashflow?: boolean;
+  includeInNetWorth?: boolean;
+  ownerScope?: BankAccount["owner_scope"];
 };
 
 export type UpdateBankAccountInput = {
@@ -135,6 +224,10 @@ export type UpdateBankAccountInput = {
   currency?: string;
   includeInBudget?: boolean;
   isActive?: boolean;
+  forecastRole?: BankAccount["forecast_role"];
+  includeInCashflow?: boolean;
+  includeInNetWorth?: boolean;
+  ownerScope?: BankAccount["owner_scope"];
 };
 
 export async function createBankAccount(
@@ -146,89 +239,123 @@ export async function createBankAccount(
     normalizedAccount != null
       ? await hashAccountNumber(normalizedAccount)
       : null;
-  const { data, error } = await supabase
+  const scopedPayload = buildBankAccountPayload(
+    input,
+    userId,
+    normalizedAccount,
+    accountHash,
+    true,
+  );
+  const legacyPayload = buildBankAccountPayload(
+    input,
+    userId,
+    normalizedAccount,
+    accountHash,
+    false,
+  );
+
+  let result = await supabase
     .from("bank_accounts")
-    .insert({
-      user_id: userId,
-      name: input.name,
-      account_type: input.accountType,
-      provider: input.provider || null,
-      currency: input.currency || "EUR",
-      include_in_budget:
-        input.includeInBudget == null ? true : Boolean(input.includeInBudget),
-      is_active: input.isActive == null ? true : Boolean(input.isActive),
-      account_masked:
-        normalizedAccount != null ? maskAccountNumber(normalizedAccount) : null,
-      account_hash: accountHash,
-    })
-    .select(
-      "id,name,account_type,provider,currency,account_masked,is_active,include_in_budget",
-    )
+    .insert(scopedPayload)
+    .select(BANK_ACCOUNT_SCOPED_SELECT)
     .single();
 
-  if (!data || error) {
-    throw error || new Error("Failed to insert bank account.");
+  // Fallback-only bridge for older schemas: if the scoped columns are missing,
+  // we still persist the base bank-account row so the app stays usable.
+  if (result.error && (isMissingColumnError(result.error) || isMissingRelationError(result.error))) {
+    result = await supabase
+      .from("bank_accounts")
+      .insert(legacyPayload)
+      .select(BANK_ACCOUNT_LEGACY_SELECT)
+      .single();
   }
 
-  return toBankAccountRecord(data as Record<string, unknown>);
+  if (!result.data || result.error) {
+    throw result.error || new Error("Failed to insert bank account.");
+  }
+
+  return toBankAccountRecord(result.data as Record<string, unknown>);
 }
 
 export async function findBankAccountByHash(
   accountHash: string,
 ): Promise<BankAccount | null> {
   const userId = await requireCurrentUserId();
-  const { data, error } = await supabase
-    .from("bank_accounts")
-    .select(
-      "id,name,account_type,provider,currency,account_masked,is_active,include_in_budget",
-    )
-    .eq("user_id", userId)
-    .eq("account_hash", accountHash)
-    .maybeSingle();
+  const fetchAccount = (select: string) =>
+    supabase
+      .from("bank_accounts")
+      .select(select)
+      .eq("user_id", userId)
+      .eq("account_hash", accountHash)
+      .maybeSingle();
 
-  if (error) throw error;
-  return data ? toBankAccountRecord(data as Record<string, unknown>) : null;
+  let result = await fetchAccount(BANK_ACCOUNT_SCOPED_SELECT);
+  // Fallback-only bridge for older schemas: read the legacy projection when
+  // scoped columns are not available yet.
+  if (result.error && (isMissingColumnError(result.error) || isMissingRelationError(result.error))) {
+    result = await fetchAccount(BANK_ACCOUNT_LEGACY_SELECT);
+  }
+
+  if (result.error) throw result.error;
+  return result.data ? toBankAccountRecord(result.data as Record<string, unknown>) : null;
 }
 
 export async function updateBankAccount(
   input: UpdateBankAccountInput,
 ): Promise<BankAccount> {
   const userId = await requireCurrentUserId();
-  const payload: Record<string, unknown> = {
-    name: input.name,
-    account_type: input.accountType,
-    provider: input.provider || null,
-    currency: input.currency || "EUR",
-    include_in_budget:
-      input.includeInBudget == null ? true : Boolean(input.includeInBudget),
-    is_active: input.isActive == null ? true : Boolean(input.isActive),
-  };
+  const scopedPayload = buildBankAccountPayload(
+    input,
+    userId,
+    null,
+    null,
+    true,
+  );
+  const legacyPayload = buildBankAccountPayload(
+    input,
+    userId,
+    null,
+    null,
+    false,
+  );
 
   if (Object.prototype.hasOwnProperty.call(input, "accountNumber")) {
     const normalizedAccount = normalizeAccountNumber(input.accountNumber);
-    payload.account_masked =
+    scopedPayload.account_masked =
       normalizedAccount != null ? maskAccountNumber(normalizedAccount) : null;
-    payload.account_hash =
+    scopedPayload.account_hash =
       normalizedAccount != null
         ? await hashAccountNumber(normalizedAccount)
         : null;
+    legacyPayload.account_masked = scopedPayload.account_masked;
+    legacyPayload.account_hash = scopedPayload.account_hash;
   }
 
-  const { data, error } = await supabase
+  let result = await supabase
     .from("bank_accounts")
-    .update(payload)
+    .update(scopedPayload)
     .eq("user_id", userId)
     .eq("id", input.id)
-    .select(
-      "id,name,account_type,provider,currency,account_masked,is_active,include_in_budget",
-    )
+    .select(BANK_ACCOUNT_SCOPED_SELECT)
     .single();
 
-  if (!data || error) {
-    throw error || new Error("Failed to update bank account.");
+  // Fallback-only bridge for older schemas: mirror the legacy update path if
+  // the scoped projection cannot be written yet.
+  if (result.error && (isMissingColumnError(result.error) || isMissingRelationError(result.error))) {
+    result = await supabase
+      .from("bank_accounts")
+      .update(legacyPayload)
+      .eq("user_id", userId)
+      .eq("id", input.id)
+      .select(BANK_ACCOUNT_LEGACY_SELECT)
+      .single();
   }
 
-  return toBankAccountRecord(data as Record<string, unknown>);
+  if (!result.data || result.error) {
+    throw result.error || new Error("Failed to update bank account.");
+  }
+
+  return toBankAccountRecord(result.data as Record<string, unknown>);
 }
 
 export async function getBankAccountTransactionCount(
@@ -277,14 +404,27 @@ export async function deleteBankAccountWithTransactions(
 
 export async function listBankAccountBudgetFlags(
   userId?: string,
+  moneyViewScope?: import("@/services/finance-scope").MoneyViewScope,
 ): Promise<Map<string, boolean>> {
   const resolvedUserId = userId || (await requireCurrentUserId());
   const accounts = await listBankAccountsForUser(resolvedUserId);
+  const resolvedScope =
+    moneyViewScope ||
+    // If the caller doesn't provide a scope, fall back to the app-level
+    // finance preference instead of inventing a second budget context here.
+    (
+      await loadMoneyViewScopePreference(resolvedUserId).catch(() => ({
+        scopeView: "personal" as const,
+      }))
+    ).scopeView;
   return new Map(
-    accounts.map((account) => [
-      account.id,
-      resolveForecastAccountRules(account).include_in_budget,
-    ]),
+    accounts.map((account) => {
+      const included = isAccountIncludedInBudgetMoneyViewScope(
+        account,
+        resolvedScope,
+      );
+      return [account.id, included] as const;
+    }),
   );
 }
 

@@ -1,5 +1,9 @@
 import { BankAccountFormSheet } from "@/components/bank-accounts/bank-account-form-sheet";
-import { ForecastAccountMeta } from "@/components/bank-accounts/forecast-account-meta";
+import {
+  formatAccountMaskedNumber,
+  formatAccountOverviewSummary,
+  formatAccountOwnerContext,
+} from "@/components/bank-accounts/account-overview-summary";
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
@@ -34,57 +38,11 @@ const ACCOUNT_TYPE_LABELS: Record<BankAccount["account_type"], string> = {
   other: "Overig",
 };
 
-function getStatusLabel(account: BankAccount) {
-  if (!account.is_active) return "Gearchiveerd";
-  if (account.include_in_budget === false) return "Alleen overzicht";
-  return "In budget";
-}
-
-function getStatusTone(account: BankAccount) {
-  if (!account.is_active) return "muted" as const;
-  if (account.include_in_budget === false) return "watch" as const;
-  return "good" as const;
-}
-
 function formatDeleteCountLabel(count: number | null) {
   if (count == null) return "We controleren hoeveel transacties gekoppeld zijn.";
   if (count === 0) return "Er zijn geen gekoppelde transacties gevonden.";
   if (count === 1) return "We verwijderen ook 1 gekoppelde transactie van deze rekening.";
   return `We verwijderen ook ${count} gekoppelde transacties van deze rekening.`;
-}
-
-function StatusChip({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: "good" | "watch" | "muted";
-}) {
-  return (
-    <View
-      style={[
-        styles.statusChip,
-        tone === "good"
-          ? styles.statusChipGood
-          : tone === "watch"
-            ? styles.statusChipWatch
-            : styles.statusChipMuted,
-      ]}
-    >
-      <Text
-        style={[
-          styles.statusChipText,
-          tone === "good"
-            ? styles.statusChipTextGood
-            : tone === "watch"
-              ? styles.statusChipTextWatch
-              : styles.statusChipTextMuted,
-        ]}
-      >
-        {label}
-      </Text>
-    </View>
-  );
 }
 
 type DeleteConfirmSheetProps = {
@@ -347,6 +305,8 @@ export default function BankrekeningenScreen() {
           ) : sortedAccounts.length ? (
             sortedAccounts.map((account) => {
               const cardTone = getCardTone(account);
+              const ownerContext = formatAccountOwnerContext(account.owner_scope);
+              const summary = formatAccountOverviewSummary(account);
               return (
                 <View
                   key={account.id}
@@ -361,8 +321,26 @@ export default function BankrekeningenScreen() {
                 >
                   <View style={styles.accountCardHeader}>
                     <Text style={styles.accountTypeLabel}>
-                      {ACCOUNT_TYPE_LABELS[account.account_type].toUpperCase()}
+                      {ACCOUNT_TYPE_LABELS[account.account_type]}
                     </Text>
+                  </View>
+
+                  <Text style={styles.accountName}>{account.name}</Text>
+
+                  <Text style={styles.providerLine}>
+                    {account.provider || "Onbekende aanbieder"} · {formatAccountMaskedNumber(account.account_masked)}
+                  </Text>
+
+                  <Text style={styles.accountSummary}>{summary}</Text>
+
+                  <View style={styles.accountCardFooter}>
+                    <View style={styles.accountFooterLeft}>
+                      {ownerContext ? (
+                        <View style={styles.contextChip}>
+                          <Text style={styles.contextChipText}>{ownerContext}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                     <View style={styles.accountHeaderActions}>
                       <Pressable
                         accessibilityRole="button"
@@ -387,35 +365,6 @@ export default function BankrekeningenScreen() {
                         <AppIcon name="delete-outline" size={16} color={FinColors.red} variant="outlined" />
                       </Pressable>
                     </View>
-                  </View>
-
-                  <Text style={styles.accountName}>{account.name}</Text>
-
-                  <View style={styles.providerRow}>
-                    <View style={styles.accountBadge}>
-                      <AppIcon
-                        name="account-balance"
-                        size={18}
-                        color={FinColors.warningText}
-                        variant="outlined"
-                      />
-                    </View>
-                    <Text style={styles.providerName}>
-                      {account.provider || "Onbekende aanbieder"}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.accountNumberText}>
-                    {account.account_masked || "Geen rekeningnummer bekend"}
-                  </Text>
-
-                  <ForecastAccountMeta account={account} variant="chips" />
-
-                  <View style={styles.accountCardFooter}>
-                    <StatusChip
-                      label={getStatusLabel(account)}
-                      tone={getStatusTone(account)}
-                    />
                   </View>
                 </View>
               );
@@ -598,11 +547,10 @@ const styles = StyleSheet.create({
   },
   accountTypeLabel: {
     fontSize: 12,
-    lineHeight: 15,
+    lineHeight: 16,
     color: FinColors.textMuted,
-    fontWeight: "800",
-    letterSpacing: 1.1,
-    textTransform: "uppercase",
+    fontWeight: "700",
+    letterSpacing: 0.4,
   },
   accountHeaderActions: {
     flexDirection: "row",
@@ -617,17 +565,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(17,17,17,0.06)",
   },
-  accountBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    borderWidth: 1,
-    borderColor: "rgba(17,17,17,0.05)",
-  },
   accountName: {
     fontSize: 18,
     lineHeight: 24,
@@ -635,60 +572,41 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: -0.6,
   },
-  providerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+  providerLine: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
   },
-  providerName: {
+  accountSummary: {
     fontSize: 14,
     lineHeight: 20,
     color: FinColors.textPrimary,
-    fontWeight: "700",
-  },
-  accountNumberText: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: "#4f4a44",
-    fontWeight: "700",
-    letterSpacing: 1.8,
+    fontWeight: "600",
   },
   accountCardFooter: {
-    marginTop: 8,
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  statusChip: {
+  accountFooterLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  contextChip: {
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    backgroundColor: "rgba(17,17,17,0.07)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     alignSelf: "flex-start",
   },
-  statusChipGood: {
-    backgroundColor: "#e7f3a8",
-  },
-  statusChipWatch: {
-    backgroundColor: FinColors.warningBg,
-  },
-  statusChipMuted: {
-    backgroundColor: "rgba(17,17,17,0.08)",
-  },
-  statusChipText: {
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: "900",
-    letterSpacing: 0.9,
-    textTransform: "uppercase",
-  },
-  statusChipTextGood: {
-    color: "#5b6a1b",
-  },
-  statusChipTextWatch: {
-    color: FinColors.warningText,
-  },
-  statusChipTextMuted: {
+  contextChipText: {
+    fontSize: 12,
+    lineHeight: 14,
     color: FinColors.textSecondary,
+    fontWeight: "700",
   },
   emptyCard: {
     ...FinSurfaces.topLevelCard,

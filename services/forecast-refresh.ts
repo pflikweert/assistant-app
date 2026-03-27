@@ -1,5 +1,6 @@
 import { requireCurrentUserId } from "@/services/current-user";
 import { recomputeCurrentMonthCashflowForecast } from "@/services/forecasting";
+import { normalizeMoneyViewScope, type MoneyViewScope } from "@/services/finance-scope";
 import { supabase } from "@/services/supabase";
 import type {
   ForecastRefreshReason,
@@ -13,6 +14,7 @@ export type EnsureForecastFreshOptions = {
   reason: ForecastRefreshReason;
   maxAgeMs?: number;
   force?: boolean;
+  moneyViewScope?: MoneyViewScope;
 };
 
 type MarkForecastDirtyOptions = {
@@ -24,6 +26,7 @@ export type RequestForecastRefreshOptions = {
   reason: ForecastRefreshReason;
   delayMs?: number;
   eager?: boolean;
+  moneyViewScope?: MoneyViewScope;
 };
 
 type ScheduledRefresh = {
@@ -271,6 +274,7 @@ export async function ensureForecastFresh(
   const userId = await requireCurrentUserId();
   const referenceDate = options.referenceDate || new Date();
   const maxAgeMs = options.maxAgeMs ?? DEFAULT_FORECAST_MAX_AGE_MS;
+  const moneyViewScope = normalizeMoneyViewScope(options.moneyViewScope);
 
   if (!options.force) {
     const currentStatus = await loadForecastRefreshStatusForUser(userId);
@@ -286,7 +290,9 @@ export async function ensureForecastFresh(
 
   const refreshPromise = (async () => {
     try {
-      await recomputeCurrentMonthCashflowForecast(referenceDate);
+      await recomputeCurrentMonthCashflowForecast(referenceDate, {
+        moneyViewScope,
+      });
       return await markForecastRefreshSuccess(userId, options.reason);
     } catch (error) {
       await markForecastRefreshFailure(userId, options.reason, error);
@@ -311,6 +317,7 @@ export async function requestForecastRefresh(
   const userId = await requireCurrentUserId();
   const referenceDate = options.referenceDate || new Date();
   const delayMs = Math.max(options.delayMs ?? DEFAULT_FORECAST_RECOMPUTE_DELAY_MS, 0);
+  const moneyViewScope = normalizeMoneyViewScope(options.moneyViewScope);
 
   await markForecastDirty(options.reason, { userId });
 
@@ -322,6 +329,7 @@ export async function requestForecastRefresh(
       referenceDate,
       reason: options.reason,
       force: true,
+      moneyViewScope,
     }).catch((error) => {
       console.warn("[forecast-refresh] eager recompute failed", error);
     });
@@ -333,6 +341,7 @@ export async function requestForecastRefresh(
     void ensureForecastFresh({
       referenceDate,
       reason: options.reason,
+      moneyViewScope,
     }).catch((error) => {
       console.warn("[forecast-refresh] scheduled recompute failed", error);
     });
@@ -348,10 +357,12 @@ export async function requestForecastRefresh(
 export async function resetAndRecomputeForecast(options: {
   referenceDate?: Date;
   reason?: ForecastRefreshReason;
+  moneyViewScope?: MoneyViewScope;
 } = {}) {
   const userId = await requireCurrentUserId();
   const referenceDate = options.referenceDate || new Date();
   const reason = options.reason || "manual_refresh";
+  const moneyViewScope = normalizeMoneyViewScope(options.moneyViewScope);
 
   cancelScheduledForecastRefresh(userId);
 
@@ -369,7 +380,9 @@ export async function resetAndRecomputeForecast(options: {
   await deleteForecastArtifactsForUser(userId);
 
   try {
-    await recomputeCurrentMonthCashflowForecast(referenceDate);
+    await recomputeCurrentMonthCashflowForecast(referenceDate, {
+      moneyViewScope,
+    });
     return await markForecastRefreshSuccess(userId, reason);
   } catch (error) {
     await markForecastRefreshFailure(userId, reason, error);

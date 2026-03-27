@@ -20,10 +20,16 @@ import {
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
 import {
+  getMoneyViewScopeLabel,
+  resolveAvailableMoneyViewScopes,
+  type MoneyViewScope,
+} from "@/services/finance-scope";
+import { loadMoneyViewScopePreference } from "@/services/finance-scope-preference";
+import {
   parseRunningBalance,
-  resolveLatestKnownBalanceSnapshot,
 } from "@/services/latest-known-balance";
 import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
+import { listBankAccountsForUser } from "@/services/bank-accounts";
 import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import type {
@@ -118,6 +124,12 @@ export default function DashboardScreen() {
     React.useState<BudgetPlanComputation | null>(null);
   const [dashboardBalances, setDashboardBalances] =
     React.useState<FinancialSurfaceBalanceSnapshot | null>(null);
+  const [availableScopeOptions, setAvailableScopeOptions] = React.useState<
+    readonly MoneyViewScope[]
+  >(["personal"]);
+  const [moneyViewScope, setMoneyViewScope] = React.useState<
+    import("@/services/finance-scope").MoneyViewScope
+  >("personal");
   const [budgetSchemaMissing, setBudgetSchemaMissing] = React.useState(false);
   const [isBootstrapping, setIsBootstrapping] = React.useState(true);
   const budgetLoadInFlight = React.useRef(false);
@@ -251,26 +263,16 @@ export default function DashboardScreen() {
 
       if (!rows.length) {
         setTransactions([]);
-        return null;
+        return;
       }
 
       setTransactions(recentRows);
-
-      const latestBalance = resolveLatestKnownBalanceSnapshot(
-        (data || []) as {
-          date?: string | null;
-          metadata?: Record<string, unknown> | null;
-        }[],
-      ).balance;
-
-      return latestBalance;
     } catch (error) {
       console.error("[dashboard] load error", error);
-      return null;
     }
   }, []);
 
-  const loadBudget = React.useCallback(async (currentBalanceOverride?: number | null) => {
+  const loadBudget = React.useCallback(async (scope: MoneyViewScope) => {
     if (budgetSchemaMissing) {
       setBudgetPlan(null);
       setDashboardBalances(null);
@@ -280,10 +282,17 @@ export default function DashboardScreen() {
 
     budgetLoadInFlight.current = true;
     try {
+      const userId = await requireCurrentUserId();
+      const bankAccounts = await listBankAccountsForUser(userId).catch(
+        () => [] as Awaited<ReturnType<typeof listBankAccountsForUser>>,
+      );
+      const visibleScopes = resolveAvailableMoneyViewScopes(bankAccounts, scope);
+      setAvailableScopeOptions(visibleScopes);
       const { plan, balances } = await loadBudgetPlanForSurface({
         referenceDate: new Date(),
         planKey: "default",
-        currentBalanceOverride,
+        moneyViewScope: scope,
+        userId,
       });
       setBudgetPlan(plan);
       setDashboardBalances(balances);
@@ -303,11 +312,23 @@ export default function DashboardScreen() {
     }
   }, [budgetSchemaMissing]);
 
+  const refreshActiveScopeAndBudget = React.useCallback(async () => {
+    const preference = await loadMoneyViewScopePreference().catch(() => ({
+      scopeView: "personal" as const,
+    }));
+    setMoneyViewScope(preference.scopeView);
+    await loadBudget(preference.scopeView);
+  }, [loadBudget]);
+
   const loadInitialDashboard = React.useCallback(async () => {
     try {
       await loadCategories();
-      const latestBalance = await loadDashboard();
-      await loadBudget(latestBalance);
+      const preference = await loadMoneyViewScopePreference().catch(() => ({
+        scopeView: "personal" as const,
+      }));
+      setMoneyViewScope(preference.scopeView);
+      await loadDashboard();
+      await loadBudget(preference.scopeView);
     } finally {
       setIsBootstrapping(false);
     }
@@ -327,14 +348,25 @@ export default function DashboardScreen() {
     if (!isFocused || !backgroundStatus.lastCompletedAt || isBootstrapping)
       return;
     void loadCategories();
-    void loadDashboard().then((latestBalance) => loadBudget(latestBalance));
+    void loadDashboard().then(() => refreshActiveScopeAndBudget());
   }, [
     backgroundStatus.lastCompletedAt,
     isBootstrapping,
     isFocused,
-    loadBudget,
     loadCategories,
     loadDashboard,
+    refreshActiveScopeAndBudget,
+  ]);
+
+  // Dashboard follows the app-wide finance scope passively, so we refresh the
+  // stored preference on focus and keep the surface in sync with Budget and Insights.
+  React.useEffect(() => {
+    if (!isFocused || isBootstrapping) return;
+    void refreshActiveScopeAndBudget();
+  }, [
+    isBootstrapping,
+    isFocused,
+    refreshActiveScopeAndBudget,
   ]);
 
   return (
@@ -387,6 +419,11 @@ export default function DashboardScreen() {
                 surfaceBalances={dashboardBalances}
                 monthLabel={dashboardPeriodLabel}
                 hasTransactions={hasTransactions}
+                scopeLabel={
+                  availableScopeOptions.length > 1
+                    ? getMoneyViewScopeLabel(moneyViewScope)
+                    : null
+                }
               />
 
               <DashboardBudgetOverviewCard

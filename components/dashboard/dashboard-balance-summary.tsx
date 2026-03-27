@@ -38,6 +38,7 @@ type DashboardBalanceSummaryProps = {
   surfaceBalances: FinancialSurfaceBalanceSnapshot | null;
   monthLabel: string;
   hasTransactions: boolean;
+  scopeLabel?: string | null;
 };
 
 function resolveFreeToSpendStatusText(
@@ -61,6 +62,7 @@ export function DashboardBalanceSummary({
   surfaceBalances,
   monthLabel,
   hasTransactions,
+  scopeLabel,
 }: DashboardBalanceSummaryProps) {
   const operational = surfaceBalances?.currentOperationalBalance.amount ?? null;
   const reserved = surfaceBalances?.currentReservedBalance;
@@ -99,6 +101,11 @@ export function DashboardBalanceSummary({
   return (
     <View style={styles.card}>
       <View style={styles.centerStack}>
+        {scopeLabel ? (
+          <View style={styles.scopePill}>
+            <Text style={styles.scopePillText}>{scopeLabel}</Text>
+          </View>
+        ) : null}
         <Text style={styles.kicker}>Vrij besteedbaar</Text>
 
         {primaryFormatted ? (
@@ -172,6 +179,20 @@ const styles = StyleSheet.create({
   centerStack: {
     alignItems: "center",
     gap: 16,
+  },
+  scopePill: {
+    borderRadius: 999,
+    backgroundColor: "rgba(17,17,17,0.06)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  scopePillText: {
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: FinColors.textSecondary,
   },
   kicker: {
     fontSize: 11,

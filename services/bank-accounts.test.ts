@@ -15,6 +15,7 @@ const {
   responseQueue,
   rpcQueue,
   requireCurrentUserIdMock,
+  loadMoneyViewScopePreferenceMock,
 } = vi.hoisted(() => {
   const responseQueue: { data: unknown; error: unknown }[] = [];
   const rpcQueue: { data: unknown; error: unknown }[] = [];
@@ -75,6 +76,7 @@ const {
     responseQueue,
     rpcQueue,
     requireCurrentUserIdMock: vi.fn(),
+    loadMoneyViewScopePreferenceMock: vi.fn(),
   };
 });
 
@@ -95,6 +97,10 @@ vi.mock("@/services/current-user", () => ({
   requireCurrentUserId: requireCurrentUserIdMock,
 }));
 
+vi.mock("@/services/finance-scope-preference", () => ({
+  loadMoneyViewScopePreference: loadMoneyViewScopePreferenceMock,
+}));
+
 vi.mock("@/services/supabase", () => ({
   supabase: {
     from: fromMock,
@@ -103,6 +109,7 @@ vi.mock("@/services/supabase", () => ({
 }));
 
 let createBankAccount: typeof import("./bank-accounts").createBankAccount;
+let listBankAccountsForUser: typeof import("./bank-accounts").listBankAccountsForUser;
 let updateBankAccount: typeof import("./bank-accounts").updateBankAccount;
 let getBankAccountTransactionCount: typeof import("./bank-accounts").getBankAccountTransactionCount;
 let deleteBankAccountWithTransactions: typeof import("./bank-accounts").deleteBankAccountWithTransactions;
@@ -114,6 +121,7 @@ describe("bank-accounts budget settings", () => {
     vi.resetModules();
     ({
       createBankAccount,
+      listBankAccountsForUser,
       updateBankAccount,
       getBankAccountTransactionCount,
       deleteBankAccountWithTransactions,
@@ -127,6 +135,11 @@ describe("bank-accounts budget settings", () => {
     rpcQueue.length = 0;
     requireCurrentUserIdMock.mockReset();
     requireCurrentUserIdMock.mockResolvedValue("user-123");
+    loadMoneyViewScopePreferenceMock.mockReset();
+    loadMoneyViewScopePreferenceMock.mockResolvedValue({
+      scopeView: "personal",
+      updatedAt: "2026-03-01T00:00:00.000Z",
+    });
   });
 
   afterEach(() => {
@@ -199,10 +212,14 @@ describe("bank-accounts budget settings", () => {
       data: [
         {
           id: "bank-1",
+          owner_scope: "personal",
+          forecast_role: "operational",
           include_in_budget: true,
         },
         {
           id: "bank-2",
+          owner_scope: "shared",
+          forecast_role: "shared",
           include_in_budget: false,
         },
       ],
@@ -218,6 +235,75 @@ describe("bank-accounts budget settings", () => {
     expect(isBankAccountIncludedInBudget("bank-1", budgetFlags)).toBe(true);
     expect(isBankAccountIncludedInBudget("bank-2", budgetFlags)).toBe(false);
     expect(isBankAccountIncludedInBudget("unknown", budgetFlags)).toBe(true);
+  });
+
+  it("sluit gedeelde rekeningen buiten de persoonlijke budgetscope", async () => {
+    loadMoneyViewScopePreferenceMock.mockResolvedValueOnce({
+      scopeView: "personal",
+      updatedAt: "2026-03-01T00:00:00.000Z",
+    });
+    responseQueue.push({
+      data: [
+        {
+          id: "bank-personal",
+          owner_scope: "personal",
+          forecast_role: "operational",
+          include_in_budget: true,
+        },
+        {
+          id: "bank-shared",
+          owner_scope: "shared",
+          forecast_role: "shared",
+          include_in_budget: true,
+        },
+      ],
+      error: null,
+    });
+
+    const budgetFlags = await listBankAccountBudgetFlags("user-123");
+
+    expect(budgetFlags.get("bank-personal")).toBe(true);
+    expect(budgetFlags.get("bank-shared")).toBe(false);
+  });
+
+  it("valt terug op de legacy bank_account-selectie wanneer scopekolommen nog ontbreken", async () => {
+    responseQueue.push(
+      {
+        data: null,
+        error: {
+          code: "42703",
+          message: "column bank_accounts.forecast_role does not exist",
+        },
+      },
+      {
+        data: [
+          {
+            id: "bank-legacy",
+            name: "Oude rekening",
+            account_type: "checking",
+            provider: "Rabobank",
+            currency: "EUR",
+            account_masked: "****1234",
+            is_active: true,
+            include_in_budget: true,
+          },
+        ],
+        error: null,
+      },
+    );
+
+    const accounts = await listBankAccountsForUser("user-123");
+
+    expect(queryLog[0]?.selects[0]).toContain("forecast_role");
+    expect(queryLog[1]?.selects[0]).toBe(
+      "id,name,account_type,provider,currency,account_masked,is_active,include_in_budget",
+    );
+    expect(accounts[0]).toMatchObject({
+      id: "bank-legacy",
+      name: "Oude rekening",
+      forecast_role: "operational",
+      owner_scope: "personal",
+    });
   });
 
   it("werkt een bankrekening bij inclusief budget- en activestatus", async () => {

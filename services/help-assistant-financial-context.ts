@@ -13,6 +13,7 @@ import { loadLatestKnownBalanceSnapshot } from "@/services/latest-known-balance"
 import { loadMonthForecastSummary } from "@/services/month-forecast-summary";
 import { RequestCache } from "@/services/request-cache";
 import { startOfUtcWeekMonday } from "@/services/budget-week-utils";
+import { loadMoneyViewScopePreference } from "@/services/finance-scope-preference";
 import {
   getCurrentMonthKey,
   getMonthOptionByKey,
@@ -442,12 +443,18 @@ export async function resolveUnifiedFinancialAdviceContext(input: {
   const nextMonthOption = getMonthOptionByKey(nextMonthKey)!;
   const referenceDate = getReferenceDate(selectedMonth);
   const userId = await requireCurrentUserId();
+  const scopePreference = await loadMoneyViewScopePreference(userId).catch(
+    () => ({
+      scopeView: "personal" as const,
+    }),
+  );
   const currentWeekStart = startOfUtcDay(startOfUtcWeekMonday(referenceDate));
   const currentWeekEnd = addDays(currentWeekStart, 7);
 
   const cacheKey = [
     "help-assistant-financial-context",
     userId,
+    scopePreference.scopeView,
     selectedMonth.key,
     selectedMonth.startIso,
   ].join(":");
@@ -461,6 +468,7 @@ export async function resolveUnifiedFinancialAdviceContext(input: {
         referenceDate,
         reason: "help_assistant_financial_current",
         userId,
+        moneyViewScope: scopePreference.scopeView,
       });
 
       const nextForecast = await loadMonthForecastSummary({
@@ -468,6 +476,7 @@ export async function resolveUnifiedFinancialAdviceContext(input: {
         referenceDate: new Date(`${nextMonthOption.startIso}T12:00:00.000Z`),
         reason: "help_assistant_financial_next",
         userId,
+        moneyViewScope: scopePreference.scopeView,
       });
 
       const { plan, forecast } = await loadBudgetPlanForSurface({
@@ -477,13 +486,18 @@ export async function resolveUnifiedFinancialAdviceContext(input: {
         forecastReason: "help_assistant_financial_context",
         forecastSummary: currentForecast,
         userId,
+        moneyViewScope: scopePreference.scopeView,
       });
 
       const activeForecast = forecast || currentForecast;
-      const currentBalance = await loadLatestKnownBalanceSnapshot(userId).catch(
-        () => ({ balance: null, date: null }),
-      );
-      const budgetFlags = await listBankAccountBudgetFlags(userId).catch(
+      const currentBalance = await loadLatestKnownBalanceSnapshot(
+        userId,
+        scopePreference.scopeView,
+      ).catch(() => ({ balance: null, date: null }));
+      const budgetFlags = await listBankAccountBudgetFlags(
+        userId,
+        scopePreference.scopeView,
+      ).catch(
         () => null,
       );
       const categoryById = await loadFinancialCategoryMap().catch(

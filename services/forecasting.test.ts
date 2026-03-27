@@ -6,6 +6,7 @@ import {
   resolveExpectedCashflowIncomeBaselineBreakdown,
 } from "./forecast-income-baseline";
 import { buildForecastMonthMath } from "./forecast-month-math";
+import { buildForecastTimelineEventRows } from "./forecast-timeline-persistence";
 
 describe("resolveExpectedCashflowIncomeBaseline", () => {
   it("prefers the budget planner basis when budget forecast mode is active", () => {
@@ -198,6 +199,59 @@ describe("resolveExpectedCashflowIncomeBaseline", () => {
     expect(result.remainingExpectedIncomeTotal).toBe(429);
     expect(result.expectedIncomeTotal).toBe(3729);
     expect(result.expectedExpenseTotal).toBe(1620);
+  });
+
+  it("stores the derived low-point timeline row with the active scope view", () => {
+    const rows = buildForecastTimelineEventRows({
+      row: {
+        scopeView: "shared",
+        monthStart: "2026-03-01",
+        forecastReferenceDate: "2026-03-27",
+        startingBalance: 2748.36,
+        currentBalanceAnchor: 2748.36,
+        currentBalanceAnchorDate: "2026-03-27",
+        bookedIncomeTotal: 0,
+        bookedExpenseTotal: 0,
+        bookedSavingsOutflowTotal: 0,
+        remainingExpectedIncomeTotal: 0,
+        remainingExpectedExpenseTotal: 0,
+        remainingExpectedSavingsOutflowTotal: 0,
+        expectedIncomeTotal: 0,
+        expectedIncomeStructuralTotal: 0,
+        expectedIncomeVariableTotal: 0,
+        expectedExpenseTotal: 0,
+        expectedSavingsOutflowTotal: 0,
+        expectedCashOutTotal: 0,
+        expectedFixedCosts: 0,
+        expectedSubscriptions: 0,
+        expectedVariableCosts: 0,
+        upcomingCommittedIncomeTotal: 0,
+        upcomingCommittedExpenseTotal: 0,
+        upcomingCommittedSavingsOutflowTotal: 0,
+        lowestExpectedBalance: 359.52,
+        lowestExpectedBalanceDate: "2026-03-28",
+        nextExpectedEventDate: null,
+        nextExpectedEventLabel: null,
+        avgGroceries: 0,
+        avgFuel: 0,
+        avgSmoking: 0,
+        avgOtherVariable: 0,
+        expectedEndOfMonthBalance: 1803.31,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        topCostBuckets: [],
+      },
+      userId: "user-123",
+      events: [],
+      computedAtIso: "2026-03-27T12:00:00.000Z",
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      scope_view: "shared",
+      event_type: "milestone_lowest_balance",
+      event_key: "derived|milestone_lowest_balance|2026-03-28",
+    });
   });
 
   it("keeps actual current-month expense overruns in the forecast totals", () => {

@@ -22,7 +22,12 @@ import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceMonthSelector } from "@/components/ui/finance-month-selector";
 import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
+import { FinanceScopeSwitch } from "@/components/ui/finance-scope-switch";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
+import {
+  resolveAvailableMoneyViewScopes,
+  type MoneyViewScope,
+} from "@/services/finance-scope";
 import {
   resolveLockedVariableMainCategories,
   shouldPersistCategoryOnBudgetSave,
@@ -55,7 +60,12 @@ import {
   getCategoryPathLabel,
 } from "@/services/category-display";
 import { requireCurrentUserId } from "@/services/current-user";
+import {
+  loadMoneyViewScopePreference,
+  upsertMoneyViewScopePreference,
+} from "@/services/finance-scope-preference";
 import { markForecastDirty } from "@/services/forecast-refresh";
+import { listBankAccountsForUser } from "@/services/bank-accounts";
 import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import {
@@ -853,6 +863,12 @@ export default function BudgetScreen() {
   );
   const [monthOptionsLoaded, setMonthOptionsLoaded] = React.useState(false);
   const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
+  const [moneyViewScope, setMoneyViewScope] = React.useState<MoneyViewScope>(
+    "personal",
+  );
+  const [availableScopeOptions, setAvailableScopeOptions] = React.useState<
+    readonly MoneyViewScope[]
+  >(["personal"]);
   const [budgetPlan, setBudgetPlan] =
     React.useState<BudgetPlanComputation | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -985,7 +1001,9 @@ export default function BudgetScreen() {
     }
   }, [fallbackMonthOption]);
 
-  const loadBudget = React.useCallback(async () => {
+  const loadBudget = React.useCallback(async (
+    scopeOverride?: import("@/services/finance-scope").MoneyViewScope,
+  ) => {
     if (budgetLoadInFlight.current) return;
     if (!selectedMonth) return;
 
@@ -994,6 +1012,25 @@ export default function BudgetScreen() {
     }
     budgetLoadInFlight.current = true;
     try {
+      const userId = await requireCurrentUserId();
+      const [preference, bankAccounts] = await Promise.all([
+        scopeOverride
+          ? Promise.resolve({ scopeView: scopeOverride })
+          : loadMoneyViewScopePreference(userId).catch(() => ({
+              scopeView: "personal" as const,
+            })),
+        listBankAccountsForUser(userId).catch(() => []),
+      ]);
+      const availableScopes = resolveAvailableMoneyViewScopes(
+        bankAccounts,
+        preference.scopeView,
+      );
+      const resolvedScope =
+        availableScopes.includes(preference.scopeView)
+          ? preference.scopeView
+          : availableScopes[0] || preference.scopeView;
+      setAvailableScopeOptions(availableScopes);
+      setMoneyViewScope(resolvedScope);
       const referenceDate =
         selectedMonth.isCurrentMonth
           ? new Date()
@@ -1006,6 +1043,7 @@ export default function BudgetScreen() {
         referenceDate,
         planKey: "default",
         timelineReference: new Date(),
+        moneyViewScope: resolvedScope,
       });
       setBudgetPlan(surface.plan);
       setAssistantForecastSurface(surface);
@@ -1018,6 +1056,17 @@ export default function BudgetScreen() {
       setLoading(false);
     }
   }, [selectedMonth]);
+
+  const handleScopeChange = React.useCallback(
+    async (scope: import("@/services/finance-scope").MoneyViewScope) => {
+      setMoneyViewScope(scope);
+      await upsertMoneyViewScopePreference(scope).catch((error) => {
+        console.warn("[budget] scope preference save error", error);
+      });
+      await loadBudget(scope);
+    },
+    [loadBudget],
+  );
 
   React.useEffect(() => {
     budgetPlanRef.current = budgetPlan;
@@ -2831,6 +2880,15 @@ export default function BudgetScreen() {
                 if (nextOption) setSelectedMonthKey(nextOption.key);
               }}
             />
+            <View style={styles.scopeBlock}>
+              {availableScopeOptions.length > 1 ? (
+                <FinanceScopeSwitch
+                  value={moneyViewScope}
+                  options={availableScopeOptions}
+                  onChange={(scope) => void handleScopeChange(scope)}
+                />
+              ) : null}
+            </View>
             <View style={styles.segmentRow}>
               {SEGMENTS.map((item) => (
                 <TouchableOpacity
@@ -4418,6 +4476,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     marginTop: 16,
+  },
+  scopeBlock: {
+    gap: 8,
+    marginTop: 10,
   },
   segmentChip: {
     paddingHorizontal: 14,

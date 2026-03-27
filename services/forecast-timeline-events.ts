@@ -1,5 +1,9 @@
 import { supabase } from "@/services/supabase";
 import type { ForecastEvent } from "@/services/forecast-domain";
+import {
+  normalizeMoneyViewScope,
+  type MoneyViewScope,
+} from "@/services/finance-scope";
 
 export type ForecastTimelineEventRecord = {
   eventKey: string;
@@ -98,20 +102,37 @@ function isMissingColumnError(error: unknown) {
 export async function listForecastTimelineEvents(params: {
   userId: string;
   monthStart: string;
+  moneyViewScope?: MoneyViewScope;
 }): Promise<ForecastTimelineEventRecord[]> {
   const { userId, monthStart } = params;
+  const moneyViewScope = normalizeMoneyViewScope(params.moneyViewScope);
 
   const legacySelect =
     "event_key,event_date,event_type,label,amount,source,confidence,fingerprint";
 
-  const result: any = await supabase
+  const scopedSelect =
+    "event_key,event_date,event_type,label,amount,source,confidence,fingerprint,scope_view";
+
+  let result: any = await supabase
     .from("forecast_timeline_events")
-    .select(legacySelect)
+    .select(scopedSelect)
     .eq("user_id", userId)
+    .eq("scope_view", moneyViewScope)
     .eq("month_start", monthStart)
     .order("event_date", { ascending: true })
     .order("event_key", { ascending: true })
     .limit(200);
+
+  if (result.error && isMissingColumnError(result.error)) {
+    result = await supabase
+      .from("forecast_timeline_events")
+      .select(legacySelect)
+      .eq("user_id", userId)
+      .eq("month_start", monthStart)
+      .order("event_date", { ascending: true })
+      .order("event_key", { ascending: true })
+      .limit(200);
+  }
 
   if (result.error) {
     if (isMissingRelationError(result.error) || isMissingColumnError(result.error)) {

@@ -8,6 +8,7 @@ import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selecto
 import { FinanceForecastSummaryCard } from "@/components/ui/finance-forecast-summary-card";
 import { FinanceCategorySummaryCard } from "@/components/ui/finance-category-summary-card";
 import { FinanceMonthSelector } from "@/components/ui/finance-month-selector";
+import { FinanceScopeSwitch } from "@/components/ui/finance-scope-switch";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceSectionHeader } from "@/components/ui/finance-section-header";
@@ -34,6 +35,7 @@ import {
   buildInsightsForecastCard,
   type InsightsForecastCardModel,
 } from "@/services/insights-forecast-card";
+import { listBankAccountsForUser } from "@/services/bank-accounts";
 import {
   loadLatestKnownBalanceSnapshot,
   type LatestKnownBalanceSnapshot,
@@ -48,6 +50,14 @@ import {
   getInsightsRemainingPlannedExpenseTotal,
   getInsightsRemainingVariableExpenseEstimate,
 } from "@/services/insights-remaining-month";
+import {
+  loadMoneyViewScopePreference,
+  upsertMoneyViewScopePreference,
+} from "@/services/finance-scope-preference";
+import {
+  resolveAvailableMoneyViewScopes,
+  type MoneyViewScope,
+} from "@/services/finance-scope";
 import { buildInsightsCategorySummary } from "@/services/insights-category-summary";
 import { buildInsightsUpcomingMoments } from "@/services/insights-upcoming-moments";
 import { supabase } from "@/services/supabase";
@@ -194,6 +204,12 @@ export default function InsightsScreen() {
       balance: null,
       date: null,
     });
+  const [moneyViewScope, setMoneyViewScope] = React.useState<MoneyViewScope>(
+    "personal",
+  );
+  const [availableScopeOptions, setAvailableScopeOptions] = React.useState<
+    readonly MoneyViewScope[]
+  >(["personal"]);
   const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
   const [allCategoriesOpen, setAllCategoriesOpen] = React.useState(false);
   const [remainingMonthOpen, setRemainingMonthOpen] = React.useState(false);
@@ -295,10 +311,12 @@ export default function InsightsScreen() {
   const loadBudgetSurface = React.useCallback(
     async (
       userId: string,
+      scopeView: import("@/services/finance-scope").MoneyViewScope,
       currentBalanceOverride?: number | null,
     ): Promise<{
       forecast: InsightsForecastSummary | null;
       plan: BudgetPlanComputation | null;
+      scopeView: import("@/services/finance-scope").MoneyViewScope;
     }> => {
       try {
         const reason = selectedMonth.isCurrentMonth
@@ -313,17 +331,18 @@ export default function InsightsScreen() {
           timelineReference: new Date(),
           forecastReason: reason,
           currentBalanceOverride,
+          moneyViewScope: scopeView,
           userId,
         });
 
         return result;
       } catch (error) {
         if (isMissingRelationError(error)) {
-          return { forecast: null, plan: null };
+          return { forecast: null, plan: null, scopeView };
         }
 
         console.error("[insights] budget surface load error", error);
-        return { forecast: null, plan: null };
+        return { forecast: null, plan: null, scopeView };
       }
     },
     [selectedMonth],
@@ -432,9 +451,33 @@ export default function InsightsScreen() {
     [selectedMonth],
   );
 
-  const refreshInsights = React.useCallback(async () => {
+  const refreshInsights = React.useCallback(async (
+    scopeOverride?: import("@/services/finance-scope").MoneyViewScope,
+  ) => {
     const userId = await requireCurrentUserId();
-    const liveBalanceSnapshot = await loadLatestKnownBalanceSnapshot(userId).catch(
+    const preference = scopeOverride
+      ? { scopeView: scopeOverride }
+      : await loadMoneyViewScopePreference(userId).catch(() => ({
+          scopeView: "personal" as const,
+        }));
+    const bankAccounts = await listBankAccountsForUser(userId).catch(
+      () => [] as Awaited<ReturnType<typeof listBankAccountsForUser>>,
+    );
+    const availableScopes = resolveAvailableMoneyViewScopes(
+      bankAccounts,
+      preference.scopeView,
+    );
+    const resolvedScope =
+      availableScopes.includes(preference.scopeView)
+        ? preference.scopeView
+        : availableScopes[0] || preference.scopeView;
+    setAvailableScopeOptions(availableScopes);
+    setMoneyViewScope(resolvedScope);
+
+    const liveBalanceSnapshot = await loadLatestKnownBalanceSnapshot(
+      userId,
+      resolvedScope,
+    ).catch(
       (error) => {
         console.warn("[insights] latest balance load error", error);
         return { balance: null, date: null } satisfies LatestKnownBalanceSnapshot;
@@ -442,7 +485,7 @@ export default function InsightsScreen() {
     );
     const [budgetSurface, insightSignals, highlightHistory] =
       await Promise.all([
-        loadBudgetSurface(userId, liveBalanceSnapshot.balance),
+        loadBudgetSurface(userId, resolvedScope, liveBalanceSnapshot.balance),
         loadInsightSignals(userId),
         loadInsightsHighlightHistory(userId, selectedMonth.key),
       ]);
@@ -456,6 +499,7 @@ export default function InsightsScreen() {
     const nextTimelineEvents = await listForecastTimelineEvents({
       userId,
       monthStart: selectedMonth.startIso,
+      moneyViewScope: resolvedScope,
     }).catch((error) => {
       console.warn("[insights] timeline events load error", error);
       return [] as ForecastTimelineEventRecord[];
@@ -574,8 +618,23 @@ export default function InsightsScreen() {
               if (!canGoToNewerMonth) return;
               const nextOption = monthOptions[selectedMonthIndex - 1];
               if (nextOption) setSelectedMonthKey(nextOption.key);
-            }}
+              }}
           />
+          <View style={styles.scopeBlock}>
+            {availableScopeOptions.length > 1 ? (
+              <FinanceScopeSwitch
+                value={moneyViewScope}
+                options={availableScopeOptions}
+                onChange={(scope) => {
+                  setMoneyViewScope(scope);
+                  void upsertMoneyViewScopePreference(scope).catch((error) => {
+                    console.warn("[insights] scope preference save error", error);
+                  });
+                  void refreshInsights(scope);
+                }}
+              />
+            ) : null}
+          </View>
 
           <View style={styles.sectionBlock}>
             <FinanceSectionHeader title="Forecast" />
@@ -873,6 +932,10 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     gap: 10,
     flexWrap: "wrap",
+  },
+  scopeBlock: {
+    gap: 8,
+    marginBottom: 14,
   },
   contentMax: {
     width: "100%",

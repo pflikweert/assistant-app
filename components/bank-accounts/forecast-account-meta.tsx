@@ -89,7 +89,7 @@ export function buildForecastAccountMetaItems(
             : "watch",
     },
     {
-      label: "Scope",
+      label: "Geldcontext",
       value: getScopeLabel(rules.owner_scope),
       tone: rules.owner_scope === "personal" ? "muted" : "watch",
     },

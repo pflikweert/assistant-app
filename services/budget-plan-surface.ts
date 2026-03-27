@@ -1,15 +1,22 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { applyBudgetWeekRebalanceGuardrails } from "@/services/budget-week-guardrails";
 import {
+  normalizeMoneyViewScope,
+  type MoneyViewScope,
+} from "@/services/finance-scope";
+import { loadMoneyViewScopePreference } from "@/services/finance-scope-preference";
+import {
   buildFinancialBalanceSnapshot,
   type FinancialBalanceSnapshot,
 } from "@/services/financial-semantics";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
+import { loadLatestKnownBalanceSnapshot } from "@/services/latest-known-balance";
 import { loadMonthForecastSummary } from "@/services/month-forecast-summary";
 import type { BudgetPlanComputation } from "@/types/categorization";
 
 // Canonical surface contract shared by Dashboard, Insights and Budget.
 export type ForecastSurfaceSummary = {
+  scopeView: MoneyViewScope;
   plan: BudgetPlanComputation;
   forecast: InsightsForecastSummary | null;
   balances: FinancialBalanceSnapshot;
@@ -28,6 +35,7 @@ export async function loadBudgetPlanForSurface(params: {
   forecastReason?: string;
   forecastSummary?: InsightsForecastSummary | null;
   currentBalanceOverride?: number | null;
+  moneyViewScope?: MoneyViewScope;
   userId?: string;
 }): Promise<ForecastSurfaceSummary> {
   const {
@@ -37,18 +45,42 @@ export async function loadBudgetPlanForSurface(params: {
     forecastReason,
     forecastSummary,
     currentBalanceOverride,
+    moneyViewScope,
     userId,
   } = params;
 
   const monthStartIso = startOfMonthIso(referenceDate);
+  const resolvedUserId = userId || undefined;
+  const scopePreference =
+    moneyViewScope != null
+      ? { scopeView: moneyViewScope }
+      : await loadMoneyViewScopePreference(resolvedUserId).catch(() => ({
+          scopeView: "personal" as MoneyViewScope,
+        }));
+  const resolvedMoneyViewScope = normalizeMoneyViewScope(
+    scopePreference.scopeView,
+  );
+  const latestKnownBalance =
+    currentBalanceOverride != null
+      ? { balance: currentBalanceOverride, date: null }
+      : await loadLatestKnownBalanceSnapshot(
+          resolvedUserId,
+          resolvedMoneyViewScope,
+        ).catch(() => ({ balance: null, date: null }));
 
   const [rawPlan, loadedForecast] = await Promise.all([
-    computeBudgetPlan(referenceDate, planKey, timelineReference),
+    computeBudgetPlan(
+      referenceDate,
+      planKey,
+      timelineReference,
+      resolvedMoneyViewScope,
+    ),
     forecastSummary === undefined
       ? loadMonthForecastSummary({
           monthStartIso,
           referenceDate,
           reason: forecastReason,
+          moneyViewScope: resolvedMoneyViewScope,
           userId,
         })
       : Promise.resolve(forecastSummary),
@@ -61,12 +93,13 @@ export async function loadBudgetPlanForSurface(params: {
     });
 
   return {
+    scopeView: resolvedMoneyViewScope,
     forecast: loadedForecast,
     plan,
     balances: buildFinancialBalanceSnapshot({
       forecast: loadedForecast,
       plan,
-      currentBalanceOverride,
+      currentBalanceOverride: latestKnownBalance.balance,
     }),
   };
 }

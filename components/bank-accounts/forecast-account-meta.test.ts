@@ -13,13 +13,13 @@ describe("buildForecastAccountMetaItems", () => {
 
     expect(items.map((item) => item.label)).toEqual([
       "Rol",
-      "Scope",
+      "Geldcontext",
       "Budget",
       "Cashflow",
       "Vermogen",
     ]);
     expect(items.find((item) => item.label === "Rol")?.value).toBe("Operationeel");
-    expect(items.find((item) => item.label === "Scope")?.value).toBe("Persoonlijk");
+    expect(items.find((item) => item.label === "Geldcontext")?.value).toBe("Persoonlijk");
     expect(items.find((item) => item.label === "Budget")?.value).toBe("Telt mee");
     expect(items.find((item) => item.label === "Cashflow")?.value).toBe("Telt mee");
     expect(items.find((item) => item.label === "Vermogen")?.value).toBe("Telt mee");
@@ -39,7 +39,7 @@ describe("buildForecastAccountMetaItems", () => {
     });
 
     expect(items.find((item) => item.label === "Rol")?.value).toBe("Alleen bekijken");
-    expect(items.find((item) => item.label === "Scope")?.value).toBe("Gedeeld");
+    expect(items.find((item) => item.label === "Geldcontext")?.value).toBe("Gedeeld");
     expect(items.find((item) => item.label === "Budget")?.value).toBe("Niet mee");
     expect(items.find((item) => item.label === "Cashflow")?.value).toBe("Niet mee");
     expect(items.find((item) => item.label === "Vermogen")?.value).toBe("Telt mee");
