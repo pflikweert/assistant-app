@@ -20,6 +20,7 @@ import {
   resolveFinancialSurfaceStatus,
   resolveSafetyContextCopy,
 } from "@/services/financial-surface-semantics";
+import { normalizePattern } from "@/services/pattern-normalization";
 import {
   getCurrentMonthKey,
   getMonthOptionByKey,
@@ -258,6 +259,13 @@ export type FinancialCategorySpendBreakdown = {
   categories: FinancialCategorySpendItem[];
 };
 
+export type SafeMerchantAggregate = {
+  merchantKey: string;
+  merchantLabel: string;
+  total: number;
+  transactionCount: number;
+};
+
 type SpendRow = {
   id: string;
   date: string;
@@ -367,9 +375,6 @@ function buildFinancialCategorySpendBreakdown(
 
   for (const row of rows) {
     if (row.budget_excluded) continue;
-    const amount = Number(row.amount || 0);
-    if (amount === 0) continue;
-
     const categoryId = row.category_id_user || row.category_id_auto || null;
     const category = categoryId ? categoryById.get(categoryId) || null : null;
     const trail = categoryId ? buildCategoryTrail(categoryId, categoryById) : [];
@@ -390,24 +395,8 @@ function buildFinancialCategorySpendBreakdown(
       ? trail[trail.length - 1]?.key || category?.key || null
       : category?.key || null;
 
-    let delta = 0;
-    if (amount < 0) {
-      delta = Math.abs(amount);
-    } else {
-      const semantics = resolveIncomeSemantics({
-        amount,
-        counterparty: row.counterparty,
-        details: row.details,
-        categoryKey: category?.key || null,
-        budgetGroup: category?.budget_group || null,
-        analysisCategory: null,
-      });
-      if (semantics.kind === "expense_refund" && semantics.expenseOffsetBucket) {
-        delta = -Math.abs(amount);
-      } else {
-        continue;
-      }
-    }
+    const delta = resolveSpendDelta(row, category);
+    if (delta == null) continue;
 
     total += delta;
     transactionCount += 1;
@@ -476,6 +465,29 @@ function buildFinancialCategorySpendBreakdown(
     transactionCount,
     categories,
   };
+}
+
+function resolveSpendDelta(row: SpendRow, category: CategoryRecord | null) {
+  const amount = Number(row.amount || 0);
+  if (amount === 0) return null;
+
+  if (amount < 0) {
+    return Math.abs(amount);
+  }
+
+  const semantics = resolveIncomeSemantics({
+    amount,
+    counterparty: row.counterparty,
+    details: row.details,
+    categoryKey: category?.key || null,
+    budgetGroup: category?.budget_group || null,
+    analysisCategory: null,
+  });
+  if (semantics.kind === "expense_refund" && semantics.expenseOffsetBucket) {
+    return -Math.abs(amount);
+  }
+
+  return null;
 }
 
 function normalizeMatchText(value: string | null | undefined) {
@@ -1069,6 +1081,169 @@ async function resolveFinancialCategorySpendBreakdown(params: {
   const { categoryById, ...rowParams } = params;
   const rows = await fetchSpendRowsInRange(rowParams);
   return buildFinancialCategorySpendBreakdown(rows, categoryById);
+}
+
+function splitDetailSegments(details: string | null | undefined) {
+  return String(details || "")
+    .split("|")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function isTechnicalDetailSegment(segment: string) {
+  const normalized = normalizePattern(segment);
+  if (!normalized) return true;
+
+  if (
+    normalized.includes("google pay") ||
+    normalized.includes("apple pay") ||
+    normalized.includes("terminal") ||
+    normalized.includes("appr cd") ||
+    normalized.includes("pasnr") ||
+    normalized.includes("contactloos") ||
+    normalized.includes("contactless")
+  ) {
+    return true;
+  }
+
+  if (/\b\d{4}[a-z]{2}\b/.test(normalized) && normalized.includes("nld")) {
+    return true;
+  }
+
+  return false;
+}
+
+function getRelevantDetailSegments(row: Pick<SpendRow, "details">) {
+  return splitDetailSegments(row.details).filter(
+    (segment) => !isTechnicalDetailSegment(segment),
+  );
+}
+
+function getPrimaryMerchantKey(row: Pick<SpendRow, "details" | "counterparty">) {
+  const counterparty = normalizePattern(row.counterparty || "");
+  if (counterparty) return counterparty;
+
+  const detailSegments = getRelevantDetailSegments(row);
+  const merchantSegment = detailSegments[detailSegments.length - 1] || row.details;
+  return normalizePattern(merchantSegment);
+}
+
+function getPrimaryMerchantLabel(row: Pick<SpendRow, "details" | "counterparty">) {
+  const counterparty = String(row.counterparty || "").trim();
+  if (counterparty) return counterparty;
+
+  const detailSegments = getRelevantDetailSegments(row);
+  const merchantSegment = detailSegments[detailSegments.length - 1] || row.details;
+  return String(merchantSegment || "").trim();
+}
+
+function collectCategoryMatchKeys(
+  categoryId: string | null,
+  categoryById: Map<string, CategoryRecord>,
+) {
+  const category = categoryId ? categoryById.get(categoryId) || null : null;
+  const trail = categoryId ? buildCategoryTrail(categoryId, categoryById) : [];
+  const keys = new Set<string>();
+
+  if (category?.key) keys.add(normalizePattern(category.key));
+  for (const item of trail) {
+    if (item.key) keys.add(normalizePattern(item.key));
+    if (item.name) keys.add(normalizePattern(item.name));
+  }
+
+  return keys;
+}
+
+export async function resolveSafeCategoryBreakdownInRange(input: {
+  context: HelpAssistantContext;
+  startIso: string;
+  endIsoExclusive: string;
+}): Promise<FinancialCategorySpendBreakdown> {
+  const userId = await requireCurrentUserId();
+  const scopePreference = await loadMoneyViewScopePreference(userId).catch(() => ({
+    scopeView: "personal" as const,
+  }));
+  const budgetFlags = await listBankAccountBudgetFlags(
+    userId,
+    scopePreference.scopeView,
+  ).catch(() => null);
+  const categoryById = await loadFinancialCategoryMap().catch(() => null);
+
+  if (!categoryById) return emptyFinancialCategorySpendBreakdown();
+
+  return resolveFinancialCategorySpendBreakdown({
+    userId,
+    startIso: input.startIso,
+    endIsoExclusive: input.endIsoExclusive,
+    budgetFlags,
+    categoryById,
+  }).catch(() => emptyFinancialCategorySpendBreakdown());
+}
+
+export async function resolveSafeMerchantAggregatesInRange(input: {
+  context: HelpAssistantContext;
+  startIso: string;
+  endIsoExclusive: string;
+  categoryScope?: string | null;
+}): Promise<SafeMerchantAggregate[]> {
+  const userId = await requireCurrentUserId();
+  const scopePreference = await loadMoneyViewScopePreference(userId).catch(() => ({
+    scopeView: "personal" as const,
+  }));
+  const budgetFlags = await listBankAccountBudgetFlags(
+    userId,
+    scopePreference.scopeView,
+  ).catch(() => null);
+  const categoryById = await loadFinancialCategoryMap().catch(() => null);
+  const rows = await fetchSpendRowsInRange({
+    userId,
+    startIso: input.startIso,
+    endIsoExclusive: input.endIsoExclusive,
+    budgetFlags,
+  }).catch(() => [] as SpendRow[]);
+  const categoryScope = normalizePattern(String(input.categoryScope || ""));
+  const entries = new Map<string, SafeMerchantAggregate>();
+
+  for (const row of rows) {
+    if (row.budget_excluded) continue;
+    const categoryId = row.category_id_user || row.category_id_auto || null;
+    const category = categoryId && categoryById ? categoryById.get(categoryId) || null : null;
+    if (categoryScope && categoryById) {
+      const matchKeys = collectCategoryMatchKeys(categoryId, categoryById);
+      if (!matchKeys.has(categoryScope)) {
+        continue;
+      }
+    }
+
+    const delta = resolveSpendDelta(row, category);
+    if (delta == null || delta <= 0) continue;
+
+    const merchantKey = getPrimaryMerchantKey(row);
+    const merchantLabel = getPrimaryMerchantLabel(row);
+    if (!merchantKey || !merchantLabel) continue;
+
+    const existing = entries.get(merchantKey);
+    if (existing) {
+      existing.total += delta;
+      existing.transactionCount += 1;
+      continue;
+    }
+
+    entries.set(merchantKey, {
+      merchantKey,
+      merchantLabel,
+      total: delta,
+      transactionCount: 1,
+    });
+  }
+
+  return [...entries.values()]
+    .map((entry) => ({
+      ...entry,
+      total: roundEuro(entry.total),
+    }))
+    .sort((left, right) => right.total - left.total)
+    .slice(0, 25);
 }
 
 export async function resolveUnifiedFinancialAdviceContext(input: {

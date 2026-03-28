@@ -5,10 +5,14 @@ const {
   postOpenAIChatCompletionMock,
   postHelpAssistantSpendingAdviceCompletionMock,
   resolveUnifiedFinancialAdviceContextMock,
+  resolveSafeCategoryBreakdownInRangeMock,
+  resolveSafeMerchantAggregatesInRangeMock,
 } = vi.hoisted(() => ({
   postOpenAIChatCompletionMock: vi.fn(),
   postHelpAssistantSpendingAdviceCompletionMock: vi.fn(),
   resolveUnifiedFinancialAdviceContextMock: vi.fn(),
+  resolveSafeCategoryBreakdownInRangeMock: vi.fn(),
+  resolveSafeMerchantAggregatesInRangeMock: vi.fn(),
 }));
 
 vi.mock("./openai-proxy", () => ({
@@ -19,6 +23,8 @@ vi.mock("./openai-proxy", () => ({
 
 vi.mock("./help-assistant-financial-context", () => ({
   resolveUnifiedFinancialAdviceContext: resolveUnifiedFinancialAdviceContextMock,
+  resolveSafeCategoryBreakdownInRange: resolveSafeCategoryBreakdownInRangeMock,
+  resolveSafeMerchantAggregatesInRange: resolveSafeMerchantAggregatesInRangeMock,
 }));
 
 vi.mock("expo-constants", () => ({
@@ -164,6 +170,8 @@ describe("help-assistant-ai spending advice", () => {
     postOpenAIChatCompletionMock.mockReset();
     postHelpAssistantSpendingAdviceCompletionMock.mockReset();
     resolveUnifiedFinancialAdviceContextMock.mockReset();
+    resolveSafeCategoryBreakdownInRangeMock.mockReset();
+    resolveSafeMerchantAggregatesInRangeMock.mockReset();
     resolveUnifiedFinancialAdviceContextMock.mockResolvedValue({
       period: {
         key: "2026-03",
@@ -426,6 +434,12 @@ describe("help-assistant-ai spending advice", () => {
         dataGaps: [],
       },
     });
+    resolveSafeCategoryBreakdownInRangeMock.mockResolvedValue({
+      total: 0,
+      transactionCount: 0,
+      categories: [],
+    });
+    resolveSafeMerchantAggregatesInRangeMock.mockResolvedValue([]);
   });
 
   it("parses spending schema from direct JSON and fenced JSON", () => {
@@ -2331,7 +2345,7 @@ describe("help-assistant-ai spending advice", () => {
     expect(systemText).toContain("Planner vraagt verduidelijking");
     expect(systemText).toContain("Hydration-beperkingen:");
     expect(systemText).toContain(
-      "merchant_aggregaten_niet_beschikbaar_in_deze_hydrationlaag",
+      "merchant_match_onvoldoende_zeker",
     );
   });
 
@@ -2394,11 +2408,237 @@ describe("help-assistant-ai spending advice", () => {
       .join("\n");
     expect(systemText).toContain("Truth-safe transactionFacts:");
     expect(systemText).toContain('"merchantScope":"jumbo"');
-    expect(systemText).toContain('"answerability":"blocked"');
+    expect(systemText).toContain('"answerability":"partial"');
     expect(systemText).toContain(
-      "merchant_aggregaten_niet_beschikbaar_in_deze_hydrationlaag",
+      "merchant_match_onvoldoende_zeker",
     );
     expect(systemText).not.toContain("transactionId");
+  });
+
+  it("geeft merchant total truth-safe door als geaggregeerde merchantdata beschikbaar is", async () => {
+    resolveSafeMerchantAggregatesInRangeMock.mockResolvedValueOnce([
+      {
+        merchantKey: "jumbo",
+        merchantLabel: "Jumbo",
+        total: 135,
+        transactionCount: 4,
+      },
+    ]);
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "transactions_insight",
+          mode: "transaction_lookup",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: true,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "jumbo",
+            transactionQuestionType: "merchant_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-merchant-answerable-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-merchant-answerable-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Je hebt € 135 bij Jumbo uitgegeven." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "transactions",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "transactions",
+        activeFilterCount: 1,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("Hoeveel gaf ik uit bij Jumbo deze maand?"),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain('"merchantTotal":"€ 135"');
+    expect(systemText).toContain('"merchantTransactionCount":4');
+    expect(systemText).toContain('"answerability":"answerable"');
+  });
+
+  it("geeft category trend truth-safe door met vergelijking naar vorige maand", async () => {
+    resolveSafeCategoryBreakdownInRangeMock.mockResolvedValueOnce({
+      total: 120,
+      transactionCount: 2,
+      categories: [
+        {
+          key: "groceries",
+          categoryId: "cat-groceries",
+          categoryKey: "groceries",
+          label: "Boodschappen",
+          amount: 120,
+          transactionCount: 2,
+          subcategories: [],
+        },
+      ],
+    });
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          needsClarification: true,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "groceries",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-trend-answerable-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-trend-answerable-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Trend samenvatting." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("wat is de trend voor boodschappen?"),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain("previousScopedCategoryTotal: € 120");
+    expect(systemText).toContain("trendDirection: up");
+    expect(systemText).toContain("trend_scope_beperkt_tot_maandvergelijking");
+  });
+
+  it("geeft jaar-totalen truth-safe door voor category_insight", async () => {
+    resolveSafeCategoryBreakdownInRangeMock.mockResolvedValueOnce({
+      total: 680,
+      transactionCount: 14,
+      categories: [
+        {
+          key: "groceries",
+          categoryId: "cat-groceries",
+          categoryKey: "groceries",
+          label: "Boodschappen",
+          amount: 680,
+          transactionCount: 14,
+          subcategories: [],
+        },
+      ],
+    });
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          needsClarification: true,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "groceries",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-year-answerable-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-year-answerable-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Jaar samenvatting." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("hoeveel heb ik dit jaar aan boodschappen uitgegeven?"),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain("yearToDateCategoryTotal: € 680");
+    expect(systemText).toContain(
+      "jaar_scope_beperkt_tot_jaartotaal_tot_geselecteerde_maand",
+    );
   });
 
   it("laat insightsFlow niet als tweede router werken", async () => {

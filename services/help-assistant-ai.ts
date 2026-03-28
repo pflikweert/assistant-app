@@ -248,11 +248,12 @@ export async function requestHelpAssistantReply({
           }).catch(() => null)
       : null;
 
-  const hydration = buildHydrationResult({
+  const hydration = await buildHydrationResult({
     routingDecision: normalizedRoutingDecision,
     unifiedFinancialContext: resolvedFinancialContext,
     requestedPeriodKey,
     latestUserText: latestUserMessage?.text || null,
+    context,
   });
   const spendingFallback =
     isSpendingAdviceQuestion && resolvedFinancialContext
