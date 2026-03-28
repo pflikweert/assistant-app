@@ -31,6 +31,7 @@ export function formatAccountOverviewSummary(account: BankAccount): string {
 
   if (
     account.owner_scope === "shared" &&
+    account.forecast_role !== "excluded" &&
     !includeBudget &&
     includeNetWorth &&
     !includeCashflow

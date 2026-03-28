@@ -319,7 +319,10 @@ export default function BankrekeningenScreen() {
         <View style={styles.listWrap}>
           {sortedAccounts.map((account, index) => {
             const cardTone = getCardTone(account);
-            const ownerContext = formatAccountOwnerContext(account.owner_scope);
+            const ownerContext =
+              account.forecast_role === "excluded"
+                ? null
+                : formatAccountOwnerContext(account.owner_scope);
             const summary = formatAccountOverviewSummary(account);
             const statusLabel = formatAccountStatusLabel(account);
             return (

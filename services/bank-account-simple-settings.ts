@@ -112,7 +112,7 @@ export function mapSimpleSettingsToLegacyMeaning(params: {
     settings.kind === "business" ? "checking" : settings.kind;
   const ownerScope =
     settings.usage === "exclude"
-      ? params.currentOwnerScope || "personal"
+      ? "personal"
       : settings.usage === "shared"
         ? "shared"
         : "personal";

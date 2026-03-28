@@ -78,7 +78,7 @@ describe("bank-account-simple-settings", () => {
     });
   });
 
-  it("maps simple exclude to excluded role and configurable net-worth", () => {
+  it("maps simple exclude to excluded role and forces personal owner-scope", () => {
     const result = mapSimpleSettingsToLegacyMeaning({
       settings: {
         usage: "exclude",
@@ -89,7 +89,7 @@ describe("bank-account-simple-settings", () => {
     });
     expect(result).toMatchObject({
       accountType: "checking",
-      ownerScope: "shared",
+      ownerScope: "personal",
       forecastRole: "excluded",
       includeInBudget: false,
       includeInCashflow: false,

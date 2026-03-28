@@ -200,4 +200,36 @@ describe("bankrekeningen-overzicht", () => {
     });
     expect(getAllText(tree)).toContain("Rekening verwijderen");
   });
+
+  it("toont uitgesloten rekening niet als samen-context", async () => {
+    listBankAccountsMock.mockResolvedValue([
+      {
+        id: "acc_3",
+        name: "Zakelijke rekening",
+        account_type: "checking",
+        provider: "ING Zakelijk",
+        currency: "EUR",
+        account_masked: "********1111",
+        is_active: true,
+        include_in_budget: false,
+        include_in_cashflow: false,
+        include_in_net_worth: true,
+        owner_scope: "shared",
+        forecast_role: "excluded",
+      },
+    ]);
+
+    let tree!: renderer.ReactTestRenderer;
+    await act(async () => {
+      tree = renderer.create(<BankrekeningenScreen />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const text = getAllText(tree);
+    expect(text).toContain("Alleen voor vermogen");
+    expect(text).not.toContain("Gedeelde overzichtsrekening");
+    expect(text).not.toContain("Samen");
+  });
 });

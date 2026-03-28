@@ -57,6 +57,19 @@ describe("account-overview-summary", () => {
     expect(summary).toBe("Gedeelde overzichtsrekening");
   });
 
+  it("toont uitgesloten rekening niet als gedeelde overzichtsrekening", () => {
+    const summary = formatAccountOverviewSummary(
+      buildAccount({
+        owner_scope: "shared",
+        forecast_role: "excluded",
+        include_in_budget: false,
+        include_in_cashflow: false,
+        include_in_net_worth: true,
+      }),
+    );
+    expect(summary).toBe("Alleen voor vermogen");
+  });
+
   it("toont nette fallback bij ontbrekend rekeningnummer", () => {
     expect(formatAccountMaskedNumber(null)).toBe("Rekeningnummer niet bekend");
     expect(formatAccountMaskedNumber("")).toBe("Rekeningnummer niet bekend");
