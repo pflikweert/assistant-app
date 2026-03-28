@@ -22,6 +22,7 @@ import {
   isRefreshTokenAuthError,
   isSessionIdleExpired,
 } from "@/services/auth-session";
+import { useWebDeployAutoRefresh } from "@/services/web-deploy-refresh";
 import { DarkTheme, ThemeProvider } from "@react-navigation/native";
 import type { Session, User } from "@supabase/supabase-js";
 import { useFonts } from "expo-font";
@@ -44,7 +45,15 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, LogBox, Platform, type AppStateStatus } from "react-native";
+import {
+  AppState,
+  LogBox,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+  type AppStateStatus,
+} from "react-native";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import "react-native-reanimated";
@@ -474,6 +483,22 @@ function VercelWebMetrics() {
   );
 }
 
+function WebDeployRefreshOverlay() {
+  const refreshState = useWebDeployAutoRefresh();
+  if (Platform.OS !== "web" || !refreshState.updateReady) return null;
+
+  return (
+    <View pointerEvents="none" style={styles.deployOverlayWrap}>
+      <View style={styles.deployOverlayCard}>
+        <Text style={styles.deployOverlayText}>
+          {refreshState.message ||
+            "Er is een nieuwe versie van Budio beschikbaar. We verversen je scherm…"}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function RootLayout() {
   const [iconFontsLoaded, iconFontsError] = useFonts(MATERIAL_ICON_FONT_MAP);
 
@@ -490,6 +515,7 @@ export default function RootLayout() {
       <SessionProvider>
         <RecoveryRedirector>
           <RootNavigator />
+          <WebDeployRefreshOverlay />
           <StatusBar style="light" />
           <VercelWebMetrics />
         </RecoveryRedirector>
@@ -497,3 +523,32 @@ export default function RootLayout() {
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  deployOverlayWrap: {
+    position: "absolute",
+    top: 18,
+    left: 0,
+    right: 0,
+    zIndex: 9999,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  deployOverlayCard: {
+    borderRadius: 14,
+    backgroundColor: FinColors.overlayStrong,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    maxWidth: 460,
+    boxShadow: "0px 8px 18px rgba(17,17,17,0.18)",
+    elevation: 3,
+  },
+  deployOverlayText: {
+    color: FinColors.bgCard,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+});

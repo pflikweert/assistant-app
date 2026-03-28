@@ -1,6 +1,21 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import React from "react";
 
+const APP_VERSION_FALLBACK = (() => {
+  try {
+    const appJson = require("../app.json");
+    return String(appJson?.expo?.version || "1.0.0");
+  } catch {
+    return "1.0.0";
+  }
+})();
+
+const WEB_BUILD_ID = (() => {
+  const vercelCommit = String(process.env.VERCEL_GIT_COMMIT_SHA || "").trim();
+  if (vercelCommit) return vercelCommit;
+  return APP_VERSION_FALLBACK;
+})();
+
 const DEVTOOLS_PATCH_SCRIPT = `
 (function () {
   try {
@@ -75,9 +90,15 @@ export default function Html({
       <head>
         <meta charSet="utf-8" />
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="budio-build-id" content={WEB_BUILD_ID} />
         <meta
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no"
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__BUDIO_BUILD_ID__ = "${WEB_BUILD_ID}";`,
+          }}
         />
         <script dangerouslySetInnerHTML={{ __html: DEVTOOLS_PATCH_SCRIPT }} />
         <ScrollViewStyleReset />
