@@ -49,6 +49,9 @@ De focus is nu niet meer "opnieuw bouwen", maar:
   - issue-/idee-kaarten moeten als vaste reviewbanner boven de chat blijven staan
   - `Annuleren` moet de kaart direct sluiten en niet laten terugkomen door oude threadstate
   - zichtbare chatcopy moet alleen de verduidelijkende vraag tonen, niet de interne samenvatting
+- Help Assistant gebruikt nu turn-first orchestration met soft-prior active flow:
+  - vervolgtaak: volledige data-hydration toevoegen voor `transactions_insight`
+    en `category_insight` (nu nog light route prompts zonder extra datablokken)
 - In `Transacties` toont het bankrekeningfilter alleen actieve rekeningen:
   - gearchiveerde rekeningen verschijnen niet als filteroptie
   - historische transacties blijven zichtbaar via `Alles` en periode/type/categorie-filters

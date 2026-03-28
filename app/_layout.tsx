@@ -304,6 +304,34 @@ LogBox.ignoreLogs([
   "props.pointerEvents is deprecated. Use style.pointerEvents",
 ]);
 
+const WEB_DEV_SUPPRESSED_WARNINGS = [
+  "props.pointerEvents is deprecated. Use style.pointerEvents",
+] as const;
+
+function installWebDevWarningFilter() {
+  if (Platform.OS !== "web") return;
+  if (process.env.NODE_ENV === "production") return;
+
+  const consoleWithFlag = console as typeof console & {
+    __budioWebWarnFilterInstalled?: boolean;
+  };
+  if (consoleWithFlag.__budioWebWarnFilterInstalled) return;
+
+  const originalWarn = console.warn.bind(console);
+  console.warn = (...args: unknown[]) => {
+    const message = args.map((value) => String(value ?? "")).join(" ");
+    const shouldSuppress = WEB_DEV_SUPPRESSED_WARNINGS.some((needle) =>
+      message.includes(needle),
+    );
+    if (shouldSuppress) return;
+    originalWarn(...args);
+  };
+
+  consoleWithFlag.__budioWebWarnFilterInstalled = true;
+}
+
+installWebDevWarningFilter();
+
 // Override DarkTheme with our fintech palette
 const FinTheme = {
   ...DarkTheme,

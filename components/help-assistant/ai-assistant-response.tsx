@@ -292,7 +292,7 @@ export function AiAssistantResponse({
         style,
       ]}
     >
-      <AnimatedView style={[styles.loaderLayer, loaderStyle]} pointerEvents="none">
+      <AnimatedView style={[styles.loaderLayer, loaderStyle, styles.pointerEventsNone]}>
         {isWeb ? (
           <AnimatedView style={styles.webBlobWrap}>
             <AnimatedView
@@ -366,6 +366,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: "center",
     justifyContent: "center",
+  },
+  pointerEventsNone: {
+    pointerEvents: "none",
   },
   loaderCanvas: {
     width: LOADER_SIZE,

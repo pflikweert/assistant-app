@@ -33,9 +33,15 @@ Belangrijk leerpunt:
 
 - `issueDraftCandidate` is geen bron van waarheid meer voor de uiteindelijke
   routing
-- de AI-router in `services/help-assistant-ai.ts` bepaalt eerst de route
+- de AI-router in `services/help-assistant-ai.ts` bepaalt per turn opnieuw de route
+- de AI-router classificeert nu ook generieke `dataRequests` (databehoeftehints),
+  terwijl hydration/privacy volledig in de app-code blijft
+- de orchestration kan beschikbare category-scopes (slug + label) als veilige
+  catalogus meesturen voor scopekeuze en verduidelijkingsvragen
 - de issueflow-reducer gebruikt daarna de gestructureerde AI-response en een
   vaste anchor om de kaart in sync te houden
+- een actieve flow wordt als `activeFlow` descriptor meegestuurd (soft prior),
+  niet als harde route-lock
 
 ## Lokale acties
 
@@ -72,6 +78,8 @@ Gedrag:
 3. Gebruik `issueDraftCandidate` en `spendingAdviceCandidate` alleen nog als
    transport-/fallbacksignalen.
 4. Laat nieuwe issue/idee-standaarden altijd via de AI-router lopen.
+5. Houd flowcontinuatie generiek (`continueActiveFlow` / intent-shift), niet
+   issue-specifiek.
 
 Zo blijft de overgang van lokaal naar API incrementeel, zonder UI-refactor,
 maar wel met een duidelijke bron van waarheid voor issue-routing.
