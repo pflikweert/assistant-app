@@ -56,6 +56,7 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 
 - Lees altijd eerst `docs/design/design-system-rules.md`
 - Lees daarna `docs/design/screen-inventory.md`
+- Voor Stitch-integratie vanuit Codex: volg `docs/design/stitch-codex-workflow.md`
 - Raadpleeg daarna `docs/UI_PATTERNS.md` en pas bestaande patronen toe voordat je iets nieuws ontwerpt
 - Behoud bestaande businesslogica, services en routing; designwerk mag geen nieuwe financiële waarheid introduceren
 - Refactor UI in kleine stappen en centraliseer terugkerende patronen zo vroeg mogelijk
@@ -65,6 +66,7 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 - Maak loading, empty, partial en error states expliciet
 - Gebruik design-governance checks (`design:check`) voordat je grotere UI-refactors afrondt
 - Als een route nog niet in de screen inventory staat, voeg die eerst toe of markeer hem expliciet als legacy, utility of structural
+- Als Stitch MCP niet beschikbaar lijkt in de sessie: run `npm run stitch:codex:setup`, herstart sessie, en gebruik zonodig `npm run stitch:tool -- ...` als fallback
 - Bij designwerk moet het antwoord altijd noemen:
   1. welke bestanden worden aangepast
   2. welke risico's er zijn

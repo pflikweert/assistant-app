@@ -8,7 +8,8 @@ Dit document is de compacte ontwerp- en werkafspraak voor alle UI-wijzigingen in
 2. Lees dit document
 3. Lees `docs/design/screen-inventory.md`
 4. Lees `docs/UI_PATTERNS.md`
-5. Controleer daarna de relevante schermen en componenten in de codebase
+5. Voor Stitch/Codex designwerk: lees `docs/design/stitch-codex-workflow.md`
+6. Controleer daarna de relevante schermen en componenten in de codebase
 
 ## Doel
 

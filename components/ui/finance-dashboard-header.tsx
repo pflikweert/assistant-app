@@ -39,6 +39,11 @@ export function FinanceDashboardHeader({
 const styles = StyleSheet.create({
   root: {
     width: "100%",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
   },
   content: {
     paddingHorizontal: FinTokens.spacing.m,

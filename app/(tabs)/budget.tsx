@@ -90,7 +90,10 @@ import {
   formatForecastExpenseSourceLabel,
   getForecastExpenseSourceDescription,
 } from "@/services/forecast-expense-source-display";
-import { getBudgetInclusionTogglePresentation } from "@/services/ui-formatters/labels";
+import {
+  buildAnnualReserveSheetSummary,
+  getBudgetInclusionTogglePresentation,
+} from "@/services/ui-formatters/labels";
 import type { ForecastSurfaceSummary } from "@/services/budget-plan-surface";
 import type {
   BudgetCategoryKey,
@@ -2860,6 +2863,13 @@ export default function BudgetScreen() {
     setCategoryDetailErrors({});
   }, [selectedMonth.startIso]);
 
+  const annualReserveSheetSummary = buildAnnualReserveSheetSummary({
+    reserveBreakdown: assistantForecastSurface?.reserveBreakdown || null,
+    currentReservedBalanceAmount:
+      assistantForecastSurface?.balances.currentReservedBalance.amount ?? null,
+    annualRules: annualReserveRules,
+  });
+
   return (
     <View style={styles.root}>
       <FinanceScreenBackdrop tone="warm" />
@@ -3760,6 +3770,60 @@ export default function BudgetScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.reserveRulesSheetContent}
         >
+          <View style={styles.reserveRuleSheetSummaryCard}>
+            <Text style={styles.reserveRuleSheetSummaryTitle}>Reservering nu</Text>
+            <View style={styles.reserveRuleSheetSummaryGrid}>
+              <View style={styles.reserveRuleSheetSummaryItem}>
+                <Text style={styles.reserveRuleSheetSummaryLabel}>
+                  Gereserveerd totaal
+                </Text>
+                <Text style={styles.reserveRuleSheetSummaryValue}>
+                  {annualReserveSheetSummary.totalReserved == null
+                    ? "Nog niet bekend"
+                    : fmt.format(annualReserveSheetSummary.totalReserved)}
+                </Text>
+              </View>
+              <View style={styles.reserveRuleSheetSummaryItem}>
+                <Text style={styles.reserveRuleSheetSummaryLabel}>
+                  Buffer gereserveerd
+                </Text>
+                <Text style={styles.reserveRuleSheetSummaryValue}>
+                  {annualReserveSheetSummary.bufferReserved == null
+                    ? "Nog niet bekend"
+                    : fmt.format(annualReserveSheetSummary.bufferReserved)}
+                </Text>
+              </View>
+              {annualReserveSheetSummary.reservedInAccounts != null &&
+              annualReserveSheetSummary.reservedInAccounts > 0 ? (
+                <View style={styles.reserveRuleSheetSummaryItem}>
+                  <Text style={styles.reserveRuleSheetSummaryLabel}>
+                    Op spaarrekening
+                  </Text>
+                  <Text style={styles.reserveRuleSheetSummaryValue}>
+                    {fmt.format(annualReserveSheetSummary.reservedInAccounts)}
+                  </Text>
+                </View>
+              ) : null}
+              <View
+                style={[
+                  styles.reserveRuleSheetSummaryItem,
+                  styles.reserveRuleSheetSummaryItemSeparated,
+                ]}
+              >
+                <Text style={styles.reserveRuleSheetSummaryLabel}>
+                  Jaarlijkse lasten actief
+                </Text>
+                <Text style={styles.reserveRuleSheetSummaryValue}>
+                  {fmt.format(annualReserveSheetSummary.annualActive || 0)}
+                </Text>
+              </View>
+            </View>
+          </View>
+          <Text style={styles.reserveRuleSheetSummaryContext}>
+            Je buffer kan al gereserveerd zijn zonder jaarlijkse lastenregels.
+            Spaarrekening-saldo telt dan mee in het gereserveerde totaal.
+          </Text>
+
           {annualReserveRules.length ? (
             annualReserveRules.map((rule) => {
               const isActive = rule.status === "active";
@@ -3768,11 +3832,18 @@ export default function BudgetScreen() {
                   <View style={styles.reserveRuleSheetHeader}>
                     <View style={styles.reserveRuleSheetMain}>
                       <Text style={styles.reserveRuleSheetTitle}>{rule.label}</Text>
-                      <Text style={styles.reserveRuleSheetMeta}>
-                        {rule.source === "inferred"
-                          ? "Automatisch herkend"
-                          : "Handmatig ingesteld"}
-                      </Text>
+                      <View style={styles.reserveRuleSheetAmountRow}>
+                        <Text style={styles.reserveRuleSheetAmountValue}>
+                          {fmt.format(rule.monthlyAmount)}/mnd
+                        </Text>
+                        <View style={styles.reserveRuleSheetSourceBadge}>
+                          <Text style={styles.reserveRuleSheetSourceBadgeText}>
+                            {rule.source === "inferred"
+                              ? "Automatisch"
+                              : "Handmatig"}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
                     <Pressable
                       style={[
@@ -3823,8 +3894,7 @@ export default function BudgetScreen() {
           ) : (
             <View style={styles.reserveRuleSheetCard}>
               <Text style={styles.supportText}>
-                Nog geen jaarlijkse lasten gevonden. Zodra Budio zekere patronen
-                ziet, verschijnen ze hier als suggestie.
+                Nog geen jaarlijkse lasten gevonden.
               </Text>
             </View>
           )}
@@ -4889,8 +4959,17 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   reserveRulesSheetContent: {
-    gap: 10,
-    paddingBottom: 6,
+    gap: 12,
+    paddingBottom: 8,
+  },
+  reserveRuleSheetSummaryCard: {
+    ...FinSurfaces.topLevelCard,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.04)",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 12,
   },
   reserveRuleSheetCard: {
     borderRadius: 16,
@@ -4900,6 +4979,46 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
   },
+  reserveRuleSheetSummaryTitle: {
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  reserveRuleSheetSummaryGrid: {
+    gap: 10,
+  },
+  reserveRuleSheetSummaryItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  reserveRuleSheetSummaryItemSeparated: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(17,17,17,0.05)",
+    paddingTop: 10,
+    marginTop: 2,
+  },
+  reserveRuleSheetSummaryLabel: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
+    fontWeight: "500",
+  },
+  reserveRuleSheetSummaryValue: {
+    fontSize: 18,
+    lineHeight: 22,
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+  },
+  reserveRuleSheetSummaryContext: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
+    paddingHorizontal: 4,
+  },
   reserveRuleSheetHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -4908,7 +5027,7 @@ const styles = StyleSheet.create({
   },
   reserveRuleSheetMain: {
     flex: 1,
-    gap: 2,
+    gap: 8,
   },
   reserveRuleSheetTitle: {
     fontSize: 15,
@@ -4916,10 +5035,31 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
     fontWeight: "700",
   },
-  reserveRuleSheetMeta: {
-    fontSize: 12,
-    lineHeight: 16,
+  reserveRuleSheetAmountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  reserveRuleSheetAmountValue: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+  },
+  reserveRuleSheetSourceBadge: {
+    borderRadius: 8,
+    backgroundColor: FinColors.bgInput,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  reserveRuleSheetSourceBadgeText: {
+    fontSize: 10,
+    lineHeight: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
     color: FinColors.textSecondary,
+    fontWeight: "700",
   },
   reserveRuleStatusChip: {
     minHeight: 30,
@@ -4946,6 +5086,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(17,17,17,0.05)",
+    paddingTop: 10,
   },
   reserveRuleInputWrap: {
     flex: 1,

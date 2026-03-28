@@ -504,11 +504,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   topBar: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 20,
+    backgroundColor: "rgba(246,245,242,0.84)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(17,17,17,0.05)",
   },
   scroll: {
     paddingTop: 80,

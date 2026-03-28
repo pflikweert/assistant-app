@@ -96,8 +96,13 @@ export function HeaderDropdownMenuBase({
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useSession();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpenState] = React.useState(false);
   const [signingOut, setSigningOut] = React.useState(false);
+  const openGuardUntilRef = React.useRef(0);
+  const setOpen = React.useCallback((next: boolean) => {
+    if (!next && Date.now() < openGuardUntilRef.current) return;
+    setOpenState(next);
+  }, []);
 
   const currentPath = normalizePath(pathname || "/");
   const displayName = React.useMemo(() => resolveDisplayName(user), [user]);
@@ -108,7 +113,7 @@ export function HeaderDropdownMenuBase({
       if (path === currentPath) return;
       router.push(path as Href);
     },
-    [currentPath, router],
+    [currentPath, router, setOpen],
   );
 
   const handleLogout = React.useCallback(async () => {
@@ -123,13 +128,22 @@ export function HeaderDropdownMenuBase({
     } finally {
       setSigningOut(false);
     }
-  }, [logout, router, signingOut]);
+  }, [logout, router, setOpen, signingOut]);
+
+  const openMenu = React.useCallback(() => {
+    openGuardUntilRef.current = Date.now() + 180;
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => setOpen(true));
+      return;
+    }
+    setTimeout(() => setOpen(true), 0);
+  }, [setOpen]);
 
   return (
     <>
       <Pressable
         style={styles.trigger}
-        onPress={() => setOpen(true)}
+        onPress={openMenu}
         accessibilityRole="button"
         accessibilityLabel="Open navigation menu"
       >
