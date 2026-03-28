@@ -784,9 +784,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 20,
-    backgroundColor: "rgba(246,245,242,0.8)",
+    backgroundColor: "rgba(246,245,242,0.95)",
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.06)",
+    borderBottomColor: "rgba(17,17,17,0.10)",
   },
   topBarInner: {
     paddingHorizontal: 24,

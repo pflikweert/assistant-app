@@ -29,9 +29,10 @@ import {
 const ACCOUNT_TYPE_LABELS: Record<BankAccount["account_type"], string> = {
   checking: "Betaalrekening",
   savings: "Spaarrekening",
+  business: "Zakelijke rekening",
   credit: "Creditcard",
   loan: "Lening",
-  investment: "Belegging",
+  investment: "Beleggingsrekening",
   cash: "Contant",
   other: "Overig",
 };

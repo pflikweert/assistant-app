@@ -128,6 +128,16 @@ describe("help-assistant-ai spending advice", () => {
         cashRiskFlag: "none",
         forecastReferenceDate: "2026-03-20",
       },
+      surfaceSemantics: {
+        remainingMonthlyBudget: 200,
+        expectedEndOperationalBalance: 300,
+        freeToSpendNow: 1292.84,
+        safeToSpendUntilNextIncome: 1690.95,
+        safeToSpendLabel: "Extra ruimte tot salaris",
+        safeToSpendSubtitle: "Tot je salaris",
+        statusLabel: "Let op voor maart",
+        statusTone: "critical",
+      },
       currentBalance: {
         balance: 1400,
         date: "2026-03-20",
@@ -307,10 +317,13 @@ describe("help-assistant-ai spending advice", () => {
         ?.openAIRequest;
     const promptText = JSON.stringify(openAIRequest?.messages || []);
     expect(promptText).toContain("Actuele operationele stand");
+    expect(promptText).toContain("Canoniek resterend maandbudget");
+    expect(promptText).toContain("Canonieke safety-term: Extra ruimte tot salaris");
     expect(promptText).toContain("Huidige maand uitgaven totaal");
     expect(promptText).toContain("Maandverdeling uitgaven");
     expect(promptText).toContain("Weekverdeling uitgaven");
     expect(promptText).toContain("Budgetplan maand totaal");
+    expect(promptText).toContain("Forecast operationele stand maand (fallback)");
   });
 
   it("keeps non-spending questions on regular proxy path", async () => {

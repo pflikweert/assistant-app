@@ -2,6 +2,7 @@ import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
 import React from "react";
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -31,7 +32,15 @@ export function FinanceModalTopBar({
   subtitleStyle,
 }: FinanceModalTopBarProps) {
   return (
-    <View style={[styles.shell, shellStyle]}>
+    <View
+      style={[
+        styles.shell,
+        Platform.OS === "web"
+          ? ({ backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)" } as any)
+          : null,
+        shellStyle,
+      ]}
+    >
       <View style={[styles.inner, innerStyle]}>
         <View style={styles.row}>
           <View style={styles.titleWrap}>
@@ -65,9 +74,11 @@ export function FinanceModalTopBar({
 
 const styles = StyleSheet.create({
   shell: {
-    backgroundColor: "rgba(246,245,242,0.92)",
+    backgroundColor: "rgba(246,245,242,0.96)",
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.08)",
+    borderBottomColor: "rgba(17,17,17,0.10)",
+    boxShadow: "0px 10px 20px rgba(17,17,17,0.06)",
+    elevation: 2,
   },
   inner: {
     width: "100%",

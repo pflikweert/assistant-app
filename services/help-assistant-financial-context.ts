@@ -15,6 +15,10 @@ import { RequestCache } from "@/services/request-cache";
 import { startOfUtcWeekMonday } from "@/services/budget-week-utils";
 import { loadMoneyViewScopePreference } from "@/services/finance-scope-preference";
 import {
+  resolveFinancialSurfaceStatus,
+  resolveSafetyContextCopy,
+} from "@/services/financial-surface-semantics";
+import {
   getCurrentMonthKey,
   getMonthOptionByKey,
   type TransactionMonthOption,
@@ -113,6 +117,16 @@ export type UnifiedFinancialAdviceContext = {
     riskFlag: "none" | "deficit_warning";
     cashRiskFlag: "none" | "cash_gap_warning";
     forecastReferenceDate: string | null;
+  };
+  surfaceSemantics?: {
+    remainingMonthlyBudget: number | null;
+    expectedEndOperationalBalance: number | null;
+    freeToSpendNow: number | null;
+    safeToSpendUntilNextIncome: number | null;
+    safeToSpendLabel: string;
+    safeToSpendSubtitle: string;
+    statusLabel: string;
+    statusTone: "good" | "watch" | "critical" | "neutral";
   };
   quality: {
     cacheHit: boolean;
@@ -479,7 +493,7 @@ export async function resolveUnifiedFinancialAdviceContext(input: {
         moneyViewScope: scopePreference.scopeView,
       });
 
-      const { plan, forecast } = await loadBudgetPlanForSurface({
+      const surface = await loadBudgetPlanForSurface({
         referenceDate,
         planKey: "default",
         timelineReference: new Date(),
@@ -489,6 +503,8 @@ export async function resolveUnifiedFinancialAdviceContext(input: {
         moneyViewScope: scopePreference.scopeView,
       });
 
+      const plan = surface.plan;
+      const forecast = surface.forecast;
       const activeForecast = forecast || currentForecast;
       const currentBalance = await loadLatestKnownBalanceSnapshot(
         userId,
@@ -543,6 +559,19 @@ export async function resolveUnifiedFinancialAdviceContext(input: {
       const expectedEndBalance = getInsightsDisplayExpectedEndBalance({
         forecast: activeForecast,
         budgetPlan: plan,
+      });
+      const safetyCopy = resolveSafetyContextCopy({
+        anchorLabel: surface.nextIncomeLabelAnchor,
+        anchorDate: surface.nextIncomeDateAnchor,
+        isEstimatedAnchorDate: surface.safeToSpendIsEstimatedAnchorDate,
+      });
+      const surfaceStatus = resolveFinancialSurfaceStatus({
+        activeMonthLabel: selectedMonth.monthLabel,
+        expectedEndOperationalBalance:
+          surface.balances?.expectedEndOperationalBalance?.amount ??
+          expectedEndBalance,
+        remainingMonthlyBudget: monthSnapshot.remaining,
+        monthBudgetTone: monthSnapshot.tone,
       });
       const currentWeekBudget = currentWeek?.budget ?? null;
       const currentWeekActual = currentWeek?.actual ?? null;
@@ -673,6 +702,21 @@ export async function resolveUnifiedFinancialAdviceContext(input: {
           riskFlag: nextForecast?.riskFlag || "none",
           cashRiskFlag: nextForecast?.cashRiskFlag || "none",
           forecastReferenceDate: nextForecast?.forecastReferenceDate ?? null,
+        },
+        surfaceSemantics: {
+          remainingMonthlyBudget: monthSnapshot.remaining,
+          expectedEndOperationalBalance:
+            surface.balances?.expectedEndOperationalBalance?.amount ??
+            expectedEndBalance,
+          freeToSpendNow:
+            surface.balances?.freeToSpendNow?.amount ??
+            activeForecast?.freeToSpendNow ??
+            null,
+          safeToSpendUntilNextIncome: surface.safeToSpendUntilNextIncome ?? null,
+          safeToSpendLabel: safetyCopy.fullLabel,
+          safeToSpendSubtitle: safetyCopy.sheetSubtitle,
+          statusLabel: surfaceStatus.label,
+          statusTone: surfaceStatus.tone,
         },
         quality: {
           cacheHit: false,

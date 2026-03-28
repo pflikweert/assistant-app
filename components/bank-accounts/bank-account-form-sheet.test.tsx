@@ -43,7 +43,7 @@ vi.mock("@/components/ui/finance-bottom-sheet-shell", () => ({
 
 vi.mock("@/services/bank-accounts", async () => {
   return {
-    ACCOUNT_TYPES: ["checking", "savings", "credit", "loan", "investment", "cash", "other"],
+    ACCOUNT_TYPES: ["checking", "savings", "business", "investment"],
     createBankAccount: createBankAccountMock,
     updateBankAccount: updateBankAccountMock,
   };
@@ -98,49 +98,53 @@ describe("bank-account-form-sheet", () => {
     updateBankAccountMock.mockReset();
   });
 
-  it("gebruikt verstandige create defaults voor betaal- en spaarrekening", () => {
+  it("gebruikt verstandige create defaults voor betaal-, spaar- en zakelijke rekening", () => {
     const checking = resolveDefaultsForCreate("checking");
     const savings = resolveDefaultsForCreate("savings");
+    const business = resolveDefaultsForCreate("business");
 
-    expect(checking.owner_scope).toBe("personal");
-    expect(checking.include_in_budget).toBe(true);
-    expect(checking.include_in_cashflow).toBe(true);
-    expect(checking.include_in_net_worth).toBe(true);
+    expect(checking).toEqual({
+      kind: "checking",
+      usage: "personal",
+      excludeFromNetWorth: false,
+    });
 
-    expect(savings.owner_scope).toBe("personal");
-    expect(savings.include_in_budget).toBe(false);
-    expect(savings.include_in_cashflow).toBe(false);
-    expect(savings.include_in_net_worth).toBe(true);
+    expect(savings).toEqual({
+      kind: "savings",
+      usage: "personal",
+      excludeFromNetWorth: false,
+    });
+    expect(business).toEqual({
+      kind: "business",
+      usage: "exclude",
+      excludeFromNetWorth: true,
+    });
   });
 
   it("laadt bestaande waarden in edit-mode via dezelfde semantiek", () => {
     const account = buildEditAccount();
     const initialMeaning = buildBankAccountFormInitialMeaning({
       mode: "edit",
-      accountType: account.account_type,
+      kind: "checking",
       account,
     });
 
-    expect(initialMeaning.owner_scope).toBe("personal");
-    expect(initialMeaning.include_in_budget).toBe(true);
-    expect(initialMeaning.include_in_net_worth).toBe(true);
-    expect(initialMeaning.include_in_cashflow).toBe(true);
-    expect(initialMeaning.forecast_role).toBe("operational");
+    expect(initialMeaning).toEqual({
+      usage: "personal",
+      kind: "checking",
+      excludeFromNetWorth: false,
+    });
   });
 
   it("past de live samenvatting aan op basis van gekozen instellingen", () => {
     const text = buildLiveSummaryText({
-      ownerScope: "shared",
-      includeInBudget: true,
-      includeInNetWorth: true,
-      includeInCashflow: false,
-      forecastRole: "shared",
+      usage: "exclude",
+      kind: "business",
+      excludeFromNetWorth: false,
     });
 
-    expect(text).toContain("rekening (samen)");
-    expect(text).toContain("budgetten");
-    expect(text).toContain("totale vermogen");
-    expect(text).not.toContain("vooruitzichten");
+    expect(text).toContain("niet mee in budget");
+    expect(text).toContain("wel in totaal vermogen");
   });
 
   it("maakt een nieuwe rekening aan met spaarrekening-defaults en eigenaarsscope", async () => {
@@ -199,7 +203,61 @@ describe("bank-account-form-sheet", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("houdt geavanceerde opties optioneel en laat verwijderen intact in edit flow", async () => {
+  it("zet zakelijke rekening standaard op niet meenemen en buiten vermogen", async () => {
+    createBankAccountMock.mockResolvedValue({
+      ...buildEditAccount(),
+      id: "acc_3",
+      account_type: "business",
+      include_in_budget: false,
+      include_in_cashflow: false,
+      include_in_net_worth: false,
+      forecast_role: "excluded",
+    });
+
+    let tree!: renderer.ReactTestRenderer;
+    await act(async () => {
+      tree = renderer.create(
+        <BankAccountFormSheet
+          visible
+          mode="create"
+          onSaved={vi.fn()}
+          onClose={vi.fn()}
+          sourceAccountNumber="NL01RABO0123456789"
+          providerLabel="Rabobank"
+        />,
+      );
+    });
+
+    const inputs = tree.root.findAllByType(TextInput);
+    await act(async () => {
+      inputs[0]?.props.onChangeText("Zakelijk");
+      inputs[1]?.props.onChangeText("Rabobank");
+      inputs[2]?.props.onChangeText("NL01RABO0123456789");
+    });
+
+    await act(async () => {
+      findPressableByText(tree.root, "Betaalrekening").props.onPress();
+    });
+    await act(async () => {
+      findPressableByText(tree.root, "Zakelijke rekening").props.onPress();
+    });
+    await act(async () => {
+      findPressableByText(tree.root, "Rekening aanmaken").props.onPress();
+    });
+
+    expect(createBankAccountMock).toHaveBeenCalledTimes(1);
+    expect(createBankAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      name: "Zakelijk",
+      accountType: "checking",
+      ownerScope: "personal",
+      forecastRole: "excluded",
+      includeInBudget: false,
+      includeInCashflow: false,
+      includeInNetWorth: false,
+    });
+  });
+
+  it("houdt extra opties compact en laat verwijderen intact in edit flow", async () => {
     updateBankAccountMock.mockResolvedValue(buildEditAccount());
     const onDelete = vi.fn();
 
@@ -222,23 +280,21 @@ describe("bank-account-form-sheet", () => {
       .findAllByType(Text)
       .flatMap((node) => flattenText(node.props.children))
       .join(" ");
-    expect(textBefore).not.toContain("Rol in forecast");
+    expect(textBefore).not.toContain("Rekening actief");
 
     await act(async () => {
-      findPressableByText(tree.root, "Geavanceerde opties").props.onPress();
+      findPressableByText(tree.root, "Extra opties").props.onPress();
     });
 
     const textAfter = tree.root
       .findAllByType(Text)
       .flatMap((node) => flattenText(node.props.children))
       .join(" ");
-    expect(textAfter).toContain("Rol in forecast");
+    expect(textAfter).toContain("Rekening actief");
 
     const switches = tree.root.findAllByType(Switch);
     await act(async () => {
       switches[0]?.props.onValueChange(false);
-      switches[1]?.props.onValueChange(false);
-      switches[2]?.props.onValueChange(false);
     });
 
     await act(async () => {

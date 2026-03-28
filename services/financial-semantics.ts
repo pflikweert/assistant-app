@@ -195,9 +195,16 @@ export function buildFinancialBalanceSnapshot(params: {
   forecast: InsightsForecastSummary | null;
   plan: BudgetPlanComputation | null;
   currentBalanceOverride?: number | null;
+  currentNetWorthOverride?: number | null;
   reserveSurface?: ReserveSurfaceBreakdown | null;
 }): FinancialSurfaceBalanceSnapshot {
-  const { forecast, plan, currentBalanceOverride, reserveSurface } = params;
+  const {
+    forecast,
+    plan,
+    currentBalanceOverride,
+    currentNetWorthOverride,
+    reserveSurface,
+  } = params;
 
   const operationalBalance =
     currentBalanceOverride ??
@@ -220,7 +227,8 @@ export function buildFinancialBalanceSnapshot(params: {
           ? { amount: 0 as number, source: "zero" as const }
           : { amount: reserveSurfaceTotal, source: "derived" as const }
       : resolveReservedBalanceValue(forecast);
-  const netWorth = forecast?.currentNetWorth ?? null;
+  const netWorth =
+    currentNetWorthOverride ?? forecast?.currentNetWorth ?? null;
   // freeToSpendNow is the operational room after reserved money.
   // It is intentionally separate from month budget and week budget:
   // those come from the budget surface, while this field is only about
@@ -284,7 +292,12 @@ export function buildFinancialBalanceSnapshot(params: {
     },
     netWorth: {
       amount: netWorth == null ? null : round2(netWorth),
-      source: netWorth == null ? "not_modeled_yet" : "forecast_anchor",
+      source:
+        netWorth == null
+          ? "not_modeled_yet"
+          : currentNetWorthOverride != null
+            ? "derived"
+            : "forecast_anchor",
     },
     freeToSpend: {
       amount: freeToSpend,
@@ -300,7 +313,12 @@ export function buildFinancialBalanceSnapshot(params: {
     },
     currentNetWorth: {
       amount: netWorth == null ? null : round2(netWorth),
-      source: netWorth == null ? "not_modeled_yet" : "forecast_anchor",
+      source:
+        netWorth == null
+          ? "not_modeled_yet"
+          : currentNetWorthOverride != null
+            ? "derived"
+            : "forecast_anchor",
     },
     freeToSpendNow: {
       amount: freeToSpendNow == null ? null : round2(freeToSpendNow),

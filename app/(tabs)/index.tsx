@@ -9,6 +9,7 @@ import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceHeaderActions } from "@/components/ui/finance-header-actions";
 import { FinanceDashboardHeader } from "@/components/ui/finance-dashboard-header";
 import { FinanceButton } from "@/components/ui/finance-button";
+import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SplashLoader } from "@/components/motions/SplashLoader";
 import { FinColors, FinSurfaces } from "@/constants/theme";
@@ -33,6 +34,10 @@ import {
 } from "@/services/latest-known-balance";
 import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import { listBankAccountsForUser } from "@/services/bank-accounts";
+import {
+  resolveFinancialSurfaceStatus,
+  resolveSafetyContextCopy,
+} from "@/services/financial-surface-semantics";
 import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import type {
@@ -123,6 +128,29 @@ export default function DashboardScreen() {
     React.useState<BudgetPlanComputation | null>(null);
   const [dashboardBalances, setDashboardBalances] =
     React.useState<FinancialSurfaceBalanceSnapshot | null>(null);
+  const [dashboardConfidenceLabel, setDashboardConfidenceLabel] =
+    React.useState<string | null>(null);
+  const [safeToSpendUntilNextIncome, setSafeToSpendUntilNextIncome] =
+    React.useState<number | null>(null);
+  const [safeToSpendExplanation, setSafeToSpendExplanation] =
+    React.useState<string | null>(null);
+  const [safeToSpendIncomeAnchorLabel, setSafeToSpendIncomeAnchorLabel] =
+    React.useState<string | null>(null);
+  const [safeToSpendIncomeAnchorDate, setSafeToSpendIncomeAnchorDate] =
+    React.useState<string | null>(null);
+  const [safeToSpendEstimatedAnchorDate, setSafeToSpendEstimatedAnchorDate] =
+    React.useState(false);
+  const [safeToSpendProjectedCosts, setSafeToSpendProjectedCosts] =
+    React.useState<number | null>(null);
+  const [safeToSpendProjectedIncome, setSafeToSpendProjectedIncome] =
+    React.useState<number | null>(null);
+  const [projectedNetUntilNextIncome, setProjectedNetUntilNextIncome] =
+    React.useState<number | null>(null);
+  const [safeToSpendDeltaReason, setSafeToSpendDeltaReason] =
+    React.useState<string | null>(null);
+  const [safeToSpendSheetOpen, setSafeToSpendSheetOpen] = React.useState(false);
+  const [safeToSpendBreakdownOpen, setSafeToSpendBreakdownOpen] =
+    React.useState(false);
   const [availableScopeOptions, setAvailableScopeOptions] = React.useState<
     readonly MoneyViewScope[]
   >(["personal"]);
@@ -162,6 +190,13 @@ export default function DashboardScreen() {
       }).format(new Date()),
     [],
   );
+  const activeMonthLabel = React.useMemo(
+    () =>
+      new Intl.DateTimeFormat("nl-NL", {
+        month: "long",
+      }).format(dashboardBudgetOverview.referenceDate),
+    [dashboardBudgetOverview.referenceDate],
+  );
   const dashboardHelpAssistantScreenContext = React.useMemo(
     () => ({
       kind: "budget" as const,
@@ -199,6 +234,40 @@ export default function DashboardScreen() {
       dashboardBudgetOverview.weekSnapshot.tempoDelta,
       dashboardBudgetOverview.remainingMonthlyBudget,
       dashboardPeriodLabel,
+    ],
+  );
+  const safeToSpendSemantics = React.useMemo(
+    () =>
+      resolveSafetyContextCopy({
+        anchorLabel: safeToSpendIncomeAnchorLabel,
+        anchorDate: safeToSpendIncomeAnchorDate,
+        isEstimatedAnchorDate: safeToSpendEstimatedAnchorDate,
+        formatDateLabel: (value) =>
+          formatDateLabel(value, {
+            day: "numeric",
+            month: "long",
+          }),
+      }),
+    [
+      safeToSpendIncomeAnchorDate,
+      safeToSpendEstimatedAnchorDate,
+      safeToSpendIncomeAnchorLabel,
+    ],
+  );
+  const dashboardStatus = React.useMemo(
+    () =>
+      resolveFinancialSurfaceStatus({
+        activeMonthLabel,
+        expectedEndOperationalBalance:
+          dashboardBalances?.expectedEndOperationalBalance.amount ?? null,
+        remainingMonthlyBudget: dashboardBudgetOverview.remainingMonthlyBudget,
+        monthBudgetTone: dashboardBudgetOverview.monthSnapshot.tone,
+      }),
+    [
+      activeMonthLabel,
+      dashboardBalances?.expectedEndOperationalBalance.amount,
+      dashboardBudgetOverview.monthSnapshot.tone,
+      dashboardBudgetOverview.remainingMonthlyBudget,
     ],
   );
 
@@ -275,6 +344,16 @@ export default function DashboardScreen() {
     if (budgetSchemaMissing) {
       setBudgetPlan(null);
       setDashboardBalances(null);
+      setDashboardConfidenceLabel(null);
+      setSafeToSpendUntilNextIncome(null);
+      setSafeToSpendExplanation(null);
+      setSafeToSpendIncomeAnchorLabel(null);
+      setSafeToSpendIncomeAnchorDate(null);
+      setSafeToSpendEstimatedAnchorDate(false);
+      setSafeToSpendProjectedCosts(null);
+      setSafeToSpendProjectedIncome(null);
+      setSafeToSpendDeltaReason(null);
+      setProjectedNetUntilNextIncome(null);
       return;
     }
     if (budgetLoadInFlight.current) return;
@@ -287,25 +366,67 @@ export default function DashboardScreen() {
       );
       const visibleScopes = resolveAvailableMoneyViewScopes(bankAccounts, scope);
       setAvailableScopeOptions(visibleScopes);
-      const { plan, balances } = await loadBudgetPlanForSurface({
+      const result = await loadBudgetPlanForSurface({
         referenceDate: new Date(),
         planKey: "default",
         moneyViewScope: scope,
         userId,
       });
+      const { plan, balances, confidence } = result;
       setBudgetPlan(plan);
       setDashboardBalances(balances);
+      setDashboardConfidenceLabel(
+        confidence.expectedEndOperationalBalance.label || null,
+      );
+      setSafeToSpendUntilNextIncome(result.safeToSpendUntilNextIncome);
+      setSafeToSpendExplanation(result.safeToSpendExplanation);
+      setSafeToSpendIncomeAnchorLabel(result.nextIncomeLabelAnchor || null);
+      setSafeToSpendIncomeAnchorDate(result.nextIncomeDateAnchor || null);
+      setSafeToSpendEstimatedAnchorDate(
+        Boolean(result.safeToSpendIsEstimatedAnchorDate),
+      );
+      setSafeToSpendProjectedCosts(
+        result.safeToSpendExplanationParts?.projectedCosts ?? null,
+      );
+      setSafeToSpendProjectedIncome(
+        result.safeToSpendExplanationParts?.projectedIncome ?? null,
+      );
+      setProjectedNetUntilNextIncome(result.projectedNetUntilNextIncome);
+      setSafeToSpendDeltaReason(
+        result.confidenceLayer.safeToSpendUntilNextIncome.deltaReason?.message ||
+          null,
+      );
     } catch (error) {
       if (isMissingRelationError(error)) {
         setBudgetSchemaMissing(true);
         setBudgetPlan(null);
         setDashboardBalances(null);
+        setDashboardConfidenceLabel(null);
+        setSafeToSpendUntilNextIncome(null);
+        setSafeToSpendExplanation(null);
+        setSafeToSpendIncomeAnchorLabel(null);
+        setSafeToSpendIncomeAnchorDate(null);
+        setSafeToSpendEstimatedAnchorDate(false);
+        setSafeToSpendProjectedCosts(null);
+        setSafeToSpendProjectedIncome(null);
+        setSafeToSpendDeltaReason(null);
+        setProjectedNetUntilNextIncome(null);
         return;
       }
 
       console.error("[dashboard] budget load error", error);
       setBudgetPlan(null);
       setDashboardBalances(null);
+      setDashboardConfidenceLabel(null);
+      setSafeToSpendUntilNextIncome(null);
+      setSafeToSpendExplanation(null);
+      setSafeToSpendIncomeAnchorLabel(null);
+      setSafeToSpendIncomeAnchorDate(null);
+      setSafeToSpendEstimatedAnchorDate(false);
+      setSafeToSpendProjectedCosts(null);
+      setSafeToSpendProjectedIncome(null);
+      setSafeToSpendDeltaReason(null);
+      setProjectedNetUntilNextIncome(null);
     } finally {
       budgetLoadInFlight.current = false;
     }
@@ -416,13 +537,26 @@ export default function DashboardScreen() {
             <View style={styles.mainStack}>
               <DashboardBalanceSummary
                 surfaceBalances={dashboardBalances}
-                monthLabel={dashboardPeriodLabel}
+                activeMonthLabel={activeMonthLabel}
+                remainingMonthlyBudget={dashboardBudgetOverview.remainingMonthlyBudget}
                 hasTransactions={hasTransactions}
                 scopeLabel={
                   availableScopeOptions.length > 1
                     ? getMoneyViewScopeLabel(moneyViewScope)
                     : null
                 }
+                confidenceLabel={dashboardConfidenceLabel}
+                showConfidenceLabel={
+                  Boolean(dashboardConfidenceLabel) && dashboardStatus.tone !== "good"
+                }
+                statusLabel={dashboardStatus.label}
+                statusIconName={dashboardStatus.iconName}
+                safeToSpendUntilNextIncome={safeToSpendUntilNextIncome}
+                safeToSpendContextLabel={safeToSpendSemantics.fullLabel}
+                onPressSafeToSpendExplanation={
+                  safeToSpendExplanation ? () => setSafeToSpendSheetOpen(true) : null
+                }
+                onPressRemainingBudgetLabel={() => router.push("/budget")}
               />
 
               <DashboardBudgetOverviewCard
@@ -493,6 +627,144 @@ export default function DashboardScreen() {
           </View>
         </ScrollView>
       )}
+      <FinanceBottomSheetShell
+        visible={safeToSpendSheetOpen}
+        title={safeToSpendSemantics.sheetTitle}
+        subtitle={safeToSpendSemantics.sheetSubtitle}
+        onClose={() => {
+          setSafeToSpendSheetOpen(false);
+          setSafeToSpendBreakdownOpen(false);
+        }}
+      >
+        <View style={styles.safeToSpendSheetBody}>
+          <View style={styles.safeToSpendSheetValueCard}>
+            <Text style={styles.safeToSpendSheetValue}>
+              {safeToSpendUntilNextIncome == null
+                ? "Niet beschikbaar"
+                : formatCurrency(safeToSpendUntilNextIncome)}
+            </Text>
+          </View>
+          <View style={styles.safeToSpendSheetExplanationCard}>
+            <Text style={styles.safeToSpendSheetExplanationTitle}>In het kort</Text>
+            <Text style={styles.safeToSpendSheetText}>
+              {safeToSpendExplanation ||
+                "We tonen dit zodra we een betrouwbaar inkomensmoment en verwachte lasten kunnen bepalen."}
+            </Text>
+          </View>
+          {dashboardConfidenceLabel && dashboardConfidenceLabel !== "Hoog vertrouwen" ? (
+            <View style={styles.safeToSpendConfidencePill}>
+              <Text style={styles.safeToSpendConfidenceText}>
+                {dashboardConfidenceLabel}
+              </Text>
+            </View>
+          ) : null}
+          {dashboardBalances?.currentOperationalBalance.amount != null ? (
+            <View style={styles.safeToSpendBreakdownCard}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setSafeToSpendBreakdownOpen((value) => !value)}
+                style={({ pressed }) => [
+                  styles.safeToSpendBreakdownToggle,
+                  pressed ? styles.safeToSpendBreakdownTogglePressed : null,
+                ]}
+              >
+                <Text style={styles.safeToSpendBreakdownTitle}>Berekening bekijken</Text>
+                <AppIcon
+                  name={safeToSpendBreakdownOpen ? "expand-less" : "expand-more"}
+                  size={18}
+                  color={FinColors.textSecondary}
+                  variant="outlined"
+                />
+              </Pressable>
+              {safeToSpendBreakdownOpen ? (
+                <>
+                  <View style={styles.safeToSpendBreakdownList}>
+                    <View style={styles.safeToSpendBreakdownItem}>
+                      <Text style={styles.safeToSpendBreakdownLabel}>
+                        Saldo nu
+                      </Text>
+                      <Text style={styles.safeToSpendBreakdownValue}>
+                        {formatCurrency(
+                          dashboardBalances.currentOperationalBalance.amount,
+                        )}
+                      </Text>
+                    </View>
+                    <View style={styles.safeToSpendBreakdownItem}>
+                      <Text style={styles.safeToSpendBreakdownLabel}>
+                        Gereserveerd voor later
+                      </Text>
+                      <Text style={styles.safeToSpendBreakdownValue}>
+                        {formatCurrency(
+                          dashboardBalances.currentReservedBalance.amount ?? 0,
+                        )}
+                      </Text>
+                    </View>
+                    <View style={styles.safeToSpendBreakdownItem}>
+                      <Text style={styles.safeToSpendBreakdownLabel}>
+                        Nog te verwachten lasten
+                      </Text>
+                      <Text
+                        style={[
+                          styles.safeToSpendBreakdownValue,
+                          styles.safeToSpendBreakdownValueWarning,
+                        ]}
+                      >
+                        {safeToSpendProjectedCosts == null
+                          ? "n.b."
+                          : formatCurrency(safeToSpendProjectedCosts)}
+                      </Text>
+                    </View>
+                    <View style={styles.safeToSpendBreakdownItem}>
+                      <Text style={styles.safeToSpendBreakdownLabel}>
+                        Inkomsten vóór dat moment
+                      </Text>
+                      <Text
+                        style={[
+                          styles.safeToSpendBreakdownValue,
+                          styles.safeToSpendBreakdownValuePositive,
+                        ]}
+                      >
+                        {safeToSpendProjectedIncome == null
+                          ? "n.b."
+                          : formatCurrency(safeToSpendProjectedIncome)}
+                      </Text>
+                    </View>
+                    <View style={styles.safeToSpendBreakdownDivider} />
+                    <View style={styles.safeToSpendBreakdownItem}>
+                      <Text style={styles.safeToSpendBreakdownLabelStrong}>
+                        Ruimte die we voorzichtig vrijhouden
+                      </Text>
+                      <Text
+                        style={[
+                          styles.safeToSpendBreakdownValue,
+                          styles.safeToSpendBreakdownValueStrong,
+                        ]}
+                      >
+                        {projectedNetUntilNextIncome == null
+                          ? "n.b."
+                          : formatCurrency(Math.max(-projectedNetUntilNextIncome, 0))}
+                      </Text>
+                    </View>
+                  </View>
+                  {safeToSpendDeltaReason ? (
+                    <View style={styles.safeToSpendBreakdownReasonCallout}>
+                      <AppIcon
+                        name="info-outline"
+                        size={14}
+                        color={FinColors.warningText}
+                        variant="outlined"
+                      />
+                      <Text style={styles.safeToSpendBreakdownMeta}>
+                        Grootste reden van voorzichtigheid: {safeToSpendDeltaReason}
+                      </Text>
+                    </View>
+                  ) : null}
+                </>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
+      </FinanceBottomSheetShell>
     </View>
   );
 }
@@ -504,13 +776,148 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   topBar: {
-    backgroundColor: "rgba(246,245,242,0.84)",
+    backgroundColor: "rgba(246,245,242,0.95)",
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.05)",
+    borderBottomColor: "rgba(17,17,17,0.10)",
   },
   scroll: {
     paddingTop: 80,
     paddingBottom: 128,
+  },
+  safeToSpendSheetBody: {
+    gap: 14,
+    paddingBottom: 10,
+  },
+  safeToSpendSheetValueCard: {
+    borderRadius: 18,
+    backgroundColor: "#fcd934",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    boxShadow: "0px 6px 14px rgba(17,17,17,0.12)",
+    elevation: 2,
+  },
+  safeToSpendSheetValue: {
+    fontSize: 42,
+    lineHeight: 46,
+    color: FinColors.textPrimary,
+    fontWeight: "900",
+    letterSpacing: -1.1,
+    textAlign: "center",
+  },
+  safeToSpendSheetExplanationCard: {
+    borderRadius: 18,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  safeToSpendSheetExplanationTitle: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "800",
+    color: FinColors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+  },
+  safeToSpendSheetText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: FinColors.textSecondary,
+  },
+  safeToSpendConfidencePill: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    backgroundColor: "#fff7de",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  safeToSpendConfidenceText: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "700",
+    color: FinColors.warningText,
+  },
+  safeToSpendBreakdownCard: {
+    borderRadius: 20,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  safeToSpendBreakdownToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  safeToSpendBreakdownTogglePressed: {
+    opacity: 0.8,
+  },
+  safeToSpendBreakdownTitle: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "800",
+    color: FinColors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+  },
+  safeToSpendBreakdownList: {
+    gap: 8,
+  },
+  safeToSpendBreakdownItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  safeToSpendBreakdownLabel: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
+    flex: 1,
+  },
+  safeToSpendBreakdownLabelStrong: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+    flex: 1,
+  },
+  safeToSpendBreakdownValue: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  safeToSpendBreakdownValueWarning: {
+    color: FinColors.red,
+  },
+  safeToSpendBreakdownValuePositive: {
+    color: FinColors.green,
+  },
+  safeToSpendBreakdownValueStrong: {
+    color: FinColors.red,
+  },
+  safeToSpendBreakdownDivider: {
+    height: 1,
+    borderRadius: 999,
+    backgroundColor: FinColors.borderSubtle,
+  },
+  safeToSpendBreakdownMeta: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    color: FinColors.textSecondary,
+  },
+  safeToSpendBreakdownReasonCallout: {
+    marginTop: 2,
+    borderRadius: 14,
+    backgroundColor: "#fff7de",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
   },
   contentMax: {
     width: "100%",

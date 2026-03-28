@@ -1,5 +1,18 @@
 import { computeBudgetPlan } from "@/services/budget-plan";
 import { applyBudgetWeekRebalanceGuardrails } from "@/services/budget-week-guardrails";
+import { getMonthVariableBudgetSnapshot } from "@/services/budget-risk";
+import {
+  buildForecastSurfaceConfidence,
+  type ForecastSurfaceConfidence,
+} from "@/services/confidence-model";
+import {
+  buildForecastSurfaceExplainability,
+  type ForecastSurfaceExplainability,
+} from "@/services/explainability";
+import {
+  buildConfidenceLayerMetadata,
+  type ConfidenceLayerMetadata,
+} from "@/services/explain-logic";
 import {
   normalizeMoneyViewScope,
   type MoneyViewScope,
@@ -10,8 +23,16 @@ import {
   type FinancialSurfaceBalanceSnapshot,
 } from "@/services/financial-semantics";
 import { loadReserveSurfaceBreakdown, type ReserveSurfaceBreakdown } from "@/services/reserve-surface";
+import {
+  buildSafetySpendWindowSummary,
+  type SafetySpendWindowSummary,
+} from "@/services/safety-spend-window";
+import { resolveSafetyContextCopy } from "@/services/financial-surface-semantics";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
-import { loadLatestKnownBalanceSnapshot } from "@/services/latest-known-balance";
+import {
+  loadLatestKnownBalanceSnapshot,
+  loadLatestKnownNetWorthSnapshot,
+} from "@/services/latest-known-balance";
 import { loadMonthForecastSummary } from "@/services/month-forecast-summary";
 import type { BudgetPlanComputation } from "@/types/categorization";
 
@@ -23,6 +44,25 @@ export type ForecastSurfaceSummary = {
   balances: FinancialSurfaceBalanceSnapshot;
   // Canonical reserve contract for surface consumers.
   reserveBreakdown: ReserveSurfaceBreakdown | null;
+  confidence: ForecastSurfaceConfidence;
+  explainability: ForecastSurfaceExplainability;
+  safeToSpendUntilNextIncome: number | null;
+  projectedNetUntilNextIncome: number | null;
+  nextIncomeDateAnchor: string | null;
+  nextIncomeLabelAnchor: string | null;
+  safeToSpendAnchorType:
+    | "configured"
+    | "recurring_semantic"
+    | "significant_fallback"
+    | "fallback_end_next_month"
+    | "none";
+  safeToSpendIsEstimatedAnchorDate: boolean;
+  safeToSpendLabel: string;
+  safeToSpendSubtitle: string;
+  bridgeCrossMonthCostsUntilIncome: number | null;
+  safeToSpendExplanation: string | null;
+  safeToSpendExplanationParts: SafetySpendWindowSummary["safeToSpendExplanationParts"];
+  confidenceLayer: ConfidenceLayerMetadata;
   // Deprecated alias for temporary backward compatibility in older callers.
   reserve: ReserveSurfaceBreakdown | null;
 };
@@ -65,13 +105,18 @@ export async function loadBudgetPlanForSurface(params: {
   const resolvedMoneyViewScope = normalizeMoneyViewScope(
     scopePreference.scopeView,
   );
-  const latestKnownBalance =
+  const [latestKnownBalance, latestKnownNetWorth] = await Promise.all([
     currentBalanceOverride != null
-      ? { balance: currentBalanceOverride, date: null }
-      : await loadLatestKnownBalanceSnapshot(
+      ? Promise.resolve({ balance: currentBalanceOverride, date: null })
+      : loadLatestKnownBalanceSnapshot(
           resolvedUserId,
           resolvedMoneyViewScope,
-        ).catch(() => ({ balance: null, date: null }));
+        ).catch(() => ({ balance: null, date: null })),
+    loadLatestKnownNetWorthSnapshot(
+      resolvedUserId,
+      resolvedMoneyViewScope,
+    ).catch(() => ({ balance: null, date: null })),
+  ]);
 
   const [rawPlan, loadedForecast] = await Promise.all([
     computeBudgetPlan(
@@ -101,18 +146,110 @@ export async function loadBudgetPlanForSurface(params: {
     moneyViewScope: resolvedMoneyViewScope,
     budgetPlan: plan,
   }).catch(() => null);
+  const balances = buildFinancialBalanceSnapshot({
+    forecast: loadedForecast,
+    plan,
+    currentBalanceOverride: latestKnownBalance.balance,
+    currentNetWorthOverride: latestKnownNetWorth.balance,
+    reserveSurface: reserveBreakdown,
+  });
+  const confidence = buildForecastSurfaceConfidence({
+    forecast: loadedForecast,
+    plan,
+    balances,
+    reserveBreakdown,
+  });
+  const explainability = buildForecastSurfaceExplainability({
+    balances,
+    reserveBreakdown,
+    confidence,
+  });
+  const monthSnapshot = getMonthVariableBudgetSnapshot(plan);
+  const safetyWindow =
+    resolvedUserId == null
+      ? {
+          safeToSpendUntilNextIncome: null,
+          projectedNetUntilNextIncome: null,
+          nextIncomeDateAnchor: null,
+          nextIncomeLabelAnchor: null,
+          anchorType: "none" as const,
+          isEstimatedAnchorDate: true,
+          bridgeCrossMonthCostsUntilIncome: null,
+          safeToSpendExplanation: null,
+          safeToSpendExplanationParts: null,
+          confidenceScore: "INDICATIVE" as const,
+          deltaReasonLabel: null,
+          deltaReasonAmount: null,
+        }
+      : await buildSafetySpendWindowSummary({
+          userId: resolvedUserId,
+          moneyViewScope: resolvedMoneyViewScope,
+          referenceDate,
+          freeToSpendNow: balances.freeToSpendNow.amount,
+          forecastSummary: loadedForecast,
+          avgMonthlyIncludedIncome:
+            plan.flowSummary.expectedIncomeMonthly == null
+              ? null
+              : Number(plan.flowSummary.expectedIncomeMonthly),
+          includeIncomeSettings: plan.settings.includeIncome,
+          remainingVariableBudget: monthSnapshot.remaining,
+          monthlyVariableBudgetBaseline:
+            plan.flowSummary.variableBudget == null
+              ? null
+              : Number(plan.flowSummary.variableBudget),
+          monthlyFixedBaseline:
+            Number(plan.flowSummary.fixedCostsBudget || 0) +
+            Number(plan.flowSummary.subscriptionsBudget || 0),
+        }).catch(() => ({
+          safeToSpendUntilNextIncome: null,
+          projectedNetUntilNextIncome: null,
+          nextIncomeDateAnchor: null,
+          nextIncomeLabelAnchor: null,
+          anchorType: "none" as const,
+          isEstimatedAnchorDate: true,
+          bridgeCrossMonthCostsUntilIncome: null,
+          safeToSpendExplanation: null,
+          safeToSpendExplanationParts: null,
+          confidenceScore: "INDICATIVE" as const,
+          deltaReasonLabel: null,
+          deltaReasonAmount: null,
+        }));
+  const confidenceLayer = buildConfidenceLayerMetadata({
+    freeToSpendNowSignal: confidence.freeToSpendNow,
+    safeToSpendSignal: confidence.safeToSpendUntilNextIncome,
+    freeToSpendExplanationString:
+      explainability.items.find((item) => item.key === "free_to_spend")?.message ||
+      null,
+    safeToSpendExplanationString: safetyWindow.safeToSpendExplanation,
+    safeToSpendDeltaReasonLabel: safetyWindow.deltaReasonLabel,
+    safeToSpendDeltaReasonAmount: safetyWindow.deltaReasonAmount,
+  });
+  const safeToSpendCopy = resolveSafetyContextCopy({
+    anchorLabel: safetyWindow.nextIncomeLabelAnchor,
+    anchorDate: safetyWindow.nextIncomeDateAnchor,
+    isEstimatedAnchorDate: safetyWindow.isEstimatedAnchorDate,
+  });
 
   return {
     scopeView: resolvedMoneyViewScope,
     forecast: loadedForecast,
     plan,
     reserveBreakdown,
+    confidence,
+    explainability,
+    safeToSpendUntilNextIncome: safetyWindow.safeToSpendUntilNextIncome,
+    projectedNetUntilNextIncome: safetyWindow.projectedNetUntilNextIncome,
+    nextIncomeDateAnchor: safetyWindow.nextIncomeDateAnchor,
+    nextIncomeLabelAnchor: safetyWindow.nextIncomeLabelAnchor,
+    safeToSpendAnchorType: safetyWindow.anchorType,
+    safeToSpendIsEstimatedAnchorDate: safetyWindow.isEstimatedAnchorDate,
+    safeToSpendLabel: safeToSpendCopy.fullLabel,
+    safeToSpendSubtitle: safeToSpendCopy.sheetSubtitle,
+    bridgeCrossMonthCostsUntilIncome: safetyWindow.bridgeCrossMonthCostsUntilIncome,
+    safeToSpendExplanation: safetyWindow.safeToSpendExplanation,
+    safeToSpendExplanationParts: safetyWindow.safeToSpendExplanationParts,
+    confidenceLayer,
     reserve: reserveBreakdown,
-    balances: buildFinancialBalanceSnapshot({
-      forecast: loadedForecast,
-      plan,
-      currentBalanceOverride: latestKnownBalance.balance,
-      reserveSurface: reserveBreakdown,
-    }),
+    balances,
   };
 }

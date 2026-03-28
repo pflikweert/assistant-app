@@ -2,6 +2,7 @@ import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { FinColors, FinSpacing } from "@/constants/theme";
 import React from "react";
 import {
+  Platform,
   StyleSheet,
   Text,
   type StyleProp,
@@ -42,7 +43,15 @@ export function FinanceTopBar({
   showMenu = true,
 }: FinanceTopBarProps) {
   return (
-    <View style={[styles.shell, shellStyle]}>
+    <View
+      style={[
+        styles.shell,
+        Platform.OS === "web"
+          ? ({ backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)" } as any)
+          : null,
+        shellStyle,
+      ]}
+    >
       <View style={[styles.inner, innerStyle]}>
         <View style={[styles.row, rowStyle]}>
           <View style={[styles.left, leftStyle]}>
@@ -64,11 +73,11 @@ export function FinanceTopBar({
 
 const styles = StyleSheet.create({
   shell: {
-    backgroundColor: "rgba(246,245,242,0.92)",
+    backgroundColor: "rgba(246,245,242,0.96)",
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.08)",
-    boxShadow: "0px 8px 16px rgba(17,17,17,0.04)",
-    elevation: 1,
+    borderBottomColor: "rgba(17,17,17,0.10)",
+    boxShadow: "0px 10px 20px rgba(17,17,17,0.06)",
+    elevation: 2,
   },
   inner: {
     width: "100%",

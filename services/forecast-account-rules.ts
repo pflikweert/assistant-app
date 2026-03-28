@@ -63,6 +63,7 @@ export function resolveForecastAccountRole(
 
   const accountType = normalize(input.account_type);
   if (accountType === "savings") return "reserve";
+  if (accountType === "business") return "excluded";
   if (accountType === "investment") return "goal";
   if (accountType === "credit" || accountType === "loan") return "excluded";
 
@@ -106,4 +107,3 @@ export function applyForecastAccountRules<
     ...resolveForecastAccountRules(account),
   };
 }
-

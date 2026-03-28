@@ -1,8 +1,5 @@
 import { AppIcon } from "@/components/ui/app-icon";
-import { FinanceInlineCallout } from "@/components/ui/finance-inline-callout";
-import { FinanceBudgetProgressBar } from "@/components/ui/finance-budget-progress-bar";
 import { FinancePressableSurface } from "@/components/ui/finance-pressable-surface";
-import { FinanceStatusChip, type FinanceStatusTone } from "@/components/ui/finance-status-chip";
 import { FinColors } from "@/constants/theme";
 import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import {
@@ -10,7 +7,6 @@ import {
   getMonthVariableBudgetUsageText,
   getWeekBudgetSnapshot,
   getWeekTempoMessage,
-  type BudgetRiskTone,
 } from "@/services/budget-risk";
 import type {
   BudgetPlanComputation,
@@ -29,20 +25,6 @@ const euroFormatter = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
 });
-
-function mapBudgetToneToStatusTone(tone: BudgetRiskTone): FinanceStatusTone {
-  if (tone === "good") return "good";
-  if (tone === "watch") return "watch";
-  if (tone === "critical") return "critical";
-  return "neutral";
-}
-
-function formatMonthBadgeLabel(referenceDate: Date) {
-  return new Intl.DateTimeFormat("nl-NL", { month: "short" })
-    .format(referenceDate)
-    .replace(/\./g, "")
-    .toUpperCase();
-}
 
 function formatWeekRangeLabel(startDate: string, endDateExclusive: string) {
   const endDate = new Date(`${endDateExclusive}T00:00:00.000Z`);
@@ -116,7 +98,7 @@ export function buildDashboardBudgetOverviewModel(
 
   return {
     referenceDate,
-    monthBadgeLabel: formatMonthBadgeLabel(referenceDate),
+    monthBadgeLabel: "",
     monthSnapshot,
     remainingMonthlyBudget: monthSnapshot.remaining,
     monthProgressLabel:
@@ -166,105 +148,73 @@ export function DashboardBudgetOverviewCard({
   onPress,
   style,
 }: DashboardBudgetOverviewCardProps) {
-  const month = model.monthSnapshot;
   const week = model.weekSnapshot;
+  const weekProgressWidth = `${Math.max(0, Math.min(100, Math.round(week.progress * 100)))}%`;
+  const weekStatusLabel = week.label || "Let op";
   const cardContent = (
     <View style={[styles.card, style]}>
-      <View style={styles.monthHeaderRow}>
-        <View style={styles.monthHeaderText}>
-          <Text style={styles.sectionEyebrow}>Resterend maandbudget</Text>
-          <Text style={styles.monthTitle}>
-            {month.state === "no_data"
-              ? "Nog geen data"
-              : model.remainingMonthlyBudget == null
-                ? "Nog geen variabel budget"
-                : euroFormatter.format(model.remainingMonthlyBudget)}
-          </Text>
-        </View>
-        <View style={styles.monthBadge}>
-          <Text style={styles.monthBadgeText}>{model.monthBadgeLabel}</Text>
-        </View>
+      <View style={styles.weekSectionHeader}>
+        <Text style={styles.weekSectionTitle}>Weekbudget status</Text>
+        <Text style={styles.weekSectionRange}>
+          {model.weekRangeLabel || "Weekbudget volgt zodra je budget actief is"}
+        </Text>
       </View>
 
-      <View style={styles.statusRow}>
-        <FinanceStatusChip
-          label={month.label}
-          tone={mapBudgetToneToStatusTone(month.tone)}
-        />
-      </View>
-
-      <View style={styles.monthProgressBlock}>
-        <FinanceBudgetProgressBar
-          progress={month.progress * 100}
-          tone={month.tone}
-        />
-        <View style={styles.progressMetaRow}>
-          <Text style={styles.progressMetaText}>
-            {model.monthProgressLabel || "Nog geen maandbudget"}
-          </Text>
-          {model.lowestOperationalPointLabel ? (
-            <Text style={styles.progressMetaText}>
-              {model.lowestOperationalPointLabel}
+      <View style={styles.weekCard}>
+        <View style={styles.weekSummaryRow}>
+          <View style={styles.weekSummaryMain}>
+            <Text style={styles.weekRemaining}>
+              {model.weeklyBudgetRemaining == null
+                ? "Nog geen data"
+                : `${euroFormatter.format(model.weeklyBudgetRemaining)} resterend`}
             </Text>
+            <Text style={styles.weekUsageText}>{model.weekUsageText}</Text>
+          </View>
+          <View style={styles.weekDaysWrap}>
+            {model.weekRemainingDaysLabel ? (
+              <>
+                <Text style={styles.weekDaysPrimary}>
+                  {model.weekRemainingDaysLabel.replace(" resterend", "")}
+                </Text>
+                <Text style={styles.weekDaysSecondary}>resterend</Text>
+              </>
+            ) : (
+              <Text style={styles.weekDaysSecondary}>n.b.</Text>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.weekProgressTrack}>
+          <View
+            style={[
+              styles.weekProgressFill,
+              { width: weekProgressWidth },
+            ]}
+          />
+        </View>
+
+        <View style={styles.weekMetaRow}>
+          <View style={styles.weekStatusPill}>
+            <View style={styles.weekStatusDot} />
+            <Text style={styles.weekStatusPillText}>{weekStatusLabel}</Text>
+          </View>
+          {model.weekProgressLabel ? (
+            <Text style={styles.weekProgressLabel}>{model.weekProgressLabel}</Text>
           ) : null}
         </View>
-        <Text style={styles.usageText}>{model.monthUsageText}</Text>
       </View>
 
-      <View style={styles.divider} />
-
-      <View style={styles.weekHeaderRow}>
-        <View style={styles.weekHeaderText}>
-          <Text style={styles.sectionEyebrow}>Weekbudget status</Text>
-          <Text style={styles.sectionSubtle}>
-            {model.weekRangeLabel || "Weekbudget volgt zodra je budget actief is"}
-          </Text>
-        </View>
-        <View style={styles.weekHeaderIcon}>
+      <View style={styles.coachingCard}>
+        <View style={styles.coachingIconWrap}>
           <AppIcon
-            name="bar-chart"
+            name="emoji-objects"
             size={18}
             color={FinColors.warningText}
             variant="outlined"
           />
         </View>
+        <Text style={styles.coachingText}>{model.weekTempoMessage}</Text>
       </View>
-
-      <View style={styles.weekSummaryRow}>
-        <View style={styles.weekSummaryMain}>
-          <Text style={styles.weekRemaining}>
-            {model.weeklyBudgetRemaining == null
-              ? "Nog geen data"
-              : `${euroFormatter.format(model.weeklyBudgetRemaining)} resterend`}
-          </Text>
-          <Text style={styles.weekUsageText}>{model.weekUsageText}</Text>
-        </View>
-        {model.weekRemainingDaysLabel ? (
-          <Text style={styles.weekRemainingDays}>
-            {model.weekRemainingDaysLabel}
-          </Text>
-        ) : null}
-      </View>
-
-      <View style={styles.weekStatusRow}>
-        <FinanceStatusChip
-          label={week.label}
-          tone={mapBudgetToneToStatusTone(week.tone)}
-        />
-        {model.weekProgressLabel ? (
-          <Text style={styles.weekProgressLabel}>{model.weekProgressLabel}</Text>
-        ) : null}
-      </View>
-
-      <FinanceBudgetProgressBar
-        progress={week.progress * 100}
-        tone={week.tone}
-      />
-
-      <FinanceInlineCallout
-        text={model.weekTempoMessage}
-        iconName="trending-up"
-      />
     </View>
   );
 
@@ -280,113 +230,41 @@ export function DashboardBudgetOverviewCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 30,
-    backgroundColor: FinColors.bgCard,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    gap: 16,
-    boxShadow: "0px 10px 24px rgba(17,17,17,0.05)",
-    elevation: 1,
+    gap: 12,
   },
   cardPressed: {
     opacity: 0.92,
   },
-  monthHeaderRow: {
+  weekSectionHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+    paddingHorizontal: 2,
   },
-  monthHeaderText: {
-    flex: 1,
-    minWidth: 0,
-    gap: 8,
-  },
-  sectionEyebrow: {
-    fontSize: 12,
-    lineHeight: 14,
-    color: FinColors.textMuted,
+  weekSectionTitle: {
+    fontSize: 18,
+    lineHeight: 24,
     fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  monthTitle: {
-    fontSize: 40,
-    lineHeight: 44,
-    fontWeight: "900",
     color: FinColors.textPrimary,
-    letterSpacing: -1.2,
+    letterSpacing: -0.4,
   },
-  monthBadge: {
-    borderRadius: 999,
-    backgroundColor: FinColors.warningBg,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  monthBadgeText: {
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: "900",
-    color: FinColors.warningText,
-    letterSpacing: 1.1,
-    textTransform: "uppercase",
-  },
-  statusRow: {
-    marginTop: -2,
-  },
-  monthProgressBlock: {
-    gap: 8,
-  },
-  progressMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  progressMetaText: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: FinColors.textSecondary,
-    fontWeight: "700",
-  },
-  usageText: {
+  weekSectionRange: {
     fontSize: 12,
-    lineHeight: 17,
-    color: FinColors.textMuted,
-    fontWeight: "600",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "rgba(17,17,17,0.08)",
-  },
-  weekHeaderRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  weekHeaderText: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-  },
-  sectionSubtle: {
-    fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 16,
     color: FinColors.textSecondary,
     fontWeight: "600",
   },
-  weekHeaderIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: FinColors.bgElevated,
+  weekCard: {
+    borderRadius: 24,
+    backgroundColor: "#f1f4f6",
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    gap: 12,
   },
   weekSummaryRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
@@ -397,10 +275,10 @@ const styles = StyleSheet.create({
   },
   weekRemaining: {
     fontSize: 24,
-    lineHeight: 30,
+    lineHeight: 28,
     fontWeight: "900",
     color: FinColors.textPrimary,
-    letterSpacing: -0.6,
+    letterSpacing: -0.4,
   },
   weekUsageText: {
     fontSize: 12,
@@ -408,26 +286,94 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
     fontWeight: "600",
   },
-  weekRemainingDays: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "900",
-    color: FinColors.warningText,
-    letterSpacing: 1.1,
-    textTransform: "uppercase",
-    textAlign: "right",
+  weekDaysWrap: {
+    alignItems: "flex-end",
   },
-  weekStatusRow: {
+  weekDaysPrimary: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  weekDaysSecondary: {
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  weekProgressTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "#e3e9ec",
+    overflow: "hidden",
+  },
+  weekProgressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#f9e287",
+  },
+  weekMetaRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
+  weekStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  weekStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: FinColors.warningText,
+  },
+  weekStatusPillText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
   weekProgressLabel: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: FinColors.textMuted,
-    fontWeight: "700",
+    fontSize: 10,
+    lineHeight: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
     textAlign: "right",
+  },
+  coachingCard: {
+    borderRadius: 24,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.06)",
+  },
+  coachingIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: FinColors.warningBg,
+  },
+  coachingText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "600",
   },
 });

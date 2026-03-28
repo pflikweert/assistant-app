@@ -35,7 +35,7 @@ function normalizeWhitespace(value: string) {
 }
 
 describe("DashboardBudgetOverviewCard", () => {
-  it("toont maand- en weekinformatie samen zonder data te verliezen", () => {
+  it("toont weekinformatie in de dashboardkaart zonder maand-dubbeling", () => {
     const forecastSurface = {
       lowestOperationalPointInMonth: {
         amount: 1280,
@@ -96,12 +96,6 @@ describe("DashboardBudgetOverviewCard", () => {
         .join(" "),
     );
 
-    expect(text).toContain("Resterend maandbudget");
-    expect(text).toContain("MEI");
-    expect(text).toContain("Op schema");
-    expect(text).toContain(normalizeWhitespace(euroFormatter.format(540)));
-    expect(text).toContain("65% verbruikt");
-    expect(text).toContain(`Laagste punt ${normalizeWhitespace(euroFormatter.format(1280))}`);
     expect(text).toContain("Weekbudget status");
     expect(text).toContain("11 mei - 17 mei");
     expect(text).toContain(normalizeWhitespace(euroFormatter.format(27)));
@@ -110,5 +104,7 @@ describe("DashboardBudgetOverviewCard", () => {
     expect(text).toContain(normalizeWhitespace(euroFormatter.format(98)));
     expect(text).toContain(normalizeWhitespace(euroFormatter.format(125)));
     expect(text).toContain("boven je weektempo");
+    expect(text).toContain("emoji-objects");
+    expect(text).not.toContain("Resterend maandbudget");
   });
 });

@@ -35,6 +35,8 @@ import {
   buildInsightsForecastCard,
   type InsightsForecastCardModel,
 } from "@/services/insights-forecast-card";
+import type { ForecastSurfaceConfidence } from "@/services/confidence-model";
+import type { ForecastSurfaceExplainability } from "@/services/explainability";
 import { listBankAccountsForUser } from "@/services/bank-accounts";
 import {
   loadLatestKnownBalanceSnapshot,
@@ -50,6 +52,7 @@ import {
   getInsightsRemainingPlannedExpenseTotal,
   getInsightsRemainingVariableExpenseEstimate,
 } from "@/services/insights-remaining-month";
+import { resolveSafetyContextCopy } from "@/services/financial-surface-semantics";
 import {
   formatCurrency,
   formatSignedCurrency,
@@ -60,6 +63,7 @@ import {
   upsertMoneyViewScopePreference,
 } from "@/services/finance-scope-preference";
 import {
+  isAccountIncludedInOperationalMoneyViewScope,
   resolveAvailableMoneyViewScopes,
   type MoneyViewScope,
 } from "@/services/finance-scope";
@@ -209,6 +213,20 @@ export default function InsightsScreen() {
   const [reserveSurface, setReserveSurface] = React.useState<ReserveSurfaceBreakdown | null>(null);
   const [surfaceBalances, setSurfaceBalances] =
     React.useState<FinancialSurfaceBalanceSnapshot | null>(null);
+  const [surfaceConfidence, setSurfaceConfidence] =
+    React.useState<ForecastSurfaceConfidence | null>(null);
+  const [surfaceExplainability, setSurfaceExplainability] =
+    React.useState<ForecastSurfaceExplainability | null>(null);
+  const [safeToSpendUntilNextIncome, setSafeToSpendUntilNextIncome] =
+    React.useState<number | null>(null);
+  const [safeToSpendExplanation, setSafeToSpendExplanation] =
+    React.useState<string | null>(null);
+  const [nextIncomeLabelAnchor, setNextIncomeLabelAnchor] =
+    React.useState<string | null>(null);
+  const [nextIncomeDateAnchor, setNextIncomeDateAnchor] =
+    React.useState<string | null>(null);
+  const [safeToSpendIsEstimatedAnchorDate, setSafeToSpendIsEstimatedAnchorDate] =
+    React.useState(false);
   const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
   const [allCategoriesOpen, setAllCategoriesOpen] = React.useState(false);
   const [remainingMonthOpen, setRemainingMonthOpen] = React.useState(false);
@@ -246,8 +264,17 @@ export default function InsightsScreen() {
         budgetPlan,
         currentBalanceOverride: latestKnownBalance.balance,
         surfaceBalances,
+        surfaceConfidence,
+        surfaceExplainability,
       }),
-    [budgetPlan, forecast, latestKnownBalance.balance, surfaceBalances],
+    [
+      budgetPlan,
+      forecast,
+      latestKnownBalance.balance,
+      surfaceBalances,
+      surfaceConfidence,
+      surfaceExplainability,
+    ],
   );
   const categorySummary = React.useMemo(
     () =>
@@ -294,6 +321,20 @@ export default function InsightsScreen() {
       currentBalanceOverride: latestKnownBalance.balance,
     });
   }, [budgetPlan, forecast, latestKnownBalance.balance]);
+  const safeToSpendCopy = React.useMemo(
+    () =>
+      resolveSafetyContextCopy({
+        anchorLabel: nextIncomeLabelAnchor,
+        anchorDate: nextIncomeDateAnchor,
+        isEstimatedAnchorDate: safeToSpendIsEstimatedAnchorDate,
+        formatDateLabel: (value) => formatSheetDate(value),
+      }),
+    [
+      nextIncomeDateAnchor,
+      nextIncomeLabelAnchor,
+      safeToSpendIsEstimatedAnchorDate,
+    ],
+  );
 
   const loadMonthOptions = React.useCallback(async () => {
     try {
@@ -319,6 +360,13 @@ export default function InsightsScreen() {
       scopeView: import("@/services/finance-scope").MoneyViewScope;
       reserveBreakdown: ReserveSurfaceBreakdown | null;
       balances: FinancialSurfaceBalanceSnapshot | null;
+      confidence: ForecastSurfaceConfidence | null;
+      explainability: ForecastSurfaceExplainability | null;
+      safeToSpendUntilNextIncome: number | null;
+      safeToSpendExplanation: string | null;
+      nextIncomeLabelAnchor: string | null;
+      nextIncomeDateAnchor: string | null;
+      safeToSpendIsEstimatedAnchorDate: boolean;
     }> => {
       try {
         const reason = selectedMonth.isCurrentMonth
@@ -341,26 +389,67 @@ export default function InsightsScreen() {
           ...result,
           reserveBreakdown: result.reserveBreakdown,
           balances: result.balances,
+          confidence: result.confidence,
+          explainability: result.explainability,
+          safeToSpendUntilNextIncome: result.safeToSpendUntilNextIncome,
+          safeToSpendExplanation: result.safeToSpendExplanation,
+          nextIncomeLabelAnchor: result.nextIncomeLabelAnchor,
+          nextIncomeDateAnchor: result.nextIncomeDateAnchor,
+          safeToSpendIsEstimatedAnchorDate:
+            result.safeToSpendIsEstimatedAnchorDate,
         };
       } catch (error) {
         if (isMissingRelationError(error)) {
-          return { forecast: null, plan: null, scopeView, reserveBreakdown: null, balances: null };
+          return {
+            forecast: null,
+            plan: null,
+            scopeView,
+            reserveBreakdown: null,
+            balances: null,
+            confidence: null,
+            explainability: null,
+            safeToSpendUntilNextIncome: null,
+            safeToSpendExplanation: null,
+            nextIncomeLabelAnchor: null,
+            nextIncomeDateAnchor: null,
+            safeToSpendIsEstimatedAnchorDate: true,
+          };
         }
 
         console.error("[insights] budget surface load error", error);
-        return { forecast: null, plan: null, scopeView, reserveBreakdown: null, balances: null };
+        return {
+          forecast: null,
+          plan: null,
+          scopeView,
+          reserveBreakdown: null,
+          balances: null,
+          confidence: null,
+          explainability: null,
+          safeToSpendUntilNextIncome: null,
+          safeToSpendExplanation: null,
+          nextIncomeLabelAnchor: null,
+          nextIncomeDateAnchor: null,
+          safeToSpendIsEstimatedAnchorDate: true,
+        };
       }
     },
     [selectedMonth],
   );
 
   const loadInsightSignals = React.useCallback(
-    async (userId: string): Promise<InsightSignals> => {
+    async (
+      userId: string,
+      scopeView: import("@/services/finance-scope").MoneyViewScope,
+      bankAccounts: Awaited<ReturnType<typeof listBankAccountsForUser>>,
+    ): Promise<InsightSignals> => {
       try {
         const previous = buildPreviousMonthRange(selectedMonth);
         const lookbackStart = new Date(`${selectedMonth.startIso}T00:00:00.000Z`);
         lookbackStart.setUTCDate(lookbackStart.getUTCDate() - 120);
         const categoryById = new Map<string, { name: string; key: string }>();
+        const bankAccountsById = new Map(
+          bankAccounts.map((account) => [account.id, account]),
+        );
 
         const categoryResult = await supabase
           .from("categories")
@@ -380,7 +469,7 @@ export default function InsightsScreen() {
         const fetchWithAnalysis = async () =>
           supabase
             .from("transactions")
-            .select("id,amount,counterparty,details,date,analysis_category,category_id_auto,category_id_user")
+            .select("id,amount,counterparty,details,date,analysis_category,category_id_auto,category_id_user,bank_account_id")
             .eq("user_id", userId)
             .gte("date", toIsoDate(lookbackStart))
             .lt("date", selectedMonth.endIso)
@@ -390,7 +479,7 @@ export default function InsightsScreen() {
         const fetchLegacy = async () =>
           supabase
             .from("transactions")
-            .select("id,amount,counterparty,details,date,category_id_auto,category_id_user")
+            .select("id,amount,counterparty,details,date,category_id_auto,category_id_user,bank_account_id")
             .eq("user_id", userId)
             .gte("date", toIsoDate(lookbackStart))
             .lt("date", selectedMonth.endIso)
@@ -404,13 +493,32 @@ export default function InsightsScreen() {
 
         if (result.error) throw result.error;
 
-        const rows = ((result.data || []) as Record<string, unknown>[]).map(
-          (row) => ({
+        const rows = ((result.data || []) as Record<string, unknown>[])
+          .map((row) => {
+            const bankAccountId = row.bank_account_id
+              ? String(row.bank_account_id)
+              : null;
+            const bankAccount = bankAccountId
+              ? bankAccountsById.get(bankAccountId) || null
+              : null;
+
+            if (
+              bankAccount &&
+              !isAccountIncludedInOperationalMoneyViewScope(bankAccount, scopeView)
+            ) {
+              return null;
+            }
+            if (!bankAccount && scopeView === "observation") {
+              return null;
+            }
+
+            return {
             id: row.id ? String(row.id) : undefined,
             amount: Number(row.amount || 0),
             counterparty: row.counterparty ? String(row.counterparty) : null,
             details: row.details ? String(row.details) : null,
             date: String(row.date || ""),
+            bankAccountId,
             categoryKey: (() => {
               const categoryId = row.category_id_user || row.category_id_auto;
               if (!categoryId) return null;
@@ -436,8 +544,9 @@ export default function InsightsScreen() {
                     | "variable_costs"
                     | "savings_transfer")
                 : null,
-          }),
-        );
+            };
+          })
+          .filter((row): row is InsightsSignalTransaction => Boolean(row));
 
         return {
           all: rows,
@@ -492,13 +601,22 @@ export default function InsightsScreen() {
     const [budgetSurface, insightSignals, highlightHistory] =
       await Promise.all([
         loadBudgetSurface(userId, resolvedScope, liveBalanceSnapshot.balance),
-        loadInsightSignals(userId),
+        loadInsightSignals(userId, resolvedScope, bankAccounts),
         loadInsightsHighlightHistory(userId, selectedMonth.key),
       ]);
     const forecastSummary = budgetSurface.forecast;
     const budgetSummary = budgetSurface.plan;
     setReserveSurface(budgetSurface.reserveBreakdown);
     setSurfaceBalances(budgetSurface.balances);
+    setSurfaceConfidence(budgetSurface.confidence);
+    setSurfaceExplainability(budgetSurface.explainability);
+    setSafeToSpendUntilNextIncome(budgetSurface.safeToSpendUntilNextIncome);
+    setSafeToSpendExplanation(budgetSurface.safeToSpendExplanation);
+    setNextIncomeLabelAnchor(budgetSurface.nextIncomeLabelAnchor);
+    setNextIncomeDateAnchor(budgetSurface.nextIncomeDateAnchor);
+    setSafeToSpendIsEstimatedAnchorDate(
+      budgetSurface.safeToSpendIsEstimatedAnchorDate,
+    );
 
     setForecast(forecastSummary);
     setBudgetPlan(budgetSummary);
@@ -653,6 +771,11 @@ export default function InsightsScreen() {
                   Jaarlijkse lasten opzij: {formatAmount(reserveSurface.annualObligationMonthlyTotal)} per maand ·
                   gepland deze maand {formatAmount(reserveSurface.plannedReserveAllocationThisMonth)}.
                 </Text>
+                {surfaceConfidence?.currentReservedBalance?.label ? (
+                  <Text style={styles.reserveContextConfidence}>
+                    {surfaceConfidence.currentReservedBalance.label}
+                  </Text>
+                ) : null}
               </View>
             ) : null}
             <FinanceForecastSummaryCard model={forecastCard} />
@@ -768,6 +891,20 @@ export default function InsightsScreen() {
             We rekenen vanaf je laatste bekende operationele stand en laten
             daarna zien wat er deze maand waarschijnlijk nog bijkomt en afgaat.
           </Text>
+          {safeToSpendUntilNextIncome != null ? (
+            <View style={styles.remainingMonthSafetyCard}>
+              <Text style={styles.remainingMonthSectionEyebrow}>
+                {safeToSpendCopy.fullLabel}
+              </Text>
+              <Text style={styles.remainingMonthSafetyValue}>
+                {formatAmount(safeToSpendUntilNextIncome)}
+              </Text>
+              <Text style={styles.remainingMonthSafetyMeta}>
+                {safeToSpendExplanation ||
+                  `We rekenen ${safeToSpendCopy.sheetSubtitle.toLowerCase()} op basis van verwachte lasten.`}
+              </Text>
+            </View>
+          ) : null}
 
           <View style={styles.remainingMonthAnchorCard}>
             <Text style={styles.remainingMonthSectionEyebrow}>
@@ -985,6 +1122,33 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: FinColors.textPrimary,
     fontWeight: "600",
+  },
+  reserveContextConfidence: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  remainingMonthSafetyCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.08)",
+    backgroundColor: FinColors.bgInput,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  remainingMonthSafetyValue: {
+    fontSize: 22,
+    lineHeight: 28,
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+    letterSpacing: -0.4,
+  },
+  remainingMonthSafetyMeta: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: FinColors.textSecondary,
   },
   insightsList: {
     gap: 10,

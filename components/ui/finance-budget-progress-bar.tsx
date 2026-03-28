@@ -14,7 +14,7 @@ function clamp(value: number, min: number, max: number) {
 
 function getFillColor(tone: BudgetRiskTone) {
   if (tone === "good") return "#10b981";
-  if (tone === "watch") return FinColors.yellow;
+  if (tone === "watch") return "#f9e287";
   if (tone === "critical") return FinColors.red;
   return FinColors.textMuted;
 }
@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 9,
     borderRadius: 0,
-    backgroundColor: "rgba(17,17,17,0.05)",
+    backgroundColor: "#e3e9ec",
     overflow: "hidden",
   },
   fill: {

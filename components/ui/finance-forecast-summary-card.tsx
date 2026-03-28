@@ -15,8 +15,13 @@ export function FinanceForecastSummaryCard({
     <View style={styles.card}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>{model.title}</Text>
-        <View style={styles.statusPill}>
-          <Text style={styles.statusPillText}>{model.statusLabel}</Text>
+        <View style={styles.statusPillRow}>
+          <View style={styles.statusPill}>
+            <Text style={styles.statusPillText}>{model.statusLabel}</Text>
+          </View>
+          {model.confidenceLabel ? (
+            <Text style={styles.confidenceText}>{model.confidenceLabel}</Text>
+          ) : null}
         </View>
       </View>
 
@@ -64,6 +69,15 @@ export function FinanceForecastSummaryCard({
       </View>
 
       <Text style={styles.explanation}>{model.explanation}</Text>
+      {model.explanationItems.length ? (
+        <View style={styles.explanationList}>
+          {model.explanationItems.map((item) => (
+            <Text key={item} style={styles.explanationItem}>
+              • {item}
+            </Text>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -84,6 +98,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
     flexWrap: "wrap",
+  },
+  statusPillRow: {
+    alignItems: "flex-end",
+    gap: 4,
   },
   title: {
     fontSize: 11,
@@ -106,6 +124,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     color: "#2b2500",
     textTransform: "uppercase",
+  },
+  confidenceText: {
+    fontSize: 10,
+    lineHeight: 12,
+    color: "rgba(255,255,255,0.62)",
+    fontWeight: "700",
   },
   amount: {
     marginTop: 2,
@@ -195,5 +219,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     color: "rgba(255,255,255,0.76)",
+  },
+  explanationList: {
+    gap: 4,
+  },
+  explanationItem: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: "rgba(255,255,255,0.72)",
   },
 });

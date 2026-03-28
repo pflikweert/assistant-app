@@ -131,4 +131,70 @@ describe("latest-known-balance", () => {
       date: "2026-03-24",
     });
   });
+
+  it("neemt net-worth accounts mee die buiten cashflow vallen wanneer dimension net_worth is", () => {
+    const bankAccountsById = new Map<string, BankAccount>([
+      [
+        "operational-1",
+        {
+          id: "operational-1",
+          name: "Betaal",
+          account_type: "checking",
+          provider: null,
+          currency: "EUR",
+          account_masked: null,
+          is_active: true,
+          include_in_budget: true,
+          forecast_role: "operational",
+          include_in_cashflow: true,
+          include_in_net_worth: true,
+          owner_scope: "personal",
+        },
+      ],
+      [
+        "reserve-1",
+        {
+          id: "reserve-1",
+          name: "Spaar",
+          account_type: "savings",
+          provider: null,
+          currency: "EUR",
+          account_masked: null,
+          is_active: true,
+          include_in_budget: false,
+          forecast_role: "reserve",
+          include_in_cashflow: false,
+          include_in_net_worth: true,
+          owner_scope: "personal",
+        },
+      ],
+    ]);
+
+    const rows = [
+      {
+        bank_account_id: "operational-1",
+        date: "2026-03-24",
+        metadata: { "Saldo na trn": "1000,00", Volgnr: "0010" },
+      },
+      {
+        bank_account_id: "reserve-1",
+        date: "2026-03-24",
+        metadata: { "Saldo na trn": "120,00", Volgnr: "0010" },
+      },
+    ];
+
+    const operationalSnapshot = resolveLatestKnownBalanceSnapshot(rows, {
+      bankAccountsById,
+      moneyViewScope: "personal",
+      dimension: "operational",
+    });
+    const netWorthSnapshot = resolveLatestKnownBalanceSnapshot(rows, {
+      bankAccountsById,
+      moneyViewScope: "personal",
+      dimension: "net_worth",
+    });
+
+    expect(operationalSnapshot.balance).toBe(1000);
+    expect(netWorthSnapshot.balance).toBe(1120);
+  });
 });

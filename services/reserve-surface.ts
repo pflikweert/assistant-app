@@ -20,6 +20,9 @@ export type ReserveSurfaceBreakdown = {
   plannedReserveAllocationThisMonth: number | null;
   annualObligationMonthlyTotal: number | null;
   savingsTargetMonthly: number | null;
+  activeAnnualRuleCount: number;
+  activeManualAnnualRuleCount: number;
+  activeInferredAnnualRuleCount: number;
   source: "modeled" | "unavailable";
 };
 
@@ -64,6 +67,9 @@ function buildUnavailableReserveBreakdown(): ReserveSurfaceBreakdown {
     plannedReserveAllocationThisMonth: null,
     annualObligationMonthlyTotal: null,
     savingsTargetMonthly: null,
+    activeAnnualRuleCount: 0,
+    activeManualAnnualRuleCount: 0,
+    activeInferredAnnualRuleCount: 0,
     source: "unavailable",
   };
 }
@@ -137,6 +143,13 @@ export async function loadReserveSurfaceBreakdown(params: {
   ]);
 
   const annualObligationMonthlyTotal = sumActiveMonthlyRules(reserveRules);
+  const activeAnnualRules = reserveRules.filter((rule) => rule.status === "active");
+  const activeManualAnnualRuleCount = activeAnnualRules.filter(
+    (rule) => rule.source === "manual",
+  ).length;
+  const activeInferredAnnualRuleCount = activeAnnualRules.filter(
+    (rule) => rule.source === "inferred",
+  ).length;
   const plannedReserveAllocationThisMonth = round2(
     annualObligationMonthlyTotal + Math.max(savingsTargetMonthly || 0, 0),
   );
@@ -175,6 +188,9 @@ export async function loadReserveSurfaceBreakdown(params: {
     annualObligationMonthlyTotal:
       annualObligationMonthlyTotal > 0 ? annualObligationMonthlyTotal : 0,
     savingsTargetMonthly: savingsTargetMonthly == null ? 0 : savingsTargetMonthly,
+    activeAnnualRuleCount: activeAnnualRules.length,
+    activeManualAnnualRuleCount,
+    activeInferredAnnualRuleCount,
     source: "modeled",
   };
 }

@@ -1,4 +1,6 @@
 import { buildInsightsForecastCard } from "@/services/insights-forecast-card";
+import type { ForecastSurfaceConfidence } from "@/services/confidence-model";
+import type { ForecastSurfaceExplainability } from "@/services/explainability";
 import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import type { BudgetPlanComputation } from "@/types/categorization";
@@ -73,7 +75,7 @@ describe("buildInsightsForecastCard", () => {
     expect(result.statusLabel).toBe("Neutraal");
   });
 
-  it("toont verwacht positief bij ruime uitkomst", () => {
+  it("toont op schema bij ruime uitkomst", () => {
     const result = buildInsightsForecastCard({
       forecast: buildForecast({
         expectedEndBalance: 980,
@@ -82,11 +84,11 @@ describe("buildInsightsForecastCard", () => {
       budgetPlan: null,
     });
 
-    expect(result.statusLabel).toBe("Verwacht positief");
+    expect(result.statusLabel).toBe("Op schema");
     expect(result.statusTone).toBe("good");
   });
 
-  it("toont krap maar haalbaar bij cash warning", () => {
+  it("blijft op schema bij lichte cash waarschuwing zonder tekort", () => {
     const result = buildInsightsForecastCard({
       forecast: buildForecast({
         expectedEndBalance: 240,
@@ -96,8 +98,8 @@ describe("buildInsightsForecastCard", () => {
       budgetPlan: null,
     });
 
-    expect(result.statusLabel).toBe("Krap maar haalbaar");
-    expect(result.statusTone).toBe("watch");
+    expect(result.statusLabel).toBe("Op schema");
+    expect(result.statusTone).toBe("good");
   });
 
   it("toont let op bij negatief eindsaldo", () => {
@@ -225,5 +227,41 @@ describe("buildInsightsForecastCard", () => {
     expect(result.currentOperationalValue).toBe(fmt.format(2000));
     expect(result.reservedValue).toBe(fmt.format(300));
     expect(result.freeToSpendNowValue).toBe(fmt.format(1700));
+  });
+
+  it("gebruikt dezelfde confidence- en explainabilitylaag als de surface-summary", () => {
+    const surfaceConfidence = {
+      expectedEndOperationalBalance: {
+        level: "medium",
+        label: "Redelijk vertrouwen",
+        provenance: "derived",
+        reasons: [],
+      },
+    } as unknown as ForecastSurfaceConfidence;
+    const surfaceExplainability = {
+      insightsBullets: [
+        "Verwacht eindsaldo combineert huidig saldo met resterende maandmutatie.",
+      ],
+      items: [
+        {
+          key: "expected_end",
+          label: "Verwacht eindsaldo",
+          message: "Verwacht eindsaldo combineert huidig saldo met resterende maandmutatie.",
+          provenance: "derived",
+        },
+      ],
+    } as unknown as ForecastSurfaceExplainability;
+    const result = buildInsightsForecastCard({
+      forecast: buildForecast({
+        expectedEndBalance: 480,
+      }),
+      budgetPlan: null,
+      surfaceConfidence,
+      surfaceExplainability,
+    });
+
+    expect(result.confidenceLabel).toBe("Redelijk vertrouwen");
+    expect(result.explanationItems).toHaveLength(0);
+    expect(result.explanation).toContain("resterende maandmutatie");
   });
 });

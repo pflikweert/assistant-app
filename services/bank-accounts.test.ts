@@ -340,6 +340,35 @@ describe("bank-accounts budget settings", () => {
     expect(account.is_active).toBe(false);
   });
 
+  it("behoudt bestaand rekeningnummer bij bewerken zonder accountNumber", async () => {
+    responseQueue.push({
+      data: {
+        id: "bank-2",
+        name: "Gezamenlijke rekening",
+        account_type: "checking",
+        provider: "ING",
+        currency: "EUR",
+        account_masked: "****9805",
+        is_active: true,
+        include_in_budget: true,
+      },
+      error: null,
+    });
+
+    await updateBankAccount({
+      id: "bank-2",
+      name: "Gezamenlijke rekening",
+      accountType: "checking",
+      provider: "ING",
+      includeInBudget: true,
+      isActive: true,
+    });
+
+    expect(queryLog[0]?.table).toBe("bank_accounts");
+    expect(queryLog[0]?.updates[0]).not.toHaveProperty("account_masked");
+    expect(queryLog[0]?.updates[0]).not.toHaveProperty("account_hash");
+  });
+
   it("kan het aantal gekoppelde transacties van een rekening ophalen", async () => {
     responseQueue.push({
       data: null,

@@ -380,6 +380,8 @@ describe("resolveUnifiedFinancialAdviceContext", () => {
     expect(result.spending.currentWeekTotal).toBe(15);
     expect(result.budgetPlan.currentWeekBudget).toBe(200);
     expect(result.trend.weekTempoDelta).toBe(80);
+    expect(result.surfaceSemantics?.safeToSpendLabel).toContain("Extra ruimte");
+    expect(result.surfaceSemantics?.statusLabel).toContain("maart");
     expect(result.quality.hasBalanceSignals).toBe(true);
     expect(result.quality.hasSpendingSignals).toBe(true);
     expect(result.quality.hasCategorySignals).toBe(true);

@@ -358,6 +358,7 @@ function buildUnifiedFinancialContextPrompt(
   const readableDataGaps = context.quality.dataGaps
     .map((gap) => toReadableDataGapLabel(gap))
     .filter(Boolean);
+  const canonical = context.surfaceSemantics;
 
   const lines = [
     `Periode: ${context.period.label}`,
@@ -368,6 +369,24 @@ function buildUnifiedFinancialContextPrompt(
     context.currentBalance.balance != null
       ? `Actuele operationele stand: ${eur.format(context.currentBalance.balance)}${context.currentBalance.date ? ` (laatst bekend op ${context.currentBalance.date})` : ""}`
       : "Actuele operationele stand: onbekend",
+    canonical
+      ? `Canoniek resterend maandbudget: ${canonical.remainingMonthlyBudget == null ? "onbekend" : eur.format(canonical.remainingMonthlyBudget)}`
+      : "",
+    canonical
+      ? `Canoniek verwacht eindsaldo maand: ${canonical.expectedEndOperationalBalance == null ? "onbekend" : eur.format(canonical.expectedEndOperationalBalance)}`
+      : "",
+    canonical
+      ? `Canonieke safety-term: ${canonical.safeToSpendLabel}`
+      : "",
+    canonical
+      ? `Canonieke ${canonical.safeToSpendLabel.toLowerCase()}: ${canonical.safeToSpendUntilNextIncome == null ? "onbekend" : eur.format(canonical.safeToSpendUntilNextIncome)}`
+      : "",
+    canonical
+      ? `Canonieke status: ${canonical.statusLabel} (${canonical.statusTone})`
+      : "",
+    canonical
+      ? `Vrij besteedbaar nu (canoniek): ${canonical.freeToSpendNow == null ? "onbekend" : eur.format(canonical.freeToSpendNow)}`
+      : "",
     context.spending.currentMonthTotal != null
       ? `Huidige maand uitgaven totaal: ${eur.format(context.spending.currentMonthTotal)}`
       : "Huidige maand uitgaven totaal: onbekend",
@@ -447,7 +466,7 @@ function buildUnifiedFinancialContextPrompt(
         )}`
       : "",
     context.forecastCurrentMonth.expectedEndBalance != null
-      ? `Forecast operationele stand maand: ${eur.format(
+      ? `Forecast operationele stand maand (fallback): ${eur.format(
           context.forecastCurrentMonth.expectedEndBalance,
         )}`
       : "",

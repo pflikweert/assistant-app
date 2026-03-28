@@ -81,11 +81,13 @@ describe("reserve-surface", () => {
         id: "rule-1",
         monthlyAmount: 80,
         status: "active",
+        source: "inferred",
       },
       {
         id: "rule-2",
         monthlyAmount: 40,
         status: "paused",
+        source: "manual",
       },
     ]);
     txRowsRef.rows = [
@@ -117,6 +119,9 @@ describe("reserve-surface", () => {
       plannedReserveAllocationThisMonth: 140,
       annualObligationMonthlyTotal: 80,
       savingsTargetMonthly: 60,
+      activeAnnualRuleCount: 1,
+      activeManualAnnualRuleCount: 0,
+      activeInferredAnnualRuleCount: 1,
       source: "modeled",
     });
   });
@@ -138,6 +143,9 @@ describe("reserve-surface", () => {
       plannedReserveAllocationThisMonth: null,
       annualObligationMonthlyTotal: null,
       savingsTargetMonthly: null,
+      activeAnnualRuleCount: 0,
+      activeManualAnnualRuleCount: 0,
+      activeInferredAnnualRuleCount: 0,
       source: "unavailable",
     });
   });

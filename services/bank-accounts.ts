@@ -14,6 +14,7 @@ const BANK_ACCOUNT_LEGACY_SELECT =
 export type BankAccountType =
   | "checking"
   | "savings"
+  | "business"
   | "credit"
   | "loan"
   | "investment"
@@ -38,6 +39,7 @@ export type BankAccount = {
 export const ACCOUNT_TYPES: BankAccountType[] = [
   "checking",
   "savings",
+  "business",
   "credit",
   "loan",
   "investment",
@@ -329,6 +331,13 @@ export async function updateBankAccount(
         : null;
     legacyPayload.account_masked = scopedPayload.account_masked;
     legacyPayload.account_hash = scopedPayload.account_hash;
+  } else {
+    // Preserve the existing account number when the edit form leaves it empty.
+    // We only write masked/hash fields when the caller explicitly passes accountNumber.
+    delete scopedPayload.account_masked;
+    delete scopedPayload.account_hash;
+    delete legacyPayload.account_masked;
+    delete legacyPayload.account_hash;
   }
 
   let result = await supabase

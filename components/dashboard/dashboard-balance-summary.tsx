@@ -1,8 +1,9 @@
 import { FinanceInlineCallout } from "@/components/ui/finance-inline-callout";
+import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
 import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 const euroFormatter = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -13,7 +14,8 @@ const euroFormatter = new Intl.NumberFormat("nl-NL", {
 
 function formatBalanceParts(value: number) {
   const parts = euroFormatter.formatToParts(value);
-  const currency = parts.find((part) => part.type === "currency")?.value || "€";
+  const sign = parts.find((part) => part.type === "minusSign")?.value || "";
+  const currency = `${sign}${parts.find((part) => part.type === "currency")?.value || "€"}`;
   const integer = parts
     .filter((part) => part.type === "integer" || part.type === "group")
     .map((part) => part.value)
@@ -36,67 +38,81 @@ function formatCompactBalance(value: number) {
 
 type DashboardBalanceSummaryProps = {
   surfaceBalances: FinancialSurfaceBalanceSnapshot | null;
-  monthLabel: string;
+  activeMonthLabel: string;
+  remainingMonthlyBudget: number | null;
+  monthBudgetTone?: "neutral" | "good" | "watch" | "critical";
   hasTransactions: boolean;
   scopeLabel?: string | null;
+  confidenceLabel?: string | null;
+  showConfidenceLabel?: boolean;
+  statusLabel?: string | null;
+  statusIconName?: "check-circle-outline" | "warning" | null;
+  safeToSpendUntilNextIncome?: number | null;
+  safeToSpendContextLabel?: string | null;
+  onPressSafeToSpendExplanation?: (() => void) | null;
+  onPressRemainingBudgetLabel?: (() => void) | null;
 };
-
-function resolveFreeToSpendStatusText(
-  surfaceBalances: FinancialSurfaceBalanceSnapshot | null,
-) {
-  const operational = surfaceBalances?.currentOperationalBalance.amount ?? null;
-  const reserved = surfaceBalances?.currentReservedBalance ?? null;
-
-  if (operational == null) {
-    return "Vrij besteedbaar volgt zodra de actuele stand bekend is.";
-  }
-
-  if (reserved?.source === "unavailable" || reserved?.source === "not_configured") {
-    return "Vrij besteedbaar volgt zodra gereserveerd geld bekend is.";
-  }
-
-  return "Vrij besteedbaar volgt zodra de operationele ruimte volledig kan worden bepaald.";
-}
 
 export function DashboardBalanceSummary({
   surfaceBalances,
-  monthLabel,
+  activeMonthLabel,
+  remainingMonthlyBudget,
+  monthBudgetTone: _monthBudgetTone = "neutral",
   hasTransactions,
   scopeLabel,
+  confidenceLabel,
+  showConfidenceLabel = false,
+  statusLabel,
+  statusIconName = null,
+  safeToSpendUntilNextIncome,
+  safeToSpendContextLabel,
+  onPressSafeToSpendExplanation,
+  onPressRemainingBudgetLabel,
 }: DashboardBalanceSummaryProps) {
   const operational = surfaceBalances?.currentOperationalBalance.amount ?? null;
-  const reserved = surfaceBalances?.currentReservedBalance;
-  const freeToSpendNow = surfaceBalances?.freeToSpendNow.amount ?? null;
   const expectedEnd = surfaceBalances?.expectedEndOperationalBalance.amount ?? null;
   const netWorth = surfaceBalances?.currentNetWorth.amount ?? null;
+  const netWorthAddsContext =
+    netWorth != null &&
+    (operational == null || Math.abs(netWorth - operational) >= 0.01);
   const primaryFormatted =
-    freeToSpendNow == null ? null : formatBalanceParts(freeToSpendNow);
-  // This is operational room only. Month and week budget are shown elsewhere,
-  // so the empty state should explain why this operational layer cannot yet be
-  // determined instead of borrowing budget language.
-  const freeToSpendStatusText =
-    freeToSpendNow == null ? resolveFreeToSpendStatusText(surfaceBalances) : null;
+    remainingMonthlyBudget == null
+      ? null
+      : formatBalanceParts(remainingMonthlyBudget);
   const supportValues = [
     {
-      label: "Huidig saldo",
+      label: "Saldo nu",
       value: operational,
     },
     {
-      label: "Gereserveerd",
-      value: reserved?.amount ?? null,
+      label: safeToSpendContextLabel || "Extra ruimte tot volgende inkomsten",
+      value: safeToSpendUntilNextIncome ?? null,
+      interactive: Boolean(onPressSafeToSpendExplanation),
     },
-    {
-      label: "Totaal vermogen",
-      value: netWorth,
-    },
+    ...(netWorthAddsContext
+      ? [
+          {
+            label: "Totaal vermogen",
+            value: netWorth,
+          },
+        ]
+      : []),
   ];
 
-  const statusLabel =
-    expectedEnd == null
-      ? `Forecast volgt voor ${monthLabel}`
-      : expectedEnd < 0
-        ? `Let op voor ${monthLabel}`
-        : `Je zit op schema voor ${monthLabel}`;
+  const resolvedStatusLabel =
+    statusLabel ||
+    (expectedEnd == null
+      ? `Forecast volgt voor ${activeMonthLabel}`
+      : expectedEnd < 0 ||
+          _monthBudgetTone === "critical" ||
+          (remainingMonthlyBudget != null && remainingMonthlyBudget < 0)
+        ? `Let op voor ${activeMonthLabel}`
+        : `Je zit op schema voor ${activeMonthLabel}`);
+  const resolvedStatusIconName =
+    statusIconName ||
+    (resolvedStatusLabel.toLowerCase().includes("let op")
+      ? "warning"
+      : "check-circle-outline");
 
   return (
     <View style={styles.card}>
@@ -106,7 +122,20 @@ export function DashboardBalanceSummary({
             <Text style={styles.scopePillText}>{scopeLabel}</Text>
           </View>
         ) : null}
-        <Text style={styles.kicker}>Vrij besteedbaar</Text>
+        {onPressRemainingBudgetLabel ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={onPressRemainingBudgetLabel}
+            style={({ pressed }) => [
+              styles.kickerPressable,
+              pressed ? styles.kickerPressed : null,
+            ]}
+          >
+            <Text style={styles.kicker}>{`Resterend budget ${activeMonthLabel}`}</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.kicker}>{`Resterend budget ${activeMonthLabel}`}</Text>
+        )}
 
         {primaryFormatted ? (
           <Text style={[styles.amount, !hasTransactions && styles.amountMuted]}>
@@ -117,12 +146,10 @@ export function DashboardBalanceSummary({
           </Text>
         ) : (
           <View style={styles.amountFallbackWrap}>
-            <Text style={[styles.amount, styles.amountMuted]}>
-              Nog niet vast te stellen
+            <Text style={[styles.amount, styles.amountMuted]}>Nog niet bekend</Text>
+            <Text style={styles.amountHint}>
+              We tonen dit zodra je maandbudget voor {activeMonthLabel} beschikbaar is.
             </Text>
-            {freeToSpendStatusText ? (
-              <Text style={styles.amountHint}>{freeToSpendStatusText}</Text>
-            ) : null}
           </View>
         )}
 
@@ -132,31 +159,67 @@ export function DashboardBalanceSummary({
             {expectedEnd == null ? "n.b." : formatCompactBalance(expectedEnd)}
           </Text>
         </View>
+        {showConfidenceLabel && confidenceLabel ? (
+          <Text style={styles.confidenceLabel}>
+            {confidenceLabel}
+          </Text>
+        ) : null}
 
         <View style={styles.supportGrid}>
-          {supportValues.map((item, index) => (
-            <View
-              key={item.label}
-              style={[
-                styles.supportItem,
-                index < supportValues.length - 1 && styles.supportItemDivider,
-              ]}
-            >
-              <Text style={styles.supportLabel}>{item.label}</Text>
-              <Text style={styles.supportValue}>
-                {item.value == null ? "n.b." : formatCompactBalance(item.value)}
-              </Text>
-            </View>
-          ))}
+          {supportValues.map((item, index) => {
+            const itemStyles = [
+              styles.supportItem,
+              index < supportValues.length - 1 && styles.supportItemDivider,
+            ];
+
+            if (item.interactive) {
+              return (
+                <Pressable
+                  key={item.label}
+                  accessibilityRole="button"
+                  onPress={onPressSafeToSpendExplanation || undefined}
+                  style={({ pressed }) => [
+                    itemStyles,
+                    pressed ? styles.supportItemPressed : null,
+                  ]}
+                >
+                  <View style={styles.supportLabelWrap}>
+                    <View style={styles.supportLabelRow}>
+                      <Text style={styles.supportLabel}>{item.label}</Text>
+                      <AppIcon
+                        name="info-outline"
+                        size={12}
+                        color={FinColors.textMuted}
+                        variant="outlined"
+                      />
+                    </View>
+                  </View>
+                  <Text style={styles.supportValue}>
+                    {item.value == null ? "n.b." : formatCompactBalance(item.value)}
+                  </Text>
+                </Pressable>
+              );
+            }
+
+            return (
+              <View
+                key={item.label}
+                style={itemStyles}
+              >
+                <View style={styles.supportLabelWrap}>
+                  <Text style={styles.supportLabel}>{item.label}</Text>
+                </View>
+                <Text style={styles.supportValue}>
+                  {item.value == null ? "n.b." : formatCompactBalance(item.value)}
+                </Text>
+              </View>
+            );
+          })}
         </View>
 
         <FinanceInlineCallout
-          text={statusLabel}
-          iconName={
-            expectedEnd != null && expectedEnd < 0
-              ? "warning"
-              : "check-circle-outline"
-          }
+          text={resolvedStatusLabel}
+          iconName={resolvedStatusIconName}
           tone="highlight"
         />
       </View>
@@ -167,7 +230,6 @@ export function DashboardBalanceSummary({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: "transparent",
-    paddingHorizontal: 22,
     paddingVertical: 24,
   },
   centerStack: {
@@ -196,6 +258,15 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 2.1,
   },
+  kickerPressable: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  kickerPressed: {
+    opacity: 0.72,
+    backgroundColor: "rgba(17,17,17,0.04)",
+  },
   forecastPill: {
     alignSelf: "center",
     flexDirection: "row",
@@ -222,6 +293,15 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: "800",
     color: FinColors.textPrimary,
+  },
+  confidenceLabel: {
+    marginTop: -4,
+    fontSize: 11,
+    lineHeight: 14,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+    textAlign: "center",
+    maxWidth: 320,
   },
   amount: {
     textAlign: "center",
@@ -280,30 +360,48 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignSelf: "stretch",
     marginTop: 8,
+    alignItems: "stretch",
   },
   supportItem: {
     flexGrow: 1,
+    flexBasis: 0,
     alignItems: "center",
-    gap: 2,
-    paddingHorizontal: 10,
+    justifyContent: "flex-start",
+    paddingHorizontal: 8,
+    gap: 4,
   },
   supportItemDivider: {
     borderRightWidth: 1,
     borderRightColor: "rgba(17,17,17,0.09)",
   },
+  supportItemPressed: {
+    opacity: 0.8,
+  },
   supportLabel: {
-    fontSize: 10,
+    fontSize: 9,
     lineHeight: 12,
     fontWeight: "900",
-    letterSpacing: 0.9,
+    letterSpacing: 0.5,
     color: FinColors.textSecondary,
     textTransform: "uppercase",
+    textAlign: "center",
+  },
+  supportLabelWrap: {
+    minHeight: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  supportLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   supportValue: {
-    fontSize: 24,
-    lineHeight: 28,
+    fontSize: 18,
+    lineHeight: 22,
     fontWeight: "900",
     color: FinColors.textPrimary,
-    letterSpacing: -0.8,
+    letterSpacing: -0.4,
+    textAlign: "center",
   },
 });

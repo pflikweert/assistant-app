@@ -1,7 +1,13 @@
+import type {
+  ForecastSurfaceConfidence,
+  ConfidenceLabel,
+} from "@/services/confidence-model";
+import type { ForecastSurfaceExplainability } from "@/services/explainability";
 import type { FinanceStatusTone } from "@/components/ui/finance-status-chip";
 import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import { getInsightsDisplayExpectedEndBalance } from "@/services/insights-remaining-month";
+import { resolveFinancialSurfaceStatus } from "@/services/financial-surface-semantics";
 import type { BudgetPlanComputation } from "@/types/categorization";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
@@ -9,7 +15,7 @@ const fmt = new Intl.NumberFormat("nl-NL", {
   currency: "EUR",
 });
 
-type ForecastStatusLabel = "Verwacht positief" | "Krap maar haalbaar" | "Let op" | "Neutraal";
+type ForecastStatusLabel = "Op schema" | "Let op" | "Neutraal";
 
 export type InsightsForecastCardModel = {
   title: string;
@@ -19,9 +25,11 @@ export type InsightsForecastCardModel = {
   reservedValue: string | null;
   statusLabel: ForecastStatusLabel;
   statusTone: FinanceStatusTone;
+  confidenceLabel: ConfidenceLabel | null;
   lowestOperationalPointValue: string;
   lowestOperationalPointDateLabel: string | null;
   explanation: string;
+  explanationItems: string[];
   isFallback: boolean;
 };
 
@@ -39,26 +47,19 @@ function resolveStatus(expectedEnd: number | null, forecast: InsightsForecastSum
   label: ForecastStatusLabel;
   tone: FinanceStatusTone;
 } {
-  const lowest =
-    forecast.lowestOperationalPointInMonth ?? forecast.lowestExpectedBalance ?? null;
-  const hasDeficit =
-    forecast.riskFlag === "deficit_warning" ||
-    (expectedEnd != null && expectedEnd < 0);
+  const status = resolveFinancialSurfaceStatus({
+    activeMonthLabel: "deze maand",
+    expectedEndOperationalBalance: expectedEnd,
+    remainingMonthlyBudget: null,
+    monthBudgetTone:
+      forecast.cashRiskFlag === "cash_gap_warning" ? "watch" : "neutral",
+  });
 
-  if (hasDeficit) {
+  if (status.tone === "critical" || forecast.riskFlag === "deficit_warning") {
     return { label: "Let op", tone: "critical" };
   }
 
-  const isTight =
-    forecast.cashRiskFlag === "cash_gap_warning" ||
-    (lowest != null && lowest < 150) ||
-    (expectedEnd != null && expectedEnd < 200);
-
-  if (isTight) {
-    return { label: "Krap maar haalbaar", tone: "watch" };
-  }
-
-  return { label: "Verwacht positief", tone: "good" };
+  return { label: "Op schema", tone: "good" };
 }
 
 function buildExplanation(input: {
@@ -95,8 +96,17 @@ export function buildInsightsForecastCard(input: {
   budgetPlan: BudgetPlanComputation | null;
   currentBalanceOverride?: number | null;
   surfaceBalances?: FinancialSurfaceBalanceSnapshot | null;
+  surfaceConfidence?: ForecastSurfaceConfidence | null;
+  surfaceExplainability?: ForecastSurfaceExplainability | null;
 }): InsightsForecastCardModel {
-  const { forecast, budgetPlan, currentBalanceOverride, surfaceBalances } = input;
+  const {
+    forecast,
+    budgetPlan,
+    currentBalanceOverride,
+    surfaceBalances,
+    surfaceConfidence,
+    surfaceExplainability,
+  } = input;
   const title = "Verwacht eindsaldo";
   const displayExpectedEndBalance = getInsightsDisplayExpectedEndBalance({
     forecast,
@@ -113,9 +123,11 @@ export function buildInsightsForecastCard(input: {
       reservedValue: null,
       statusLabel: "Neutraal",
       statusTone: "neutral",
+      confidenceLabel: null,
       lowestOperationalPointValue: "Nog niet beschikbaar",
       lowestOperationalPointDateLabel: null,
       explanation: "We kunnen nog geen betrouwbare maandverwachting maken.",
+      explanationItems: [],
       isFallback: true,
     };
   }
@@ -132,6 +144,20 @@ export function buildInsightsForecastCard(input: {
   const freeToSpendNow =
     surfaceBalances?.freeToSpendNow.amount ?? forecast.freeToSpendNow ?? null;
   const status = resolveStatus(displayExpectedEndBalance, forecast);
+  const fallbackExplanation = buildExplanation({
+    hasForecast: Boolean(forecast),
+    currentOperational,
+    reserved,
+    freeToSpendNow,
+  });
+  const primaryExplanation =
+    surfaceExplainability?.items.find((item) => item.key === "expected_end")
+      ?.message || fallbackExplanation;
+  const explanationItems =
+    (surfaceExplainability?.insightsBullets || [])
+      .filter((item) => Boolean(item) && item !== primaryExplanation)
+      .slice(0, 2);
+
   return {
     title,
     amountLabel: fmt.format(displayExpectedEndBalance),
@@ -142,6 +168,7 @@ export function buildInsightsForecastCard(input: {
     reservedValue: reserved == null ? null : fmt.format(reserved),
     statusLabel: status.label,
     statusTone: status.tone,
+    confidenceLabel: surfaceConfidence?.expectedEndOperationalBalance.label ?? null,
     lowestOperationalPointValue:
       // Lowest point stays a separate monthly minimum; never swap it with the
       // headline end balance.
@@ -151,12 +178,8 @@ export function buildInsightsForecastCard(input: {
             forecast.lowestOperationalPointInMonth ?? forecast.lowestExpectedBalance ?? null,
           ),
     lowestOperationalPointDateLabel: formatShortDate(forecast.lowestExpectedBalanceDate),
-    explanation: buildExplanation({
-      hasForecast: Boolean(forecast),
-      currentOperational,
-      reserved,
-      freeToSpendNow,
-    }),
+    explanation: primaryExplanation,
+    explanationItems,
     isFallback: false,
   };
 }

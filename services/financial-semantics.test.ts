@@ -301,6 +301,9 @@ describe("financial semantics", () => {
         plannedReserveAllocationThisMonth: 120,
         annualObligationMonthlyTotal: 60,
         savingsTargetMonthly: 60,
+        activeAnnualRuleCount: 1,
+        activeManualAnnualRuleCount: 0,
+        activeInferredAnnualRuleCount: 1,
         source: "modeled",
       },
     });
@@ -328,6 +331,9 @@ describe("financial semantics", () => {
         plannedReserveAllocationThisMonth: 100,
         annualObligationMonthlyTotal: 50,
         savingsTargetMonthly: 50,
+        activeAnnualRuleCount: 1,
+        activeManualAnnualRuleCount: 1,
+        activeInferredAnnualRuleCount: 0,
         source: "modeled",
       },
     });
@@ -349,6 +355,9 @@ describe("financial semantics", () => {
         plannedReserveAllocationThisMonth: 0,
         annualObligationMonthlyTotal: 0,
         savingsTargetMonthly: 0,
+        activeAnnualRuleCount: 0,
+        activeManualAnnualRuleCount: 0,
+        activeInferredAnnualRuleCount: 0,
         source: "modeled",
       },
     });

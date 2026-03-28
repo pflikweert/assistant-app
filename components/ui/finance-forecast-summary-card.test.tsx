@@ -35,9 +35,11 @@ describe("FinanceForecastSummaryCard", () => {
       reservedValue: "€ 120,00",
       statusLabel: "Verwacht positief",
       statusTone: "good",
+      confidenceLabel: "Hoog vertrouwen",
       lowestOperationalPointValue: "€ 185,00",
       lowestOperationalPointDateLabel: "12 mei",
       explanation: "Vrij besteedbaar € 253,21",
+      explanationItems: ["Uitleg 1", "Uitleg 2"],
       isFallback: false,
     };
 
@@ -57,5 +59,7 @@ describe("FinanceForecastSummaryCard", () => {
     expect(text).toContain("Gereserveerd");
     expect(text).toContain("Laagste punt");
     expect(text).toContain("Verwacht eindsaldo");
+    expect(text).toContain("Hoog vertrouwen");
+    expect(text).toContain("Uitleg 1");
   });
 });

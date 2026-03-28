@@ -5,6 +5,7 @@ import {
 } from "@/services/forecast-domain";
 import {
   isAccountIncludedInOperationalMoneyViewScope,
+  isAccountIncludedInNetWorthMoneyViewScope,
   normalizeMoneyViewScope,
   type MoneyViewScope,
 } from "@/services/finance-scope";
@@ -74,6 +75,7 @@ export function resolveLatestKnownBalanceSnapshot(
   options?: {
     bankAccountsById?: Map<string, BankAccount>;
     moneyViewScope?: MoneyViewScope;
+    dimension?: "operational" | "net_worth";
   },
 ): LatestKnownBalanceSnapshot {
   if (!options?.bankAccountsById || !options.moneyViewScope) {
@@ -81,9 +83,14 @@ export function resolveLatestKnownBalanceSnapshot(
   }
 
   const normalizedScope = normalizeMoneyViewScope(options.moneyViewScope);
+  const dimension = options.dimension || "operational";
   const includedAccountIds = new Set<string>();
   for (const [accountId, account] of options.bankAccountsById.entries()) {
-    if (isAccountIncludedInOperationalMoneyViewScope(account, normalizedScope)) {
+    const included =
+      dimension === "net_worth"
+        ? isAccountIncludedInNetWorthMoneyViewScope(account, normalizedScope)
+        : isAccountIncludedInOperationalMoneyViewScope(account, normalizedScope);
+    if (included) {
       includedAccountIds.add(accountId);
     }
   }
@@ -189,5 +196,34 @@ export async function loadLatestKnownBalanceSnapshot(
   return resolveLatestKnownBalanceSnapshot((data || []) as BalanceRow[], {
     bankAccountsById,
     moneyViewScope,
+  });
+}
+
+export async function loadLatestKnownNetWorthSnapshot(
+  userId?: string,
+  moneyViewScope?: MoneyViewScope,
+): Promise<LatestKnownBalanceSnapshot> {
+  const resolvedUserId = userId || (await requireCurrentUserId());
+  const [accountsResult, txResult] = await Promise.all([
+    listBankAccountsForUser(resolvedUserId).catch(() => [] as BankAccount[]),
+    supabase
+      .from("transactions")
+      .select("date,metadata,bank_account_id")
+      .eq("user_id", resolvedUserId)
+      .order("date", { ascending: false })
+      .order("metadata->>Volgnr", { ascending: false })
+      .limit(500),
+  ]);
+
+  const { data, error } = txResult;
+  if (error) throw error;
+
+  const bankAccountsById = new Map(
+    accountsResult.map((account) => [account.id, account]),
+  );
+  return resolveLatestKnownBalanceSnapshot((data || []) as BalanceRow[], {
+    bankAccountsById,
+    moneyViewScope,
+    dimension: "net_worth",
   });
 }

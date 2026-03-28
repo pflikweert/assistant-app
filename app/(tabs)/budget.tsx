@@ -94,6 +94,7 @@ import {
   buildAnnualReserveSheetSummary,
   getBudgetInclusionTogglePresentation,
 } from "@/services/ui-formatters/labels";
+import { resolveSafetyContextCopy } from "@/services/financial-surface-semantics";
 import type { ForecastSurfaceSummary } from "@/services/budget-plan-surface";
 import type {
   BudgetCategoryKey,
@@ -2999,6 +3000,28 @@ export default function BudgetScreen() {
                       .savingsTargetMonthly || 0,
                   )}
                 </Text>
+                {assistantForecastSurface.confidence ? (
+                  <Text style={styles.reserveSummaryConfidence}>
+                    {assistantForecastSurface.confidence.currentReservedBalance.label}
+                  </Text>
+                ) : null}
+                {assistantForecastSurface.explainability?.budgetHint ? (
+                  <Text style={styles.reserveSummaryHint}>
+                    {assistantForecastSurface.explainability.budgetHint}
+                  </Text>
+                ) : null}
+                {assistantForecastSurface.safeToSpendUntilNextIncome != null ? (
+                  <Text style={styles.reserveSummaryHint}>
+                    {resolveSafetyContextCopy({
+                      anchorLabel: assistantForecastSurface.nextIncomeLabelAnchor,
+                      anchorDate: assistantForecastSurface.nextIncomeDateAnchor,
+                      isEstimatedAnchorDate:
+                        assistantForecastSurface.safeToSpendIsEstimatedAnchorDate,
+                    }).fullLabel}
+                    :{" "}
+                    {fmt.format(assistantForecastSurface.safeToSpendUntilNextIncome)}
+                  </Text>
+                ) : null}
               </View>
             ) : null}
             <View style={styles.mainStack}>
@@ -4936,6 +4959,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: FinColors.textSecondary,
+  },
+  reserveSummaryConfidence: {
+    fontSize: 11,
+    lineHeight: 14,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  reserveSummaryHint: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: FinColors.textMuted,
   },
   reserveRuleRow: {
     flexDirection: "row",

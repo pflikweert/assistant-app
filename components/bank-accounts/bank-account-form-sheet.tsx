@@ -2,17 +2,20 @@ import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinColors } from "@/constants/theme";
 import {
-  ACCOUNT_TYPES,
   createBankAccount,
   updateBankAccount,
   type BankAccount,
   type BankAccountType,
 } from "@/services/bank-accounts";
 import {
-  resolveForecastAccountRules,
-  type ForecastAccountRules,
-} from "@/services/forecast-account-rules";
-import type { ForecastAccountRole, ForecastOwnerScope } from "@/services/forecast-domain";
+  mapSimpleSettingsToLegacyMeaning,
+  resolveDefaultExcludeFromNetWorthForKind,
+  resolveDefaultSimpleUsageForKind,
+  resolveSimpleAccountSettingsFromLegacy,
+  type SimpleAccountKind,
+  type SimpleAccountSettings,
+  type SimpleAccountUsage,
+} from "@/services/bank-account-simple-settings";
 import React from "react";
 import {
   ActivityIndicator,
@@ -49,131 +52,73 @@ type BankAccountFormSheetProps = {
 const ACCOUNT_TYPE_LABELS: Record<BankAccountType, string> = {
   checking: "Betaalrekening",
   savings: "Spaarrekening",
+  business: "Zakelijke rekening",
+  investment: "Beleggingsrekening",
   credit: "Creditcard",
   loan: "Lening",
-  investment: "Belegging",
   cash: "Contant",
   other: "Overig",
 };
 
-const OWNER_SCOPE_OPTIONS: { value: ForecastOwnerScope; label: string }[] = [
+const SIMPLE_ACCOUNT_KIND_OPTIONS: SimpleAccountKind[] = [
+  "checking",
+  "savings",
+  "business",
+  "investment",
+];
+
+const SIMPLE_USAGE_OPTIONS: { value: SimpleAccountUsage; label: string }[] = [
   { value: "personal", label: "Persoonlijk" },
   { value: "shared", label: "Samen" },
-  { value: "child", label: "Kind" },
-  { value: "external", label: "Extern" },
+  { value: "exclude", label: "Niet meenemen" },
 ];
 
-const FORECAST_ROLE_OPTIONS: { value: ForecastAccountRole; label: string }[] = [
-  { value: "operational", label: "Operationeel" },
-  { value: "reserve", label: "Reserve" },
-  { value: "goal", label: "Doel" },
-  { value: "shared", label: "Gedeeld" },
-  { value: "observation_only", label: "Alleen bekijken" },
-  { value: "excluded", label: "Uitgesloten" },
-];
-
-type BankAccountFormMeaningState = {
-  ownerScope: ForecastOwnerScope;
-  includeInBudget: boolean;
-  includeInNetWorth: boolean;
-  includeInCashflow: boolean;
-  forecastRole: ForecastAccountRole;
-};
-
-function getScopeLabel(scope: ForecastOwnerScope): string {
-  switch (scope) {
+function getUsageLabel(usage: SimpleAccountUsage): string {
+  switch (usage) {
     case "shared":
       return "samen";
-    case "child":
-      return "kind";
-    case "external":
-      return "extern";
+    case "exclude":
+      return "niet meenemen";
     case "personal":
     default:
       return "persoonlijk";
   }
 }
 
-export function buildLiveSummaryText(input: BankAccountFormMeaningState) {
-  const scopeLabel = getScopeLabel(input.ownerScope);
-  const usages: string[] = [];
-  if (input.includeInBudget) usages.push("budgetten");
-  if (input.includeInNetWorth) usages.push("totale vermogen");
-  if (input.includeInCashflow) usages.push("vooruitzichten");
-
-  if (!usages.length) {
-    return `Deze rekening (${scopeLabel}) telt nu niet mee in budget, vermogen of vooruitzichten.`;
+export function buildLiveSummaryText(input: SimpleAccountSettings) {
+  const usageLabel = getUsageLabel(input.usage);
+  if (input.usage === "exclude") {
+    if (input.excludeFromNetWorth) {
+      return "Deze rekening blijft volledig buiten budget, voorspelling en totaal vermogen.";
+    }
+    return "Deze rekening telt niet mee in budget of voorspelling, maar wel in totaal vermogen.";
   }
 
-  if (usages.length === 1) {
-    return `Deze rekening (${scopeLabel}) wordt gebruikt voor je ${usages[0]}.`;
+  if (input.kind === "savings") {
+    return `Deze ${usageLabel} rekening telt mee als reserve in je overzicht.`;
   }
 
-  if (usages.length === 2) {
-    return `Deze rekening (${scopeLabel}) wordt gebruikt voor je ${usages[0]} en ${usages[1]}.`;
-  }
-
-  return `Deze rekening (${scopeLabel}) wordt gebruikt voor je ${usages[0]}, je ${usages[1]} en ${usages[2]}.`;
+  return `Deze ${usageLabel} rekening helpt mee in je dagelijkse sturing en vooruitblik.`;
 }
 
-export function isForecastToggleRelevant(input: {
-  ownerScope: ForecastOwnerScope;
-  accountType: BankAccountType;
-  forecastRole: ForecastAccountRole;
-}) {
-  if (input.ownerScope === "external") return false;
-  if (input.accountType === "credit" || input.accountType === "loan") return false;
-  return (
-    input.forecastRole !== "excluded" &&
-    input.forecastRole !== "observation_only"
-  );
-}
-
-export function resolveDefaultsForCreate(
-  accountType: BankAccountType,
-): ForecastAccountRules {
-  if (accountType === "savings") {
-    return resolveForecastAccountRules({
-      account_type: accountType,
-      owner_scope: "personal",
-      include_in_budget: false,
-      include_in_cashflow: false,
-      include_in_net_worth: true,
-      forecast_role: "reserve",
-    });
-  }
-
-  return resolveForecastAccountRules({
-    account_type: accountType,
-    owner_scope: "personal",
-    include_in_budget: true,
-    include_in_cashflow: true,
-    include_in_net_worth: true,
-    forecast_role: "operational",
-  });
+export function resolveDefaultsForCreate(kind: SimpleAccountKind): SimpleAccountSettings {
+  return {
+    kind,
+    usage: resolveDefaultSimpleUsageForKind(kind),
+    excludeFromNetWorth: resolveDefaultExcludeFromNetWorthForKind(kind),
+  };
 }
 
 export function buildBankAccountFormInitialMeaning(params: {
   mode: BankAccountFormMode;
-  accountType: BankAccountType;
+  kind: SimpleAccountKind;
   account?: BankAccount | null;
-}) {
-  const { mode, accountType, account } = params;
+}): SimpleAccountSettings {
+  const { mode, kind, account } = params;
   if (mode === "edit" && account) {
-    const rules = resolveForecastAccountRules({
-      account_type: account.account_type,
-      provider: account.provider,
-      name: account.name,
-      owner_scope: account.owner_scope,
-      forecast_role: account.forecast_role,
-      include_in_budget: account.include_in_budget,
-      include_in_cashflow: account.include_in_cashflow,
-      include_in_net_worth: account.include_in_net_worth,
-      is_active: account.is_active,
-    });
-    return rules;
+    return resolveSimpleAccountSettingsFromLegacy(account);
   }
-  return resolveDefaultsForCreate(accountType);
+  return resolveDefaultsForCreate(kind);
 }
 
 function buildDefaultName(providerLabel?: string | null) {
@@ -202,14 +147,10 @@ export function BankAccountFormSheet({
   const [name, setName] = React.useState("");
   const [provider, setProvider] = React.useState("");
   const [accountNumber, setAccountNumber] = React.useState("");
-  const [accountType, setAccountType] = React.useState<BankAccountType>("checking");
+  const [kind, setKind] = React.useState<SimpleAccountKind>("checking");
   const [showAccountTypeDropdown, setShowAccountTypeDropdown] = React.useState(false);
-  const [showForecastRoleDropdown, setShowForecastRoleDropdown] = React.useState(false);
-  const [ownerScope, setOwnerScope] = React.useState<ForecastOwnerScope>("personal");
-  const [forecastRole, setForecastRole] = React.useState<ForecastAccountRole>("operational");
-  const [includeInBudget, setIncludeInBudget] = React.useState(true);
-  const [includeInNetWorth, setIncludeInNetWorth] = React.useState(true);
-  const [includeInCashflow, setIncludeInCashflow] = React.useState(true);
+  const [usage, setUsage] = React.useState<SimpleAccountUsage>("personal");
+  const [excludeFromNetWorth, setExcludeFromNetWorth] = React.useState(false);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [isActive, setIsActive] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -226,21 +167,23 @@ export function BankAccountFormSheet({
     );
     setProvider(isEdit ? account?.provider || "" : providerLabel || "");
     setAccountNumber(isEdit ? "" : sourceAccountNumber || "");
-    setAccountType(isEdit ? account?.account_type || "checking" : "checking");
+    const nextKind =
+      isEdit && (account?.account_type === "savings" ||
+      account?.account_type === "business" ||
+      account?.account_type === "investment")
+        ? account.account_type
+        : "checking";
+    setKind(nextKind);
     const initialMeaning = buildBankAccountFormInitialMeaning({
       mode,
-      accountType: isEdit ? account?.account_type || "checking" : "checking",
+      kind: nextKind,
       account,
     });
-    setOwnerScope(initialMeaning.owner_scope);
-    setForecastRole(initialMeaning.forecast_role);
-    setIncludeInBudget(initialMeaning.include_in_budget);
-    setIncludeInNetWorth(initialMeaning.include_in_net_worth);
-    setIncludeInCashflow(initialMeaning.include_in_cashflow);
+    setUsage(initialMeaning.usage);
+    setExcludeFromNetWorth(initialMeaning.excludeFromNetWorth);
     setIsActive(isEdit ? Boolean(account?.is_active) : true);
     setAdvancedOpen(false);
     setShowAccountTypeDropdown(false);
-    setShowForecastRoleDropdown(false);
     setSaving(false);
     setFieldErrors({});
     setSubmitError(null);
@@ -248,13 +191,10 @@ export function BankAccountFormSheet({
 
   React.useEffect(() => {
     if (!visible || isEdit) return;
-    const defaults = resolveDefaultsForCreate(accountType);
-    setOwnerScope(defaults.owner_scope);
-    setForecastRole(defaults.forecast_role);
-    setIncludeInBudget(defaults.include_in_budget);
-    setIncludeInNetWorth(defaults.include_in_net_worth);
-    setIncludeInCashflow(defaults.include_in_cashflow);
-  }, [accountType, isEdit, visible]);
+    const defaults = resolveDefaultsForCreate(kind);
+    setUsage(defaults.usage);
+    setExcludeFromNetWorth(defaults.excludeFromNetWorth);
+  }, [kind, isEdit, visible]);
 
   const resolvedTitle =
     title ||
@@ -273,17 +213,10 @@ export function BankAccountFormSheet({
     isEdit && account?.account_masked
       ? `Laat leeg om ${account.account_masked} te behouden.`
       : null;
-  const forecastRelevant = isForecastToggleRelevant({
-    ownerScope,
-    accountType,
-    forecastRole,
-  });
   const liveSummary = buildLiveSummaryText({
-    ownerScope,
-    includeInBudget,
-    includeInNetWorth,
-    includeInCashflow: forecastRelevant ? includeInCashflow : false,
-    forecastRole,
+    usage,
+    kind,
+    excludeFromNetWorth,
   });
   const handleSave = React.useCallback(async () => {
     const trimmedName = name.trim();
@@ -307,30 +240,38 @@ export function BankAccountFormSheet({
     setFieldErrors({});
     setSubmitError(null);
     try {
+      const meaning = mapSimpleSettingsToLegacyMeaning({
+        settings: {
+          usage,
+          kind,
+          excludeFromNetWorth,
+        },
+        currentOwnerScope: account?.owner_scope,
+      });
       const savedAccount = isEdit
         ? await updateBankAccount({
             id: account?.id || "",
             name: trimmedName,
             provider: trimmedProvider || null,
-            accountType,
-            includeInBudget,
-            includeInNetWorth,
-            includeInCashflow: forecastRelevant ? includeInCashflow : false,
-            ownerScope,
-            forecastRole,
+            accountType: meaning.accountType,
+            includeInBudget: meaning.includeInBudget,
+            includeInNetWorth: meaning.includeInNetWorth,
+            includeInCashflow: meaning.includeInCashflow,
+            ownerScope: meaning.ownerScope,
+            forecastRole: meaning.forecastRole,
             isActive,
             ...(trimmedAccountNumber ? { accountNumber: trimmedAccountNumber } : {}),
           })
         : await createBankAccount({
             name: trimmedName,
-            accountType,
+            accountType: meaning.accountType,
             provider: trimmedProvider || providerLabel || null,
             accountNumber: trimmedAccountNumber || null,
-            includeInBudget,
-            includeInNetWorth,
-            includeInCashflow: forecastRelevant ? includeInCashflow : false,
-            ownerScope,
-            forecastRole,
+            includeInBudget: meaning.includeInBudget,
+            includeInNetWorth: meaning.includeInNetWorth,
+            includeInCashflow: meaning.includeInCashflow,
+            ownerScope: meaning.ownerScope,
+            forecastRole: meaning.forecastRole,
             isActive,
           });
       onSaved(savedAccount);
@@ -348,21 +289,18 @@ export function BankAccountFormSheet({
     }
   }, [
     account?.id,
+    account?.owner_scope,
     accountNumber,
-    accountType,
-    includeInBudget,
-    includeInCashflow,
-    includeInNetWorth,
+    excludeFromNetWorth,
     isActive,
     isEdit,
+    kind,
     name,
-    ownerScope,
     onClose,
     onSaved,
     provider,
     providerLabel,
-    forecastRelevant,
-    forecastRole,
+    usage,
   ]);
 
   return (
@@ -505,7 +443,7 @@ export function BankAccountFormSheet({
                 pressed && styles.dropdownTriggerPressed,
               ]}
             >
-              <Text style={styles.dropdownTriggerText}>{ACCOUNT_TYPE_LABELS[accountType]}</Text>
+              <Text style={styles.dropdownTriggerText}>{ACCOUNT_TYPE_LABELS[kind]}</Text>
               <AppIcon
                 name={showAccountTypeDropdown ? "expand-less" : "expand-more"}
                 size={20}
@@ -515,14 +453,18 @@ export function BankAccountFormSheet({
             </Pressable>
             {showAccountTypeDropdown ? (
               <View style={styles.dropdownMenu}>
-                {ACCOUNT_TYPES.map((type) => {
-                  const selected = accountType === type;
+                {SIMPLE_ACCOUNT_KIND_OPTIONS.map((type) => {
+                  const selected = kind === type;
                   return (
                     <Pressable
                       key={type}
                       accessibilityRole="button"
                       onPress={() => {
-                        setAccountType(type);
+                        setKind(type);
+                        if (type === "business" || type === "investment") {
+                          setUsage("exclude");
+                          setExcludeFromNetWorth(true);
+                        }
                         setShowAccountTypeDropdown(false);
                       }}
                       style={({ pressed }) => [
@@ -556,15 +498,20 @@ export function BankAccountFormSheet({
         </View>
 
         <View style={styles.fieldBlock}>
-          <Text style={styles.sectionLabel}>Eigenaarschap</Text>
+          <Text style={styles.sectionLabel}>Hoe wil je deze rekening gebruiken in Budio?</Text>
           <View style={styles.scopeSegmentTrack}>
-            {OWNER_SCOPE_OPTIONS.map((option) => {
-              const active = ownerScope === option.value;
+            {SIMPLE_USAGE_OPTIONS.map((option) => {
+              const active = usage === option.value;
               return (
                 <Pressable
                   key={option.value}
                   accessibilityRole="button"
-                  onPress={() => setOwnerScope(option.value)}
+                  onPress={() => {
+                    setUsage(option.value);
+                    if (option.value !== "exclude") {
+                      setExcludeFromNetWorth(false);
+                    }
+                  }}
                   style={({ pressed }) => [
                     styles.scopeSegmentItem,
                     active ? styles.scopeSegmentItemActive : null,
@@ -584,149 +531,53 @@ export function BankAccountFormSheet({
             })}
           </View>
           <Text style={styles.sectionHint}>
-            Bepaalt in welke financiele ruimtes deze rekening zichtbaar is.
+            Samen betekent overal je gedeelde huishoudcontext.
           </Text>
         </View>
 
-        <View style={styles.fieldBlock}>
-          <Text style={styles.sectionLabel}>Waar telt deze rekening mee?</Text>
-          <View style={styles.toggleCard}>
-            <View style={styles.toggleRowCard}>
-              <View style={styles.toggleTextWrap}>
-                <Text style={styles.fieldLabel}>Meenemen in budget</Text>
-                <Text style={styles.toggleSubtitle}>
-                  Gebruiken voor je dagelijkse uitgaven.
-                </Text>
-              </View>
-              <Switch
-                value={includeInBudget}
-                onValueChange={setIncludeInBudget}
-                trackColor={{ false: "#d7d7d7", true: "#f1d96a" }}
-                thumbColor={includeInBudget ? FinColors.warningText : "#f4f4f4"}
-                ios_backgroundColor="#d7d7d7"
-              />
-            </View>
-            <View style={styles.toggleRowCard}>
-              <View style={styles.toggleTextWrap}>
-                <Text style={styles.fieldLabel}>Meenemen in vermogen</Text>
-                <Text style={styles.toggleSubtitle}>
-                  Het saldo optellen bij je totaalplaatje.
-                </Text>
-              </View>
-              <Switch
-                value={includeInNetWorth}
-                onValueChange={setIncludeInNetWorth}
-                trackColor={{ false: "#d7d7d7", true: "#f1d96a" }}
-                thumbColor={includeInNetWorth ? FinColors.warningText : "#f4f4f4"}
-                ios_backgroundColor="#d7d7d7"
-              />
-            </View>
-            {forecastRelevant ? (
+        {usage === "exclude" ? (
+          <View style={styles.fieldBlock}>
+            <Text style={styles.sectionLabel}>Niet meenemen</Text>
+            <View style={styles.toggleCard}>
               <View style={styles.toggleRowCard}>
                 <View style={styles.toggleTextWrap}>
-                  <Text style={styles.fieldLabel}>Meenemen in forecast</Text>
+                  <Text style={styles.fieldLabel}>Toch meetellen in totaal vermogen</Text>
                   <Text style={styles.toggleSubtitle}>
-                    Budio kijkt vooruit met dit saldo.
+                    Zet aan als dit saldo wel in je totaalplaatje hoort.
                   </Text>
                 </View>
                 <Switch
-                  value={includeInCashflow}
-                  onValueChange={setIncludeInCashflow}
+                  value={!excludeFromNetWorth}
+                  onValueChange={(value) => setExcludeFromNetWorth(!value)}
                   trackColor={{ false: "#d7d7d7", true: "#f1d96a" }}
-                  thumbColor={includeInCashflow ? FinColors.warningText : "#f4f4f4"}
+                  thumbColor={!excludeFromNetWorth ? FinColors.warningText : "#f4f4f4"}
                   ios_backgroundColor="#d7d7d7"
                 />
               </View>
-            ) : null}
+            </View>
           </View>
-        </View>
+        ) : null}
 
-        <View style={styles.fieldBlock}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setAdvancedOpen((current) => !current)}
-            style={({ pressed }) => [
-              styles.advancedToggle,
-              pressed ? styles.advancedTogglePressed : null,
-            ]}
-          >
-            <Text style={styles.advancedToggleText}>Geavanceerde opties</Text>
-            <AppIcon
-              name={advancedOpen ? "expand-less" : "expand-more"}
-              size={20}
-              color={FinColors.textSecondary}
-              variant="outlined"
-            />
-          </Pressable>
-          {advancedOpen ? (
-            <View style={styles.advancedCard}>
-              <View style={styles.fieldBlock}>
-                <Text style={styles.fieldLabel}>Rol in forecast</Text>
-                <View style={styles.dropdownWrap}>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => setShowForecastRoleDropdown((current) => !current)}
-                    style={({ pressed }) => [
-                      styles.dropdownTrigger,
-                      showForecastRoleDropdown && styles.dropdownTriggerOpen,
-                      pressed && styles.dropdownTriggerPressed,
-                    ]}
-                  >
-                    <Text style={styles.dropdownTriggerText}>
-                      {
-                        FORECAST_ROLE_OPTIONS.find((option) => option.value === forecastRole)
-                          ?.label
-                      }
-                    </Text>
-                    <AppIcon
-                      name={showForecastRoleDropdown ? "expand-less" : "expand-more"}
-                      size={20}
-                      color={FinColors.textSecondary}
-                      variant="outlined"
-                    />
-                  </Pressable>
-                  {showForecastRoleDropdown ? (
-                    <View style={styles.dropdownMenu}>
-                      {FORECAST_ROLE_OPTIONS.map((option) => {
-                        const selected = forecastRole === option.value;
-                        return (
-                          <Pressable
-                            key={option.value}
-                            accessibilityRole="button"
-                            onPress={() => {
-                              setForecastRole(option.value);
-                              setShowForecastRoleDropdown(false);
-                            }}
-                            style={({ pressed }) => [
-                              styles.dropdownOption,
-                              selected ? styles.dropdownOptionSelected : null,
-                              pressed ? styles.dropdownOptionPressed : null,
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.dropdownOptionText,
-                                selected ? styles.dropdownOptionTextSelected : null,
-                              ]}
-                            >
-                              {option.label}
-                            </Text>
-                            {selected ? (
-                              <AppIcon
-                                name="check"
-                                size={18}
-                                color={FinColors.warningText}
-                                variant="outlined"
-                              />
-                            ) : null}
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-              {showActiveToggle ? (
+        {showActiveToggle ? (
+          <View style={styles.fieldBlock}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setAdvancedOpen((current) => !current)}
+              style={({ pressed }) => [
+                styles.advancedToggle,
+                pressed ? styles.advancedTogglePressed : null,
+              ]}
+            >
+              <Text style={styles.advancedToggleText}>Extra opties</Text>
+              <AppIcon
+                name={advancedOpen ? "expand-less" : "expand-more"}
+                size={20}
+                color={FinColors.textSecondary}
+                variant="outlined"
+              />
+            </Pressable>
+            {advancedOpen ? (
+              <View style={styles.advancedCard}>
                 <View style={styles.toggleRowCard}>
                   <View style={styles.toggleTextWrap}>
                     <Text style={styles.fieldLabel}>Rekening actief</Text>
@@ -742,10 +593,10 @@ export function BankAccountFormSheet({
                     ios_backgroundColor="#d7d7d7"
                   />
                 </View>
-              ) : null}
-            </View>
-          ) : null}
-        </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         <View style={styles.fieldBlock}>
           <Text style={styles.sectionLabel}>In het kort</Text>
