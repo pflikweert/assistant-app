@@ -23,6 +23,7 @@ type FinanceDetailShellProps = {
     ScrollViewProps,
     "keyboardShouldPersistTaps" | "showsVerticalScrollIndicator"
   >;
+  footer?: React.ReactNode;
   children: React.ReactNode;
 };
 
@@ -35,6 +36,7 @@ export function FinanceDetailShell({
   contentContainerStyle,
   contentMaxStyle,
   scrollProps,
+  footer,
   children,
 }: FinanceDetailShellProps) {
   return (
@@ -56,6 +58,7 @@ export function FinanceDetailShell({
       >
         <View style={[styles.contentMax, contentMaxStyle]}>{children}</View>
       </ScrollView>
+      {footer ? <View style={styles.footerWrap}>{footer}</View> : null}
     </View>
   );
 }
@@ -84,5 +87,13 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     paddingHorizontal: FinSpacing.x4,
     gap: FinSpacing.x3,
+  },
+  footerWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 30,
+    pointerEvents: "box-none",
   },
 });

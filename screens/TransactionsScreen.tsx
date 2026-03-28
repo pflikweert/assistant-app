@@ -813,7 +813,7 @@ export default function TransactionsScreen({
               maxWidth={CONTENT_MAX_WIDTH}
               onPress={() =>
                 router.push({
-                  pathname: "/transaction-detail",
+                  pathname: "/transactions/[id]",
                   params: { id: item.id },
                 })
               }
@@ -1144,7 +1144,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 20,
-    backgroundColor: "rgba(246,245,242,0.84)",
+    backgroundColor: FinColors.topBarBg,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(17,17,17,0.05)",
   },
@@ -1459,10 +1459,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     borderWidth: 1,
     borderColor: FinColors.borderSubtle,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: -6 },
+    boxShadow: "0px -6px 18px rgba(0,0,0,0.06)",
     elevation: 8,
     paddingTop: 10,
     paddingBottom: 10,

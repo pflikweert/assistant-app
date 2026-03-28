@@ -267,11 +267,15 @@ export function BudioAssistantEmptyState({
   return (
     <AnimatedView
       testID={testID}
-      style={[styles.root, style, containerStyle]}
-      pointerEvents={visible ? "auto" : "none"}
+      style={[
+        styles.root,
+        style,
+        containerStyle,
+        visible ? styles.pointerEventsAuto : styles.pointerEventsNone,
+      ]}
     >
       <View style={styles.surface}>
-        <View style={styles.visualWrap} pointerEvents="none">
+        <View style={[styles.visualWrap, styles.pointerEventsNone]}>
           <AnimatedView
             style={[
               styles.visualMotion,
@@ -414,27 +418,33 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 320,
+    minHeight: 280,
     paddingHorizontal: 14,
-    paddingVertical: 28,
+    paddingVertical: 20,
+  },
+  pointerEventsAuto: {
+    pointerEvents: "auto",
+  },
+  pointerEventsNone: {
+    pointerEvents: "none",
   },
   surface: {
     width: "100%",
-    maxWidth: 420,
+    maxWidth: 460,
     alignItems: "center",
     justifyContent: "center",
-    gap: 16,
+    gap: 14,
     backgroundColor: EMPTY_STATE_BG,
     borderRadius: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 24,
+    paddingHorizontal: 26,
+    paddingVertical: 20,
   },
   visualWrap: {
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 150,
-    paddingTop: 8,
+    minHeight: 132,
+    paddingTop: 4,
   },
   visualMotion: {
     alignItems: "center",
@@ -498,7 +508,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    marginTop: 32,
+    marginTop: 20,
     gap: 8,
   },
   chip: {

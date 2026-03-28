@@ -853,9 +853,7 @@ export default function AnalysisDetailScreen() {
                       <Pressable
                         key={tx.id}
                         style={styles.txRow}
-                        onPress={() =>
-                          router.push(`/transaction-detail?id=${tx.id}`)
-                        }
+                        onPress={() => router.push(`/transactions/${tx.id}`)}
                       >
                         <View style={styles.txIconWrap}>
                           <TransactionCategoryIcon

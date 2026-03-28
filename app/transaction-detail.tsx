@@ -131,6 +131,15 @@ function formatHistoryDateLabel(value: string) {
   });
 }
 
+function formatHistoryAllLabel(counterparty: string | null | undefined) {
+  const raw = String(counterparty || "").trim();
+  if (!raw) return "Alles";
+  const maxNameChars = 14;
+  const compactName =
+    raw.length > maxNameChars ? `${raw.slice(0, maxNameChars - 3)}...` : raw;
+  return `Alles van ${compactName}`;
+}
+
 const SUBJECT_DRIVEN_PROVIDERS = [
   "klarna",
   "paypal",
@@ -234,6 +243,9 @@ export default function TransactionDetailScreen() {
     React.useState<TransactionRuleMatch | null>(null);
   const [categoryRuleResetBusy, setCategoryRuleResetBusy] =
     React.useState(false);
+  const [historyFilterMode, setHistoryFilterMode] = React.useState<
+    "all" | "same_category"
+  >("same_category");
   const [categoryChangeMode, setCategoryChangeMode] = React.useState<
     "ai" | "manual"
   >("ai");
@@ -393,6 +405,24 @@ export default function TransactionDetailScreen() {
       }),
     [history, categoryById],
   );
+  const filteredHistoryItems = React.useMemo(() => {
+    if (historyFilterMode !== "same_category" || !effectiveCategoryId) {
+      return historyItems;
+    }
+    return historyItems.filter((item) => {
+      const itemCategoryId = item.categoryUserId || item.categoryAutoId || null;
+      return itemCategoryId === effectiveCategoryId;
+    });
+  }, [effectiveCategoryId, historyFilterMode, historyItems]);
+  const historyAllLabel = React.useMemo(
+    () => formatHistoryAllLabel(tx?.counterparty),
+    [tx?.counterparty],
+  );
+  const historyAllSelected =
+    historyFilterMode === "all" ||
+    (historyFilterMode === "same_category" && !effectiveCategoryId);
+  const historySameCategorySelected =
+    historyFilterMode === "same_category" && Boolean(effectiveCategoryId);
 
   // ── Data loading ────────────────────────────────────────────────────────
   const loadData = React.useCallback(async () => {
@@ -874,6 +904,22 @@ export default function TransactionDetailScreen() {
     <FinanceDetailShell
       title="Transactie"
       onBack={() => router.back()}
+      footer={
+        <FinanceQuickMenu
+          activeKey="transactions"
+          onSelect={(key) => {
+            if (key === "index") {
+              router.push("/");
+            } else if (key === "budget") {
+              router.push("/budget");
+            } else if (key === "transactions") {
+              router.push("/transactions");
+            } else if (key === "insights") {
+              router.push("/insights");
+            }
+          }}
+        />
+      }
       contentContainerStyle={styles.scrollContent}
       contentMaxStyle={styles.contentMax}
       scrollProps={{ showsVerticalScrollIndicator: false }}
@@ -976,7 +1022,6 @@ export default function TransactionDetailScreen() {
           onToggle={handleBudgetExcludedToggle}
           disabled={budgetExclusionToggling}
           budgetBucketLabel={budgetBucketLabel}
-          subtitle="Niet meetellen in budget deze maand."
         />
 
         {isPspLikeExpense || linkedSubscriptionProfile ? (
@@ -993,52 +1038,94 @@ export default function TransactionDetailScreen() {
         ) : null}
 
         {tx.counterparty ? (
-          <FinanceTransactionsBlock
-            title="Historie"
-            items={historyItems}
-            categoryById={categoryById}
-            maxItems={6}
-            onPressItem={(id) =>
-              router.push({
-                pathname: "/transaction-detail",
-                params: { id },
-              })
-            }
-            onPressSeeAll={() =>
-              router.push(
-                `/transactions?counterparty=${encodeURIComponent(tx.counterparty!)}`,
-              )
-            }
-            seeAllLabel="Bekijk alles"
-            showRunningBalance={false}
-            emptyTitle="Geen andere transacties"
-            emptyDescription={`We vonden nog geen andere transacties van ${tx.counterparty}.`}
-          />
+          <View style={styles.historySection}>
+            <FinanceTransactionsBlock
+              title="Historie"
+              items={filteredHistoryItems}
+              categoryById={categoryById}
+              maxItems={6}
+              headerExtra={
+                <View style={styles.historyFilterRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.historyFilterChip,
+                      historySameCategorySelected &&
+                        styles.historyFilterChipActive,
+                      !effectiveCategoryId && styles.historyFilterChipDisabled,
+                    ]}
+                    onPress={() => setHistoryFilterMode("same_category")}
+                    disabled={!effectiveCategoryId}
+                    accessibilityRole="button"
+                  >
+                    <Text
+                      style={[
+                        styles.historyFilterChipText,
+                        historySameCategorySelected &&
+                          styles.historyFilterChipTextActive,
+                        !effectiveCategoryId &&
+                          styles.historyFilterChipTextDisabled,
+                      ]}
+                    >
+                      Zelfde categorie
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.historyFilterChip,
+                      historyAllSelected && styles.historyFilterChipActive,
+                    ]}
+                    onPress={() => setHistoryFilterMode("all")}
+                    accessibilityRole="button"
+                  >
+                    <Text
+                      style={[
+                        styles.historyFilterChipText,
+                        historyAllSelected && styles.historyFilterChipTextActive,
+                      ]}
+                    >
+                      {historyAllLabel}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              }
+              onPressItem={(id) =>
+                router.push({
+                  pathname: "/transactions/[id]",
+                  params: { id },
+                })
+              }
+              onPressSeeAll={() =>
+                router.push({
+                  pathname: "/transactions",
+                  params: {
+                    counterparty: tx.counterparty || "",
+                    categoryKey:
+                      historyFilterMode === "same_category"
+                        ? effectiveCategory?.key || undefined
+                        : undefined,
+                  },
+                })
+              }
+              seeAllLabel="Bekijk alles"
+              showRunningBalance={false}
+              emptyTitle="Geen andere transacties"
+              emptyDescription={
+                historyFilterMode === "same_category" && effectiveCategory
+                  ? `We vonden nog geen andere transacties van ${tx.counterparty} in ${effectiveCategory.name}.`
+                  : `We vonden nog geen andere transacties van ${tx.counterparty}.`
+              }
+            />
+          </View>
         ) : null}
 
         <View style={{ height: 32 }} />
         </View>
       
 
-      <FinanceQuickMenu
-        activeKey="transactions"
-        onSelect={(key) => {
-          if (key === "index") {
-            router.push("/");
-          } else if (key === "budget") {
-            router.push("/budget");
-          } else if (key === "transactions") {
-            router.push("/transactions");
-          } else if (key === "insights") {
-            router.push("/insights");
-          }
-        }}
-      />
-
       <FinanceBottomSheetShell
         visible={categorySheetOpen}
         title="Categorie"
-        subtitle="Kies een categorie voor deze transactie."
+        subtitle="De keuze geldt alleen voor deze transactie."
         onClose={handleCloseCategorySheet}
         bodyStyle={styles.categorySheetBody}
         footerStyle={styles.categorySheetFooter}
@@ -1421,6 +1508,7 @@ export default function TransactionDetailScreen() {
 
 const styles = StyleSheet.create({
   scrollContent: {
+    paddingTop: 0,
     paddingBottom: 132,
     gap: 32,
   },
@@ -1443,7 +1531,6 @@ const styles = StyleSheet.create({
     borderBottomColor: FinColors.borderSubtle,
   },
   heroInner: {
-    paddingTop: 32,
     paddingBottom: 18,
     gap: 10,
   },
@@ -1733,6 +1820,42 @@ const styles = StyleSheet.create({
     color: FinColors.warningText,
     fontSize: 12,
     fontWeight: "800",
+  },
+  historySection: {
+    gap: 10,
+  },
+  historyFilterRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  historyFilterChip: {
+    minHeight: 32,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyFilterChipActive: {
+    backgroundColor: FinColors.yellowSoft,
+    borderColor: FinColors.warningBorder,
+  },
+  historyFilterChipDisabled: {
+    opacity: 0.62,
+  },
+  historyFilterChipText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+  },
+  historyFilterChipTextActive: {
+    color: FinColors.textPrimary,
+  },
+  historyFilterChipTextDisabled: {
+    color: FinColors.textMuted,
   },
   infoRow: {
     flexDirection: "row",

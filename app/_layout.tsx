@@ -419,6 +419,13 @@ function RootNavigator() {
           }}
         />
         <Stack.Screen
+          name="transactions/[id]"
+          options={{
+            presentation: "modal",
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
           name="transactions"
           options={{ headerShown: false }}
         />
@@ -488,7 +495,7 @@ function WebDeployRefreshOverlay() {
   if (Platform.OS !== "web" || !refreshState.updateReady) return null;
 
   return (
-    <View pointerEvents="none" style={styles.deployOverlayWrap}>
+    <View style={[styles.deployOverlayWrap, styles.pointerEventsNone]}>
       <View style={styles.deployOverlayCard}>
         <Text style={styles.deployOverlayText}>
           {refreshState.message ||
@@ -534,6 +541,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
+  },
+  pointerEventsNone: {
+    pointerEvents: "none",
   },
   deployOverlayCard: {
     borderRadius: 14,

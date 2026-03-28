@@ -1505,9 +1505,7 @@ export default function SubscriptionsScreen() {
                         <TouchableOpacity
                           style={styles.detailLinkBtn}
                           onPress={() =>
-                            router.push(
-                              `/transaction-detail?id=${item.transactionId}`,
-                            )
+                            router.push(`/transactions/${item.transactionId}`)
                           }
                         >
                           <Text style={styles.detailLinkText}>

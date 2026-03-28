@@ -1,4 +1,4 @@
-import { TransactionCategoryIcon } from "@/components/category-icon";
+import { TransactionListRow } from "@/components/transactions/transaction-list-row";
 import { DashboardBalanceSummary } from "@/components/dashboard/dashboard-balance-summary";
 import { DashboardAssistantCallout } from "@/components/dashboard/dashboard-assistant-callout";
 import {
@@ -47,13 +47,7 @@ import type {
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  Pressable,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, Pressable, View } from "react-native";
 
 const CONTENT_MAX_WIDTH = 1040;
 
@@ -88,36 +82,6 @@ function isMissingRelationError(error: unknown) {
 
   if (code === "42P01" || code === "PGRST205") return true;
   return message.includes("relation") && message.includes("does not exist");
-}
-
-function TxRow({
-  tx,
-  categoryMap,
-}: {
-  tx: DashboardTxRow;
-  categoryMap: Map<string, CategoryRecord>;
-}) {
-  const isPositive = tx.amount >= 0;
-
-  return (
-    <View style={styles.txRow}>
-      <View style={styles.txIconWrap}>
-        <TransactionCategoryIcon row={tx} categoryById={categoryMap} />
-      </View>
-      <View style={styles.txMid}>
-        <Text style={styles.txName} numberOfLines={2}>
-          {tx.subscriptionProfileName || tx.counterparty || "Onbekend"}
-        </Text>
-        <Text style={styles.txSub} numberOfLines={1}>
-          {formatShortDateLabel(tx.date)} • {tx.categoryLabel}
-        </Text>
-      </View>
-      <Text style={[styles.txAmount, isPositive && styles.txAmountPos]}>
-        {isPositive ? "+" : ""}
-        {formatCurrency(tx.amount)}
-      </Text>
-    </View>
-  );
 }
 
 export default function DashboardScreen() {
@@ -608,10 +572,22 @@ export default function DashboardScreen() {
                 ) : (
                   recentTransactions.map((tx, index) => (
                     <React.Fragment key={tx.id}>
-                      <TxRow tx={tx} categoryMap={categoryMap} />
-                      {index < recentTransactions.length - 1 ? (
-                        <View style={styles.divider} />
-                      ) : null}
+                      <TransactionListRow
+                        title={
+                          tx.subscriptionProfileName || tx.counterparty || "Onbekend"
+                        }
+                        subtitle={tx.categoryLabel}
+                        dateLabel={formatShortDateLabel(tx.date)}
+                        showDate
+                        amount={tx.amount}
+                        runningBalance={tx.runningBalance}
+                        showRunningBalance={false}
+                        categoryAutoId={tx.category_id_auto}
+                        categoryUserId={tx.category_id_user}
+                        categoryById={categoryMap}
+                        showDivider={index < recentTransactions.length - 1}
+                        onPress={() => router.push(`/transactions/${tx.id}`)}
+                      />
                     </React.Fragment>
                   ))
                 )}
@@ -776,7 +752,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   topBar: {
-    backgroundColor: "rgba(246,245,242,0.95)",
+    backgroundColor: FinColors.topBarBg,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(17,17,17,0.10)",
   },
@@ -1000,44 +976,6 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     paddingHorizontal: 10,
     paddingVertical: 6,
-  },
-  txRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-  },
-  txIconWrap: {
-    marginRight: 14,
-  },
-  txMid: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  txName: {
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: "800",
-    color: FinColors.textPrimary,
-  },
-  txSub: {
-    marginTop: 4,
-    fontSize: 12,
-    lineHeight: 16,
-    color: FinColors.textSecondary,
-  },
-  txAmount: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: FinColors.textPrimary,
-  },
-  txAmountPos: {
-    color: FinColors.green,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: FinColors.borderSubtle,
-    marginLeft: 68,
   },
   emptyState: {
     alignItems: "center",

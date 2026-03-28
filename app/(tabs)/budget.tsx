@@ -1237,7 +1237,7 @@ export default function BudgetScreen() {
 
     const task = InteractionManager.runAfterInteractions(() => {
       router.push({
-        pathname: "/transaction-detail",
+        pathname: "/transactions/[id]",
         params: { id: pendingTransactionDetailId },
       });
       setPendingTransactionDetailId(null);

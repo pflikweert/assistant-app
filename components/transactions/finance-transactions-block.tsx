@@ -22,6 +22,7 @@ type FinanceTransactionsBlockProps = {
   items: FinanceTransactionsBlockItem[];
   categoryById: Map<string, CategoryRecord>;
   onPressItem: (id: string) => void;
+  headerExtra?: React.ReactNode;
   onPressSeeAll?: () => void;
   seeAllLabel?: string;
   maxItems?: number;
@@ -35,6 +36,7 @@ export function FinanceTransactionsBlock({
   items,
   categoryById,
   onPressItem,
+  headerExtra,
   onPressSeeAll,
   seeAllLabel = "Bekijk alles",
   maxItems = 6,
@@ -54,6 +56,7 @@ export function FinanceTransactionsBlock({
           </TouchableOpacity>
         ) : null}
       </View>
+      {headerExtra ? <View style={styles.headerExtra}>{headerExtra}</View> : null}
 
       <View style={styles.listWrap}>
         {visibleItems.length === 0 ? (
@@ -111,6 +114,9 @@ const styles = StyleSheet.create({
   },
   listWrap: {
     backgroundColor: "transparent",
+  },
+  headerExtra: {
+    marginTop: -2,
   },
   emptyWrap: {
     alignItems: "center",

@@ -82,7 +82,7 @@ export function FinanceDetailTopBar({
 
 const styles = StyleSheet.create({
   shell: {
-    backgroundColor: "rgba(246,245,242,0.96)",
+    backgroundColor: FinColors.topBarBg,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(17,17,17,0.10)",
     boxShadow: "0px 10px 20px rgba(17,17,17,0.06)",

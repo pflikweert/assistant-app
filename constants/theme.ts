@@ -9,6 +9,7 @@ import { Platform } from 'react-native';
 
 const finColor = {
   bgBase: '#f6f5f2',
+  topBarBg: '#f7f9fb',
   bgCard: '#ffffff',
   bgElevated: '#efede7',
   bgInput: '#f1efea',
@@ -198,10 +199,6 @@ export const FinSurfaces = {
     borderWidth: 0,
     borderColor: "transparent",
     boxShadow: "0px 6px 12px rgba(17,17,17,0.03)",
-    shadowColor: "#111111",
-    shadowOpacity: 0.03,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
     elevation: 1,
   },
 } as const;

@@ -220,6 +220,7 @@ Niet bedoeld voor:
   - categorie wijzigen (AI/handmatig)
   - regelbeheer rond tegenpartij
   - budget-inclusie/exclusie
+  - historie van dezelfde tegenpartij met extra filter `zelfde categorie`
 - Belangrijkste acties:
   - bevestigen van categorie-aanpassing
 - Relatie met andere pagina's:

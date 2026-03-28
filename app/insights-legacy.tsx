@@ -2279,12 +2279,12 @@ export default function InsightsScreen() {
     const transactionId = selectedTx.id;
     setSelectedTx(null);
     setCategorySearch("");
-    router.push(`/transaction-detail?id=${transactionId}`);
+    router.push(`/transactions/${transactionId}`);
   }, [router, selectedTx]);
 
   const openRareTransactionDetail = React.useCallback(
     (item: RareSubscriptionItem) => {
-      router.push(`/transaction-detail?id=${item.latestTransactionId}`);
+      router.push(`/transactions/${item.latestTransactionId}`);
     },
     [router],
   );
@@ -3760,7 +3760,7 @@ export default function InsightsScreen() {
                     style={styles.incomeTxRow}
                     onPress={() => {
                       setIncomeDetailsOpen(false);
-                      router.push(`/transaction-detail?id=${tx.id}`);
+                      router.push(`/transactions/${tx.id}`);
                     }}
                   >
                     <View style={styles.reviewIconWrap}>

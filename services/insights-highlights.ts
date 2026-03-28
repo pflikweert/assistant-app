@@ -457,7 +457,7 @@ function buildNewCostCandidate(input: {
     description: `${value.label} verscheen deze maand met ${fmt.format(value.total)} aan uitgaven.`,
     ctaLabel: "Bekijk",
     ctaPath: value.sampleTransactionId
-      ? `/transaction-detail?id=${value.sampleTransactionId}`
+      ? `/transactions/${value.sampleTransactionId}`
       : "/transactions",
     signalSource: "hard",
     confidence,
