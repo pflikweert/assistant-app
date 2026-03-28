@@ -39,6 +39,9 @@ function isIncludedInSteering(input: {
   if (input.forecastRole === "excluded" || input.forecastRole === "observation_only") {
     return false;
   }
+  if (input.forecastRole === "reserve" || input.forecastRole === "goal") {
+    return true;
+  }
   return input.includeInBudget !== false || input.includeInCashflow !== false;
 }
 

@@ -302,4 +302,51 @@ describe("bank-account-form-sheet", () => {
     });
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
+
+  it("slaat aangepaste usage in edit-mode op via de gekozen segment-optie", async () => {
+    updateBankAccountMock.mockResolvedValue({
+      ...buildEditAccount(),
+      owner_scope: "shared",
+      forecast_role: "shared",
+      include_in_budget: true,
+      include_in_cashflow: true,
+      include_in_net_worth: true,
+    });
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+
+    let tree!: renderer.ReactTestRenderer;
+    await act(async () => {
+      tree = renderer.create(
+        <BankAccountFormSheet
+          visible
+          mode="edit"
+          account={buildEditAccount()}
+          onSaved={onSaved}
+          onClose={onClose}
+        />,
+      );
+    });
+
+    await act(async () => {
+      findPressableByText(tree.root, "Samen").props.onPress();
+    });
+
+    await act(async () => {
+      findPressableByText(tree.root, "Wijzigingen opslaan").props.onPress();
+    });
+
+    expect(updateBankAccountMock).toHaveBeenCalledTimes(1);
+    expect(updateBankAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      id: "acc_1",
+      accountType: "checking",
+      ownerScope: "shared",
+      forecastRole: "shared",
+      includeInBudget: true,
+      includeInCashflow: true,
+      includeInNetWorth: true,
+    });
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

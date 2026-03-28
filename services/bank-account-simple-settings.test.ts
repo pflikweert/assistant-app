@@ -42,6 +42,23 @@ describe("bank-account-simple-settings", () => {
     });
   });
 
+  it("maps reserve savings account to shared usage instead of exclude", () => {
+    const result = resolveSimpleAccountSettingsFromLegacy({
+      account_type: "savings",
+      owner_scope: "shared",
+      forecast_role: "reserve",
+      include_in_budget: false,
+      include_in_cashflow: false,
+      include_in_net_worth: true,
+    });
+
+    expect(result).toEqual({
+      usage: "shared",
+      kind: "savings",
+      excludeFromNetWorth: false,
+    });
+  });
+
   it("maps simple personal checking to operational personal legacy fields", () => {
     const result = mapSimpleSettingsToLegacyMeaning({
       settings: {
