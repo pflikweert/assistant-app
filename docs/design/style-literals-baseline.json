@@ -1,7 +1,14 @@
 {
-  "generatedAt": "2026-03-28T08:38:40.173Z",
-  "count": 3002,
+  "generatedAt": "2026-03-28T19:59:20.579Z",
+  "count": 2967,
   "entries": [
+    {
+      "key": "app/_layout.tsx|fontSize|fontSize: 13|fontSize: 13,",
+      "kind": "fontSize",
+      "file": "app/_layout.tsx",
+      "value": "fontSize: 13",
+      "snippet": "fontSize: 13,"
+    },
     {
       "key": "app/_layout.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
       "kind": "fontWeight",
@@ -10,6 +17,48 @@
       "snippet": "fontWeight: \"700\","
     },
     {
+      "key": "app/_layout.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
+      "kind": "fontWeight",
+      "file": "app/_layout.tsx",
+      "value": "fontWeight: \"700\"",
+      "snippet": "fontWeight: \"700\","
+    },
+    {
+      "key": "app/_layout.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
+      "kind": "lineHeight",
+      "file": "app/_layout.tsx",
+      "value": "lineHeight: 18",
+      "snippet": "lineHeight: 18,"
+    },
+    {
+      "key": "app/_layout.tsx|spacing|paddingHorizontal: 14|paddingHorizontal: 14,",
+      "kind": "spacing",
+      "file": "app/_layout.tsx",
+      "value": "paddingHorizontal: 14",
+      "snippet": "paddingHorizontal: 14,"
+    },
+    {
+      "key": "app/_layout.tsx|spacing|paddingHorizontal: 16|paddingHorizontal: 16,",
+      "kind": "spacing",
+      "file": "app/_layout.tsx",
+      "value": "paddingHorizontal: 16",
+      "snippet": "paddingHorizontal: 16,"
+    },
+    {
+      "key": "app/_layout.tsx|spacing|paddingVertical: 10|paddingVertical: 10,",
+      "kind": "spacing",
+      "file": "app/_layout.tsx",
+      "value": "paddingVertical: 10",
+      "snippet": "paddingVertical: 10,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|fontSize|fontSize: 10|fontSize: 10,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontSize: 10",
+      "snippet": "fontSize: 10,"
+    },
+    {
       "key": "app/(tabs)/budget.tsx|fontSize|fontSize: 10|fontSize: 10,",
       "kind": "fontSize",
       "file": "app/(tabs)/budget.tsx",
@@ -45,6 +94,27 @@
       "snippet": "fontSize: 11,"
     },
     {
+      "key": "app/(tabs)/budget.tsx|fontSize|fontSize: 11|fontSize: 11,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontSize: 11",
+      "snippet": "fontSize: 11,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|fontSize|fontSize: 11|fontSize: 11,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontSize: 11",
+      "snippet": "fontSize: 11,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|fontSize|fontSize: 11|fontSize: 11,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontSize: 11",
+      "snippet": "fontSize: 11,"
+    },
+    {
       "key": "app/(tabs)/budget.tsx|fontSize|fontSize: 12|fontSize: 12,",
       "kind": "fontSize",
       "file": "app/(tabs)/budget.tsx",
@@ -372,6 +442,20 @@
       "file": "app/(tabs)/budget.tsx",
       "value": "fontSize: 13",
       "snippet": "fontSize: 13,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|fontSize|fontSize: 13|fontSize: 13,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontSize: 13",
+      "snippet": "fontSize: 13,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|fontSize|fontSize: 14|fontSize: 14,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontSize: 14",
+      "snippet": "fontSize: 14,"
     },
     {
       "key": "app/(tabs)/budget.tsx|fontSize|fontSize: 14|fontSize: 14,",
@@ -591,6 +675,13 @@
       "snippet": "fontSize: 18,"
     },
     {
+      "key": "app/(tabs)/budget.tsx|fontSize|fontSize: 18|fontSize: 18,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontSize: 18",
+      "snippet": "fontSize: 18,"
+    },
+    {
       "key": "app/(tabs)/budget.tsx|fontSize|fontSize: 20|fontSize: 20,",
       "kind": "fontSize",
       "file": "app/(tabs)/budget.tsx",
@@ -640,11 +731,11 @@
       "snippet": "fontSize: 36,"
     },
     {
-      "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"600\"|fontWeight: \"600\",",
+      "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"500\"|fontWeight: \"500\",",
       "kind": "fontWeight",
       "file": "app/(tabs)/budget.tsx",
-      "value": "fontWeight: \"600\"",
-      "snippet": "fontWeight: \"600\","
+      "value": "fontWeight: \"500\"",
+      "snippet": "fontWeight: \"500\","
     },
     {
       "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"600\"|fontWeight: \"600\",",
@@ -710,11 +801,11 @@
       "snippet": "fontWeight: \"600\","
     },
     {
-      "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
+      "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"600\"|fontWeight: \"600\",",
       "kind": "fontWeight",
       "file": "app/(tabs)/budget.tsx",
-      "value": "fontWeight: \"700\"",
-      "snippet": "fontWeight: \"700\","
+      "value": "fontWeight: \"600\"",
+      "snippet": "fontWeight: \"600\","
     },
     {
       "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
@@ -1030,6 +1121,48 @@
       "file": "app/(tabs)/budget.tsx",
       "value": "fontWeight: \"700\"",
       "snippet": "fontWeight: \"700\","
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
+      "kind": "fontWeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontWeight: \"700\"",
+      "snippet": "fontWeight: \"700\","
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
+      "kind": "fontWeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontWeight: \"700\"",
+      "snippet": "fontWeight: \"700\","
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
+      "kind": "fontWeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontWeight: \"700\"",
+      "snippet": "fontWeight: \"700\","
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
+      "kind": "fontWeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontWeight: \"700\"",
+      "snippet": "fontWeight: \"700\","
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
+      "kind": "fontWeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontWeight: \"800\"",
+      "snippet": "fontWeight: \"800\","
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
+      "kind": "fontWeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "fontWeight: \"800\"",
+      "snippet": "fontWeight: \"800\","
     },
     {
       "key": "app/(tabs)/budget.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
@@ -1081,6 +1214,20 @@
       "snippet": "letterSpacing: -0.6,"
     },
     {
+      "key": "app/(tabs)/budget.tsx|letterSpacing|letterSpacing: 0.6|letterSpacing: 0.6,",
+      "kind": "letterSpacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "letterSpacing: 0.6",
+      "snippet": "letterSpacing: 0.6,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|letterSpacing|letterSpacing: 0.8|letterSpacing: 0.8,",
+      "kind": "letterSpacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "letterSpacing: 0.8",
+      "snippet": "letterSpacing: 0.8,"
+    },
+    {
       "key": "app/(tabs)/budget.tsx|letterSpacing|letterSpacing: 0.8|letterSpacing: 0.8,",
       "kind": "letterSpacing",
       "file": "app/(tabs)/budget.tsx",
@@ -1116,11 +1263,25 @@
       "snippet": "letterSpacing: 2,"
     },
     {
-      "key": "app/(tabs)/budget.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
+      "key": "app/(tabs)/budget.tsx|lineHeight|lineHeight: 12|lineHeight: 12,",
       "kind": "lineHeight",
       "file": "app/(tabs)/budget.tsx",
-      "value": "lineHeight: 16",
-      "snippet": "lineHeight: 16,"
+      "value": "lineHeight: 12",
+      "snippet": "lineHeight: 12,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|lineHeight|lineHeight: 14|lineHeight: 14,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "lineHeight: 14",
+      "snippet": "lineHeight: 14,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|lineHeight|lineHeight: 15|lineHeight: 15,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "lineHeight: 15",
+      "snippet": "lineHeight: 15,"
     },
     {
       "key": "app/(tabs)/budget.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
@@ -1128,6 +1289,27 @@
       "file": "app/(tabs)/budget.tsx",
       "value": "lineHeight: 16",
       "snippet": "lineHeight: 16,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "lineHeight: 18",
+      "snippet": "lineHeight: 18,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "lineHeight: 18",
+      "snippet": "lineHeight: 18,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "lineHeight: 18",
+      "snippet": "lineHeight: 18,"
     },
     {
       "key": "app/(tabs)/budget.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
@@ -1240,6 +1422,13 @@
       "file": "app/(tabs)/budget.tsx",
       "value": "lineHeight: 21",
       "snippet": "lineHeight: 21,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|lineHeight|lineHeight: 22|lineHeight: 22,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "lineHeight: 22",
+      "snippet": "lineHeight: 22,"
     },
     {
       "key": "app/(tabs)/budget.tsx|lineHeight|lineHeight: 22|lineHeight: 22,",
@@ -1550,25 +1739,32 @@
       "snippet": "gap: 12,"
     },
     {
+      "key": "app/(tabs)/budget.tsx|spacing|gap: 12|gap: 12,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "gap: 12",
+      "snippet": "gap: 12,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|spacing|gap: 12|gap: 12,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "gap: 12",
+      "snippet": "gap: 12,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|spacing|gap: 12|gap: 12,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "gap: 12",
+      "snippet": "gap: 12,"
+    },
+    {
       "key": "app/(tabs)/budget.tsx|spacing|gap: 14|gap: 14,",
       "kind": "spacing",
       "file": "app/(tabs)/budget.tsx",
       "value": "gap: 14",
       "snippet": "gap: 14,"
-    },
-    {
-      "key": "app/(tabs)/budget.tsx|spacing|gap: 16|gap: 16,",
-      "kind": "spacing",
-      "file": "app/(tabs)/budget.tsx",
-      "value": "gap: 16",
-      "snippet": "gap: 16,"
-    },
-    {
-      "key": "app/(tabs)/budget.tsx|spacing|gap: 2|gap: 2,",
-      "kind": "spacing",
-      "file": "app/(tabs)/budget.tsx",
-      "value": "gap: 2",
-      "snippet": "gap: 2,"
     },
     {
       "key": "app/(tabs)/budget.tsx|spacing|gap: 2|gap: 2,",
@@ -1653,6 +1849,20 @@
       "file": "app/(tabs)/budget.tsx",
       "value": "gap: 6",
       "snippet": "gap: 6,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|spacing|gap: 8|gap: 8,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "gap: 8",
+      "snippet": "gap: 8,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|spacing|gap: 8|gap: 8,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "gap: 8",
+      "snippet": "gap: 8,"
     },
     {
       "key": "app/(tabs)/budget.tsx|spacing|gap: 8|gap: 8,",
@@ -1842,6 +2052,13 @@
       "file": "app/(tabs)/budget.tsx",
       "value": "marginTop: 18",
       "snippet": "marginTop: 18,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|spacing|marginTop: 2|marginTop: 2,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "marginTop: 2",
+      "snippet": "marginTop: 2,"
     },
     {
       "key": "app/(tabs)/budget.tsx|spacing|marginTop: 2|marginTop: 2,",
@@ -2068,11 +2285,11 @@
       "snippet": "paddingBottom: 24,"
     },
     {
-      "key": "app/(tabs)/budget.tsx|spacing|paddingBottom: 6|paddingBottom: 6,",
+      "key": "app/(tabs)/budget.tsx|spacing|paddingBottom: 8|paddingBottom: 8,",
       "kind": "spacing",
       "file": "app/(tabs)/budget.tsx",
-      "value": "paddingBottom: 6",
-      "snippet": "paddingBottom: 6,"
+      "value": "paddingBottom: 8",
+      "snippet": "paddingBottom: 8,"
     },
     {
       "key": "app/(tabs)/budget.tsx|spacing|paddingBottom: 8|paddingBottom: 8,",
@@ -2201,6 +2418,13 @@
       "snippet": "paddingHorizontal: 16,"
     },
     {
+      "key": "app/(tabs)/budget.tsx|spacing|paddingHorizontal: 16|paddingHorizontal: 16,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "paddingHorizontal: 16",
+      "snippet": "paddingHorizontal: 16,"
+    },
+    {
       "key": "app/(tabs)/budget.tsx|spacing|paddingHorizontal: 20|paddingHorizontal: 20,",
       "kind": "spacing",
       "file": "app/(tabs)/budget.tsx",
@@ -2215,11 +2439,25 @@
       "snippet": "paddingHorizontal: 24,"
     },
     {
+      "key": "app/(tabs)/budget.tsx|spacing|paddingHorizontal: 4|paddingHorizontal: 4,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "paddingHorizontal: 4",
+      "snippet": "paddingHorizontal: 4,"
+    },
+    {
       "key": "app/(tabs)/budget.tsx|spacing|paddingHorizontal: 7|paddingHorizontal: 7,",
       "kind": "spacing",
       "file": "app/(tabs)/budget.tsx",
       "value": "paddingHorizontal: 7",
       "snippet": "paddingHorizontal: 7,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|spacing|paddingHorizontal: 8|paddingHorizontal: 8,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "paddingHorizontal: 8",
+      "snippet": "paddingHorizontal: 8,"
     },
     {
       "key": "app/(tabs)/budget.tsx|spacing|paddingHorizontal: 8|paddingHorizontal: 8,",
@@ -2255,6 +2493,20 @@
       "file": "app/(tabs)/budget.tsx",
       "value": "paddingLeft: 8",
       "snippet": "paddingLeft: 8,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|spacing|paddingTop: 10|paddingTop: 10,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "paddingTop: 10",
+      "snippet": "paddingTop: 10,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|spacing|paddingTop: 10|paddingTop: 10,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "paddingTop: 10",
+      "snippet": "paddingTop: 10,"
     },
     {
       "key": "app/(tabs)/budget.tsx|spacing|paddingTop: 10|paddingTop: 10,",
@@ -2320,6 +2572,13 @@
       "snippet": "paddingVertical: 14,"
     },
     {
+      "key": "app/(tabs)/budget.tsx|spacing|paddingVertical: 16|paddingVertical: 16,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "paddingVertical: 16",
+      "snippet": "paddingVertical: 16,"
+    },
+    {
       "key": "app/(tabs)/budget.tsx|spacing|paddingVertical: 2|paddingVertical: 2,",
       "kind": "spacing",
       "file": "app/(tabs)/budget.tsx",
@@ -2332,6 +2591,13 @@
       "file": "app/(tabs)/budget.tsx",
       "value": "paddingVertical: 2",
       "snippet": "paddingVertical: 2,"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|spacing|paddingVertical: 3|paddingVertical: 3,",
+      "kind": "spacing",
+      "file": "app/(tabs)/budget.tsx",
+      "value": "paddingVertical: 3",
+      "snippet": "paddingVertical: 3,"
     },
     {
       "key": "app/(tabs)/budget.tsx|spacing|paddingVertical: 4|paddingVertical: 4,",
@@ -2425,6 +2691,41 @@
       "snippet": "fontSize: 12,"
     },
     {
+      "key": "app/(tabs)/index.tsx|fontSize|fontSize: 12|fontSize: 12,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/index.tsx",
+      "value": "fontSize: 12",
+      "snippet": "fontSize: 12,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|fontSize|fontSize: 12|fontSize: 12,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/index.tsx",
+      "value": "fontSize: 12",
+      "snippet": "fontSize: 12,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|fontSize|fontSize: 13|fontSize: 13,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/index.tsx",
+      "value": "fontSize: 13",
+      "snippet": "fontSize: 13,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|fontSize|fontSize: 13|fontSize: 13,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/index.tsx",
+      "value": "fontSize: 13",
+      "snippet": "fontSize: 13,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|fontSize|fontSize: 13|fontSize: 13,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/index.tsx",
+      "value": "fontSize: 13",
+      "snippet": "fontSize: 13,"
+    },
+    {
       "key": "app/(tabs)/index.tsx|fontSize|fontSize: 13|fontSize: 13,",
       "kind": "fontSize",
       "file": "app/(tabs)/index.tsx",
@@ -2451,27 +2752,6 @@
       "file": "app/(tabs)/index.tsx",
       "value": "fontSize: 14",
       "snippet": "fontSize: 14,"
-    },
-    {
-      "key": "app/(tabs)/index.tsx|fontSize|fontSize: 14|fontSize: 14,",
-      "kind": "fontSize",
-      "file": "app/(tabs)/index.tsx",
-      "value": "fontSize: 14",
-      "snippet": "fontSize: 14,"
-    },
-    {
-      "key": "app/(tabs)/index.tsx|fontSize|fontSize: 16|fontSize: 16,",
-      "kind": "fontSize",
-      "file": "app/(tabs)/index.tsx",
-      "value": "fontSize: 16",
-      "snippet": "fontSize: 16,"
-    },
-    {
-      "key": "app/(tabs)/index.tsx|fontSize|fontSize: 16|fontSize: 16,",
-      "kind": "fontSize",
-      "file": "app/(tabs)/index.tsx",
-      "value": "fontSize: 16",
-      "snippet": "fontSize: 16,"
     },
     {
       "key": "app/(tabs)/index.tsx|fontSize|fontSize: 16|fontSize: 16,",
@@ -2488,11 +2768,11 @@
       "snippet": "fontSize: 18,"
     },
     {
-      "key": "app/(tabs)/index.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
-      "kind": "fontWeight",
+      "key": "app/(tabs)/index.tsx|fontSize|fontSize: 42|fontSize: 42,",
+      "kind": "fontSize",
       "file": "app/(tabs)/index.tsx",
-      "value": "fontWeight: \"700\"",
-      "snippet": "fontWeight: \"700\","
+      "value": "fontSize: 42",
+      "snippet": "fontSize: 42,"
     },
     {
       "key": "app/(tabs)/index.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
@@ -2509,25 +2789,18 @@
       "snippet": "fontWeight: \"700\","
     },
     {
-      "key": "app/(tabs)/index.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
+      "key": "app/(tabs)/index.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
       "kind": "fontWeight",
       "file": "app/(tabs)/index.tsx",
-      "value": "fontWeight: \"800\"",
-      "snippet": "fontWeight: \"800\","
+      "value": "fontWeight: \"700\"",
+      "snippet": "fontWeight: \"700\","
     },
     {
-      "key": "app/(tabs)/index.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
+      "key": "app/(tabs)/index.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
       "kind": "fontWeight",
       "file": "app/(tabs)/index.tsx",
-      "value": "fontWeight: \"800\"",
-      "snippet": "fontWeight: \"800\","
-    },
-    {
-      "key": "app/(tabs)/index.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
-      "kind": "fontWeight",
-      "file": "app/(tabs)/index.tsx",
-      "value": "fontWeight: \"800\"",
-      "snippet": "fontWeight: \"800\","
+      "value": "fontWeight: \"700\"",
+      "snippet": "fontWeight: \"700\","
     },
     {
       "key": "app/(tabs)/index.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
@@ -2551,11 +2824,60 @@
       "snippet": "letterSpacing: -0.3,"
     },
     {
-      "key": "app/(tabs)/index.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
+      "key": "app/(tabs)/index.tsx|letterSpacing|letterSpacing: -1.1|letterSpacing: -1.1,",
+      "kind": "letterSpacing",
+      "file": "app/(tabs)/index.tsx",
+      "value": "letterSpacing: -1.1",
+      "snippet": "letterSpacing: -1.1,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|letterSpacing|letterSpacing: 0.7|letterSpacing: 0.7,",
+      "kind": "letterSpacing",
+      "file": "app/(tabs)/index.tsx",
+      "value": "letterSpacing: 0.7",
+      "snippet": "letterSpacing: 0.7,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|lineHeight|lineHeight: 15|lineHeight: 15,",
       "kind": "lineHeight",
       "file": "app/(tabs)/index.tsx",
-      "value": "lineHeight: 16",
-      "snippet": "lineHeight: 16,"
+      "value": "lineHeight: 15",
+      "snippet": "lineHeight: 15,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|lineHeight|lineHeight: 15|lineHeight: 15,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/index.tsx",
+      "value": "lineHeight: 15",
+      "snippet": "lineHeight: 15,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|lineHeight|lineHeight: 17|lineHeight: 17,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/index.tsx",
+      "value": "lineHeight: 17",
+      "snippet": "lineHeight: 17,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/index.tsx",
+      "value": "lineHeight: 18",
+      "snippet": "lineHeight: 18,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/index.tsx",
+      "value": "lineHeight: 18",
+      "snippet": "lineHeight: 18,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/index.tsx",
+      "value": "lineHeight: 18",
+      "snippet": "lineHeight: 18,"
     },
     {
       "key": "app/(tabs)/index.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
@@ -2586,6 +2908,13 @@
       "snippet": "lineHeight: 22,"
     },
     {
+      "key": "app/(tabs)/index.tsx|lineHeight|lineHeight: 46|lineHeight: 46,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/index.tsx",
+      "value": "lineHeight: 46",
+      "snippet": "lineHeight: 46,"
+    },
+    {
       "key": "app/(tabs)/index.tsx|spacing|gap: 12|gap: 12,",
       "kind": "spacing",
       "file": "app/(tabs)/index.tsx",
@@ -2593,11 +2922,18 @@
       "snippet": "gap: 12,"
     },
     {
-      "key": "app/(tabs)/index.tsx|spacing|gap: 24|gap: 24,",
+      "key": "app/(tabs)/index.tsx|spacing|gap: 12|gap: 12,",
       "kind": "spacing",
       "file": "app/(tabs)/index.tsx",
-      "value": "gap: 24",
-      "snippet": "gap: 24,"
+      "value": "gap: 12",
+      "snippet": "gap: 12,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|spacing|gap: 12|gap: 12,",
+      "kind": "spacing",
+      "file": "app/(tabs)/index.tsx",
+      "value": "gap: 12",
+      "snippet": "gap: 12,"
     },
     {
       "key": "app/(tabs)/index.tsx|spacing|marginBottom: -2|marginBottom: -2,",
@@ -2612,27 +2948,6 @@
       "file": "app/(tabs)/index.tsx",
       "value": "marginBottom: 14",
       "snippet": "marginBottom: 14,"
-    },
-    {
-      "key": "app/(tabs)/index.tsx|spacing|marginLeft: 68|marginLeft: 68,",
-      "kind": "spacing",
-      "file": "app/(tabs)/index.tsx",
-      "value": "marginLeft: 68",
-      "snippet": "marginLeft: 68,"
-    },
-    {
-      "key": "app/(tabs)/index.tsx|spacing|marginRight: 14|marginRight: 14,",
-      "kind": "spacing",
-      "file": "app/(tabs)/index.tsx",
-      "value": "marginRight: 14",
-      "snippet": "marginRight: 14,"
-    },
-    {
-      "key": "app/(tabs)/index.tsx|spacing|marginTop: 4|marginTop: 4,",
-      "kind": "spacing",
-      "file": "app/(tabs)/index.tsx",
-      "value": "marginTop: 4",
-      "snippet": "marginTop: 4,"
     },
     {
       "key": "app/(tabs)/index.tsx|spacing|marginTop: 4|marginTop: 4,",
@@ -2677,11 +2992,11 @@
       "snippet": "paddingHorizontal: 10,"
     },
     {
-      "key": "app/(tabs)/index.tsx|spacing|paddingHorizontal: 12|paddingHorizontal: 12,",
+      "key": "app/(tabs)/index.tsx|spacing|paddingHorizontal: 10|paddingHorizontal: 10,",
       "kind": "spacing",
       "file": "app/(tabs)/index.tsx",
-      "value": "paddingHorizontal: 12",
-      "snippet": "paddingHorizontal: 12,"
+      "value": "paddingHorizontal: 10",
+      "snippet": "paddingHorizontal: 10,"
     },
     {
       "key": "app/(tabs)/index.tsx|spacing|paddingHorizontal: 16|paddingHorizontal: 16,",
@@ -2691,25 +3006,11 @@
       "snippet": "paddingHorizontal: 16,"
     },
     {
-      "key": "app/(tabs)/index.tsx|spacing|paddingHorizontal: 18|paddingHorizontal: 18,",
-      "kind": "spacing",
-      "file": "app/(tabs)/index.tsx",
-      "value": "paddingHorizontal: 18",
-      "snippet": "paddingHorizontal: 18,"
-    },
-    {
       "key": "app/(tabs)/index.tsx|spacing|paddingHorizontal: 20|paddingHorizontal: 20,",
       "kind": "spacing",
       "file": "app/(tabs)/index.tsx",
       "value": "paddingHorizontal: 20",
       "snippet": "paddingHorizontal: 20,"
-    },
-    {
-      "key": "app/(tabs)/index.tsx|spacing|paddingRight: 10|paddingRight: 10,",
-      "kind": "spacing",
-      "file": "app/(tabs)/index.tsx",
-      "value": "paddingRight: 10",
-      "snippet": "paddingRight: 10,"
     },
     {
       "key": "app/(tabs)/index.tsx|spacing|paddingTop: 0|paddingTop: 0,",
@@ -2726,18 +3027,18 @@
       "snippet": "paddingTop: 80,"
     },
     {
-      "key": "app/(tabs)/index.tsx|spacing|paddingVertical: 16|paddingVertical: 16,",
-      "kind": "spacing",
-      "file": "app/(tabs)/index.tsx",
-      "value": "paddingVertical: 16",
-      "snippet": "paddingVertical: 16,"
-    },
-    {
       "key": "app/(tabs)/index.tsx|spacing|paddingVertical: 28|paddingVertical: 28,",
       "kind": "spacing",
       "file": "app/(tabs)/index.tsx",
       "value": "paddingVertical: 28",
       "snippet": "paddingVertical: 28,"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|spacing|paddingVertical: 6|paddingVertical: 6,",
+      "kind": "spacing",
+      "file": "app/(tabs)/index.tsx",
+      "value": "paddingVertical: 6",
+      "snippet": "paddingVertical: 6,"
     },
     {
       "key": "app/(tabs)/index.tsx|spacing|paddingVertical: 6|paddingVertical: 6,",
@@ -2782,6 +3083,20 @@
       "snippet": "fontSize: 11,"
     },
     {
+      "key": "app/(tabs)/insights.tsx|fontSize|fontSize: 11|fontSize: 11,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "fontSize: 11",
+      "snippet": "fontSize: 11,"
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|fontSize|fontSize: 12|fontSize: 12,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "fontSize: 12",
+      "snippet": "fontSize: 12,"
+    },
+    {
       "key": "app/(tabs)/insights.tsx|fontSize|fontSize: 12|fontSize: 12,",
       "kind": "fontSize",
       "file": "app/(tabs)/insights.tsx",
@@ -2843,6 +3158,13 @@
       "file": "app/(tabs)/insights.tsx",
       "value": "fontSize: 14",
       "snippet": "fontSize: 14,"
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|fontSize|fontSize: 22|fontSize: 22,",
+      "kind": "fontSize",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "fontSize: 22",
+      "snippet": "fontSize: 22,"
     },
     {
       "key": "app/(tabs)/insights.tsx|fontSize|fontSize: 24|fontSize: 24,",
@@ -2873,11 +3195,11 @@
       "snippet": "fontWeight: \"600\","
     },
     {
-      "key": "app/(tabs)/insights.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
+      "key": "app/(tabs)/insights.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
       "kind": "fontWeight",
       "file": "app/(tabs)/insights.tsx",
-      "value": "fontWeight: \"800\"",
-      "snippet": "fontWeight: \"800\","
+      "value": "fontWeight: \"700\"",
+      "snippet": "fontWeight: \"700\","
     },
     {
       "key": "app/(tabs)/insights.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
@@ -2941,6 +3263,27 @@
       "file": "app/(tabs)/insights.tsx",
       "value": "fontWeight: \"800\"",
       "snippet": "fontWeight: \"800\","
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
+      "kind": "fontWeight",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "fontWeight: \"800\"",
+      "snippet": "fontWeight: \"800\","
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
+      "kind": "fontWeight",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "fontWeight: \"800\"",
+      "snippet": "fontWeight: \"800\","
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|letterSpacing|letterSpacing: -0.4|letterSpacing: -0.4,",
+      "kind": "letterSpacing",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "letterSpacing: -0.4",
+      "snippet": "letterSpacing: -0.4,"
     },
     {
       "key": "app/(tabs)/insights.tsx|letterSpacing|letterSpacing: -0.8|letterSpacing: -0.8,",
@@ -3013,11 +3356,11 @@
       "snippet": "lineHeight: 14,"
     },
     {
-      "key": "app/(tabs)/insights.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
+      "key": "app/(tabs)/insights.tsx|lineHeight|lineHeight: 14|lineHeight: 14,",
       "kind": "lineHeight",
       "file": "app/(tabs)/insights.tsx",
-      "value": "lineHeight: 16",
-      "snippet": "lineHeight: 16,"
+      "value": "lineHeight: 14",
+      "snippet": "lineHeight: 14,"
     },
     {
       "key": "app/(tabs)/insights.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
@@ -3046,6 +3389,20 @@
       "file": "app/(tabs)/insights.tsx",
       "value": "lineHeight: 16",
       "snippet": "lineHeight: 16,"
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "lineHeight: 16",
+      "snippet": "lineHeight: 16,"
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|lineHeight|lineHeight: 17|lineHeight: 17,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "lineHeight: 17",
+      "snippet": "lineHeight: 17,"
     },
     {
       "key": "app/(tabs)/insights.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
@@ -3074,6 +3431,13 @@
       "file": "app/(tabs)/insights.tsx",
       "value": "lineHeight: 18",
       "snippet": "lineHeight: 18,"
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|lineHeight|lineHeight: 28|lineHeight: 28,",
+      "kind": "lineHeight",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "lineHeight: 28",
+      "snippet": "lineHeight: 28,"
     },
     {
       "key": "app/(tabs)/insights.tsx|lineHeight|lineHeight: 28|lineHeight: 28,",
@@ -3132,13 +3496,6 @@
       "snippet": "gap: 2,"
     },
     {
-      "key": "app/(tabs)/insights.tsx|spacing|gap: 32|gap: 32,",
-      "kind": "spacing",
-      "file": "app/(tabs)/insights.tsx",
-      "value": "gap: 32",
-      "snippet": "gap: 32,"
-    },
-    {
       "key": "app/(tabs)/insights.tsx|spacing|gap: 4|gap: 4,",
       "kind": "spacing",
       "file": "app/(tabs)/insights.tsx",
@@ -3151,6 +3508,13 @@
       "file": "app/(tabs)/insights.tsx",
       "value": "gap: 4",
       "snippet": "gap: 4,"
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|spacing|gap: 6|gap: 6,",
+      "kind": "spacing",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "gap: 6",
+      "snippet": "gap: 6,"
     },
     {
       "key": "app/(tabs)/insights.tsx|spacing|gap: 6|gap: 6,",
@@ -3244,6 +3608,13 @@
       "snippet": "paddingHorizontal: 14,"
     },
     {
+      "key": "app/(tabs)/insights.tsx|spacing|paddingHorizontal: 14|paddingHorizontal: 14,",
+      "kind": "spacing",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "paddingHorizontal: 14",
+      "snippet": "paddingHorizontal: 14,"
+    },
+    {
       "key": "app/(tabs)/insights.tsx|spacing|paddingHorizontal: 16|paddingHorizontal: 16,",
       "kind": "spacing",
       "file": "app/(tabs)/insights.tsx",
@@ -3298,6 +3669,13 @@
       "file": "app/(tabs)/insights.tsx",
       "value": "paddingVertical: 10",
       "snippet": "paddingVertical: 10,"
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|spacing|paddingVertical: 12|paddingVertical: 12,",
+      "kind": "spacing",
+      "file": "app/(tabs)/insights.tsx",
+      "value": "paddingVertical: 12",
+      "snippet": "paddingVertical: 12,"
     },
     {
       "key": "app/(tabs)/insights.tsx|spacing|paddingVertical: 12|paddingVertical: 12,",
@@ -3762,13 +4140,6 @@
       "snippet": "gap: 10,"
     },
     {
-      "key": "app/(tabs)/settings.tsx|spacing|gap: 10|scroll: { paddingHorizontal: 24, paddingBottom: 176, gap: 10 },",
-      "kind": "spacing",
-      "file": "app/(tabs)/settings.tsx",
-      "value": "gap: 10",
-      "snippet": "scroll: { paddingHorizontal: 24, paddingBottom: 176, gap: 10 },"
-    },
-    {
       "key": "app/(tabs)/settings.tsx|spacing|gap: 12|gap: 12,",
       "kind": "spacing",
       "file": "app/(tabs)/settings.tsx",
@@ -3972,11 +4343,11 @@
       "snippet": "paddingBottom: 16,"
     },
     {
-      "key": "app/(tabs)/settings.tsx|spacing|paddingBottom: 176|scroll: { paddingHorizontal: 24, paddingBottom: 176, gap: 10 },",
+      "key": "app/(tabs)/settings.tsx|spacing|paddingBottom: 176|paddingBottom: 176,",
       "kind": "spacing",
       "file": "app/(tabs)/settings.tsx",
       "value": "paddingBottom: 176",
-      "snippet": "scroll: { paddingHorizontal: 24, paddingBottom: 176, gap: 10 },"
+      "snippet": "paddingBottom: 176,"
     },
     {
       "key": "app/(tabs)/settings.tsx|spacing|paddingHorizontal: 10|paddingHorizontal: 10,",
@@ -4014,11 +4385,11 @@
       "snippet": "paddingHorizontal: 24,"
     },
     {
-      "key": "app/(tabs)/settings.tsx|spacing|paddingHorizontal: 24|scroll: { paddingHorizontal: 24, paddingBottom: 176, gap: 10 },",
+      "key": "app/(tabs)/settings.tsx|spacing|paddingHorizontal: 24|paddingHorizontal: 24,",
       "kind": "spacing",
       "file": "app/(tabs)/settings.tsx",
       "value": "paddingHorizontal: 24",
-      "snippet": "scroll: { paddingHorizontal: 24, paddingBottom: 176, gap: 10 },"
+      "snippet": "paddingHorizontal: 24,"
     },
     {
       "key": "app/(tabs)/settings.tsx|spacing|paddingHorizontal: 4|paddingHorizontal: 4,",
@@ -4089,20 +4460,6 @@
       "file": "app/(tabs)/settings.tsx",
       "value": "paddingVertical: 5",
       "snippet": "paddingVertical: 5,"
-    },
-    {
-      "key": "app/account/change-password.tsx|fontSize|fontSize: 15|fontSize: 15,",
-      "kind": "fontSize",
-      "file": "app/account/change-password.tsx",
-      "value": "fontSize: 15",
-      "snippet": "fontSize: 15,"
-    },
-    {
-      "key": "app/account/change-password.tsx|fontWeight|fontWeight: \"600\"|fontWeight: \"600\",",
-      "kind": "fontWeight",
-      "file": "app/account/change-password.tsx",
-      "value": "fontWeight: \"600\"",
-      "snippet": "fontWeight: \"600\","
     },
     {
       "key": "app/analysis-detail.tsx|fontSize|fontSize: 11|fontSize: 11,",
@@ -4572,636 +4929,6 @@
       "file": "app/auth/reset-password.tsx",
       "value": "paddingVertical: 24",
       "snippet": "paddingVertical: 24,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 12|fontSize: 12,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 12",
-      "snippet": "fontSize: 12,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 12|fontSize: 12,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 12",
-      "snippet": "fontSize: 12,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 12|fontSize: 12,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 12",
-      "snippet": "fontSize: 12,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 13|fontSize: 13,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 13",
-      "snippet": "fontSize: 13,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 13|fontSize: 13,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 13",
-      "snippet": "fontSize: 13,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 14|fontSize: 14,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 14",
-      "snippet": "fontSize: 14,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 14|fontSize: 14,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 14",
-      "snippet": "fontSize: 14,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 14|fontSize: 14,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 14",
-      "snippet": "fontSize: 14,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 14|fontSize: 14,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 14",
-      "snippet": "fontSize: 14,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 14|fontSize: 14,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 14",
-      "snippet": "fontSize: 14,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 14|fontSize: 14,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 14",
-      "snippet": "fontSize: 14,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 14|fontSize: 14,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 14",
-      "snippet": "fontSize: 14,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 14|fontSize: 14,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 14",
-      "snippet": "fontSize: 14,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 14|fontSize: 14,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 14",
-      "snippet": "fontSize: 14,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 15|fontSize: 15,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 15",
-      "snippet": "fontSize: 15,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 18|fontSize: 18,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 18",
-      "snippet": "fontSize: 18,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 18|fontSize: 18,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 18",
-      "snippet": "fontSize: 18,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 20|fontSize: 20,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 20",
-      "snippet": "fontSize: 20,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontSize|fontSize: 24|fontSize: 24,",
-      "kind": "fontSize",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontSize: 24",
-      "snippet": "fontSize: 24,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"600\"|fontWeight: \"600\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"600\"",
-      "snippet": "fontWeight: \"600\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"600\"|fontWeight: \"600\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"600\"",
-      "snippet": "fontWeight: \"600\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"600\"|fontWeight: \"600\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"600\"",
-      "snippet": "fontWeight: \"600\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"700\"",
-      "snippet": "fontWeight: \"700\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"700\"",
-      "snippet": "fontWeight: \"700\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"700\"",
-      "snippet": "fontWeight: \"700\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"700\"",
-      "snippet": "fontWeight: \"700\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"800\"",
-      "snippet": "fontWeight: \"800\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"800\"",
-      "snippet": "fontWeight: \"800\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"800\"",
-      "snippet": "fontWeight: \"800\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"800\"",
-      "snippet": "fontWeight: \"800\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"800\"",
-      "snippet": "fontWeight: \"800\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"800\"",
-      "snippet": "fontWeight: \"800\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
-      "kind": "fontWeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "fontWeight: \"800\"",
-      "snippet": "fontWeight: \"800\","
-    },
-    {
-      "key": "app/bankrekeningen.tsx|letterSpacing|letterSpacing: -0.5|letterSpacing: -0.5,",
-      "kind": "letterSpacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "letterSpacing: -0.5",
-      "snippet": "letterSpacing: -0.5,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|letterSpacing|letterSpacing: -0.6|letterSpacing: -0.6,",
-      "kind": "letterSpacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "letterSpacing: -0.6",
-      "snippet": "letterSpacing: -0.6,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|letterSpacing|letterSpacing: 0.4|letterSpacing: 0.4,",
-      "kind": "letterSpacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "letterSpacing: 0.4",
-      "snippet": "letterSpacing: 0.4,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|letterSpacing|letterSpacing: 0.6|letterSpacing: 0.6,",
-      "kind": "letterSpacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "letterSpacing: 0.6",
-      "snippet": "letterSpacing: 0.6,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 14|lineHeight: 14,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 14",
-      "snippet": "lineHeight: 14,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 16",
-      "snippet": "lineHeight: 16,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 18",
-      "snippet": "lineHeight: 18,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 18",
-      "snippet": "lineHeight: 18,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 18",
-      "snippet": "lineHeight: 18,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 19|lineHeight: 19,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 19",
-      "snippet": "lineHeight: 19,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 20|lineHeight: 20,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 20",
-      "snippet": "lineHeight: 20,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 20|lineHeight: 20,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 20",
-      "snippet": "lineHeight: 20,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 20|lineHeight: 20,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 20",
-      "snippet": "lineHeight: 20,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 20|lineHeight: 20,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 20",
-      "snippet": "lineHeight: 20,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 20|lineHeight: 20,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 20",
-      "snippet": "lineHeight: 20,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 21|lineHeight: 21,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 21",
-      "snippet": "lineHeight: 21,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 21|lineHeight: 21,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 21",
-      "snippet": "lineHeight: 21,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 21|lineHeight: 21,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 21",
-      "snippet": "lineHeight: 21,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 23|lineHeight: 23,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 23",
-      "snippet": "lineHeight: 23,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 24|lineHeight: 24,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 24",
-      "snippet": "lineHeight: 24,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 26|lineHeight: 26,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 26",
-      "snippet": "lineHeight: 26,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|lineHeight|lineHeight: 30|lineHeight: 30,",
-      "kind": "lineHeight",
-      "file": "app/bankrekeningen.tsx",
-      "value": "lineHeight: 30",
-      "snippet": "lineHeight: 30,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 10|gap: 10,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 10",
-      "snippet": "gap: 10,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 10|gap: 10,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 10",
-      "snippet": "gap: 10,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 10|gap: 10,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 10",
-      "snippet": "gap: 10,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 10|gap: 10,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 10",
-      "snippet": "gap: 10,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 10|gap: 10,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 10",
-      "snippet": "gap: 10,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 10|gap: 10,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 10",
-      "snippet": "gap: 10,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 10|gap: 10,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 10",
-      "snippet": "gap: 10,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 12|gap: 12,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 12",
-      "snippet": "gap: 12,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 14|gap: 14,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 14",
-      "snippet": "gap: 14,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 6|gap: 6,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 6",
-      "snippet": "gap: 6,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 6|gap: 6,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 6",
-      "snippet": "gap: 6,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 8|gap: 8,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 8",
-      "snippet": "gap: 8,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 8|gap: 8,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 8",
-      "snippet": "gap: 8,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|gap: 8|gap: 8,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "gap: 8",
-      "snippet": "gap: 8,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|marginTop: 20|marginTop: 20,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "marginTop: 20",
-      "snippet": "marginTop: 20,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|marginTop: 20|marginTop: 20,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "marginTop: 20",
-      "snippet": "marginTop: 20,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|marginTop: 4|marginTop: 4,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "marginTop: 4",
-      "snippet": "marginTop: 4,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|marginTop: 4|marginTop: 4,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "marginTop: 4",
-      "snippet": "marginTop: 4,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|padding: 16|padding: 16,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "padding: 16",
-      "snippet": "padding: 16,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|padding: 18|padding: 18,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "padding: 18",
-      "snippet": "padding: 18,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|padding: 18|padding: 18,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "padding: 18",
-      "snippet": "padding: 18,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|padding: 18|padding: 18,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "padding: 18",
-      "snippet": "padding: 18,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|padding: 20|padding: 20,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "padding: 20",
-      "snippet": "padding: 20,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|padding: 20|padding: 20,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "padding: 20",
-      "snippet": "padding: 20,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|paddingBottom: 28|paddingBottom: 28,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "paddingBottom: 28",
-      "snippet": "paddingBottom: 28,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|paddingHorizontal: 10|paddingHorizontal: 10,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "paddingHorizontal: 10",
-      "snippet": "paddingHorizontal: 10,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|paddingHorizontal: 16|paddingHorizontal: 16,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "paddingHorizontal: 16",
-      "snippet": "paddingHorizontal: 16,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|paddingHorizontal: 16|paddingHorizontal: 16,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "paddingHorizontal: 16",
-      "snippet": "paddingHorizontal: 16,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|paddingHorizontal: 16|paddingHorizontal: 16,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "paddingHorizontal: 16",
-      "snippet": "paddingHorizontal: 16,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|paddingHorizontal: 16|paddingHorizontal: 16,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "paddingHorizontal: 16",
-      "snippet": "paddingHorizontal: 16,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|paddingTop: 32|paddingTop: 32,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "paddingTop: 32",
-      "snippet": "paddingTop: 32,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|paddingVertical: 12|paddingVertical: 12,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "paddingVertical: 12",
-      "snippet": "paddingVertical: 12,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|paddingVertical: 12|paddingVertical: 12,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "paddingVertical: 12",
-      "snippet": "paddingVertical: 12,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|paddingVertical: 13|paddingVertical: 13,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "paddingVertical: 13",
-      "snippet": "paddingVertical: 13,"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|spacing|paddingVertical: 5|paddingVertical: 5,",
-      "kind": "spacing",
-      "file": "app/bankrekeningen.tsx",
-      "value": "paddingVertical: 5",
-      "snippet": "paddingVertical: 5,"
     },
     {
       "key": "app/category-budget-groups.tsx|fontSize|fontSize: 11|fontSize: 11,",
@@ -9838,6 +9565,13 @@
       "snippet": "fontSize: 12,"
     },
     {
+      "key": "app/transaction-detail.tsx|fontSize|fontSize: 12|fontSize: 12,",
+      "kind": "fontSize",
+      "file": "app/transaction-detail.tsx",
+      "value": "fontSize: 12",
+      "snippet": "fontSize: 12,"
+    },
+    {
       "key": "app/transaction-detail.tsx|fontSize|fontSize: 12|sourcePill: { color: FinColors.textMuted, fontSize: 12 },",
       "kind": "fontSize",
       "file": "app/transaction-detail.tsx",
@@ -10426,6 +10160,13 @@
       "snippet": "fontWeight: \"700\","
     },
     {
+      "key": "app/transaction-detail.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
+      "kind": "fontWeight",
+      "file": "app/transaction-detail.tsx",
+      "value": "fontWeight: \"700\"",
+      "snippet": "fontWeight: \"700\","
+    },
+    {
       "key": "app/transaction-detail.tsx|fontWeight|fontWeight: \"800\"|amount: { fontSize: 30, fontWeight: \"800\" },",
       "kind": "fontWeight",
       "file": "app/transaction-detail.tsx",
@@ -10615,6 +10356,13 @@
       "snippet": "lineHeight: 16,"
     },
     {
+      "key": "app/transaction-detail.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
+      "kind": "lineHeight",
+      "file": "app/transaction-detail.tsx",
+      "value": "lineHeight: 16",
+      "snippet": "lineHeight: 16,"
+    },
+    {
       "key": "app/transaction-detail.tsx|lineHeight|lineHeight: 17|lineHeight: 17,",
       "kind": "lineHeight",
       "file": "app/transaction-detail.tsx",
@@ -10725,6 +10473,13 @@
       "file": "app/transaction-detail.tsx",
       "value": "lineHeight: 42",
       "snippet": "lineHeight: 42,"
+    },
+    {
+      "key": "app/transaction-detail.tsx|spacing|gap: 10|gap: 10,",
+      "kind": "spacing",
+      "file": "app/transaction-detail.tsx",
+      "value": "gap: 10",
+      "snippet": "gap: 10,"
     },
     {
       "key": "app/transaction-detail.tsx|spacing|gap: 10|gap: 10,",
@@ -11056,6 +10811,20 @@
       "snippet": "gap: 8,"
     },
     {
+      "key": "app/transaction-detail.tsx|spacing|gap: 8|gap: 8,",
+      "kind": "spacing",
+      "file": "app/transaction-detail.tsx",
+      "value": "gap: 8",
+      "snippet": "gap: 8,"
+    },
+    {
+      "key": "app/transaction-detail.tsx|spacing|gap: 8|gap: 8,",
+      "kind": "spacing",
+      "file": "app/transaction-detail.tsx",
+      "value": "gap: 8",
+      "snippet": "gap: 8,"
+    },
+    {
       "key": "app/transaction-detail.tsx|spacing|gap: 8|reviewedBox: { alignItems: \"flex-end\", gap: 8 },",
       "kind": "spacing",
       "file": "app/transaction-detail.tsx",
@@ -11110,13 +10879,6 @@
       "file": "app/transaction-detail.tsx",
       "value": "marginLeft: 4",
       "snippet": "marginLeft: 4,"
-    },
-    {
-      "key": "app/transaction-detail.tsx|spacing|marginTop: -1|marginTop: -1,",
-      "kind": "spacing",
-      "file": "app/transaction-detail.tsx",
-      "value": "marginTop: -1",
-      "snippet": "marginTop: -1,"
     },
     {
       "key": "app/transaction-detail.tsx|spacing|marginTop: 0|marginTop: 0,",
@@ -11364,6 +11126,13 @@
       "snippet": "paddingHorizontal: 12,"
     },
     {
+      "key": "app/transaction-detail.tsx|spacing|paddingHorizontal: 12|paddingHorizontal: 12,",
+      "kind": "spacing",
+      "file": "app/transaction-detail.tsx",
+      "value": "paddingHorizontal: 12",
+      "snippet": "paddingHorizontal: 12,"
+    },
+    {
       "key": "app/transaction-detail.tsx|spacing|paddingHorizontal: 14|paddingHorizontal: 14,",
       "kind": "spacing",
       "file": "app/transaction-detail.tsx",
@@ -11544,13 +11313,6 @@
       "file": "app/transaction-detail.tsx",
       "value": "paddingTop: 12",
       "snippet": "paddingTop: 12,"
-    },
-    {
-      "key": "app/transaction-detail.tsx|spacing|paddingTop: 32|paddingTop: 32,",
-      "kind": "spacing",
-      "file": "app/transaction-detail.tsx",
-      "value": "paddingTop: 32",
-      "snippet": "paddingTop: 32,"
     },
     {
       "key": "app/transaction-detail.tsx|spacing|paddingVertical: 10|paddingVertical: 10,",
@@ -14297,11 +14059,11 @@
       "snippet": "paddingVertical: 16,"
     },
     {
-      "key": "components/dashboard/dashboard-balance-summary.tsx|fontSize|fontSize: 10|fontSize: 10,",
+      "key": "components/dashboard/dashboard-balance-summary.tsx|fontSize|fontSize: 11|fontSize: 11,",
       "kind": "fontSize",
       "file": "components/dashboard/dashboard-balance-summary.tsx",
-      "value": "fontSize: 10",
-      "snippet": "fontSize: 10,"
+      "value": "fontSize: 11",
+      "snippet": "fontSize: 11,"
     },
     {
       "key": "components/dashboard/dashboard-balance-summary.tsx|fontSize|fontSize: 11|fontSize: 11,",
@@ -14339,6 +14101,13 @@
       "snippet": "fontSize: 17,"
     },
     {
+      "key": "components/dashboard/dashboard-balance-summary.tsx|fontSize|fontSize: 18|fontSize: 18,",
+      "kind": "fontSize",
+      "file": "components/dashboard/dashboard-balance-summary.tsx",
+      "value": "fontSize: 18",
+      "snippet": "fontSize: 18,"
+    },
+    {
       "key": "components/dashboard/dashboard-balance-summary.tsx|fontSize|fontSize: 20|fontSize: 20,",
       "kind": "fontSize",
       "file": "components/dashboard/dashboard-balance-summary.tsx",
@@ -14346,13 +14115,6 @@
       "snippet": "fontSize: 20,"
     },
     {
-      "key": "components/dashboard/dashboard-balance-summary.tsx|fontSize|fontSize: 24|fontSize: 24,",
-      "kind": "fontSize",
-      "file": "components/dashboard/dashboard-balance-summary.tsx",
-      "value": "fontSize: 24",
-      "snippet": "fontSize: 24,"
-    },
-    {
       "key": "components/dashboard/dashboard-balance-summary.tsx|fontSize|fontSize: 66|fontSize: 66,",
       "kind": "fontSize",
       "file": "components/dashboard/dashboard-balance-summary.tsx",
@@ -14386,6 +14148,20 @@
       "file": "components/dashboard/dashboard-balance-summary.tsx",
       "value": "fontSize: 66",
       "snippet": "fontSize: 66,"
+    },
+    {
+      "key": "components/dashboard/dashboard-balance-summary.tsx|fontSize|fontSize: 9|fontSize: 9,",
+      "kind": "fontSize",
+      "file": "components/dashboard/dashboard-balance-summary.tsx",
+      "value": "fontSize: 9",
+      "snippet": "fontSize: 9,"
+    },
+    {
+      "key": "components/dashboard/dashboard-balance-summary.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
+      "kind": "fontWeight",
+      "file": "components/dashboard/dashboard-balance-summary.tsx",
+      "value": "fontWeight: \"700\"",
+      "snippet": "fontWeight: \"700\","
     },
     {
       "key": "components/dashboard/dashboard-balance-summary.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
@@ -14451,25 +14227,11 @@
       "snippet": "fontWeight: \"900\","
     },
     {
-      "key": "components/dashboard/dashboard-balance-summary.tsx|fontWeight|fontWeight: \"900\"|fontWeight: \"900\",",
-      "kind": "fontWeight",
-      "file": "components/dashboard/dashboard-balance-summary.tsx",
-      "value": "fontWeight: \"900\"",
-      "snippet": "fontWeight: \"900\","
-    },
-    {
-      "key": "components/dashboard/dashboard-balance-summary.tsx|fontWeight|fontWeight: \"900\"|fontWeight: \"900\",",
-      "kind": "fontWeight",
-      "file": "components/dashboard/dashboard-balance-summary.tsx",
-      "value": "fontWeight: \"900\"",
-      "snippet": "fontWeight: \"900\","
-    },
-    {
-      "key": "components/dashboard/dashboard-balance-summary.tsx|letterSpacing|letterSpacing: -0.8|letterSpacing: -0.8,",
+      "key": "components/dashboard/dashboard-balance-summary.tsx|letterSpacing|letterSpacing: -0.4|letterSpacing: -0.4,",
       "kind": "letterSpacing",
       "file": "components/dashboard/dashboard-balance-summary.tsx",
-      "value": "letterSpacing: -0.8",
-      "snippet": "letterSpacing: -0.8,"
+      "value": "letterSpacing: -0.4",
+      "snippet": "letterSpacing: -0.4,"
     },
     {
       "key": "components/dashboard/dashboard-balance-summary.tsx|letterSpacing|letterSpacing: -2.4|letterSpacing: -2.4,",
@@ -14505,6 +14267,13 @@
       "file": "components/dashboard/dashboard-balance-summary.tsx",
       "value": "letterSpacing: -2.4",
       "snippet": "letterSpacing: -2.4,"
+    },
+    {
+      "key": "components/dashboard/dashboard-balance-summary.tsx|letterSpacing|letterSpacing: 0.5|letterSpacing: 0.5,",
+      "kind": "letterSpacing",
+      "file": "components/dashboard/dashboard-balance-summary.tsx",
+      "value": "letterSpacing: 0.5",
+      "snippet": "letterSpacing: 0.5,"
     },
     {
       "key": "components/dashboard/dashboard-balance-summary.tsx|letterSpacing|letterSpacing: 0.8|letterSpacing: 0.8,",
@@ -14512,13 +14281,6 @@
       "file": "components/dashboard/dashboard-balance-summary.tsx",
       "value": "letterSpacing: 0.8",
       "snippet": "letterSpacing: 0.8,"
-    },
-    {
-      "key": "components/dashboard/dashboard-balance-summary.tsx|letterSpacing|letterSpacing: 0.9|letterSpacing: 0.9,",
-      "kind": "letterSpacing",
-      "file": "components/dashboard/dashboard-balance-summary.tsx",
-      "value": "letterSpacing: 0.9",
-      "snippet": "letterSpacing: 0.9,"
     },
     {
       "key": "components/dashboard/dashboard-balance-summary.tsx|letterSpacing|letterSpacing: 0|letterSpacing: 0,",
@@ -14556,6 +14318,13 @@
       "snippet": "lineHeight: 14,"
     },
     {
+      "key": "components/dashboard/dashboard-balance-summary.tsx|lineHeight|lineHeight: 14|lineHeight: 14,",
+      "kind": "lineHeight",
+      "file": "components/dashboard/dashboard-balance-summary.tsx",
+      "value": "lineHeight: 14",
+      "snippet": "lineHeight: 14,"
+    },
+    {
       "key": "components/dashboard/dashboard-balance-summary.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
       "kind": "lineHeight",
       "file": "components/dashboard/dashboard-balance-summary.tsx",
@@ -14577,11 +14346,11 @@
       "snippet": "lineHeight: 20,"
     },
     {
-      "key": "components/dashboard/dashboard-balance-summary.tsx|lineHeight|lineHeight: 28|lineHeight: 28,",
+      "key": "components/dashboard/dashboard-balance-summary.tsx|lineHeight|lineHeight: 22|lineHeight: 22,",
       "kind": "lineHeight",
       "file": "components/dashboard/dashboard-balance-summary.tsx",
-      "value": "lineHeight: 28",
-      "snippet": "lineHeight: 28,"
+      "value": "lineHeight: 22",
+      "snippet": "lineHeight: 22,"
     },
     {
       "key": "components/dashboard/dashboard-balance-summary.tsx|lineHeight|lineHeight: 28|lineHeight: 28,",
@@ -14633,13 +14402,6 @@
       "snippet": "gap: 16,"
     },
     {
-      "key": "components/dashboard/dashboard-balance-summary.tsx|spacing|gap: 2|gap: 2,",
-      "kind": "spacing",
-      "file": "components/dashboard/dashboard-balance-summary.tsx",
-      "value": "gap: 2",
-      "snippet": "gap: 2,"
-    },
-    {
       "key": "components/dashboard/dashboard-balance-summary.tsx|spacing|gap: 6|gap: 6,",
       "kind": "spacing",
       "file": "components/dashboard/dashboard-balance-summary.tsx",
@@ -14668,25 +14430,11 @@
       "snippet": "paddingHorizontal: 10,"
     },
     {
-      "key": "components/dashboard/dashboard-balance-summary.tsx|spacing|paddingHorizontal: 10|paddingHorizontal: 10,",
-      "kind": "spacing",
-      "file": "components/dashboard/dashboard-balance-summary.tsx",
-      "value": "paddingHorizontal: 10",
-      "snippet": "paddingHorizontal: 10,"
-    },
-    {
       "key": "components/dashboard/dashboard-balance-summary.tsx|spacing|paddingHorizontal: 20|paddingHorizontal: 20,",
       "kind": "spacing",
       "file": "components/dashboard/dashboard-balance-summary.tsx",
       "value": "paddingHorizontal: 20",
       "snippet": "paddingHorizontal: 20,"
-    },
-    {
-      "key": "components/dashboard/dashboard-balance-summary.tsx|spacing|paddingHorizontal: 22|paddingHorizontal: 22,",
-      "kind": "spacing",
-      "file": "components/dashboard/dashboard-balance-summary.tsx",
-      "value": "paddingHorizontal: 22",
-      "snippet": "paddingHorizontal: 22,"
     },
     {
       "key": "components/dashboard/dashboard-balance-summary.tsx|spacing|paddingVertical: 11|paddingVertical: 11,",
@@ -14710,11 +14458,11 @@
       "snippet": "paddingVertical: 6,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|fontSize|fontSize: 11|fontSize: 11,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|fontSize|fontSize: 10|fontSize: 10,",
       "kind": "fontSize",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "fontSize: 11",
-      "snippet": "fontSize: 11,"
+      "value": "fontSize: 10",
+      "snippet": "fontSize: 10,"
     },
     {
       "key": "components/dashboard/dashboard-overview-card.tsx|fontSize|fontSize: 11|fontSize: 11,",
@@ -14724,11 +14472,11 @@
       "snippet": "fontSize: 11,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|fontSize|fontSize: 12|fontSize: 12,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|fontSize|fontSize: 11|fontSize: 11,",
       "kind": "fontSize",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "fontSize: 12",
-      "snippet": "fontSize: 12,"
+      "value": "fontSize: 11",
+      "snippet": "fontSize: 11,"
     },
     {
       "key": "components/dashboard/dashboard-overview-card.tsx|fontSize|fontSize: 12|fontSize: 12,",
@@ -14759,11 +14507,11 @@
       "snippet": "fontSize: 13,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|fontSize|fontSize: 13|fontSize: 13,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|fontSize|fontSize: 18|fontSize: 18,",
       "kind": "fontSize",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "fontSize: 13",
-      "snippet": "fontSize: 13,"
+      "value": "fontSize: 18",
+      "snippet": "fontSize: 18,"
     },
     {
       "key": "components/dashboard/dashboard-overview-card.tsx|fontSize|fontSize: 24|fontSize: 24,",
@@ -14773,13 +14521,6 @@
       "snippet": "fontSize: 24,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|fontSize|fontSize: 40|fontSize: 40,",
-      "kind": "fontSize",
-      "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "fontSize: 40",
-      "snippet": "fontSize: 40,"
-    },
-    {
       "key": "components/dashboard/dashboard-overview-card.tsx|fontWeight|fontWeight: \"600\"|fontWeight: \"600\",",
       "kind": "fontWeight",
       "file": "components/dashboard/dashboard-overview-card.tsx",
@@ -14799,13 +14540,6 @@
       "file": "components/dashboard/dashboard-overview-card.tsx",
       "value": "fontWeight: \"600\"",
       "snippet": "fontWeight: \"600\","
-    },
-    {
-      "key": "components/dashboard/dashboard-overview-card.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
-      "kind": "fontWeight",
-      "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "fontWeight: \"700\"",
-      "snippet": "fontWeight: \"700\","
     },
     {
       "key": "components/dashboard/dashboard-overview-card.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
@@ -14822,6 +14556,27 @@
       "snippet": "fontWeight: \"800\","
     },
     {
+      "key": "components/dashboard/dashboard-overview-card.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
+      "kind": "fontWeight",
+      "file": "components/dashboard/dashboard-overview-card.tsx",
+      "value": "fontWeight: \"800\"",
+      "snippet": "fontWeight: \"800\","
+    },
+    {
+      "key": "components/dashboard/dashboard-overview-card.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
+      "kind": "fontWeight",
+      "file": "components/dashboard/dashboard-overview-card.tsx",
+      "value": "fontWeight: \"800\"",
+      "snippet": "fontWeight: \"800\","
+    },
+    {
+      "key": "components/dashboard/dashboard-overview-card.tsx|fontWeight|fontWeight: \"800\"|fontWeight: \"800\",",
+      "kind": "fontWeight",
+      "file": "components/dashboard/dashboard-overview-card.tsx",
+      "value": "fontWeight: \"800\"",
+      "snippet": "fontWeight: \"800\","
+    },
+    {
       "key": "components/dashboard/dashboard-overview-card.tsx|fontWeight|fontWeight: \"900\"|fontWeight: \"900\",",
       "kind": "fontWeight",
       "file": "components/dashboard/dashboard-overview-card.tsx",
@@ -14829,60 +14584,39 @@
       "snippet": "fontWeight: \"900\","
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|fontWeight|fontWeight: \"900\"|fontWeight: \"900\",",
-      "kind": "fontWeight",
-      "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "fontWeight: \"900\"",
-      "snippet": "fontWeight: \"900\","
-    },
-    {
-      "key": "components/dashboard/dashboard-overview-card.tsx|fontWeight|fontWeight: \"900\"|fontWeight: \"900\",",
-      "kind": "fontWeight",
-      "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "fontWeight: \"900\"",
-      "snippet": "fontWeight: \"900\","
-    },
-    {
-      "key": "components/dashboard/dashboard-overview-card.tsx|fontWeight|fontWeight: \"900\"|fontWeight: \"900\",",
-      "kind": "fontWeight",
-      "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "fontWeight: \"900\"",
-      "snippet": "fontWeight: \"900\","
-    },
-    {
-      "key": "components/dashboard/dashboard-overview-card.tsx|letterSpacing|letterSpacing: -0.6|letterSpacing: -0.6,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|letterSpacing|letterSpacing: -0.4|letterSpacing: -0.4,",
       "kind": "letterSpacing",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "letterSpacing: -0.6",
-      "snippet": "letterSpacing: -0.6,"
+      "value": "letterSpacing: -0.4",
+      "snippet": "letterSpacing: -0.4,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|letterSpacing|letterSpacing: -1.2|letterSpacing: -1.2,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|letterSpacing|letterSpacing: -0.4|letterSpacing: -0.4,",
       "kind": "letterSpacing",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "letterSpacing: -1.2",
-      "snippet": "letterSpacing: -1.2,"
+      "value": "letterSpacing: -0.4",
+      "snippet": "letterSpacing: -0.4,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|letterSpacing|letterSpacing: 1.1|letterSpacing: 1.1,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|letterSpacing|letterSpacing: 0.6|letterSpacing: 0.6,",
       "kind": "letterSpacing",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "letterSpacing: 1.1",
-      "snippet": "letterSpacing: 1.1,"
+      "value": "letterSpacing: 0.6",
+      "snippet": "letterSpacing: 0.6,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|letterSpacing|letterSpacing: 1.1|letterSpacing: 1.1,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|letterSpacing|letterSpacing: 0.8|letterSpacing: 0.8,",
       "kind": "letterSpacing",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "letterSpacing: 1.1",
-      "snippet": "letterSpacing: 1.1,"
+      "value": "letterSpacing: 0.8",
+      "snippet": "letterSpacing: 0.8,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|letterSpacing|letterSpacing: 1.2|letterSpacing: 1.2,",
-      "kind": "letterSpacing",
+      "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 12|lineHeight: 12,",
+      "kind": "lineHeight",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "letterSpacing: 1.2",
-      "snippet": "letterSpacing: 1.2,"
+      "value": "lineHeight: 12",
+      "snippet": "lineHeight: 12,"
     },
     {
       "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 13|lineHeight: 13,",
@@ -14899,11 +14633,11 @@
       "snippet": "lineHeight: 14,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 14|lineHeight: 14,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 15|lineHeight: 15,",
       "kind": "lineHeight",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "lineHeight: 14",
-      "snippet": "lineHeight: 14,"
+      "value": "lineHeight: 15",
+      "snippet": "lineHeight: 15,"
     },
     {
       "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
@@ -14920,13 +14654,6 @@
       "snippet": "lineHeight: 17,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 17|lineHeight: 17,",
-      "kind": "lineHeight",
-      "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "lineHeight: 17",
-      "snippet": "lineHeight: 17,"
-    },
-    {
       "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
       "kind": "lineHeight",
       "file": "components/dashboard/dashboard-overview-card.tsx",
@@ -14934,25 +14661,25 @@
       "snippet": "lineHeight: 18,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 18|lineHeight: 18,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 24|lineHeight: 24,",
       "kind": "lineHeight",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "lineHeight: 18",
-      "snippet": "lineHeight: 18,"
+      "value": "lineHeight: 24",
+      "snippet": "lineHeight: 24,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 30|lineHeight: 30,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 28|lineHeight: 28,",
       "kind": "lineHeight",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "lineHeight: 30",
-      "snippet": "lineHeight: 30,"
+      "value": "lineHeight: 28",
+      "snippet": "lineHeight: 28,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|lineHeight|lineHeight: 44|lineHeight: 44,",
-      "kind": "lineHeight",
+      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|gap: 10|gap: 10,",
+      "kind": "spacing",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "lineHeight: 44",
-      "snippet": "lineHeight: 44,"
+      "value": "gap: 10",
+      "snippet": "gap: 10,"
     },
     {
       "key": "components/dashboard/dashboard-overview-card.tsx|spacing|gap: 12|gap: 12,",
@@ -14988,13 +14715,6 @@
       "file": "components/dashboard/dashboard-overview-card.tsx",
       "value": "gap: 12",
       "snippet": "gap: 12,"
-    },
-    {
-      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|gap: 16|gap: 16,",
-      "kind": "spacing",
-      "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "gap: 16",
-      "snippet": "gap: 16,"
     },
     {
       "key": "components/dashboard/dashboard-overview-card.tsx|spacing|gap: 4|gap: 4,",
@@ -15004,39 +14724,25 @@
       "snippet": "gap: 4,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|gap: 4|gap: 4,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|gap: 6|gap: 6,",
       "kind": "spacing",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "gap: 4",
-      "snippet": "gap: 4,"
+      "value": "gap: 6",
+      "snippet": "gap: 6,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|gap: 8|gap: 8,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|paddingHorizontal: 10|paddingHorizontal: 10,",
       "kind": "spacing",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "gap: 8",
-      "snippet": "gap: 8,"
+      "value": "paddingHorizontal: 10",
+      "snippet": "paddingHorizontal: 10,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|gap: 8|gap: 8,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|paddingHorizontal: 14|paddingHorizontal: 14,",
       "kind": "spacing",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "gap: 8",
-      "snippet": "gap: 8,"
-    },
-    {
-      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|marginTop: -2|marginTop: -2,",
-      "kind": "spacing",
-      "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "marginTop: -2",
-      "snippet": "marginTop: -2,"
-    },
-    {
-      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|paddingHorizontal: 12|paddingHorizontal: 12,",
-      "kind": "spacing",
-      "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "paddingHorizontal: 12",
-      "snippet": "paddingHorizontal: 12,"
+      "value": "paddingHorizontal: 14",
+      "snippet": "paddingHorizontal: 14,"
     },
     {
       "key": "components/dashboard/dashboard-overview-card.tsx|spacing|paddingHorizontal: 18|paddingHorizontal: 18,",
@@ -15046,18 +14752,32 @@
       "snippet": "paddingHorizontal: 18,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|paddingVertical: 18|paddingVertical: 18,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|paddingHorizontal: 2|paddingHorizontal: 2,",
       "kind": "spacing",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "paddingVertical: 18",
-      "snippet": "paddingVertical: 18,"
+      "value": "paddingHorizontal: 2",
+      "snippet": "paddingHorizontal: 2,"
     },
     {
-      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|paddingVertical: 8|paddingVertical: 8,",
+      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|paddingVertical: 12|paddingVertical: 12,",
       "kind": "spacing",
       "file": "components/dashboard/dashboard-overview-card.tsx",
-      "value": "paddingVertical: 8",
-      "snippet": "paddingVertical: 8,"
+      "value": "paddingVertical: 12",
+      "snippet": "paddingVertical: 12,"
+    },
+    {
+      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|paddingVertical: 16|paddingVertical: 16,",
+      "kind": "spacing",
+      "file": "components/dashboard/dashboard-overview-card.tsx",
+      "value": "paddingVertical: 16",
+      "snippet": "paddingVertical: 16,"
+    },
+    {
+      "key": "components/dashboard/dashboard-overview-card.tsx|spacing|paddingVertical: 4|paddingVertical: 4,",
+      "kind": "spacing",
+      "file": "components/dashboard/dashboard-overview-card.tsx",
+      "value": "paddingVertical: 4",
+      "snippet": "paddingVertical: 4,"
     },
     {
       "key": "components/header-dropdown-menu.tsx|fontSize|fontSize: 10|fontSize: 10,",
@@ -15599,11 +15319,11 @@
       "snippet": "lineHeight: 28,"
     },
     {
-      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|gap: 16|gap: 16,",
+      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|gap: 14|gap: 14,",
       "kind": "spacing",
       "file": "components/help-assistant/budio-assistant-empty-state.tsx",
-      "value": "gap: 16",
-      "snippet": "gap: 16,"
+      "value": "gap: 14",
+      "snippet": "gap: 14,"
     },
     {
       "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|gap: 8|gap: 8,",
@@ -15620,11 +15340,11 @@
       "snippet": "gap: 8,"
     },
     {
-      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|marginTop: 32|marginTop: 32,",
+      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|marginTop: 20|marginTop: 20,",
       "kind": "spacing",
       "file": "components/help-assistant/budio-assistant-empty-state.tsx",
-      "value": "marginTop: 32",
-      "snippet": "marginTop: 32,"
+      "value": "marginTop: 20",
+      "snippet": "marginTop: 20,"
     },
     {
       "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|paddingHorizontal: 14|paddingHorizontal: 14,",
@@ -15641,32 +15361,32 @@
       "snippet": "paddingHorizontal: 14,"
     },
     {
-      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|paddingHorizontal: 24|paddingHorizontal: 24,",
+      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|paddingHorizontal: 26|paddingHorizontal: 26,",
       "kind": "spacing",
       "file": "components/help-assistant/budio-assistant-empty-state.tsx",
-      "value": "paddingHorizontal: 24",
-      "snippet": "paddingHorizontal: 24,"
+      "value": "paddingHorizontal: 26",
+      "snippet": "paddingHorizontal: 26,"
     },
     {
-      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|paddingTop: 8|paddingTop: 8,",
+      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|paddingTop: 4|paddingTop: 4,",
       "kind": "spacing",
       "file": "components/help-assistant/budio-assistant-empty-state.tsx",
-      "value": "paddingTop: 8",
-      "snippet": "paddingTop: 8,"
+      "value": "paddingTop: 4",
+      "snippet": "paddingTop: 4,"
     },
     {
-      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|paddingVertical: 24|paddingVertical: 24,",
+      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|paddingVertical: 20|paddingVertical: 20,",
       "kind": "spacing",
       "file": "components/help-assistant/budio-assistant-empty-state.tsx",
-      "value": "paddingVertical: 24",
-      "snippet": "paddingVertical: 24,"
+      "value": "paddingVertical: 20",
+      "snippet": "paddingVertical: 20,"
     },
     {
-      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|paddingVertical: 28|paddingVertical: 28,",
+      "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|paddingVertical: 20|paddingVertical: 20,",
       "kind": "spacing",
       "file": "components/help-assistant/budio-assistant-empty-state.tsx",
-      "value": "paddingVertical: 28",
-      "snippet": "paddingVertical: 28,"
+      "value": "paddingVertical: 20",
+      "snippet": "paddingVertical: 20,"
     },
     {
       "key": "components/help-assistant/budio-assistant-empty-state.tsx|spacing|paddingVertical: 9|paddingVertical: 9,",
@@ -16999,6 +16719,13 @@
       "snippet": "marginBottom: 12,"
     },
     {
+      "key": "components/transactions/finance-transactions-block.tsx|spacing|marginTop: -2|marginTop: -2,",
+      "kind": "spacing",
+      "file": "components/transactions/finance-transactions-block.tsx",
+      "value": "marginTop: -2",
+      "snippet": "marginTop: -2,"
+    },
+    {
       "key": "components/transactions/finance-transactions-block.tsx|spacing|marginTop: 6|marginTop: 6,",
       "kind": "spacing",
       "file": "components/transactions/finance-transactions-block.tsx",
@@ -17979,6 +17706,20 @@
       "snippet": "fontSize: 10,"
     },
     {
+      "key": "components/ui/finance-forecast-summary-card.tsx|fontSize|fontSize: 10|fontSize: 10,",
+      "kind": "fontSize",
+      "file": "components/ui/finance-forecast-summary-card.tsx",
+      "value": "fontSize: 10",
+      "snippet": "fontSize: 10,"
+    },
+    {
+      "key": "components/ui/finance-forecast-summary-card.tsx|fontSize|fontSize: 11|fontSize: 11,",
+      "kind": "fontSize",
+      "file": "components/ui/finance-forecast-summary-card.tsx",
+      "value": "fontSize: 11",
+      "snippet": "fontSize: 11,"
+    },
+    {
       "key": "components/ui/finance-forecast-summary-card.tsx|fontSize|fontSize: 11|fontSize: 11,",
       "kind": "fontSize",
       "file": "components/ui/finance-forecast-summary-card.tsx",
@@ -18033,6 +17774,13 @@
       "file": "components/ui/finance-forecast-summary-card.tsx",
       "value": "fontSize: 52",
       "snippet": "fontSize: 52,"
+    },
+    {
+      "key": "components/ui/finance-forecast-summary-card.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
+      "kind": "fontWeight",
+      "file": "components/ui/finance-forecast-summary-card.tsx",
+      "value": "fontWeight: \"700\"",
+      "snippet": "fontWeight: \"700\","
     },
     {
       "key": "components/ui/finance-forecast-summary-card.tsx|fontWeight|fontWeight: \"700\"|fontWeight: \"700\",",
@@ -18140,6 +17888,13 @@
       "snippet": "lineHeight: 12,"
     },
     {
+      "key": "components/ui/finance-forecast-summary-card.tsx|lineHeight|lineHeight: 12|lineHeight: 12,",
+      "kind": "lineHeight",
+      "file": "components/ui/finance-forecast-summary-card.tsx",
+      "value": "lineHeight: 12",
+      "snippet": "lineHeight: 12,"
+    },
+    {
       "key": "components/ui/finance-forecast-summary-card.tsx|lineHeight|lineHeight: 13|lineHeight: 13,",
       "kind": "lineHeight",
       "file": "components/ui/finance-forecast-summary-card.tsx",
@@ -18152,6 +17907,13 @@
       "file": "components/ui/finance-forecast-summary-card.tsx",
       "value": "lineHeight: 13",
       "snippet": "lineHeight: 13,"
+    },
+    {
+      "key": "components/ui/finance-forecast-summary-card.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
+      "kind": "lineHeight",
+      "file": "components/ui/finance-forecast-summary-card.tsx",
+      "value": "lineHeight: 16",
+      "snippet": "lineHeight: 16,"
     },
     {
       "key": "components/ui/finance-forecast-summary-card.tsx|lineHeight|lineHeight: 16|lineHeight: 16,",
@@ -18215,6 +17977,20 @@
       "file": "components/ui/finance-forecast-summary-card.tsx",
       "value": "gap: 14",
       "snippet": "gap: 14,"
+    },
+    {
+      "key": "components/ui/finance-forecast-summary-card.tsx|spacing|gap: 4|gap: 4,",
+      "kind": "spacing",
+      "file": "components/ui/finance-forecast-summary-card.tsx",
+      "value": "gap: 4",
+      "snippet": "gap: 4,"
+    },
+    {
+      "key": "components/ui/finance-forecast-summary-card.tsx|spacing|gap: 4|gap: 4,",
+      "kind": "spacing",
+      "file": "components/ui/finance-forecast-summary-card.tsx",
+      "value": "gap: 4",
+      "snippet": "gap: 4,"
     },
     {
       "key": "components/ui/finance-forecast-summary-card.tsx|spacing|gap: 4|gap: 4,",
@@ -19120,25 +18896,11 @@
       "snippet": "lineHeight: 14,"
     },
     {
-      "key": "components/ui/finance-status-chip.tsx|spacing|gap: 7|gap: 7,",
-      "kind": "spacing",
-      "file": "components/ui/finance-status-chip.tsx",
-      "value": "gap: 7",
-      "snippet": "gap: 7,"
-    },
-    {
       "key": "components/ui/finance-status-chip.tsx|spacing|paddingHorizontal: 12|paddingHorizontal: 12,",
       "kind": "spacing",
       "file": "components/ui/finance-status-chip.tsx",
       "value": "paddingHorizontal: 12",
       "snippet": "paddingHorizontal: 12,"
-    },
-    {
-      "key": "components/ui/finance-status-chip.tsx|spacing|paddingVertical: 7|paddingVertical: 7,",
-      "kind": "spacing",
-      "file": "components/ui/finance-status-chip.tsx",
-      "value": "paddingVertical: 7",
-      "snippet": "paddingVertical: 7,"
     },
     {
       "key": "components/ui/finance-step-indicator.tsx|fontSize|fontSize: 11|fontSize: 11,",
@@ -20924,13 +20686,6 @@
       "file": "screens/TransactionsScreen.tsx",
       "value": "paddingTop: 14",
       "snippet": "paddingTop: 14,"
-    },
-    {
-      "key": "screens/TransactionsScreen.tsx|spacing|paddingTop: 18|paddingTop: 18,",
-      "kind": "spacing",
-      "file": "screens/TransactionsScreen.tsx",
-      "value": "paddingTop: 18",
-      "snippet": "paddingTop: 18,"
     },
     {
       "key": "screens/TransactionsScreen.tsx|spacing|paddingTop: 18|paddingTop: 18,",

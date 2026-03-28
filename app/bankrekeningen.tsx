@@ -5,9 +5,10 @@ import {
   formatAccountOwnerContext,
 } from "@/components/bank-accounts/account-overview-summary";
 import { AppIcon } from "@/components/ui/app-icon";
+import { FinanceButton } from "@/components/ui/finance-button";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
-import { FinanceDetailShell } from "@/components/ui/finance-detail-shell";
-import { FinColors, FinSurfaces } from "@/constants/theme";
+import { FinanceUtilityShell } from "@/components/ui/finance-utility-shell";
+import { FinColors, FinFontWeight, FinRadius, FinSpacing, FinTokens, FinTypography } from "@/constants/theme";
 import {
   deleteBankAccountWithTransactions,
   getBankAccountTransactionCount,
@@ -133,6 +134,12 @@ function getCardTone(account: BankAccount): "good" | "watch" | "muted" {
   if (!account.is_active) return "muted";
   if (account.include_in_budget === false) return "watch";
   return "good";
+}
+
+function formatAccountStatusLabel(account: BankAccount): string {
+  if (!account.is_active) return "Verborgen";
+  if (account.include_in_budget === false) return "Alleen overzicht";
+  return "In budget";
 }
 
 export default function BankrekeningenScreen() {
@@ -263,125 +270,163 @@ export default function BankrekeningenScreen() {
   }, [deletingAccount]);
 
   return (
-    <FinanceDetailShell
+    <FinanceUtilityShell
       title="Bankrekeningen"
       onBack={() => router.back()}
       contentContainerStyle={styles.content}
-      contentMaxStyle={styles.contentMax}
     >
-          <View style={styles.heroCard}>
-            <Text style={styles.heroEyebrow}>Beheer</Text>
-            <Text style={styles.heroTitle}>Je bankrekeningen</Text>
-            <Text style={styles.heroText}>
-              Voeg rekeningen toe, werk ze bij en bepaal welke meetellen in je budget.
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setShowCreateSheet(true)}
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+      <View style={styles.heroSection}>
+        <Text style={styles.heroTitle}>Beheer je rekeningen</Text>
+        <Text style={styles.heroText}>
+          Beheer welke rekeningen Budio gebruikt voor budget en overzicht.
+        </Text>
+      </View>
+
+      {loading ? (
+        <View style={styles.listWrap}>
+          {[0, 1, 2].map((index) => (
+            <View
+              key={`loading-row-${index}`}
+              style={[styles.loadingRow, index === 2 ? styles.rowLast : null]}
             >
-              <AppIcon name="add" size={18} color={FinColors.bgBase} variant="outlined" />
-              <Text style={styles.primaryButtonText}>Nieuwe rekening toevoegen</Text>
-            </Pressable>
+              <View style={styles.loadingLineLong} />
+              <View style={styles.loadingLineMedium} />
+              <View style={styles.loadingLineShort} />
+              <View style={styles.loadingActions} />
+              <View style={styles.loadingBadge} />
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {!loading && screenError ? (
+        <View style={styles.errorCard}>
+          <View style={styles.errorIconWrap}>
+            <AppIcon name="warning-amber" size={FinTokens.icon.lg} color={FinColors.red} variant="outlined" />
           </View>
+          <Text style={styles.errorTitle}>Fout bij laden van rekeningen</Text>
+          <Text style={styles.errorText}>{screenError}</Text>
+          <FinanceButton
+            label="Probeer opnieuw"
+            fullWidth
+            onPress={() => void loadAccounts()}
+            leftIcon={<AppIcon name="refresh" size={FinTokens.icon.sm} color={FinColors.textPrimary} variant="outlined" />}
+          />
+        </View>
+      ) : null}
 
-          {screenError ? (
-            <View style={styles.errorCard}>
-              <Text style={styles.errorTitle}>Let op</Text>
-              <Text style={styles.errorText}>{screenError}</Text>
-            </View>
-          ) : null}
-
-          {loading ? (
-            <View style={styles.stateCard}>
-              <ActivityIndicator color={FinColors.warningText} />
-              <Text style={styles.stateText}>Bankrekeningen laden…</Text>
-            </View>
-          ) : sortedAccounts.length ? (
-            sortedAccounts.map((account) => {
-              const cardTone = getCardTone(account);
-              const ownerContext = formatAccountOwnerContext(account.owner_scope);
-              const summary = formatAccountOverviewSummary(account);
-              return (
-                <View
-                  key={account.id}
-                  style={[
-                    styles.accountCard,
-                    cardTone === "good"
-                      ? styles.accountCardGood
-                      : cardTone === "watch"
-                        ? styles.accountCardWatch
-                        : styles.accountCardMuted,
-                  ]}
-                >
-                  <View style={styles.accountCardHeader}>
-                    <Text style={styles.accountTypeLabel}>
-                      {ACCOUNT_TYPE_LABELS[account.account_type]}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.accountName}>{account.name}</Text>
-
-                  <Text style={styles.providerLine}>
-                    {account.provider || "Onbekende aanbieder"} · {formatAccountMaskedNumber(account.account_masked)}
-                  </Text>
-
-                  <Text style={styles.accountSummary}>{summary}</Text>
-
-                  <View style={styles.accountCardFooter}>
-                    <View style={styles.accountFooterLeft}>
-                      {ownerContext ? (
-                        <View style={styles.contextChip}>
-                          <Text style={styles.contextChipText}>{ownerContext}</Text>
+      {!loading && !screenError && sortedAccounts.length ? (
+        <View style={styles.listWrap}>
+          {sortedAccounts.map((account, index) => {
+            const cardTone = getCardTone(account);
+            const ownerContext = formatAccountOwnerContext(account.owner_scope);
+            const summary = formatAccountOverviewSummary(account);
+            const statusLabel = formatAccountStatusLabel(account);
+            return (
+              <View
+                key={account.id}
+                style={[styles.accountRow, index === sortedAccounts.length - 1 ? styles.rowLast : null]}
+              >
+                <View style={styles.accountRowTop}>
+                  <View style={styles.accountMain}>
+                    <View style={styles.accountLogoBubble}>
+                      <AppIcon name="account-balance" size={FinTokens.icon.sm} color={FinColors.textSecondary} variant="outlined" />
+                    </View>
+                    <View style={styles.accountTitleWrap}>
+                      <View style={styles.accountTitleLine}>
+                        <Text style={styles.accountName}>{account.name}</Text>
+                        <View
+                          style={[
+                            styles.statusChip,
+                            cardTone === "good"
+                              ? styles.statusChipGood
+                              : cardTone === "watch"
+                                ? styles.statusChipWatch
+                                : styles.statusChipMuted,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusChipText,
+                              cardTone === "good"
+                                ? styles.statusChipTextGood
+                                : cardTone === "watch"
+                                  ? styles.statusChipTextWatch
+                                  : styles.statusChipTextMuted,
+                            ]}
+                          >
+                            {statusLabel}
+                          </Text>
                         </View>
-                      ) : null}
+                      </View>
+                      <Text style={styles.accountTypeLabel}>
+                        {ACCOUNT_TYPE_LABELS[account.account_type]}
+                      </Text>
+                      <Text style={styles.providerLine}>
+                        {account.provider || "Onbekende aanbieder"} · {formatAccountMaskedNumber(account.account_masked)}
+                      </Text>
                     </View>
-                    <View style={styles.accountHeaderActions}>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Rekening bewerken"
-                        onPress={() => setEditingAccount(account)}
-                        style={({ pressed }) => [
-                          styles.iconActionButton,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <AppIcon name="edit" size={16} color={FinColors.textSecondary} variant="outlined" />
-                      </Pressable>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Rekening verwijderen"
-                        onPress={() => setDeletingAccount(account)}
-                        style={({ pressed }) => [
-                          styles.iconActionButton,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <AppIcon name="delete-outline" size={16} color={FinColors.red} variant="outlined" />
-                      </Pressable>
-                    </View>
+                  </View>
+                  <View style={styles.accountHeaderActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Rekening bewerken"
+                      onPress={() => setEditingAccount(account)}
+                      style={({ pressed }) => [
+                        styles.iconActionButton,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <AppIcon name="edit" size={FinTokens.icon.sm} color={FinColors.textSecondary} variant="outlined" />
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Rekening verwijderen"
+                      onPress={() => setDeletingAccount(account)}
+                      style={({ pressed }) => [
+                        styles.iconActionButton,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <AppIcon name="delete-outline" size={FinTokens.icon.sm} color={FinColors.red} variant="outlined" />
+                    </Pressable>
                   </View>
                 </View>
-              );
-            })
-          ) : (
-            <View style={styles.emptyCard}>
-              <AppIcon name="manage-accounts" size={34} color={FinColors.warningText} variant="outlined" />
-              <Text style={styles.emptyTitle}>Nog geen bankrekeningen</Text>
-              <Text style={styles.emptyText}>
-                Voeg je eerste rekening toe om budget, overzicht en imports beter te sturen.
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setShowCreateSheet(true)}
-                style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-              >
-                <AppIcon name="add" size={18} color={FinColors.bgBase} variant="outlined" />
-                <Text style={styles.primaryButtonText}>Nieuwe rekening toevoegen</Text>
-              </Pressable>
-            </View>
-          )}
-        
+                <View style={styles.accountFooter}>
+                  <Text style={styles.accountSummary}>{summary}</Text>
+                  <View style={styles.accountFooterLeft}>
+                    {ownerContext ? (
+                      <View style={styles.contextChip}>
+                        <Text style={styles.contextChipText}>{ownerContext}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {!loading && !screenError && !sortedAccounts.length ? (
+        <View style={styles.emptyCard}>
+          <View style={styles.errorIconWrap}>
+            <AppIcon name="account-balance" size={FinTokens.icon.lg} color={FinColors.textSecondary} variant="outlined" />
+          </View>
+          <Text style={styles.emptyTitle}>Nog geen rekeningen gekoppeld.</Text>
+          <Text style={styles.emptyText}>
+            Koppel je eerste bankrekening om direct inzicht in overzicht, budget en vooruitblik te krijgen.
+          </Text>
+        </View>
+      ) : null}
+
+      <FinanceButton
+        label="Nieuwe rekening"
+        fullWidth
+        onPress={() => setShowCreateSheet(true)}
+        style={styles.createButton}
+        leftIcon={<AppIcon name="add" size={FinTokens.icon.sm} color={FinColors.textPrimary} variant="outlined" />}
+      />
 
       <BankAccountFormSheet
         visible={showCreateSheet}
@@ -422,273 +467,328 @@ export default function BankrekeningenScreen() {
         }}
         onConfirm={() => void handleDeleteConfirm()}
       />
-    </FinanceDetailShell>
+    </FinanceUtilityShell>
   );
 }
 
 const styles = StyleSheet.create({
   content: {
-    paddingBottom: 28,
-  },
-  contentMax: {
-    width: "100%",
-    maxWidth: 1040,
-    alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingTop: 32,
-    gap: 14,
-  },
-  heroCard: {
-    ...FinSurfaces.topLevelCard,
-    borderRadius: 28,
-    padding: 20,
-    gap: 10,
-  },
-  heroEyebrow: {
-    fontSize: 12,
-    color: FinColors.warningText,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
+    paddingBottom: FinSpacing["4xl"],
+    gap: FinSpacing.m,
   },
   heroTitle: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: "800",
+    ...FinTypography["title-sm"],
     color: FinColors.textPrimary,
-    letterSpacing: -0.5,
+    fontWeight: FinFontWeight.extrabold,
   },
   heroText: {
-    fontSize: 14,
-    lineHeight: 21,
+    ...FinTypography["body-sm"],
     color: FinColors.textSecondary,
   },
-  primaryButton: {
-    marginTop: 4,
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    backgroundColor: FinColors.textPrimary,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+  heroSection: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: FinRadius.xl,
+    padding: FinSpacing.l,
+    gap: FinSpacing.s,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+  },
+  listWrap: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: FinRadius.xl,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    overflow: "hidden",
+  },
+  accountRow: {
+    paddingHorizontal: FinSpacing.m,
+    paddingVertical: FinSpacing["s-plus"],
+    gap: FinSpacing.s,
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+  },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  accountRowTop: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  primaryButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
-    color: FinColors.bgBase,
-    fontWeight: "800",
-  },
-  errorCard: {
-    backgroundColor: FinColors.bgCard,
-    borderRadius: 24,
-    padding: 16,
-    gap: 6,
-  },
-  errorTitle: {
-    fontSize: 15,
-    lineHeight: 20,
-    color: FinColors.textPrimary,
-    fontWeight: "800",
-  },
-  errorText: {
-    fontSize: 13,
-    lineHeight: 20,
-    color: FinColors.textSecondary,
-  },
-  stateCard: {
-    ...FinSurfaces.topLevelCard,
-    borderRadius: 24,
-    padding: 18,
-    gap: 10,
-    alignItems: "center",
-  },
-  stateText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: FinColors.textSecondary,
-  },
-  accountCard: {
-    ...FinSurfaces.topLevelCard,
-    borderRadius: 28,
-    padding: 18,
-    gap: 12,
-  },
-  accountCardGood: {
-    backgroundColor: FinColors.bgCard,
-  },
-  accountCardWatch: {
-    backgroundColor: FinColors.bgCard,
-  },
-  accountCardMuted: {
-    backgroundColor: FinColors.bgCard,
-  },
-  accountCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 10,
+    gap: FinSpacing.s,
   },
-  accountTypeLabel: {
-    fontSize: 12,
-    lineHeight: 16,
-    color: FinColors.textMuted,
-    fontWeight: "700",
-    letterSpacing: 0.4,
-  },
-  accountHeaderActions: {
+  accountMain: {
+    flex: 1,
     flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+    alignItems: "flex-start",
+    gap: FinSpacing.s,
   },
-  iconActionButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
+  accountLogoBubble: {
+    width: FinTokens.icon.xl + FinSpacing.x2,
+    height: FinTokens.icon.xl + FinSpacing.x2,
+    borderRadius: FinRadius.pill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: FinColors.bgInput,
+    marginTop: FinSpacing.x1,
+  },
+  accountTitleWrap: {
+    flex: 1,
+    gap: FinSpacing.xs,
+  },
+  accountTitleLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: FinSpacing.x2,
   },
   accountName: {
-    fontSize: 18,
-    lineHeight: 24,
+    ...FinTypography["body-sm"],
     color: FinColors.textPrimary,
-    fontWeight: "800",
-    letterSpacing: -0.6,
+    fontWeight: FinFontWeight.bold,
+  },
+  accountTypeLabel: {
+    ...FinTypography.caption,
+    color: FinColors.textMuted,
+    fontWeight: FinFontWeight.bold,
+    textTransform: "uppercase",
   },
   providerLine: {
-    fontSize: 14,
-    lineHeight: 20,
+    ...FinTypography.caption,
     color: FinColors.textSecondary,
-    fontWeight: "600",
+    fontWeight: FinFontWeight.medium,
+    marginTop: FinSpacing.x1,
   },
-  accountSummary: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: FinColors.textPrimary,
-    fontWeight: "600",
-  },
-  accountCardFooter: {
-    marginTop: 4,
+  accountFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: FinSpacing.s,
+    marginTop: FinSpacing.x1,
+  },
+  accountSummary: {
+    ...FinTypography.caption,
+    color: FinColors.textSecondary,
+    flex: 1,
   },
   accountFooterLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: FinSpacing.xs,
+  },
+  statusChip: {
+    borderRadius: FinRadius.pill,
+    paddingVertical: FinSpacing.x1,
+    paddingHorizontal: FinSpacing.xs,
+  },
+  statusChipGood: {
+    backgroundColor: FinColors.statusGoodBg,
+  },
+  statusChipWatch: {
+    backgroundColor: FinColors.bgElevated,
+  },
+  statusChipMuted: {
+    backgroundColor: FinColors.surfaceSoft,
+  },
+  statusChipText: {
+    ...FinTypography.caption,
+    fontWeight: FinFontWeight.bold,
+    textTransform: "uppercase",
+  },
+  statusChipTextGood: {
+    color: FinColors.statusGoodText,
+  },
+  statusChipTextWatch: {
+    color: FinColors.textSecondary,
+  },
+  statusChipTextMuted: {
+    color: FinColors.textMuted,
+  },
+  accountHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: FinSpacing.x1,
+  },
+  iconActionButton: {
+    width: FinTokens.icon.xl + FinSpacing.x2,
+    height: FinTokens.icon.xl + FinSpacing.x2,
+    borderRadius: FinRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: FinColors.bgInput,
   },
   contextChip: {
-    borderRadius: 999,
+    borderRadius: FinRadius.pill,
     backgroundColor: FinColors.bgInput,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    alignSelf: "flex-start",
+    paddingHorizontal: FinSpacing.xs,
+    paddingVertical: FinSpacing.x1,
   },
   contextChipText: {
-    fontSize: 12,
-    lineHeight: 14,
+    ...FinTypography.caption,
     color: FinColors.textSecondary,
-    fontWeight: "700",
+    fontWeight: FinFontWeight.bold,
+  },
+  loadingRow: {
+    paddingHorizontal: FinSpacing.m,
+    paddingVertical: FinSpacing.s,
+    gap: FinSpacing.x1,
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+  },
+  loadingLineLong: {
+    width: "68%",
+    height: FinSpacing.s,
+    borderRadius: FinRadius.sm,
+    backgroundColor: FinColors.bgElevated,
+  },
+  loadingLineMedium: {
+    width: "52%",
+    height: FinSpacing.xs,
+    borderRadius: FinRadius.sm,
+    backgroundColor: FinColors.bgInput,
+  },
+  loadingLineShort: {
+    width: "38%",
+    height: FinSpacing.xs,
+    borderRadius: FinRadius.sm,
+    backgroundColor: FinColors.bgInput,
+  },
+  loadingActions: {
+    width: "18%",
+    height: FinSpacing.s,
+    borderRadius: FinRadius.pill,
+    backgroundColor: FinColors.bgInput,
+    alignSelf: "flex-end",
+    marginTop: FinSpacing.x1,
+  },
+  loadingBadge: {
+    width: "30%",
+    height: FinSpacing.s,
+    borderRadius: FinRadius.pill,
+    backgroundColor: FinColors.bgElevated,
+    marginTop: FinSpacing.x1,
+  },
+  errorCard: {
+    backgroundColor: FinColors.bgCard,
+    borderRadius: FinRadius.xl,
+    padding: FinSpacing.l,
+    gap: FinSpacing.s,
+    borderWidth: 1,
+    borderColor: FinColors.redBorder,
+    alignItems: "center",
+  },
+  errorIconWrap: {
+    width: FinTokens.icon.xl + FinSpacing.m,
+    height: FinTokens.icon.xl + FinSpacing.m,
+    borderRadius: FinRadius.pill,
+    backgroundColor: FinColors.redBg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  errorTitle: {
+    ...FinTypography["body-sm"],
+    color: FinColors.textPrimary,
+    fontWeight: FinFontWeight.bold,
+  },
+  errorText: {
+    ...FinTypography.caption,
+    color: FinColors.textSecondary,
+    textAlign: "center",
   },
   emptyCard: {
-    ...FinSurfaces.topLevelCard,
-    borderRadius: 28,
-    padding: 20,
-    gap: 10,
-    alignItems: "flex-start",
+    backgroundColor: FinColors.bgCard,
+    borderRadius: FinRadius.xl,
+    padding: FinSpacing.l,
+    gap: FinSpacing.s,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
   },
   emptyTitle: {
-    fontSize: 20,
-    lineHeight: 26,
+    ...FinTypography["title-sm"],
     color: FinColors.textPrimary,
-    fontWeight: "800",
+    fontWeight: FinFontWeight.bold,
+    textAlign: "center",
   },
   emptyText: {
-    fontSize: 14,
-    lineHeight: 21,
+    ...FinTypography["body-sm"],
     color: FinColors.textSecondary,
+    textAlign: "center",
+  },
+  createButton: {
+    marginTop: FinSpacing.xs,
   },
   deleteSheetBody: {
-    marginTop: 20,
+    marginTop: FinSpacing.m,
   },
   deleteSheetFooter: {
-    marginTop: 20,
+    marginTop: FinSpacing.m,
   },
   deleteSheetActions: {
-    gap: 10,
+    gap: FinSpacing.xs,
   },
   deleteInfoCard: {
     backgroundColor: FinColors.bgCard,
-    borderRadius: 24,
-    padding: 18,
-    gap: 10,
+    borderRadius: FinRadius.xxl,
+    padding: FinSpacing.m,
+    gap: FinSpacing.xs,
   },
   deleteInfoIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 999,
+    width: FinTokens.icon.xl + FinSpacing.l,
+    height: FinTokens.icon.xl + FinSpacing.l,
+    borderRadius: FinRadius.pill,
     backgroundColor: FinColors.redBg,
     alignItems: "center",
     justifyContent: "center",
   },
   deleteInfoTitle: {
-    fontSize: 18,
-    lineHeight: 23,
+    ...FinTypography.body,
     color: FinColors.textPrimary,
-    fontWeight: "800",
+    fontWeight: FinFontWeight.extrabold,
   },
   deleteInfoText: {
-    fontSize: 14,
-    lineHeight: 21,
+    ...FinTypography["body-sm"],
     color: FinColors.textSecondary,
   },
   deleteLoadingRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: FinSpacing.xs,
   },
   deleteErrorText: {
-    fontSize: 13,
-    lineHeight: 19,
+    ...FinTypography.caption,
     color: FinColors.red,
-    fontWeight: "600",
+    fontWeight: FinFontWeight.semibold,
   },
   cancelButton: {
-    borderRadius: 999,
+    borderRadius: FinRadius.pill,
     backgroundColor: FinColors.bgElevated,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: FinSpacing.s,
+    paddingHorizontal: FinSpacing.m,
     alignItems: "center",
     justifyContent: "center",
   },
   cancelButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
+    ...FinTypography["body-sm"],
     color: FinColors.textPrimary,
-    fontWeight: "700",
+    fontWeight: FinFontWeight.bold,
   },
   confirmDeleteButton: {
-    borderRadius: 999,
+    borderRadius: FinRadius.pill,
     backgroundColor: FinColors.red,
-    paddingVertical: 13,
-    paddingHorizontal: 16,
+    paddingVertical: FinSpacing.s,
+    paddingHorizontal: FinSpacing.m,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
-    gap: 8,
+    gap: FinSpacing.x2,
   },
   confirmDeleteButtonPressed: {
     opacity: 0.88,
   },
   confirmDeleteButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
+    ...FinTypography["body-sm"],
     color: FinColors.bgBase,
-    fontWeight: "800",
+    fontWeight: FinFontWeight.extrabold,
   },
   pressed: {
     opacity: 0.86,

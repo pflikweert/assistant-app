@@ -39,7 +39,7 @@ const EXPECTED_IMPORTS = [
   },
   {
     file: "app/bankrekeningen.tsx",
-    mustInclude: ["FinanceDetailShell"],
+    mustInclude: ["FinanceUtilityShell"],
   },
   {
     file: "app/analysis-detail.tsx",

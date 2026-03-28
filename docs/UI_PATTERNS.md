@@ -725,6 +725,24 @@ Belangrijkste patronen:
 Wanneer hergebruiken:
 - voor detailschermen waar correctie en context belangrijker zijn dan technische metadata
 
+### Bankrekeningen
+
+Referenties:
+- Stitch (gekozen reviewvariant): `designs_refs/bankrekeningen_beheer_review/01_default_lijst_271b5353f92244d0b23736dc850f21c3.html`
+- Stitch (states): `designs_refs/bankrekeningen_beheer_review/02_empty_state_88c85f290c384b7fb12481e77b36550b.html`, `designs_refs/bankrekeningen_beheer_review/03_loading_partial_a97ee3d98bb74cc29ff2a4ad7d5be377.html`, `designs_refs/bankrekeningen_beheer_review/04_error_state_64a6cbb2e1834ae3b48b15490ee3ad9c.html`
+- Code: [bankrekeningen.tsx](/Users/pieterflikweert/development/assistant/app/bankrekeningen.tsx)
+
+Belangrijkste patronen:
+- utility-shell met compacte topbar en rustige introcopy
+- lijst-rijen in een zachte container met subtiele scheidingslijnen (geen zware kaartstapeling)
+- statuschip per rekening (`In budget`, `Alleen overzicht`, `Verborgen`) als primaire state-indicator
+- acties `bewerken` en `verwijderen` compact rechts, zonder extra CTA-ruis
+- full-width primaire CTA `Nieuwe rekening` onderaan de flow
+- expliciete `loading`, `empty` en `error` weergave op hetzelfde schermritme
+
+Wanneer hergebruiken:
+- bij beheerlijsten in utility-schermen waar status, snelle correctie en scanbaarheid belangrijker zijn dan uitgebreide detailkaarten
+
 ### Filters En Datumkeuze
 
 Referenties:

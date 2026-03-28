@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-03-28T08:53:43.428Z",
-  "count": 187,
+  "generatedAt": "2026-03-28T19:59:20.456Z",
+  "count": 181,
   "entries": [
     {
       "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
@@ -153,12 +153,6 @@
       "snippet": "<TouchableOpacity"
     },
     {
-      "key": "app/(tabs)/index.tsx|Pressable|<Pressable onPress={() => router.push(\"/transactions\")}>",
-      "kind": "Pressable",
-      "file": "app/(tabs)/index.tsx",
-      "snippet": "<Pressable onPress={() => router.push(\"/transactions\")}>"
-    },
-    {
       "key": "app/(tabs)/insights.tsx|Pressable|<Pressable",
       "kind": "Pressable",
       "file": "app/(tabs)/insights.tsx",
@@ -241,24 +235,6 @@
       "kind": "TouchableOpacity",
       "file": "app/(tabs)/settings.tsx",
       "snippet": "<TouchableOpacity"
-    },
-    {
-      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
-      "kind": "TouchableOpacity",
-      "file": "app/(tabs)/settings.tsx",
-      "snippet": "<TouchableOpacity"
-    },
-    {
-      "key": "app/account/change-password.tsx|Pressable|<Pressable",
-      "kind": "Pressable",
-      "file": "app/account/change-password.tsx",
-      "snippet": "<Pressable"
-    },
-    {
-      "key": "app/account/change-password.tsx|Pressable|<Pressable",
-      "kind": "Pressable",
-      "file": "app/account/change-password.tsx",
-      "snippet": "<Pressable"
     },
     {
       "key": "app/analysis-detail.tsx|Pressable|<Pressable",
@@ -294,18 +270,6 @@
       "key": "app/auth/reset-password.tsx|Pressable|<Pressable",
       "kind": "Pressable",
       "file": "app/auth/reset-password.tsx",
-      "snippet": "<Pressable"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|Pressable|<Pressable",
-      "kind": "Pressable",
-      "file": "app/bankrekeningen.tsx",
-      "snippet": "<Pressable"
-    },
-    {
-      "key": "app/bankrekeningen.tsx|Pressable|<Pressable",
-      "kind": "Pressable",
-      "file": "app/bankrekeningen.tsx",
       "snippet": "<Pressable"
     },
     {
@@ -681,21 +645,21 @@
       "snippet": "<TouchableOpacity"
     },
     {
+      "key": "app/transaction-detail.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/transaction-detail.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/transaction-detail.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/transaction-detail.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
       "key": "components/auth/AuthErrorMessage.tsx|Pressable|<Pressable",
       "kind": "Pressable",
       "file": "components/auth/AuthErrorMessage.tsx",
-      "snippet": "<Pressable"
-    },
-    {
-      "key": "components/bank-accounts/bank-account-form-sheet.tsx|Pressable|<Pressable",
-      "kind": "Pressable",
-      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
-      "snippet": "<Pressable"
-    },
-    {
-      "key": "components/bank-accounts/bank-account-form-sheet.tsx|Pressable|<Pressable",
-      "kind": "Pressable",
-      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
       "snippet": "<Pressable"
     },
     {

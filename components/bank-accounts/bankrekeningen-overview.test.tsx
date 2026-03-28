@@ -29,6 +29,21 @@ vi.mock("@/components/ui/finance-detail-top-bar", () => ({
   FinanceDetailTopBar: ({ title }: { title: string }) => <Text>{title}</Text>,
 }));
 
+vi.mock("@/components/ui/finance-utility-shell", () => ({
+  FinanceUtilityShell: ({
+    title,
+    children,
+  }: {
+    title: string;
+    children?: React.ReactNode;
+  }) => (
+    <View>
+      <Text>{title}</Text>
+      {children}
+    </View>
+  ),
+}));
+
 vi.mock("@/components/ui/finance-bottom-sheet-shell", () => ({
   FinanceBottomSheetShell: ({
     visible,

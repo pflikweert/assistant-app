@@ -549,9 +549,9 @@ export function BankAccountFormSheet({
                 <Switch
                   value={!excludeFromNetWorth}
                   onValueChange={(value) => setExcludeFromNetWorth(!value)}
-                  trackColor={{ false: "#d7d7d7", true: "#f1d96a" }}
-                  thumbColor={!excludeFromNetWorth ? FinColors.warningText : "#f4f4f4"}
-                  ios_backgroundColor="#d7d7d7"
+                  trackColor={{ false: FinColors.switchTrackOff, true: FinColors.switchTrackOn }}
+                  thumbColor={!excludeFromNetWorth ? FinColors.warningText : FinColors.switchThumbOff}
+                  ios_backgroundColor={FinColors.switchTrackOff}
                 />
               </View>
             </View>
