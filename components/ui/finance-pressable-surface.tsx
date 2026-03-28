@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  type AccessibilityRole,
   Pressable,
   View,
   type StyleProp,
@@ -12,6 +13,7 @@ type FinancePressableSurfaceProps = {
   style?: StyleProp<ViewStyle>;
   pressedStyle?: StyleProp<ViewStyle>;
   disabled?: boolean;
+  accessibilityRole?: AccessibilityRole;
 };
 
 export function FinancePressableSurface({
@@ -20,6 +22,7 @@ export function FinancePressableSurface({
   style,
   pressedStyle,
   disabled = false,
+  accessibilityRole,
 }: FinancePressableSurfaceProps) {
   if (!onPress) {
     return <View style={style}>{children}</View>;
@@ -29,6 +32,7 @@ export function FinancePressableSurface({
     <Pressable
       disabled={disabled}
       onPress={onPress}
+      accessibilityRole={accessibilityRole}
       style={({ pressed }) => [style, pressed ? pressedStyle : null]}
     >
       {children}

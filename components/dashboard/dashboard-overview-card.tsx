@@ -1,6 +1,7 @@
 import { AppIcon } from "@/components/ui/app-icon";
+import { FinanceBudgetProgressBar } from "@/components/ui/finance-budget-progress-bar";
 import { FinancePressableSurface } from "@/components/ui/finance-pressable-surface";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSurfaces } from "@/constants/theme";
 import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import {
   getMonthVariableBudgetSnapshot,
@@ -149,7 +150,6 @@ export function DashboardBudgetOverviewCard({
   style,
 }: DashboardBudgetOverviewCardProps) {
   const week = model.weekSnapshot;
-  const weekProgressWidth = `${Math.max(0, Math.min(100, Math.round(week.progress * 100)))}%`;
   const weekStatusLabel = week.label || "Let op";
   const cardContent = (
     <View style={[styles.card, style]}>
@@ -184,14 +184,12 @@ export function DashboardBudgetOverviewCard({
           </View>
         </View>
 
-        <View style={styles.weekProgressTrack}>
-          <View
-            style={[
-              styles.weekProgressFill,
-              { width: weekProgressWidth },
-            ]}
-          />
-        </View>
+        <FinanceBudgetProgressBar
+          progress={week.progress * 100}
+          tone={week.tone}
+          style={styles.weekProgressTrack}
+          fillStyle={styles.weekProgressFill}
+        />
 
         <View style={styles.weekMetaRow}>
           <View style={styles.weekStatusPill}>
@@ -256,8 +254,8 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   weekCard: {
+    ...FinSurfaces.mainPageTintedCard,
     borderRadius: 24,
-    backgroundColor: "#f1f4f6",
     paddingHorizontal: 18,
     paddingVertical: 16,
     gap: 12,
@@ -306,13 +304,9 @@ const styles = StyleSheet.create({
   weekProgressTrack: {
     height: 8,
     borderRadius: 999,
-    backgroundColor: "#e3e9ec",
-    overflow: "hidden",
   },
   weekProgressFill: {
-    height: "100%",
     borderRadius: 999,
-    backgroundColor: "#f9e287",
   },
   weekMetaRow: {
     flexDirection: "row",

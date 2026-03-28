@@ -1,9 +1,10 @@
 import { FinanceInlineCallout } from "@/components/ui/finance-inline-callout";
+import { FinancePressableSurface } from "@/components/ui/finance-pressable-surface";
 import { AppIcon } from "@/components/ui/app-icon";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinTokens } from "@/constants/theme";
 import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 const euroFormatter = new Intl.NumberFormat("nl-NL", {
   style: "currency",
@@ -11,6 +12,18 @@ const euroFormatter = new Intl.NumberFormat("nl-NL", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+const SUPPORT_LABEL_TEXT_STYLE = {
+  fontSize: 9,
+  lineHeight: 12,
+  fontWeight: FinTokens.fontWeight.black,
+  letterSpacing: 0.5,
+} as const;
+const SUPPORT_VALUE_TEXT_STYLE = {
+  fontSize: 18,
+  lineHeight: 22,
+  fontWeight: FinTokens.fontWeight.black,
+  letterSpacing: -0.4,
+} as const;
 
 function formatBalanceParts(value: number) {
   const parts = euroFormatter.formatToParts(value);
@@ -123,16 +136,14 @@ export function DashboardBalanceSummary({
           </View>
         ) : null}
         {onPressRemainingBudgetLabel ? (
-          <Pressable
-            accessibilityRole="button"
+          <FinancePressableSurface
             onPress={onPressRemainingBudgetLabel}
-            style={({ pressed }) => [
-              styles.kickerPressable,
-              pressed ? styles.kickerPressed : null,
-            ]}
+            accessibilityRole="button"
+            style={styles.kickerPressable}
+            pressedStyle={styles.kickerPressed}
           >
             <Text style={styles.kicker}>{`Resterend budget ${activeMonthLabel}`}</Text>
-          </Pressable>
+          </FinancePressableSurface>
         ) : (
           <Text style={styles.kicker}>{`Resterend budget ${activeMonthLabel}`}</Text>
         )}
@@ -174,14 +185,12 @@ export function DashboardBalanceSummary({
 
             if (item.interactive) {
               return (
-                <Pressable
+                <FinancePressableSurface
                   key={item.label}
-                  accessibilityRole="button"
                   onPress={onPressSafeToSpendExplanation || undefined}
-                  style={({ pressed }) => [
-                    itemStyles,
-                    pressed ? styles.supportItemPressed : null,
-                  ]}
+                  accessibilityRole="button"
+                  style={itemStyles}
+                  pressedStyle={styles.supportItemPressed}
                 >
                   <View style={styles.supportLabelWrap}>
                     <View style={styles.supportLabelRow}>
@@ -197,7 +206,7 @@ export function DashboardBalanceSummary({
                   <Text style={styles.supportValue}>
                     {item.value == null ? "n.b." : formatCompactBalance(item.value)}
                   </Text>
-                </Pressable>
+                </FinancePressableSurface>
               );
             }
 
@@ -260,8 +269,8 @@ const styles = StyleSheet.create({
   },
   kickerPressable: {
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: FinTokens.spacing.xs,
+    paddingVertical: FinTokens.spacing.xxs,
   },
   kickerPressed: {
     opacity: 0.72,
@@ -295,7 +304,7 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
   },
   confidenceLabel: {
-    marginTop: -4,
+    marginTop: -FinTokens.spacing.xxs,
     fontSize: 11,
     lineHeight: 14,
     color: FinColors.textSecondary,
@@ -367,8 +376,8 @@ const styles = StyleSheet.create({
     flexBasis: 0,
     alignItems: "center",
     justifyContent: "flex-start",
-    paddingHorizontal: 8,
-    gap: 4,
+    paddingHorizontal: FinTokens.spacing.xs,
+    gap: FinTokens.spacing.xxs,
   },
   supportItemDivider: {
     borderRightWidth: 1,
@@ -378,10 +387,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   supportLabel: {
-    fontSize: 9,
-    lineHeight: 12,
-    fontWeight: "900",
-    letterSpacing: 0.5,
+    ...SUPPORT_LABEL_TEXT_STYLE,
     color: FinColors.textSecondary,
     textTransform: "uppercase",
     textAlign: "center",
@@ -394,14 +400,11 @@ const styles = StyleSheet.create({
   supportLabelRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: FinTokens.spacing.xxs,
   },
   supportValue: {
-    fontSize: 18,
-    lineHeight: 22,
-    fontWeight: "900",
+    ...SUPPORT_VALUE_TEXT_STYLE,
     color: FinColors.textPrimary,
-    letterSpacing: -0.4,
     textAlign: "center",
   },
 });

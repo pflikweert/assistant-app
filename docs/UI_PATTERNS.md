@@ -78,6 +78,7 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
 - Kleurcontract:
   - app basisachtergrond: `#fafbff`
   - hoofdkaart / elevated surface: `#ffffff` of het bestaande `FinColors.bgCard`
+  - grote gekleurde hoofdkaart op hoofdschermen: `FinTokens.color.surfaceSoftCool` (`#f1f4f6`)
   - zachte achtergrond voor utility-blokken: `#f0f1f2`
   - lichte sublaag of leaf-row: `#f7f8f9`
   - subtiele rail / helper / uitstand van switch: `#f7f8f9` of een vergelijkbare lichte grijstint
@@ -90,6 +91,7 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
   - bouw surface-varianten als gedeelde componentstijlen, niet lokaal per scherm
   - maak onderscheid tussen hoofdkaart, flat choice card en subtiele sub-row
   - gebruik een apart oppervlak alleen als de interactie of hiërarchie echt verandert
+  - grote gekleurde kaarten op hoofdschermen gebruiken standaard `FinSurfaces.mainPageTintedCard` (lichte schaduw inbegrepen)
 
 ### Kaders / Borders
 
@@ -317,9 +319,10 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
   - bouw varianten voor kerngetal, secundair statblok en accentblok op dezelfde componentfamilie
   - budget-voortgangsbalken komen uit één gedeelde component (`FinanceBudgetProgressBar`) en niet uit schermspecifieke inline views
   - kleurcontract voor budgetprogress:
-    - goed: `#10b981`
-    - aandacht: geel accent
-    - kritisch: rood
+    - goed: `FinTokens.color.budgetProgressGood` (`#10b981`)
+    - aandacht: `FinTokens.color.budgetProgressWatch` (geel accent)
+    - kritisch: `FinTokens.color.budgetProgressCritical` (rood)
+    - track: `FinTokens.color.budgetProgressTrack`
 
 ### Patroon: List Rows
 
@@ -555,7 +558,8 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
   - hero krijgt de ruimste verticale padding
   - tussen secties zit duidelijke ademruimte
   - binnen kaarten is padding consistent
-  - voor contentblokken met beslisinformatie (zoals `Insights`) is `32px` verticale sectieafstand het uitgangspunt
+  - hoofdschermen gebruiken de gedeelde spacing-standaard uit `components/ui/main-page-spacing.ts`
+  - voor contentblokken met beslisinformatie (zoals `Insights`) is `40px` verticale sectieafstand het uitgangspunt
 - Mobile-first aandachtspunten:
   - liever meer verticale dan horizontale variatie
   - voorkom kleine willekeurige ruimtes tussen vergelijkbare componenten
@@ -665,6 +669,7 @@ Belangrijkste patronen:
 - korte snapshot-lijsten in plaats van zware dashboards
 - bottom quick menu blijft docked en licht
 - gedeelde budgetprogressbalk voor zowel maand- als weekvoortgang
+- weekbudgetkaart gebruikt `surfaceSoftCool` (`#f1f4f6`) met lichte schaduw via de gedeelde main-page surface
 
 Wanneer hergebruiken:
 - bij schermen die overzicht eerst en details pas daarna tonen
@@ -677,7 +682,7 @@ Referentie:
 Belangrijkste patronen:
 - hero blijft compact: titel, maandcontext, status en korte mensentaal
 - maandselector staat onder de hero als contextlaag, niet in de hero zelf
-- secties volgen vaste verticale cadans (`32px`) voor rust en scanbaarheid
+- secties volgen vaste verticale cadans (`40px`) voor rust en scanbaarheid
 - `Wat valt op` gebruikt maximaal 3 full-width insight cards in prioriteitsvolgorde
 - `Forecast` gebruikt een premium summary card met:
   - `Verwacht eindsaldo` op 1 regel

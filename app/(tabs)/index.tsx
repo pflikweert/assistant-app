@@ -10,9 +10,11 @@ import { FinanceHeaderActions } from "@/components/ui/finance-header-actions";
 import { FinanceDashboardHeader } from "@/components/ui/finance-dashboard-header";
 import { FinanceButton } from "@/components/ui/finance-button";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
+import { FinancePressableSurface } from "@/components/ui/finance-pressable-surface";
+import { MainPageSpacing } from "@/components/ui/main-page-spacing";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SplashLoader } from "@/components/motions/SplashLoader";
-import { FinColors, FinSurfaces } from "@/constants/theme";
+import { FinColors, FinSurfaces, FinTokens } from "@/constants/theme";
 import { loadBudgetPlanForSurface } from "@/services/budget-plan-surface";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import { useCategorizationStatus } from "@/services/categorization-status";
@@ -47,9 +49,31 @@ import type {
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
-import { ScrollView, StyleSheet, Text, Pressable, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 const CONTENT_MAX_WIDTH = 1040;
+const SAFE_TO_SPEND_VALUE_TEXT_STYLE = {
+  fontSize: 42,
+  lineHeight: 46,
+  fontWeight: FinTokens.fontWeight.black,
+  letterSpacing: -1.1,
+} as const;
+const SAFE_TO_SPEND_META_TITLE_TEXT_STYLE = {
+  fontSize: 12,
+  lineHeight: 15,
+  fontWeight: FinTokens.fontWeight.extrabold,
+  letterSpacing: 0.7,
+} as const;
+const SAFE_TO_SPEND_META_BODY_TEXT_STYLE = {
+  fontSize: 12,
+  lineHeight: 17,
+  fontWeight: FinTokens.fontWeight.semibold,
+} as const;
+const SAFE_TO_SPEND_CONFIDENCE_TEXT_STYLE = {
+  fontSize: 12,
+  lineHeight: 15,
+  fontWeight: FinTokens.fontWeight.bold,
+} as const;
 
 type DashboardTx = {
   id: string;
@@ -548,9 +572,13 @@ export default function DashboardScreen() {
 
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Laatste transacties</Text>
-                <Pressable onPress={() => router.push("/transactions")}>
+                <FinancePressableSurface
+                  onPress={() => router.push("/transactions")}
+                  accessibilityRole="button"
+                  pressedStyle={styles.seeAllPressed}
+                >
                   <Text style={styles.seeAll}>Open lijst</Text>
-                </Pressable>
+                </FinancePressableSurface>
               </View>
 
               <View style={styles.txCard}>
@@ -636,13 +664,11 @@ export default function DashboardScreen() {
           ) : null}
           {dashboardBalances?.currentOperationalBalance.amount != null ? (
             <View style={styles.safeToSpendBreakdownCard}>
-              <Pressable
-                accessibilityRole="button"
+              <FinancePressableSurface
                 onPress={() => setSafeToSpendBreakdownOpen((value) => !value)}
-                style={({ pressed }) => [
-                  styles.safeToSpendBreakdownToggle,
-                  pressed ? styles.safeToSpendBreakdownTogglePressed : null,
-                ]}
+                accessibilityRole="button"
+                style={styles.safeToSpendBreakdownToggle}
+                pressedStyle={styles.safeToSpendBreakdownTogglePressed}
               >
                 <Text style={styles.safeToSpendBreakdownTitle}>Berekening bekijken</Text>
                 <AppIcon
@@ -651,7 +677,7 @@ export default function DashboardScreen() {
                   color={FinColors.textSecondary}
                   variant="outlined"
                 />
-              </Pressable>
+              </FinancePressableSurface>
               {safeToSpendBreakdownOpen ? (
                 <>
                   <View style={styles.safeToSpendBreakdownList}>
@@ -761,39 +787,33 @@ const styles = StyleSheet.create({
     paddingBottom: 128,
   },
   safeToSpendSheetBody: {
-    gap: 14,
-    paddingBottom: 10,
+    gap: FinTokens.spacing["s-plus"],
+    paddingBottom: FinTokens.spacing["xs-plus"],
   },
   safeToSpendSheetValueCard: {
     borderRadius: 18,
-    backgroundColor: "#fcd934",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    backgroundColor: FinColors.accent,
+    paddingHorizontal: FinTokens.spacing["s-plus"],
+    paddingVertical: FinTokens.spacing.s,
     boxShadow: "0px 6px 14px rgba(17,17,17,0.12)",
     elevation: 2,
   },
   safeToSpendSheetValue: {
-    fontSize: 42,
-    lineHeight: 46,
+    ...SAFE_TO_SPEND_VALUE_TEXT_STYLE,
     color: FinColors.textPrimary,
-    fontWeight: "900",
-    letterSpacing: -1.1,
     textAlign: "center",
   },
   safeToSpendSheetExplanationCard: {
     borderRadius: 18,
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 6,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: FinTokens.spacing["s-plus"],
+    paddingVertical: FinTokens.spacing.s,
+    gap: FinTokens.spacing.xs,
   },
   safeToSpendSheetExplanationTitle: {
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: "800",
+    ...SAFE_TO_SPEND_META_TITLE_TEXT_STYLE,
     color: FinColors.textSecondary,
     textTransform: "uppercase",
-    letterSpacing: 0.7,
   },
   safeToSpendSheetText: {
     fontSize: 14,
@@ -803,22 +823,20 @@ const styles = StyleSheet.create({
   safeToSpendConfidencePill: {
     alignSelf: "flex-start",
     borderRadius: 999,
-    backgroundColor: "#fff7de",
+    backgroundColor: FinColors.warningBg,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   safeToSpendConfidenceText: {
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: "700",
+    ...SAFE_TO_SPEND_CONFIDENCE_TEXT_STYLE,
     color: FinColors.warningText,
   },
   safeToSpendBreakdownCard: {
     borderRadius: 20,
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 10,
+    backgroundColor: FinColors.bgCard,
+    paddingHorizontal: FinTokens.spacing["s-plus"],
+    paddingVertical: FinTokens.spacing.s,
+    gap: FinTokens.spacing["xs-plus"],
   },
   safeToSpendBreakdownToggle: {
     flexDirection: "row",
@@ -830,15 +848,12 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   safeToSpendBreakdownTitle: {
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: "800",
+    ...SAFE_TO_SPEND_META_TITLE_TEXT_STYLE,
     color: FinColors.textSecondary,
     textTransform: "uppercase",
-    letterSpacing: 0.7,
   },
   safeToSpendBreakdownList: {
-    gap: 8,
+    gap: FinTokens.spacing.xs,
   },
   safeToSpendBreakdownItem: {
     flexDirection: "row",
@@ -881,19 +896,18 @@ const styles = StyleSheet.create({
   },
   safeToSpendBreakdownMeta: {
     flex: 1,
-    fontSize: 12,
-    lineHeight: 17,
+    ...SAFE_TO_SPEND_META_BODY_TEXT_STYLE,
     color: FinColors.textSecondary,
   },
   safeToSpendBreakdownReasonCallout: {
-    marginTop: 2,
+    marginTop: FinTokens.spacing.xxs,
     borderRadius: 14,
-    backgroundColor: "#fff7de",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    backgroundColor: FinColors.warningBg,
+    paddingHorizontal: FinTokens.spacing["xs-plus"],
+    paddingVertical: FinTokens.spacing.xs,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 8,
+    gap: FinTokens.spacing.xs,
   },
   contentMax: {
     width: "100%",
@@ -903,7 +917,7 @@ const styles = StyleSheet.create({
   },
   mainStack: {
     paddingTop: 0,
-    gap: 24,
+    gap: MainPageSpacing.dashboardComponents,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -970,6 +984,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     color: FinColors.warningText,
+  },
+  seeAllPressed: {
+    opacity: 0.75,
   },
   txCard: {
     ...FinSurfaces.topLevelCard,

@@ -2,6 +2,7 @@ import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
+import { MainPageSpacing } from "@/components/ui/main-page-spacing";
 import { FinanceSettingsGroup } from "@/components/ui/finance-settings-group";
 import { FinanceSettingsRow } from "@/components/ui/finance-settings-row";
 import { FinanceUtilityShell } from "@/components/ui/finance-utility-shell";
@@ -799,7 +800,11 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
     letterSpacing: -1,
   },
-  scroll: { paddingHorizontal: 24, paddingBottom: 176, gap: 10 },
+  scroll: {
+    paddingHorizontal: 24,
+    paddingBottom: 176,
+    gap: MainPageSpacing.settingsComponents,
+  },
   heroShell: {
     backgroundColor: FinColors.bgElevated,
     marginHorizontal: -24,

@@ -13,6 +13,7 @@ const finColor = {
   bgCard: '#ffffff',
   bgElevated: '#efede7',
   bgInput: '#f1efea',
+  bgCardSoftCool: '#f1f4f6',
 
   textPrimary: '#111111',
   textSecondary: '#5f5a54',
@@ -27,6 +28,11 @@ const finColor = {
   warningBg: '#fff8dd',
   warningBorder: 'rgba(242,201,76,0.34)',
   warningText: '#8a6400',
+  budgetProgressTrack: '#e3e9ec',
+  budgetProgressGood: '#10b981',
+  budgetProgressWatch: '#f9e287',
+  budgetProgressCritical: '#c55d4c',
+  budgetProgressNeutral: '#6f6a63',
 
   red: '#c55d4c',
   redBg: 'rgba(197,93,76,0.10)',
@@ -124,6 +130,7 @@ export const FinTokens = {
     surface: finColor.bgCard,
     surfaceSoft: finColor.bgElevated,
     surfaceMuted: finColor.bgInput,
+    surfaceSoftCool: finColor.bgCardSoftCool,
     accent: finColor.yellow,
     accentText: finColor.warningText,
     success: finColor.green,
@@ -199,6 +206,13 @@ export const FinSurfaces = {
     borderWidth: 0,
     borderColor: "transparent",
     boxShadow: "0px 6px 12px rgba(17,17,17,0.03)",
+    elevation: 1,
+  },
+  mainPageTintedCard: {
+    backgroundColor: FinColors.bgCardSoftCool,
+    borderWidth: 0,
+    borderColor: "transparent",
+    boxShadow: "0px 5px 12px rgba(17,17,17,0.04)",
     elevation: 1,
   },
 } as const;

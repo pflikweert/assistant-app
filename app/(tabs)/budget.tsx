@@ -23,6 +23,7 @@ import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceMonthSelector } from "@/components/ui/finance-month-selector";
 import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
+import { MainPageSpacing } from "@/components/ui/main-page-spacing";
 import { FinanceScopeSwitch } from "@/components/ui/finance-scope-switch";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import {
@@ -4803,7 +4804,7 @@ const styles = StyleSheet.create({
     gap: 32,
   },
   mainStack: {
-    gap: 16,
+    gap: MainPageSpacing.budgetComponents,
   },
   heroCard: {
     ...FinSurfaces.topLevelCard,

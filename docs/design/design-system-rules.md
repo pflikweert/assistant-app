@@ -39,6 +39,10 @@ Dit document is de compacte ontwerp- en werkafspraak voor alle UI-wijzigingen in
 - Gebruik `FinanceText` voor nieuwe producttekst i.p.v. losse `fontSize`/`lineHeight` literals
 - Nieuwe schermen en componenten gebruiken tokens, geen losse kleur- of spacingwaarden
 - Als er geen veilige tokenmatch bestaat: markeer met `// TODO: DESIGN-DEBT` en los het bewust op in een vervolg-PR (niet gokken)
+- Budgetprogress gebruikt de vaste kleurset uit `FinTokens.color`:
+  - `budgetProgressTrack`, `budgetProgressGood`, `budgetProgressWatch`, `budgetProgressCritical`, `budgetProgressNeutral`
+- Grote gekleurde kaarten op hoofdschermen gebruiken `FinTokens.color.surfaceSoftCool` en de gedeelde `FinSurfaces.mainPageTintedCard` (lichte schaduw verplicht)
+- Hoofdscherm-spacing komt uit `components/ui/main-page-spacing.ts` en wordt bewaakt door `services/main-page-spacing.test.ts`
 
 ## A11y Contrast Contract
 

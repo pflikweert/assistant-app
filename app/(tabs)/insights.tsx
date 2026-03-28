@@ -15,6 +15,7 @@ import { FinanceSectionHeader } from "@/components/ui/finance-section-header";
 import { FinanceStatusChip } from "@/components/ui/finance-status-chip";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { FinanceUpcomingMomentsCard } from "@/components/ui/finance-upcoming-moments-card";
+import { MainPageSpacing } from "@/components/ui/main-page-spacing";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import { loadBudgetPlanForSurface } from "@/services/budget-plan-surface";
 import { requireCurrentUserId } from "@/services/current-user";
@@ -1097,7 +1098,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     paddingHorizontal: 24,
     paddingTop: 16,
-    gap: 32,
+    gap: MainPageSpacing.insightsComponents,
   },
   sectionBlock: {
     gap: 12,

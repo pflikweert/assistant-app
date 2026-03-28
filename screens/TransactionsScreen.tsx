@@ -9,6 +9,7 @@ import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-sh
 import { FinanceCircleIconButton } from "@/components/ui/finance-circle-icon-button";
 import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { MainPageSpacing } from "@/components/ui/main-page-spacing";
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
@@ -1183,7 +1184,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingTop: 18,
+    paddingTop: MainPageSpacing.transactionsHeaderComponents,
   },
   periodLauncher: {
     flex: 1,
