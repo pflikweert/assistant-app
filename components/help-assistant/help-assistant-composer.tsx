@@ -9,11 +9,33 @@ type HelpAssistantComposerProps = {
   onSubmit: () => void;
 };
 
-export function HelpAssistantComposer({
-  value,
-  onChangeText,
-  onSubmit,
-}: HelpAssistantComposerProps) {
+export type HelpAssistantComposerHandle = {
+  focus: () => void;
+};
+
+export const HelpAssistantComposer = React.forwardRef<
+  HelpAssistantComposerHandle,
+  HelpAssistantComposerProps
+>(function HelpAssistantComposer(
+  {
+    value,
+    onChangeText,
+    onSubmit,
+  }: HelpAssistantComposerProps,
+  ref,
+) {
+  const inputRef = React.useRef<TextInput>(null);
+
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => {
+        inputRef.current?.focus();
+      },
+    }),
+    [],
+  );
+
   const handleSubmit = React.useCallback(() => {
     if (!value.trim()) return;
     onSubmit();
@@ -30,6 +52,7 @@ export function HelpAssistantComposer({
         />
       </View>
       <TextInput
+        ref={inputRef}
         value={value}
         onChangeText={onChangeText}
         placeholder="Stel je vraag aan Budio..."
@@ -66,7 +89,7 @@ export function HelpAssistantComposer({
       </Pressable>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   shell: {

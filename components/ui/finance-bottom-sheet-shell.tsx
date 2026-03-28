@@ -17,6 +17,7 @@ type FinanceBottomSheetShellProps = {
   visible: boolean;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
+  headerAccessory?: React.ReactNode;
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
@@ -25,12 +26,14 @@ type FinanceBottomSheetShellProps = {
   footerStyle?: StyleProp<ViewStyle>;
   titleStyle?: StyleProp<TextStyle>;
   subtitleStyle?: StyleProp<TextStyle>;
+  presentation?: "sheet" | "fullscreen";
 };
 
 export function FinanceBottomSheetShell({
   visible,
   title,
   subtitle,
+  headerAccessory,
   onClose,
   children,
   footer,
@@ -39,7 +42,15 @@ export function FinanceBottomSheetShell({
   footerStyle,
   titleStyle,
   subtitleStyle,
+  presentation = "sheet",
 }: FinanceBottomSheetShellProps) {
+  const isFullscreen = presentation === "fullscreen";
+  const hasTitle = !(
+    title === null ||
+    title === undefined ||
+    (typeof title === "string" && title.trim().length === 0)
+  );
+
   return (
     <Modal
       transparent
@@ -56,12 +67,20 @@ export function FinanceBottomSheetShell({
           ]}
           onPress={onClose}
         />
-        <View style={[styles.sheet, sheetStyle]}>
-          <View style={styles.handle} />
+        <View
+          style={[
+            styles.sheet,
+            isFullscreen && styles.fullscreenSheet,
+            sheetStyle,
+          ]}
+        >
+          {!isFullscreen ? <View style={styles.handle} /> : null}
 
           <View style={styles.headerRow}>
             <View style={styles.headerMain}>
-              <Text style={[styles.title, titleStyle]}>{title}</Text>
+              {hasTitle ? (
+                <Text style={[styles.title, titleStyle]}>{title}</Text>
+              ) : null}
               {subtitle ? (
                 <Text style={[styles.subtitle, subtitleStyle]}>
                   {subtitle}
@@ -69,22 +88,27 @@ export function FinanceBottomSheetShell({
               ) : null}
             </View>
 
-            <Pressable
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Sluit venster"
-              style={({ pressed }) => [
-                styles.closeButton,
-                pressed && styles.closeButtonPressed,
-              ]}
-            >
-              <AppIcon
-                name="close"
-                size={22}
-                color={FinColors.textSecondary}
-                variant="outlined"
-              />
-            </Pressable>
+            <View style={styles.headerActions}>
+              {headerAccessory ? (
+                <View style={styles.headerAccessoryWrap}>{headerAccessory}</View>
+              ) : null}
+              <Pressable
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel="Sluit venster"
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && styles.closeButtonPressed,
+                ]}
+              >
+                <AppIcon
+                  name="close"
+                  size={22}
+                  color={FinColors.textSecondary}
+                  variant="outlined"
+                />
+              </Pressable>
+            </View>
           </View>
 
           <View style={[styles.body, bodyStyle]}>{children}</View>
@@ -116,6 +140,13 @@ const styles = StyleSheet.create({
     boxShadow: "0px -12px 32px rgba(17,17,17,0.10)",
     elevation: 18,
   },
+  fullscreenSheet: {
+    maxHeight: "100%",
+    minHeight: "100%",
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    paddingTop: FinSpacing.x6,
+  },
   handle: {
     alignSelf: "center",
     width: 44,
@@ -133,6 +164,14 @@ const styles = StyleSheet.create({
   headerMain: {
     flex: 1,
     gap: FinSpacing.x2,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: FinSpacing.x3,
+  },
+  headerAccessoryWrap: {
+    alignItems: "flex-end",
   },
   title: {
     fontSize: 29,

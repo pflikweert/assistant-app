@@ -263,6 +263,7 @@ export function BudioAssistantEmptyState({
   }));
 
   const emptyChips = actions.slice(0, 4);
+  const showAssistantLabel = assistantLabel.trim().length > 0;
 
   return (
     <AnimatedView
@@ -393,7 +394,9 @@ export function BudioAssistantEmptyState({
         </View>
 
         <View style={styles.copyWrap}>
-          <Text style={styles.badge}>{assistantLabel}</Text>
+          {showAssistantLabel ? (
+            <Text style={styles.badge}>{assistantLabel}</Text>
+          ) : null}
           <Text style={styles.title}>{greetingTitle}</Text>
           <Text style={styles.subtitle}>{ACTIVE_COPY.title}</Text>
           <Text style={styles.copy}>{ACTIVE_COPY.copy}</Text>
