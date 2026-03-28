@@ -820,6 +820,7 @@ describe("help-assistant-ai spending advice", () => {
     expect(postHelpAssistantSpendingAdviceCompletionMock).not.toHaveBeenCalled();
     expect(resolveUnifiedFinancialAdviceContextMock).toHaveBeenCalledTimes(1);
     const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const finalMeta = postOpenAIChatCompletionMock.mock.calls[1]?.[1];
     const systemText = (finalRequest?.messages || [])
       .filter((message: { role?: string }) => message.role === "system")
       .map((message: { content?: string }) => String(message.content || ""))
@@ -827,6 +828,7 @@ describe("help-assistant-ai spending advice", () => {
     expect(systemText).toContain("Planner-route: category_insight");
     expect(systemText).toContain("Insights-flow: category_summary");
     expect(systemText).toContain("scopedCategoryTotal: €");
+    expect(finalMeta?.useCase).toBe("help_category_insight");
     expect(result.answerText).toContain("€ 240");
   });
 
@@ -1448,6 +1450,7 @@ describe("help-assistant-ai spending advice", () => {
     expect(postHelpAssistantSpendingAdviceCompletionMock).not.toHaveBeenCalled();
     expect(resolveUnifiedFinancialAdviceContextMock).toHaveBeenCalledTimes(1);
     const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const finalMeta = postOpenAIChatCompletionMock.mock.calls[1]?.[1];
     const systemText = JSON.stringify(
       (finalRequest?.messages || [])
         .filter((message: { role?: string }) => message.role === "system")
@@ -1455,6 +1458,7 @@ describe("help-assistant-ai spending advice", () => {
     );
     expect(systemText).toContain("Planner-route: transactions_insight");
     expect(systemText).toContain("Routehint: geef alleen transactiefeiten");
+    expect(finalMeta?.useCase).toBe("help_transactions_insight");
   });
 
   it("hydrates categorySummary conditioneel via dataRequests zonder transactionFacts", async () => {
@@ -2001,7 +2005,7 @@ describe("help-assistant-ai spending advice", () => {
       .filter((message: { role?: string }) => message.role === "system")
       .map((message: { content?: string }) => String(message.content || ""))
       .join("\n");
-    expect(systemText).toContain("categoryScope=fuel");
+    expect(systemText).toContain("- categoryScope: fuel");
     expect(systemText).toContain("Truth-safe categorySummary:");
   });
 
@@ -2324,8 +2328,11 @@ describe("help-assistant-ai spending advice", () => {
       .join("\n");
     expect(systemText).toContain("monthScope=current");
     expect(systemText).toContain("merchantScope=jumbo_bv");
+    expect(systemText).toContain("Planner vraagt verduidelijking");
     expect(systemText).toContain("Hydration-beperkingen:");
-    expect(systemText).toContain("specifieke_maand_niet_beschikbaar");
+    expect(systemText).toContain(
+      "merchant_aggregaten_niet_beschikbaar_in_deze_hydrationlaag",
+    );
   });
 
   it("houdt transactionFacts privacy-safe en geeft alleen aggregaatbehoefte door", async () => {
@@ -2387,10 +2394,60 @@ describe("help-assistant-ai spending advice", () => {
       .join("\n");
     expect(systemText).toContain("Truth-safe transactionFacts:");
     expect(systemText).toContain('"merchantScope":"jumbo"');
-    expect(systemText).toContain('"answerability":"limited"');
+    expect(systemText).toContain('"answerability":"blocked"');
     expect(systemText).toContain(
       "merchant_aggregaten_niet_beschikbaar_in_deze_hydrationlaag",
     );
     expect(systemText).not.toContain("transactionId");
+  });
+
+  it("laat insightsFlow niet als tweede router werken", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "general",
+          mode: "general_help",
+          insightsFlow: "category_summary",
+          confidence: "high",
+          useScreenContext: false,
+        },
+        "planner-no-second-router-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-no-second-router-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Algemene hulp." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("kun je mij hiermee helpen?"),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const finalMeta = postOpenAIChatCompletionMock.mock.calls[1]?.[1];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain("Kanaal: general_help");
+    expect(systemText).not.toContain("Kanaal: category_insight");
+    expect(finalMeta?.useCase).toBe("help_general");
   });
 });
