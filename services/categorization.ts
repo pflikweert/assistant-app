@@ -34,8 +34,10 @@ const DEFAULT_MODEL = appEnv.OPENAI_MODEL || "gpt-4.1-mini";
 const RULE_CONFIDENCE_THRESHOLD = 0.8;
 const BACKGROUND_SWEEP_LIMIT = 100;
 const RECAT_ALL_PAGE_SIZE = 500;
-const BACKGROUND_PROCESS_BATCH_SIZE = 20;
+const BACKGROUND_PROCESS_BATCH_SIZE = 100;
 const OPENAI_BATCH_SIZE = 10;
+const DETERMINISTIC_MATCH_CONCURRENCY = 32;
+const CATEGORY_WRITE_CONCURRENCY = 12;
 const OPENAI_INTER_BATCH_DELAY_MS = 2000;
 const OPENAI_TOKEN_SAFETY_BUFFER = 250;
 const OPENAI_RETRY_ATTEMPTS = 5;
@@ -962,6 +964,29 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>,
+) {
+  if (!items.length) return;
+  const normalizedConcurrency = Math.max(1, Math.floor(concurrency));
+  let cursor = 0;
+
+  const runners = Array.from(
+    { length: Math.min(normalizedConcurrency, items.length) },
+    async () => {
+      while (cursor < items.length) {
+        const index = cursor;
+        cursor += 1;
+        await worker(items[index], index);
+      }
+    },
+  );
+
+  await Promise.all(runners);
+}
+
 async function requestOpenAICategoriesWithRetry(
   model: string,
   categories: CategoryRecord[],
@@ -1047,39 +1072,34 @@ async function requestOpenAICategoriesForBatch(
   }
 }
 
-export async function categorizeTransactions(
+function emptyCategorizationSummary(): CategorizationSummary {
+  return {
+    considered: 0,
+    updated: 0,
+    rule: 0,
+    openai: 0,
+    skipped: 0,
+    cleared: 0,
+  };
+}
+
+async function prepareCategorizationContext(
+  repo: ReturnType<typeof createSupabaseCategorizationRepository>,
   transactionIds: string[],
-  options: CategorizationRunOptions = {},
-): Promise<CategorizationSummary> {
+  options: Pick<CategorizationRunOptions, "force"> = {},
+): Promise<CategorizationPreparedContext | null> {
   const uniqueIds = Array.from(new Set(transactionIds.filter(Boolean)));
-  if (!uniqueIds.length) {
-    return {
-      considered: 0,
-      updated: 0,
-      rule: 0,
-      openai: 0,
-      skipped: 0,
-      cleared: 0,
-    };
-  }
+  if (!uniqueIds.length) return null;
 
-  const repo = createSupabaseCategorizationRepository();
-  const [allCategories, allRules, transactions] = await Promise.all([
-    repo.getCategories(),
-    repo.getActiveRules(),
-    repo.getTransactionsByIds(uniqueIds),
-  ]);
+  const [allCategories, allRules, transactions, ownAccountHashValues] =
+    await Promise.all([
+      repo.getCategories(),
+      repo.getActiveRules(),
+      repo.getTransactionsByIds(uniqueIds),
+      listBankAccountHashes(),
+    ]);
 
-  if (!allCategories.length || !transactions.length) {
-    return {
-      considered: 0,
-      updated: 0,
-      rule: 0,
-      openai: 0,
-      skipped: 0,
-      cleared: 0,
-    };
-  }
+  if (!allCategories.length || !transactions.length) return null;
 
   const leafCategories = getLeafCategories(allCategories, {
     curatedOnly: true,
@@ -1092,168 +1112,94 @@ export async function categorizeTransactions(
     categoriesById.has(rule.category_id),
   );
   const categoriesByKey = new Map(selectableCategories.map((c) => [c.key, c]));
-  const ownAccountHashes = new Set(await listBankAccountHashes());
+  const ownAccountHashes = new Set(ownAccountHashValues);
 
   const pendingTransactions = transactions.filter(
     (tx) => !tx.category_id_user && (options.force || !tx.category_id_auto),
   );
 
-  if (!pendingTransactions.length) {
-    return {
-      considered: transactions.length,
-      updated: 0,
-      rule: 0,
-      openai: 0,
-      skipped: transactions.length,
-      cleared: 0,
-    };
-  }
+  return {
+    repo,
+    transactions,
+    pendingTransactions,
+    categoriesById,
+    categoriesByKey,
+    selectableCategories,
+    activeRules,
+    ownAccountHashes,
+  };
+}
 
-  const results: CategorizationResult[] = [];
+async function runDeterministicPhase(
+  context: CategorizationPreparedContext,
+  options: Pick<CategorizationRunOptions, "force"> = {},
+): Promise<DeterministicPhaseSummary> {
+  const { pendingTransactions, categoriesById, categoriesByKey, activeRules, ownAccountHashes } =
+    context;
+
+  const resolved: CategorizationResult[] = [];
   const unresolved: TransactionCategorizationRecord[] = [];
 
-  for (const tx of pendingTransactions) {
-    const heuristicMatch = await resolveDeterministicHeuristicMatch(
-      tx,
-      categoriesByKey,
-      ownAccountHashes,
-    );
-    if (heuristicMatch) {
-      results.push({
-        transactionId: tx.id,
-        categoryId: heuristicMatch.categoryId,
-        confidence: heuristicMatch.confidence,
-        source: "rule",
-        model: heuristicMatch.model,
-        reason: heuristicMatch.reason,
-      });
-      continue;
-    }
+  const deterministicOutcomes: {
+    tx: TransactionCategorizationRecord;
+    resolved: CategorizationResult | null;
+  }[] = new Array(pendingTransactions.length);
 
-    const matched = tryRuleMatch(tx, activeRules);
-    if (matched && matched.confidence >= RULE_CONFIDENCE_THRESHOLD) {
-      results.push({
-        transactionId: tx.id,
-        categoryId: matched.categoryId,
-        confidence: matched.confidence,
-        source: "rule",
-        model: "rules-v1",
-        reason: "Matched learned pattern",
-        matchedRuleId: matched.ruleId,
-      });
-      continue;
-    }
-    unresolved.push(tx);
-  }
-
-  if (unresolved.length) {
-    const byFingerprint = new Map<string, TransactionCategorizationRecord[]>();
-    for (const tx of unresolved) {
-      const fingerprint = getTransactionFingerprint(tx);
-      const current = byFingerprint.get(fingerprint);
-      if (current) {
-        current.push(tx);
-      } else {
-        byFingerprint.set(fingerprint, [tx]);
-      }
-    }
-
-    const representatives: TransactionCategorizationRecord[] = [];
-    const repToFingerprint = new Map<string, string>();
-
-    for (const [fingerprint, group] of byFingerprint.entries()) {
-      const cached = getCachedOpenAIDecision(fingerprint);
-      const cachedCategory = cached
-        ? categoriesByKey.get(cached.categoryKey)
-        : null;
-
-      if (cached && cachedCategory) {
-        for (const tx of group) {
-          results.push({
+  await runWithConcurrency(
+    pendingTransactions,
+    DETERMINISTIC_MATCH_CONCURRENCY,
+    async (tx, index) => {
+      const heuristicMatch = await resolveDeterministicHeuristicMatch(
+        tx,
+        categoriesByKey,
+        ownAccountHashes,
+      );
+      if (heuristicMatch) {
+        deterministicOutcomes[index] = {
+          tx,
+          resolved: {
             transactionId: tx.id,
-            categoryId: cachedCategory.id,
-            confidence: cached.confidence,
-            source: "openai",
-            model: `${cached.model}:cache`,
-            reason: cached.reason || "Predicted by local cache",
-          });
-        }
-        continue;
+            categoryId: heuristicMatch.categoryId,
+            confidence: heuristicMatch.confidence,
+            source: "rule" as const,
+            model: heuristicMatch.model,
+            reason: heuristicMatch.reason,
+          },
+        };
+        return;
       }
 
-      const representative = group[0];
-      representatives.push(representative);
-      repToFingerprint.set(representative.id, fingerprint);
-    }
-
-    if (representatives.length) {
-      for (let i = 0; i < representatives.length; i += OPENAI_BATCH_SIZE) {
-        throwIfCategorizationStopped();
-        if (i > 0) {
-          await waitWithStatus(
-            OPENAI_INTER_BATCH_DELAY_MS,
-            (remainingMs) =>
-              `Volgende OpenAI batch over ${Math.ceil(remainingMs / 1000)}s.`,
-          );
-        }
-        const batch = representatives.slice(i, i + OPENAI_BATCH_SIZE);
-        let aiItems: OpenAIResult[] = [];
-
-        try {
-          aiItems = await requestOpenAICategoriesForBatch(
-            DEFAULT_MODEL,
-            selectableCategories,
-            batch,
-          );
-        } catch (error) {
-          if (stopRequested || (error as OpenAIRequestError)?.code === "stopped") {
-            throw createCategorizationStoppedError();
-          }
-          console.warn("categorization openai error", formatError(error));
-          continue;
-        }
-
-        for (const item of aiItems) {
-          const fingerprint = repToFingerprint.get(item.id);
-          if (!fingerprint) continue;
-
-          const targetCategory = categoriesByKey.get(item.category_key);
-          if (!targetCategory) continue;
-
-          const group = byFingerprint.get(fingerprint) || [];
-          const confidence = clampConfidence(Number(item.confidence ?? 0));
-          const reason = item.reason || "Predicted by model";
-
-          setCachedOpenAIDecision(fingerprint, {
-            categoryKey: targetCategory.key,
-            confidence,
-            reason,
-            model: DEFAULT_MODEL,
-            cachedAt: Date.now(),
-            hits: group.length,
-          });
-
-          for (const tx of group) {
-            results.push({
-              transactionId: tx.id,
-              categoryId: targetCategory.id,
-              confidence,
-              source: "openai",
-              model: DEFAULT_MODEL,
-              reason,
-            });
-          }
-        }
+      const matched = tryRuleMatch(tx, activeRules);
+      if (matched && matched.confidence >= RULE_CONFIDENCE_THRESHOLD) {
+        deterministicOutcomes[index] = {
+          tx,
+          resolved: {
+            transactionId: tx.id,
+            categoryId: matched.categoryId,
+            confidence: matched.confidence,
+            source: "rule" as const,
+            model: "rules-v1",
+            reason: "Matched learned pattern",
+            matchedRuleId: matched.ruleId,
+          },
+        };
+        return;
       }
+
+      deterministicOutcomes[index] = { tx, resolved: null };
+    },
+  );
+
+  for (const outcome of deterministicOutcomes) {
+    if (outcome.resolved) {
+      resolved.push(outcome.resolved);
+      continue;
     }
+    unresolved.push(outcome.tx);
   }
 
-  const txMap = new Map(transactions.map((tx) => [tx.id, tx]));
-  const resolvedTransactionIds = new Set(
-    results.map((result) => result.transactionId),
-  );
+  const resolvedTransactionIds = new Set(resolved.map((result) => result.transactionId));
   const staleOtherAutoIds: string[] = [];
-
   if (options.force) {
     for (const tx of pendingTransactions) {
       if (resolvedTransactionIds.has(tx.id)) continue;
@@ -1267,43 +1213,266 @@ export async function categorizeTransactions(
     }
   }
 
-  if (staleOtherAutoIds.length) {
-    const chunkSize = 200;
-    for (let i = 0; i < staleOtherAutoIds.length; i += chunkSize) {
-      await repo.clearAutoCategories(staleOtherAutoIds.slice(i, i + chunkSize));
+  return {
+    considered: pendingTransactions.length,
+    resolved,
+    unresolved,
+    staleOtherAutoIds,
+  };
+}
+
+async function runOpenAIPhase(
+  categoriesByKey: Map<string, CategoryRecord>,
+  selectableCategories: CategoryRecord[],
+  unresolved: TransactionCategorizationRecord[],
+  options: {
+    onProgress?: (input: {
+      remaining: number;
+      totalRepresentatives: number;
+      resolvedTransactions: number;
+      batchNumber: number;
+      batchTotal: number;
+    }) => void;
+  } = {},
+): Promise<OpenAIPhaseSummary> {
+  if (!unresolved.length) {
+    return { resolved: [], unresolved: [] };
+  }
+
+  const byFingerprint = new Map<string, TransactionCategorizationRecord[]>();
+  for (const tx of unresolved) {
+    const fingerprint = getTransactionFingerprint(tx);
+    const current = byFingerprint.get(fingerprint);
+    if (current) {
+      current.push(tx);
+    } else {
+      byFingerprint.set(fingerprint, [tx]);
     }
   }
 
-  for (const result of results) {
-    const tx = txMap.get(result.transactionId);
-    if (!tx) continue;
+  const resolved: CategorizationResult[] = [];
+  const representatives: TransactionCategorizationRecord[] = [];
+  const repToFingerprint = new Map<string, string>();
 
-    const previousCategoryId =
-      tx.category_id_user || tx.category_id_auto || null;
-    if (!categoriesById.has(result.categoryId)) continue;
+  for (const [fingerprint, group] of byFingerprint.entries()) {
+    const cached = getCachedOpenAIDecision(fingerprint);
+    const cachedCategory = cached ? categoriesByKey.get(cached.categoryKey) : null;
 
-    await repo.updateAutoCategory({
-      transactionId: result.transactionId,
-      categoryId: result.categoryId,
-      confidence: result.confidence,
-      source: result.source,
-      model: result.model,
-    });
-
-    await repo.insertAudit({
-      transactionId: result.transactionId,
-      previousCategoryId,
-      newCategoryId: result.categoryId,
-      source: result.source,
-      model: result.model,
-      confidence: result.confidence,
-      reason: result.reason,
-    });
-
-    if (result.source === "rule" && result.matchedRuleId) {
-      await repo.incrementRuleHit(result.matchedRuleId);
+    if (cached && cachedCategory) {
+      for (const tx of group) {
+        resolved.push({
+          transactionId: tx.id,
+          categoryId: cachedCategory.id,
+          confidence: cached.confidence,
+          source: "openai",
+          model: `${cached.model}:cache`,
+          reason: cached.reason || "Predicted by local cache",
+        });
+      }
+      continue;
     }
+
+    const representative = group[0];
+    representatives.push(representative);
+    repToFingerprint.set(representative.id, fingerprint);
   }
+
+  const totalRepresentatives = representatives.length;
+  const batchTotal = Math.max(Math.ceil(totalRepresentatives / OPENAI_BATCH_SIZE), 0);
+  options.onProgress?.({
+    remaining: totalRepresentatives,
+    totalRepresentatives,
+    resolvedTransactions: resolved.length,
+    batchNumber: batchTotal > 0 ? 1 : 0,
+    batchTotal,
+  });
+
+  for (let i = 0; i < representatives.length; i += OPENAI_BATCH_SIZE) {
+    throwIfCategorizationStopped();
+    if (pauseRequested) break;
+
+    const remaining = representatives.length - i;
+    const batchNumber = Math.floor(i / OPENAI_BATCH_SIZE) + 1;
+    options.onProgress?.({
+      remaining,
+      totalRepresentatives,
+      resolvedTransactions: resolved.length,
+      batchNumber,
+      batchTotal,
+    });
+
+    if (i > 0) {
+      await waitWithStatus(
+        OPENAI_INTER_BATCH_DELAY_MS,
+        (remainingMs) =>
+          `Volgende OpenAI batch over ${Math.ceil(remainingMs / 1000)}s.`,
+      );
+    }
+    const batch = representatives.slice(i, i + OPENAI_BATCH_SIZE);
+    let aiItems: OpenAIResult[] = [];
+
+    try {
+      aiItems = await requestOpenAICategoriesForBatch(
+        DEFAULT_MODEL,
+        selectableCategories,
+        batch,
+      );
+    } catch (error) {
+      if (stopRequested || (error as OpenAIRequestError)?.code === "stopped") {
+        throw createCategorizationStoppedError();
+      }
+      console.warn("categorization openai error", formatError(error));
+      continue;
+    }
+
+    for (const item of aiItems) {
+      const fingerprint = repToFingerprint.get(item.id);
+      if (!fingerprint) continue;
+
+      const targetCategory = categoriesByKey.get(item.category_key);
+      if (!targetCategory) continue;
+
+      const group = byFingerprint.get(fingerprint) || [];
+      const confidence = clampConfidence(Number(item.confidence ?? 0));
+      const reason = item.reason || "Predicted by model";
+
+      setCachedOpenAIDecision(fingerprint, {
+        categoryKey: targetCategory.key,
+        confidence,
+        reason,
+        model: DEFAULT_MODEL,
+        cachedAt: Date.now(),
+        hits: group.length,
+      });
+
+      for (const tx of group) {
+        resolved.push({
+          transactionId: tx.id,
+          categoryId: targetCategory.id,
+          confidence,
+          source: "openai",
+          model: DEFAULT_MODEL,
+          reason,
+        });
+      }
+    }
+
+    options.onProgress?.({
+      remaining: Math.max(representatives.length - (i + OPENAI_BATCH_SIZE), 0),
+      totalRepresentatives,
+      resolvedTransactions: resolved.length,
+      batchNumber,
+      batchTotal,
+    });
+  }
+
+  const resolvedIds = new Set(resolved.map((entry) => entry.transactionId));
+  return {
+    resolved,
+    unresolved: unresolved.filter((tx) => !resolvedIds.has(tx.id)),
+  };
+}
+
+async function applyCategorizationResults(
+  repo: ReturnType<typeof createSupabaseCategorizationRepository>,
+  transactions: TransactionCategorizationRecord[],
+  categoriesById: Map<string, CategoryRecord>,
+  results: CategorizationResult[],
+) {
+  if (!results.length) return;
+  const txMap = new Map(transactions.map((tx) => [tx.id, tx]));
+
+  await runWithConcurrency(
+    results,
+    CATEGORY_WRITE_CONCURRENCY,
+    async (result) => {
+      const tx = txMap.get(result.transactionId);
+      if (!tx) return;
+
+      const previousCategoryId = tx.category_id_user || tx.category_id_auto || null;
+      if (!categoriesById.has(result.categoryId)) return;
+
+      await repo.updateAutoCategory({
+        transactionId: result.transactionId,
+        categoryId: result.categoryId,
+        confidence: result.confidence,
+        source: result.source,
+        model: result.model,
+      });
+
+      await repo.insertAudit({
+        transactionId: result.transactionId,
+        previousCategoryId,
+        newCategoryId: result.categoryId,
+        source: result.source,
+        model: result.model,
+        confidence: result.confidence,
+        reason: result.reason,
+      });
+
+      if (result.source === "rule" && result.matchedRuleId) {
+        await repo.incrementRuleHit(result.matchedRuleId);
+      }
+    },
+  );
+}
+
+async function clearStaleOtherAutoCategories(
+  repo: ReturnType<typeof createSupabaseCategorizationRepository>,
+  transactionIds: string[],
+) {
+  if (!transactionIds.length) return;
+  const chunkSize = 200;
+  for (let i = 0; i < transactionIds.length; i += chunkSize) {
+    await repo.clearAutoCategories(transactionIds.slice(i, i + chunkSize));
+  }
+}
+
+export async function categorizeTransactions(
+  transactionIds: string[],
+  options: CategorizationRunOptions = {},
+): Promise<CategorizationSummary> {
+  const uniqueIds = Array.from(new Set(transactionIds.filter(Boolean)));
+  if (!uniqueIds.length) return emptyCategorizationSummary();
+
+  const repo = createSupabaseCategorizationRepository();
+  const context = await prepareCategorizationContext(repo, uniqueIds, {
+    force: options.force,
+  });
+  if (!context) return emptyCategorizationSummary();
+
+  if (!context.pendingTransactions.length) {
+    return {
+      considered: context.transactions.length,
+      updated: 0,
+      rule: 0,
+      openai: 0,
+      skipped: context.transactions.length,
+      cleared: 0,
+    };
+  }
+
+  const deterministic = await runDeterministicPhase(context, {
+    force: options.force,
+  });
+  const openai = await runOpenAIPhase(
+    context.categoriesByKey,
+    context.selectableCategories,
+    deterministic.unresolved,
+  );
+  const unresolvedAfterAiIds = new Set(openai.unresolved.map((tx) => tx.id));
+  const staleOtherAutoIds = deterministic.staleOtherAutoIds.filter((id) =>
+    unresolvedAfterAiIds.has(id),
+  );
+
+  const results = [...deterministic.resolved, ...openai.resolved];
+  await clearStaleOtherAutoCategories(repo, staleOtherAutoIds);
+  await applyCategorizationResults(
+    repo,
+    context.transactions,
+    context.categoriesById,
+    results,
+  );
 
   try {
     await enrichTransactionAnalysis(uniqueIds);
@@ -1325,16 +1494,15 @@ export async function categorizeTransactions(
   }
 
   const cleared = staleOtherAutoIds.length;
-  const updated = results.length + cleared;
-  const rule = results.filter((result) => result.source === "rule").length;
-  const openai = results.filter((result) => result.source === "openai").length;
-
+  const rule = deterministic.resolved.length;
+  const openaiCount = openai.resolved.length;
+  const updated = rule + openaiCount + cleared;
   return {
-    considered: pendingTransactions.length,
+    considered: deterministic.considered,
     updated,
     rule,
-    openai,
-    skipped: Math.max(pendingTransactions.length - updated, 0),
+    openai: openaiCount,
+    skipped: Math.max(deterministic.considered - updated, 0),
     cleared,
   };
 }
@@ -1343,17 +1511,29 @@ async function flushQueuedCategorization() {
   if (isBackgroundFlushRunning) return;
   isBackgroundFlushRunning = true;
 
+  const repo = createSupabaseCategorizationRepository();
+  const allContextTransactions = new Map<string, TransactionCategorizationRecord>();
+  const allConsideredIds = new Set<string>();
+  const allUnresolved: TransactionCategorizationRecord[] = [];
+  const allStaleOtherAutoCandidateIds = new Set<string>();
+  let sharedCategoriesById: Map<string, CategoryRecord> | null = null;
+  let sharedCategoriesByKey: Map<string, CategoryRecord> | null = null;
+  let sharedSelectableCategories: CategoryRecord[] | null = null;
+
   let processedCount = 0;
   let updatedCount = 0;
   let ruleCount = 0;
   let openAiCount = 0;
+  let deferredOpenAiCount = 0;
   let skippedCount = 0;
+  let clearedCount = 0;
   let totalCount = queuedTransactionIds.size;
 
   try {
     updateCategorizationStatus((current) => ({
       ...current,
       phase: "running",
+      phaseLabel: "deterministic",
       totalCount: Math.max(current.totalCount, totalCount),
       batchOwnerUserId: queuedBatchOwnerUserId,
       queuedCount: queuedTransactionIds.size,
@@ -1361,6 +1541,7 @@ async function flushQueuedCategorization() {
       updatedCount,
       ruleCount,
       openAiCount,
+      deferredOpenAiCount,
       skippedCount,
       message: "Categorisatie draait op de achtergrond.",
       lastError: null,
@@ -1375,12 +1556,14 @@ async function flushQueuedCategorization() {
         updateCategorizationStatus((current) => ({
           ...current,
           phase: "completed",
+          phaseLabel: null,
           batchOwnerUserId: queuedBatchOwnerUserId,
           queuedCount: 0,
           processedCount,
           updatedCount,
           ruleCount,
           openAiCount,
+          deferredOpenAiCount,
           skippedCount,
           message: "Achtergrondcategorisatie gestopt.",
           lastCompletedAt: new Date().toISOString(),
@@ -1393,15 +1576,20 @@ async function flushQueuedCategorization() {
       }
 
       if (pauseRequested) {
+        for (const tx of allUnresolved) {
+          queuedTransactionIds.add(tx.id);
+        }
         updateCategorizationStatus((current) => ({
           ...current,
           phase: "paused",
+          phaseLabel: "deterministic",
           batchOwnerUserId: queuedBatchOwnerUserId,
           queuedCount: queuedTransactionIds.size,
           processedCount,
           updatedCount,
           ruleCount,
           openAiCount,
+          deferredOpenAiCount,
           skippedCount,
           message: "Achtergrondcategorisatie is gepauzeerd.",
           isPauseRequested: true,
@@ -1420,23 +1608,28 @@ async function flushQueuedCategorization() {
         totalCount,
         processedCount + batchIds.length + queuedTransactionIds.size,
       );
-      const summary = await categorizeTransactions(batchIds, {
+      const context = await prepareCategorizationContext(repo, batchIds, {
         force: forceQueuedRecategorization,
-        scheduleForecastRefresh: false,
       });
-      processedCount += summary.considered;
-      updatedCount += summary.updated;
-      ruleCount += summary.rule;
-      openAiCount += summary.openai;
-      skippedCount += summary.skipped;
-      const pausedAfterBatch = pauseRequested && !stopRequested;
-      const stoppedWithClearedQueue =
-        stopRequested && queuedTransactionIds.size === 0;
 
-      if (pausedAfterBatch) {
+      if (!context) {
+        continue;
+      }
+
+      if (!sharedCategoriesById) {
+        sharedCategoriesById = context.categoriesById;
+        sharedCategoriesByKey = context.categoriesByKey;
+        sharedSelectableCategories = context.selectableCategories;
+      }
+
+      if (!context.pendingTransactions.length) {
+        processedCount += context.transactions.length;
+        skippedCount = Math.max(processedCount - updatedCount, 0);
         updateCategorizationStatus((current) => ({
           ...current,
-          phase: "paused",
+          phase: "running",
+          phaseLabel: "deterministic",
+          batchOwnerUserId: queuedBatchOwnerUserId,
           queuedCount: queuedTransactionIds.size,
           totalCount: Math.max(
             processedCount + queuedTransactionIds.size,
@@ -1446,6 +1639,72 @@ async function flushQueuedCategorization() {
           updatedCount,
           ruleCount,
           openAiCount,
+          deferredOpenAiCount,
+          skippedCount,
+          message:
+            queuedTransactionIds.size > 0
+              ? "Categorisatie draait op de achtergrond."
+              : "Deterministische fase afgerond.",
+          lastError: null,
+          lastRunMode: current.mode,
+          isPauseRequested: false,
+          isStopRequested: false,
+        }));
+        continue;
+      }
+
+      for (const tx of context.transactions) {
+        allContextTransactions.set(tx.id, tx);
+      }
+
+      const deterministic = await runDeterministicPhase(context, {
+        force: forceQueuedRecategorization,
+      });
+      await applyCategorizationResults(
+        repo,
+        context.transactions,
+        context.categoriesById,
+        deterministic.resolved,
+      );
+
+      for (const tx of context.pendingTransactions) {
+        allConsideredIds.add(tx.id);
+      }
+      for (const tx of deterministic.unresolved) {
+        allUnresolved.push(tx);
+      }
+      for (const id of deterministic.staleOtherAutoIds) {
+        allStaleOtherAutoCandidateIds.add(id);
+      }
+
+      processedCount += deterministic.considered;
+      ruleCount += deterministic.resolved.length;
+      deferredOpenAiCount = allUnresolved.length;
+      updatedCount = ruleCount + openAiCount + clearedCount;
+      skippedCount = Math.max(processedCount - updatedCount, 0);
+
+      const pausedAfterBatch = pauseRequested && !stopRequested;
+      const stoppedWithClearedQueue =
+        stopRequested && queuedTransactionIds.size === 0;
+
+      if (pausedAfterBatch) {
+        for (const tx of allUnresolved) {
+          queuedTransactionIds.add(tx.id);
+        }
+        updateCategorizationStatus((current) => ({
+          ...current,
+          phase: "paused",
+          phaseLabel: "deterministic",
+          queuedCount: queuedTransactionIds.size,
+          totalCount: Math.max(
+            processedCount + queuedTransactionIds.size,
+            totalCount,
+          ),
+          processedCount,
+          updatedCount,
+          ruleCount,
+          openAiCount,
+          deferredOpenAiCount,
           skippedCount,
           message: "Achtergrondcategorisatie is gepauzeerd.",
           lastCompletedAt: current.lastCompletedAt,
@@ -1459,10 +1718,12 @@ async function flushQueuedCategorization() {
 
       updateCategorizationStatus((current) => ({
         ...current,
-        phase:
-          queuedTransactionIds.size > 0 && !stoppedWithClearedQueue
-            ? "running"
-            : "completed",
+        phase: queuedTransactionIds.size > 0 && !stoppedWithClearedQueue
+          ? "running"
+          : "completed",
+        phaseLabel: queuedTransactionIds.size > 0 && !stoppedWithClearedQueue
+          ? "deterministic"
+          : null,
         batchOwnerUserId: queuedBatchOwnerUserId,
         queuedCount: queuedTransactionIds.size,
         totalCount: Math.max(
@@ -1473,6 +1734,7 @@ async function flushQueuedCategorization() {
         updatedCount,
         ruleCount,
         openAiCount,
+        deferredOpenAiCount,
         skippedCount,
         message: stoppedWithClearedQueue
           ? "Achtergrondcategorisatie gestopt. Wachtrij is leeggemaakt."
@@ -1489,20 +1751,128 @@ async function flushQueuedCategorization() {
         isStopRequested:
           !stoppedWithClearedQueue && queuedTransactionIds.size > 0,
       }));
+    }
 
-      if (queuedTransactionIds.size === 0 && !stoppedWithClearedQueue) {
-        try {
-          await requestForecastRefresh({
-            reason: "categorization_batch",
-            eager: true,
-          });
-        } catch (error) {
-          console.warn(
-            "background cashflow forecast refresh scheduling failed",
-            formatError(error),
+    if (!pauseRequested && !stopRequested && allUnresolved.length > 0) {
+      if (sharedCategoriesByKey && sharedSelectableCategories) {
+        updateCategorizationStatus((current) => ({
+          ...current,
+          phase: "running",
+          phaseLabel: "openai",
+          deferredOpenAiCount: allUnresolved.length,
+          message: "OpenAI categorisatie wordt uitgevoerd op resterende transacties.",
+        }));
+
+        const openai = await runOpenAIPhase(
+          sharedCategoriesByKey,
+          sharedSelectableCategories,
+          allUnresolved,
+          {
+            onProgress: ({
+              remaining,
+              resolvedTransactions,
+              batchNumber,
+              batchTotal,
+            }) => {
+              updateCategorizationStatus((current) =>
+                current.phase === "running"
+                  ? {
+                      ...current,
+                      phaseLabel: "openai",
+                      deferredOpenAiCount: remaining,
+                      openAiCount: resolvedTransactions,
+                      updatedCount:
+                        ruleCount + resolvedTransactions + clearedCount,
+                      skippedCount: Math.max(
+                        processedCount -
+                          (ruleCount + resolvedTransactions + clearedCount),
+                        0,
+                      ),
+                      message:
+                        batchTotal > 0
+                          ? `OpenAI batch ${batchNumber}/${batchTotal} • ${remaining} resterend.`
+                          : "OpenAI verwerkt resterende transacties.",
+                    }
+                  : current,
+              );
+            },
+          },
+        );
+
+        const unresolvedAfterAiIds = new Set(openai.unresolved.map((tx) => tx.id));
+        const staleOtherAutoIds = Array.from(allStaleOtherAutoCandidateIds).filter((id) =>
+          unresolvedAfterAiIds.has(id),
+        );
+        await clearStaleOtherAutoCategories(repo, staleOtherAutoIds);
+
+        if (sharedCategoriesById) {
+          await applyCategorizationResults(
+            repo,
+            Array.from(allContextTransactions.values()),
+            sharedCategoriesById,
+            openai.resolved,
           );
         }
+
+        openAiCount = openai.resolved.length;
+        clearedCount = staleOtherAutoIds.length;
+        deferredOpenAiCount = openai.unresolved.length;
+        updatedCount = ruleCount + openAiCount + clearedCount;
+        skippedCount = Math.max(processedCount - updatedCount, 0);
       }
+    } else if (!pauseRequested && !stopRequested && allStaleOtherAutoCandidateIds.size) {
+      await clearStaleOtherAutoCategories(
+        repo,
+        Array.from(allStaleOtherAutoCandidateIds),
+      );
+      clearedCount = allStaleOtherAutoCandidateIds.size;
+      updatedCount = ruleCount + openAiCount + clearedCount;
+      skippedCount = Math.max(processedCount - updatedCount, 0);
+    }
+
+    if (!pauseRequested && !stopRequested && allConsideredIds.size) {
+      try {
+        await enrichTransactionAnalysis(Array.from(allConsideredIds));
+      } catch (error) {
+        console.warn("analysis enrichment failed", formatError(error));
+      }
+
+      try {
+        await requestForecastRefresh({
+          reason: "categorization_batch",
+          eager: true,
+        });
+      } catch (error) {
+        console.warn(
+          "background cashflow forecast refresh scheduling failed",
+          formatError(error),
+        );
+      }
+    }
+
+    if (!pauseRequested) {
+      updateCategorizationStatus((current) => ({
+        ...current,
+        phase: "completed",
+        phaseLabel: null,
+        batchOwnerUserId: queuedBatchOwnerUserId,
+        queuedCount: queuedTransactionIds.size,
+        totalCount: Math.max(processedCount + queuedTransactionIds.size, totalCount),
+        processedCount,
+        updatedCount,
+        ruleCount,
+        openAiCount,
+        deferredOpenAiCount,
+        skippedCount,
+        message: stopRequested
+          ? "Achtergrondcategorisatie gestopt."
+          : "Achtergrondcategorisatie afgerond.",
+        lastCompletedAt: new Date().toISOString(),
+        lastError: null,
+        lastRunMode: current.mode,
+        isPauseRequested: false,
+        isStopRequested: false,
+      }));
     }
   } catch (error) {
     if (stopRequested || (error as OpenAIRequestError)?.code === "stopped") {
@@ -1511,12 +1881,14 @@ async function flushQueuedCategorization() {
       updateCategorizationStatus((current) => ({
         ...current,
         phase: "completed",
+        phaseLabel: null,
         batchOwnerUserId: queuedBatchOwnerUserId,
         queuedCount: 0,
         processedCount,
         updatedCount,
         ruleCount,
         openAiCount,
+        deferredOpenAiCount,
         skippedCount,
         message:
           removedFromQueue > 0
@@ -1533,12 +1905,14 @@ async function flushQueuedCategorization() {
     updateCategorizationStatus((current) => ({
       ...current,
       phase: "error",
+      phaseLabel: null,
       batchOwnerUserId: queuedBatchOwnerUserId,
       queuedCount: queuedTransactionIds.size,
       processedCount,
       updatedCount,
       ruleCount,
       openAiCount,
+      deferredOpenAiCount,
       skippedCount,
       message: "Achtergrondcategorisatie is mislukt.",
       lastError: formatError(error),
@@ -1579,9 +1953,11 @@ function queueTransactionsForCategorization(
     updateCategorizationStatus((current) => ({
       ...current,
       phase: "completed",
+      phaseLabel: null,
       mode,
       batchOwnerUserId: queuedBatchOwnerUserId,
       queuedCount: 0,
+      deferredOpenAiCount: 0,
       message:
         mode === "recategorize-all"
           ? "Geen transacties gevonden om opnieuw te categoriseren."
@@ -1595,6 +1971,7 @@ function queueTransactionsForCategorization(
   updateCategorizationStatus((current) => ({
     ...current,
     phase: isBackgroundFlushRunning ? current.phase : "queued",
+    phaseLabel: isBackgroundFlushRunning ? current.phaseLabel : null,
     mode,
     lastRunMode: mode,
     batchOwnerUserId: queuedBatchOwnerUserId,
@@ -1609,6 +1986,9 @@ function queueTransactionsForCategorization(
           ? "Bestaande ongecategoriseerde transacties worden ingepland."
           : "Nieuwe import staat klaar voor categorisatie.",
     lastError: null,
+    deferredOpenAiCount: isBackgroundFlushRunning
+      ? current.deferredOpenAiCount
+      : 0,
     isPauseRequested: false,
     isStopRequested: false,
   }));
@@ -1643,6 +2023,7 @@ export function runPendingCategorizationInBackground(
         updateCategorizationStatus((current) => ({
           ...current,
           phase: "error",
+          phaseLabel: null,
           mode: "pending",
           message: "Sweep van ongecategoriseerde transacties mislukt.",
           lastError: formatError(error),
@@ -1679,6 +2060,7 @@ export function runRecategorizationForAllInBackground(
         updateCategorizationStatus((current) => ({
           ...current,
           phase: "error",
+          phaseLabel: null,
           mode: "recategorize-all",
           message: "Alles hercategoriseren is mislukt.",
           lastError: formatError(error),
@@ -1695,6 +2077,7 @@ export function pauseBackgroundCategorization() {
   updateCategorizationStatus((current) => ({
     ...current,
     phase: "paused",
+    phaseLabel: current.phaseLabel || "deterministic",
     queuedCount: queuedTransactionIds.size,
     isPauseRequested: true,
     isStopRequested: false,
@@ -1710,6 +2093,8 @@ export function resumeBackgroundCategorization() {
   updateCategorizationStatus((current) => ({
     ...current,
     phase: queuedTransactionIds.size ? "queued" : "idle",
+    phaseLabel: null,
+    deferredOpenAiCount: 0,
     isPauseRequested: false,
     isStopRequested: false,
     message: queuedTransactionIds.size
@@ -1738,8 +2123,10 @@ export function stopBackgroundCategorization() {
     updateCategorizationStatus((current) => ({
       ...current,
       phase: "completed",
+      phaseLabel: null,
       queuedCount: 0,
       totalCount: current.processedCount,
+      deferredOpenAiCount: 0,
       isStopRequested: false,
       isPauseRequested: false,
       message:
@@ -1754,6 +2141,7 @@ export function stopBackgroundCategorization() {
   updateCategorizationStatus((current) => ({
     ...current,
     phase: "completed",
+    phaseLabel: null,
     queuedCount: 0,
     isStopRequested: true,
     isPauseRequested: false,
@@ -1776,7 +2164,11 @@ export function clearQueuedCategorizationQueue() {
   updateCategorizationStatus((current) => ({
     ...current,
     phase: isBackgroundFlushRunning ? current.phase : "idle",
+    phaseLabel: isBackgroundFlushRunning ? current.phaseLabel : null,
     queuedCount: 0,
+    deferredOpenAiCount: isBackgroundFlushRunning
+      ? current.deferredOpenAiCount
+      : 0,
     isStopRequested: false,
     isPauseRequested: false,
     message: isBackgroundFlushRunning
