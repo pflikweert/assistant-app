@@ -79,19 +79,52 @@ function createJsonResponse(content: unknown, id: string) {
 
 function createPlannerDecisionResponse(
   partial: Partial<{
-    route: "issue_intake" | "spending_advice" | "general";
-    mode: "general_help" | "issue_intake" | "space_summary" | "spending_decision";
+    route:
+      | "issue_intake"
+      | "spending_advice"
+      | "general"
+      | "transactions_insight"
+      | "category_insight"
+      | "screen_explanation";
+    mode:
+      | "general_help"
+      | "issue_intake"
+      | "space_summary"
+      | "spending_decision"
+      | "transaction_lookup"
+      | "category_summary"
+      | "screen_help";
+    insightsFlow:
+      | "general_reasoning"
+      | "spending_overview"
+      | "category_summary"
+      | "transaction_facts"
+      | "screen_context"
+      | "issue_intake"
+      | "none";
     confidence: "low" | "medium" | "high";
     needsClarification: boolean;
+    continueActiveFlow: boolean;
+    activeFlowInfluence: "none" | "low" | "medium" | "high";
     requires: {
       monthBudget: boolean;
       cashflowSafety: boolean;
       expectedEndBalance: boolean;
-      categoryStatus: boolean;
-      weekContext: boolean;
+      categorySummary: boolean;
+      transactionFacts: boolean;
       screenExplanation: boolean;
     };
-    categoryHint: "groceries" | "fuel" | "housing" | "none";
+    dataRequests: {
+      monthScope: "current" | "previous" | "specified" | "none";
+      categoryScope: string;
+      merchantScope: string;
+      transactionQuestionType:
+        | "merchant_total"
+        | "merchant_frequency"
+        | "category_places"
+        | "category_total"
+        | "none";
+    };
     useScreenContext: boolean;
   }>,
   id: string,
@@ -100,17 +133,25 @@ function createPlannerDecisionResponse(
     {
       route: "general",
       mode: "general_help",
+      insightsFlow: "general_reasoning",
       confidence: "medium",
       needsClarification: false,
+      continueActiveFlow: false,
+      activeFlowInfluence: "none",
       requires: {
         monthBudget: false,
         cashflowSafety: false,
         expectedEndBalance: false,
-        categoryStatus: false,
-        weekContext: false,
+        categorySummary: false,
+        transactionFacts: false,
         screenExplanation: false,
       },
-      categoryHint: "none",
+      dataRequests: {
+        monthScope: "none",
+        categoryScope: "none",
+        merchantScope: "none",
+        transactionQuestionType: "none",
+      },
       useScreenContext: false,
       ...partial,
     },
@@ -718,7 +759,7 @@ describe("help-assistant-ai spending advice", () => {
     expect(result.answerText).toContain("budget");
   });
 
-  it("routes category spend questions to spending advice even when the router is generic", async () => {
+  it("routes category spend questions to category insight instead of spending advice", async () => {
     postOpenAIChatCompletionMock.mockResolvedValueOnce(
       createJsonResponse(
         {
@@ -743,7 +784,7 @@ describe("help-assistant-ai spending advice", () => {
         "router-category-spend",
       ),
     );
-    postHelpAssistantSpendingAdviceCompletionMock.mockResolvedValue({
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
       ok: true,
       text: async () =>
         JSON.stringify({
@@ -752,13 +793,7 @@ describe("help-assistant-ai spending advice", () => {
           choices: [
             {
               message: {
-                content: JSON.stringify({
-                  conclusion: "Je hebt deze maand € 240 aan boodschappen uitgegeven.",
-                  why: "De uitgavenverdeling laat boodschappen als aparte categorie zien.",
-                  risk: "Als dit tempo doorloopt, blijft er minder ruimte over voor de rest van de maand.",
-                  nextStep: "Kijk of je dit bedrag wilt vergelijken met je budget of met vorige maand.",
-                  confidence: "high",
-                }),
+                content: "Je hebt deze maand € 240 aan boodschappen uitgegeven.",
               },
             },
           ],
@@ -782,10 +817,17 @@ describe("help-assistant-ai spending advice", () => {
       ),
     });
 
-    expect(postHelpAssistantSpendingAdviceCompletionMock).toHaveBeenCalledTimes(1);
+    expect(postHelpAssistantSpendingAdviceCompletionMock).not.toHaveBeenCalled();
     expect(resolveUnifiedFinancialAdviceContextMock).toHaveBeenCalledTimes(1);
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("Planner-route: category_insight");
+    expect(systemText).toContain("Insights-flow: category_summary");
+    expect(systemText).toContain("scopedCategoryTotal: €");
     expect(result.answerText).toContain("€ 240");
-    expect(result.answerText).toContain("boodschappen");
   });
 
   it("parses issue intake JSON with type and context metadata", async () => {
@@ -967,11 +1009,12 @@ describe("help-assistant-ai spending advice", () => {
             monthBudget: true,
             cashflowSafety: true,
             expectedEndBalance: false,
-            categoryStatus: true,
-            weekContext: true,
+            categorySummary: true,
+            transactionFacts: false,
             screenExplanation: false,
           },
-          categoryHint: "groceries",
+          continueActiveFlow: false,
+          activeFlowInfluence: "low",
           useScreenContext: false,
         },
         "planner-spending-1",
@@ -1026,10 +1069,8 @@ describe("help-assistant-ai spending advice", () => {
     expect(joined).toContain("Vraagtype: ruimtevraag");
     expect(joined).toContain("SpendingAdvice truth-safe payload JSON");
     expect(joined).toContain("Categoriecontext:");
-    expect(joined).toContain("Weekbudget resterend");
-    expect(joined.indexOf("Maandbudget:")).toBeLessThan(
-      joined.indexOf("Weekbudget resterend"),
-    );
+    expect(joined).not.toContain("Weekbudget resterend");
+    expect(joined).toContain('"weekContext":false');
     expect(joined).not.toContain(
       "Je bent de Budio Assistent in een Nederlandse consumenten-app",
     );
@@ -1047,11 +1088,12 @@ describe("help-assistant-ai spending advice", () => {
             monthBudget: true,
             cashflowSafety: false,
             expectedEndBalance: true,
-            categoryStatus: true,
-            weekContext: true,
+            categorySummary: true,
+            transactionFacts: false,
             screenExplanation: false,
           },
-          categoryHint: "fuel",
+          continueActiveFlow: false,
+          activeFlowInfluence: "low",
           useScreenContext: false,
         },
         "planner-fuel-1",
@@ -1194,13 +1236,1161 @@ describe("help-assistant-ai spending advice", () => {
     });
 
     const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(2);
+    expect(systemText).toContain("Je bent de Budio Assistent voor chat-first idee- en issue-intake.");
+    expect(systemText).not.toContain("Je bent de Budio AI Buddy voor bestedingsruimte-vragen.");
+  });
+
+  it("allows route switch from active issue flow to spending advice on clear intent shift", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "general",
+          mode: "general_help",
+          confidence: "medium",
+          needsClarification: false,
+          continueActiveFlow: true,
+          activeFlowInfluence: "high",
+          useScreenContext: false,
+        },
+        "planner-shift-1",
+      ),
+    );
+    postHelpAssistantSpendingAdviceCompletionMock.mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-shift-1",
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  conclusion: "Dat kan waarschijnlijk nog, maar blijf voorzichtig.",
+                  why: "Je maandruimte en cashflow hebben nog beperkte marge.",
+                  risk: "Extra uitgaven later kunnen je ruimte snel verkleinen.",
+                  nextStep: "Kies een lager bedrag als je nog onzeker bent.",
+                }),
+              },
+            },
+          ],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("Kan ik nog 40 euro uitgeven deze maand?"),
+      activeFlow: {
+        route: "issue_intake",
+        mode: "issue_intake",
+        status: "collecting",
+      },
+    });
+
+    expect(postHelpAssistantSpendingAdviceCompletionMock).toHaveBeenCalledTimes(1);
+    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues active issue flow on short clarification replies", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "general",
+          mode: "general_help",
+          confidence: "medium",
+          needsClarification: false,
+          continueActiveFlow: false,
+          activeFlowInfluence: "low",
+        },
+        "planner-cont-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-cont-1",
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  meta: {
+                    route: "issue_intake",
+                    type: "issue",
+                    subtype: "issue",
+                    confidence: "medium",
+                    state: "collecting",
+                    needsClarification: true,
+                    context: {
+                      screenId: "budget",
+                      screenTitle: "Budget",
+                      routeName: "/budget",
+                      platform: "web",
+                      periodLabel: "maart 2026",
+                    },
+                  },
+                  answerText: "Waar zie je dit het vaakst terug?",
+                  summary: "Budget loopt niet gelijk",
+                  featureArea: "Budget",
+                  userNeed: "De gebruiker ziet afwijking",
+                  proposedChange: "Beter inzicht in oorzaak",
+                  isReadyForSubmission: false,
+                }),
+              },
+            },
+          ],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "budget",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        remainingVariableBudget: 120,
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("vooral bij boodschappen"),
+      activeFlow: {
+        route: "issue_intake",
+        mode: "issue_intake",
+        status: "collecting",
+      },
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
     const systemText = JSON.stringify(
       (finalRequest?.messages || [])
         .filter((message: { role?: string }) => message.role === "system")
         .map((message: { content?: string }) => String(message.content || "")),
     );
-    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(2);
-    expect(systemText).toContain("Je bent de Budio Assistent voor chat-first idee- en issue-intake.");
-    expect(systemText).not.toContain("Je bent de Budio AI Buddy voor bestedingsruimte-vragen.");
+    expect(systemText).toContain(
+      "Je bent de Budio Assistent voor chat-first idee- en issue-intake.",
+    );
+    expect(systemText).not.toContain(
+      "Je bent de Budio AI Buddy voor bestedingsruimte-vragen.",
+    );
+  });
+
+  it("routes transactions_insight through general final channel with limitation prompt", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "transactions_insight",
+          mode: "transaction_lookup",
+          confidence: "high",
+          needsClarification: true,
+          continueActiveFlow: false,
+          activeFlowInfluence: "none",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: true,
+            screenExplanation: false,
+          },
+          useScreenContext: false,
+        },
+        "planner-tx-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-tx-1",
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              message: {
+                content:
+                  "Ik zie nog geen concrete transactiedetails in deze context. Over welke datum of tegenpartij gaat het?",
+              },
+            },
+          ],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "transactions",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "transactions",
+        activeFilterCount: 1,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("Welke transacties vallen het meest op?"),
+    });
+
+    expect(postHelpAssistantSpendingAdviceCompletionMock).not.toHaveBeenCalled();
+    expect(resolveUnifiedFinancialAdviceContextMock).toHaveBeenCalledTimes(1);
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = JSON.stringify(
+      (finalRequest?.messages || [])
+        .filter((message: { role?: string }) => message.role === "system")
+        .map((message: { content?: string }) => String(message.content || "")),
+    );
+    expect(systemText).toContain("Planner-route: transactions_insight");
+    expect(systemText).toContain("Routehint: geef alleen transactiefeiten");
+  });
+
+  it("hydrates categorySummary conditioneel via dataRequests zonder transactionFacts", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "groceries",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-category-data-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-category-data-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Samenvatting klaar." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "insights",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "insights",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage(
+        "Wat heb ik in boodschappen uitgegeven deze maand?",
+      ),
+    });
+
+    expect(resolveUnifiedFinancialAdviceContextMock).toHaveBeenCalledTimes(1);
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = JSON.stringify(
+      (finalRequest?.messages || [])
+        .filter((message: { role?: string }) => message.role === "system")
+        .map((message: { content?: string }) => String(message.content || "")),
+    );
+    expect(systemText).toContain("Truth-safe categorySummary:");
+    expect(systemText).toContain("categoryScope: groceries");
+    expect(systemText).not.toContain("Truth-safe transactionFacts:");
+  });
+
+  it("normaliseert placeholder categoryScope 'slug' naar turn-inferred categorie", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "slug",
+            merchantScope: "none",
+            transactionQuestionType: "none",
+          },
+          useScreenContext: false,
+        },
+        "planner-category-placeholder-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-category-placeholder-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Samenvatting klaar." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "insights",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "insights",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage(
+        "Hoeveel heb ik aan boodschappen uitgegeven deze maand?",
+      ),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("categoryScope: groceries");
+    expect(systemText).toContain('"category":"groceries"');
+    expect(systemText).not.toContain(
+      "categorie_scope_niet_gevonden_in_geaggregeerde_data",
+    );
+  });
+
+  it("matcht categoryScope tegen categoryKey/label als category.key geen semantische slug is", async () => {
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      period: {
+        key: "2026-03",
+        label: "maart 2026",
+        startIso: "2026-03-01",
+        endIsoExclusive: "2026-04-01",
+        referenceDateIso: "2026-03-20T12:00:00.000Z",
+        usedFallbackPeriod: false,
+      },
+      currentBalance: { balance: 1000, date: "2026-03-20" },
+      spending: {
+        currentMonthTotal: 300,
+        currentWeekTotal: 80,
+        currentMonthBreakdown: {
+          total: 300,
+          transactionCount: 4,
+          categories: [
+            {
+              key: "cat_123_uuid",
+              categoryId: "cat_123_uuid",
+              categoryKey: "groceries_household",
+              label: "Boodschappen & huishouden",
+              amount: 300,
+              transactionCount: 4,
+              subcategories: [
+                {
+                  key: "leaf_1",
+                  categoryId: "leaf_1",
+                  categoryKey: "supermarket",
+                  label: "Supermarkt",
+                  amount: 300,
+                  transactionCount: 4,
+                },
+              ],
+            },
+          ],
+        },
+        currentWeekBreakdown: {
+          total: 80,
+          transactionCount: 1,
+          categories: [],
+        },
+      },
+      budget: {
+        remainingVariableBudget: 100,
+        spentVariableBudget: 300,
+        totalVariableBudget: 400,
+        monthStatusLabel: "LET OP",
+        monthRiskTone: "watch",
+        weekRemainingBudget: 20,
+        weekStatusLabel: "Op koers",
+        weekRiskTone: "good",
+        weekTempoDelta: 0,
+      },
+      trend: {
+        monthStatusLabel: "LET OP",
+        monthRiskTone: "watch",
+        weekStatusLabel: "Op koers",
+        weekRiskTone: "good",
+        weekTempoDelta: 0,
+        monthProgress: 0.6,
+      },
+      budgetPlan: {
+        monthlyBudgetTotal: 1000,
+        weeklyBudgetTotal: 250,
+        fixedCostsBudget: 400,
+        subscriptionsBudget: 100,
+        variableBudget: 500,
+        variableSubcategoriesBudgetTotal: 500,
+        appliedSavingsTarget: 0,
+        currentWeekBudget: 120,
+        currentWeekActual: 80,
+        currentWeekRemaining: 40,
+        subtotalAfterFixed: 600,
+        subtotalAfterSubscriptions: 500,
+        variableCategoryBudgets: [],
+      },
+      planning: {
+        upcomingCommittedExpenseTotal: 0,
+        upcomingCommittedIncomeTotal: 0,
+        expectedFixedCosts: 0,
+        expectedSubscriptions: 0,
+        remainingPlannedExpenseTotal: 0,
+        remainingVariableExpenseEstimate: 0,
+      },
+      forecastCurrentMonth: {
+        hasData: true,
+        expectedEndBalance: 700,
+        lowestExpectedBalance: 600,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        remainingMonthNetTotal: 0,
+        forecastReferenceDate: "2026-03-20",
+      },
+      forecastNextMonth: {
+        hasData: true,
+        monthKey: "2026-04",
+        monthLabel: "april 2026",
+        expectedEndBalance: 700,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        forecastReferenceDate: "2026-03-20",
+      },
+      spendingAdvice: {
+        monthBudget: {
+          monthLabel: "maart 2026",
+          daysRemainingInMonth: 10,
+          variableBudgetTotal: 500,
+          variableSpent: 300,
+          variableRemaining: 200,
+          monthBudgetStatus: "watch",
+          monthBudgetStatusLabel: "LET OP",
+          weekBudgetRemaining: 20,
+          weekBudgetStatus: "on_track",
+          weekTempoSignal: "on_tempo",
+        },
+        cashflowSafety: {
+          currentBalance: 1000,
+          extraSpaceUntilNextIncome: 300,
+          extraSpaceLabel: "Extra ruimte tot salaris",
+          nextIncomeDate: "2026-03-28",
+          nextIncomeAmount: 1000,
+          nextIncomeAmountMeta: {
+            isAvailable: true,
+            isCanonical: true,
+            isDerived: false,
+            isFallback: false,
+            source: "income_source",
+            dataGapReason: null,
+          },
+          daysUntilNextIncome: 8,
+          expectedEndBalance: 700,
+          lowestProjectedBalance: 600,
+          knownUpcomingFixedCosts: 0,
+          expectedFixedAndSubscriptions: 0,
+          forecastReliability: "medium",
+        },
+        categoryStatus: null,
+        assistantAdviceSignals: {
+          budgetPressure: "medium",
+          cashSafety: "medium",
+          purchaseFlexibility: "medium",
+          shortReason: "",
+          recommendedTone: "neutral",
+        },
+      },
+      quality: {
+        cacheHit: false,
+        fetchedAtIso: "2026-03-20T12:00:00.000Z",
+        cacheTtlMs: 45000,
+        hasBudgetSignals: true,
+        hasPlanningSignals: true,
+        hasForecastSignals: true,
+        hasBalanceSignals: true,
+        hasSpendingSignals: true,
+        hasCategorySignals: true,
+        confidence: "high",
+        dataGaps: [],
+      },
+    });
+
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "groceries",
+            merchantScope: "none",
+            transactionQuestionType: "none",
+          },
+          useScreenContext: false,
+        },
+        "planner-category-key-match-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-category-key-match-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Samenvatting klaar." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage(
+        "hoeveel heb ik aan boodschappen uitgegeven deze maand?",
+      ),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("Truth-safe categorySummary:");
+    expect(systemText).toContain('"category":"groceries_household"');
+    expect(systemText).not.toContain(
+      "categorie_scope_niet_gevonden_in_geaggregeerde_data",
+    );
+  });
+
+  it("geeft bij onduidelijke autoscope de beschikbare categorieen mee voor verduidelijking", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "none",
+            transactionQuestionType: "none",
+          },
+          useScreenContext: false,
+        },
+        "planner-auto-unknown-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-auto-unknown-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Kun je dat specificeren?" } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage(
+        "hoeveel heb ik aan mijn auto uitgegeven deze maand?",
+      ),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("categoryScope=unknown");
+    expect(systemText).toContain("Planner vraagt verduidelijking");
+    expect(systemText).toContain("availableCategoryScopes");
+    expect(systemText).toContain('"slug":"fuel"');
+  });
+
+  it("continueert actieve category flow op korte scope-refinement replies", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "general",
+          mode: "general_help",
+          confidence: "medium",
+          continueActiveFlow: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "none",
+            categoryScope: "none",
+            merchantScope: "none",
+            transactionQuestionType: "none",
+          },
+          useScreenContext: false,
+        },
+        "planner-category-followup-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-category-followup-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Samenvatting klaar." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("brandstof?"),
+      activeFlow: {
+        route: "category_insight",
+        mode: "category_summary",
+        status: "collecting",
+      },
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("Planner-route: category_insight");
+    expect(systemText).toContain("categoryScope=fuel");
+  });
+
+  it("leidt brandstof-vraag af via beschikbare categoriecatalogus zonder hardcoded boodschappenlogica", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "none",
+            transactionQuestionType: "none",
+          },
+          useScreenContext: false,
+        },
+        "planner-fuel-catalog-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-fuel-catalog-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Samenvatting klaar." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("brandstof?"),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("categoryScope=fuel");
+    expect(systemText).toContain("Truth-safe categorySummary:");
+  });
+
+  it("zet category_total vragen om naar expliciete scopedCategoryTotal facts", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "auto_transport",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-auto-total-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-auto-total-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Samenvatting klaar." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage(
+        "hoeveel heb ik aan mijn auto uitgegeven deze maand?",
+      ),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("scopedCategoryTotal:");
+    expect(systemText).toContain("Als `scopedCategoryTotal` beschikbaar is");
+  });
+
+  it("markeert vorige maand als niet-volledig-gehydrateerd zonder foutieve maandclaims", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "none",
+            categoryScope: "fuel",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-prev-month-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-prev-month-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Samenvatting klaar." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("hoeveel aan brandstof vorige maand?"),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("- monthScope: previous");
+    expect(systemText).toContain("month_scope_niet_volledig_gehydrateerd");
+  });
+
+  it("zet jaar/trend vragen op clarification als scope nog niet volledig ondersteund is", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "none",
+            categoryScope: "unknown",
+            merchantScope: "none",
+            transactionQuestionType: "none",
+          },
+          useScreenContext: false,
+        },
+        "planner-year-trend-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-year-trend-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Kun je specifieker zijn?" } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("wat is de trend dit jaar voor auto?"),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("Planner vraagt verduidelijking");
+    expect(systemText).toContain("jaar_scope_nog_niet_volledig_gehydrateerd");
+    expect(
+      systemText.includes("jaar_scope_nog_niet_volledig_gehydrateerd") ||
+        systemText.includes("trend_scope_nog_niet_volledig_gehydrateerd"),
+    ).toBe(true);
+  });
+
+  it("houdt budgetvragen op spending pad met maandbudget-context", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "spending_advice",
+          mode: "space_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: true,
+            cashflowSafety: true,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "none",
+            transactionQuestionType: "none",
+          },
+          useScreenContext: false,
+        },
+        "planner-budget-status-1",
+      ),
+    );
+    postHelpAssistantSpendingAdviceCompletionMock.mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-budget-status-1",
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  conclusion: "Je zit nog binnen je budget.",
+                  why: "Je maandruimte is nog positief.",
+                  risk: "Houd je uitgavenritme in de gaten.",
+                  nextStep: "Check je grote uitgaven vooruit.",
+                }),
+              },
+            },
+          ],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "budget",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        remainingVariableBudget: 200,
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("ben ik over budget deze maand?"),
+    });
+
+    expect(postHelpAssistantSpendingAdviceCompletionMock).toHaveBeenCalledTimes(1);
+    const spendingRequest =
+      postHelpAssistantSpendingAdviceCompletionMock.mock.calls[0]?.[0]
+        ?.openAIRequest;
+    const systemText = (spendingRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("Spending-context:");
+    expect(systemText).toContain("Maandbudget:");
+  });
+
+  it("normaliseert ongeldige dataRequests veilig en houdt specified maand truth-safe", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "transactions_insight",
+          mode: "transaction_lookup",
+          confidence: "medium",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: true,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "specified",
+            categoryScope: "??",
+            merchantScope: "JUMBO BV",
+            transactionQuestionType: "merchant_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-invalid-datareq-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-invalid-datareq-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Ik heb aanvullende details nodig." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "transactions",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "transactions",
+        activeFilterCount: 0,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("Hoeveel gaf ik uit bij Jumbo?"),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("monthScope=current");
+    expect(systemText).toContain("merchantScope=jumbo_bv");
+    expect(systemText).toContain("Hydration-beperkingen:");
+    expect(systemText).toContain("specifieke_maand_niet_beschikbaar");
+  });
+
+  it("houdt transactionFacts privacy-safe en geeft alleen aggregaatbehoefte door", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "transactions_insight",
+          mode: "transaction_lookup",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: true,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "jumbo",
+            transactionQuestionType: "merchant_frequency",
+          },
+          useScreenContext: false,
+        },
+        "planner-tx-privacy-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-tx-privacy-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Ik kan dit beperkt samenvatten." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "transactions",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "transactions",
+        activeFilterCount: 1,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage(
+        "Hoe vaak betaal ik bij Jumbo deze maand?",
+      ),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("Truth-safe transactionFacts:");
+    expect(systemText).toContain('"merchantScope":"jumbo"');
+    expect(systemText).toContain('"answerability":"limited"');
+    expect(systemText).toContain(
+      "merchant_aggregaten_niet_beschikbaar_in_deze_hydrationlaag",
+    );
+    expect(systemText).not.toContain("transactionId");
   });
 });

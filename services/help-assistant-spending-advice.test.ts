@@ -16,6 +16,15 @@ describe("help-assistant-spending-advice", () => {
     expect(classifySpendingQuestionType("Kan ik een stoel kopen van 40 euro?")).toBe(
       "spending_decision",
     );
+    expect(
+      classifySpendingQuestionType(
+        "Hoeveel heb ik aan mijn auto uitgegeven deze maand?",
+      ),
+    ).toBeNull();
+    expect(classifySpendingQuestionType("Hoeveel aan brandstof vorige maand?")).toBeNull();
+    expect(classifySpendingQuestionType("Ben ik over budget deze maand?")).toBe(
+      "spending_decision",
+    );
     expect(parseRequestedAmountFromQuestion("Kan ik nog 40 euro uitgeven?")).toBe(40);
   });
 

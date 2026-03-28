@@ -24,14 +24,49 @@ Request bevat:
 
 - `context` (`HelpAssistantContext`)
 - `thread` (`HelpAssistantThreadState`)
-- optioneel `issueFlowActive`
+- optioneel `activeFlow` (soft-prior descriptor met route/mode/status)
+- tijdelijk backward-compat: `issueFlowActive`
 
 De adapter doet nu per beurt eerst een OpenAI-routerstap:
 
-1. OpenAI bepaalt of de turn `issue_intake`, `spending_advice` of `general`
-   is.
+1. OpenAI bepaalt per turn route + mode in een generiek plannercontract.
 2. Alleen daarna bouwen we de uiteindelijke OpenAI-prompt voor die route.
-3. Als er al een actieve issueflow is, blijft de router in issue-intake modus.
+3. Een actieve flow beïnvloedt als soft prior, maar forceert nooit hard.
+
+Plannercontract (turn-first):
+
+- `route`: `issue_intake|spending_advice|general|transactions_insight|category_insight|screen_explanation`
+- `mode`: `issue_intake|spending_decision|space_summary|general_help|transaction_lookup|category_summary|screen_help`
+- `insightsFlow`: `general_reasoning|spending_overview|category_summary|transaction_facts|screen_context|issue_intake|none`
+- `confidence`, `needsClarification`
+- `continueActiveFlow`, `activeFlowInfluence`
+- `requires`: `monthBudget|cashflowSafety|expectedEndBalance|categorySummary|transactionFacts|screenExplanation`
+- `dataRequests`:
+  - `monthScope`: `current|previous|specified|none`
+  - `categoryScope`: `slug|unknown|none`
+  - `merchantScope`: `merchant_slug|unknown|none`
+  - `transactionQuestionType`: `merchant_total|merchant_frequency|category_places|category_total|none`
+- `useScreenContext`
+
+Data-request laag (generiek):
+
+- OpenAI classificeert alleen databehoefte, haalt nooit data op.
+- De app beslist welke data echt wordt gehydrateerd.
+- Ongeldige of onduidelijke `dataRequests` krijgen veilige fallback (`none`/`unknown` of `current`) en debug logging.
+- Bij `monthScope=specified` zonder bruikbare maandcontext valt de app veilig terug op `current` (voor relevante financiële blokken) met limitation-hint.
+- `requires` + genormaliseerde `dataRequests` mappen intern naar conditionele hydration:
+  - `financialSnapshot`
+  - `categorySummary`
+  - `transactionFacts`
+- planner geeft nu ook expliciet aan welk intern insights-pad nodig is; route en
+  `insightsFlow` worden in normalisatie op elkaar afgestemd, zodat een vaag
+  plannerresultaat niet stil terugvalt naar `general`
+- voor categorievragen bouwt de app nu een beschikbare category-scope catalogus
+  (slug + label uit geaggregeerde spending/budget-context) en geeft die mee aan
+  planner/final call, zodat scopekeuze minder op hardcoded woorden leunt
+- bij `monthScope=previous` probeert de app nu de vorige maandcontext echt te
+  hydrateren; alleen als de teruggekomen context niet overeenkomt met die maand
+  blijft de limitation-hint staan
 
 Belangrijke uitkomst:
 
@@ -39,6 +74,8 @@ Belangrijke uitkomst:
   gerouteerd
 - lokale intentheuristiek blijft alleen nog bruikbaar als fallback/transporthint
 - `budget`, `grafiek` en `dashboard` mogen dus niet automatisch de spending-route winnen als de AI een idee of issue herkent
+- duidelijke intent-shifts kunnen altijd routes wisselen, ook met actieve flow
+- korte verduidelijkingsantwoorden kunnen actieve flow veilig voortzetten
 
 ## Issue-intake schema
 
@@ -89,6 +126,10 @@ UI blijft altijd het vaste 4-stappenpatroon renderen.
 - De router gebruikt alleen de relevante recente thread en schermcontext, geen
   ruwe financiële dumps.
 - Spending context blijft geaggregeerd en uitlegbaar (geen ruwe transactiedumps).
+- Transaction/category hydration blijft truth-safe:
+  - geen ruwe transactierijen naar OpenAI
+  - geen privacygevoelige identifiers
+  - alleen geaggregeerde of gestripte facts (bijv. canonieke merchant/category slugs)
 - Issue-intake responses bevatten alleen de samenvatting en een korte vraag
   voor de gebruiker; technische metadata blijft intern.
 - Bij expliciete issue-submit voegen we de geauthenticeerde meldende gebruiker
@@ -104,7 +145,8 @@ UI blijft altijd het vaste 4-stappenpatroon renderen.
   - plakt de reviewkaart vast boven de chat wanneer de AI een issue/idee meldt
 
 Zo blijft de UX direct bruikbaar, terwijl de routering nu door OpenAI wordt
-bepaald en de sheet-architectuur rustig en stabiel blijft.
+bepaald, turn-first heroverwogen wordt, en de sheet-architectuur rustig en
+stabiel blijft.
 
 ## Spending Advice Patroon (v2)
 

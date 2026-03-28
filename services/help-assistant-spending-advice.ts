@@ -96,18 +96,20 @@ function looksLikeBudgetSpaceQuestion(input: string) {
   return (
     text.includes("ruimte") ||
     text.includes("uitgeven") ||
-    text.includes("uitgegeven") ||
-    text.includes("besteed") ||
     text.includes("kan ik nog") ||
     text.includes("kan ik een") ||
     text.includes("kan ik dit") ||
     text.includes("kopen") ||
     text.includes("bestedingsruimte") ||
-    text.includes("budget")
+    text.includes("budget") ||
+    text.includes("over budget") ||
+    text.includes("nog budget") ||
+    text.includes("binnen budget") ||
+    text.includes("er over")
   );
 }
 
-function looksLikeCategorySpendQuestion(input: string) {
+function looksLikeHistoricalOrAnalyticalSpendQuestion(input: string) {
   const text = normalizeSpendingAdviceText(input);
   return (
     text.includes("hoeveel heb ik aan") ||
@@ -115,13 +117,13 @@ function looksLikeCategorySpendQuestion(input: string) {
     text.includes("uitgegeven aan") ||
     text.includes("besteed aan") ||
     text.includes("gaf ik aan") ||
-    text.includes("aan boodschappen") ||
-    text.includes("aan eten") ||
-    text.includes("aan supermarkt") ||
-    text.includes("aan vervoer") ||
-    text.includes("aan horeca") ||
-    text.includes("aan kleding") ||
-    text.includes("te veel uit aan")
+    text.includes("deze maand uitgegeven") ||
+    text.includes("vorige maand") ||
+    text.includes("dit jaar") ||
+    text.includes("afgelopen jaar") ||
+    text.includes("trend") ||
+    text.includes("ontwikkeling") ||
+    text.includes("verloop")
   );
 }
 
@@ -142,7 +144,7 @@ export function classifySpendingQuestionType(
 ): SpendingQuestionType | null {
   const text = normalizeSpendingAdviceText(input);
   if (looksLikeProblemOrBugQuestion(text)) return null;
-  if (looksLikeCategorySpendQuestion(text)) return "spending_decision";
+  if (looksLikeHistoricalOrAnalyticalSpendQuestion(text)) return null;
   if (!looksLikeBudgetSpaceQuestion(text)) return null;
 
   const isSpaceSummaryQuestion =

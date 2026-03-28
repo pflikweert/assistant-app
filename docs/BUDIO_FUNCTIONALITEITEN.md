@@ -175,8 +175,22 @@ Niet bedoeld voor:
   idee-intake en bestedingsruimtevragen
 - Voor wie / wanneer: wanneer een gebruiker context of sturing nodig heeft
 - Kernfunctionaliteiten:
-  - OpenAI-router bepaalt per beurt of de vraag in `issue_intake`,
-    `spending_advice` of `general` valt
+  - turn-first OpenAI-router beoordeelt elke user-turn opnieuw
+  - actieve flow werkt als soft prior (context), niet als harde lock
+  - planner-routes ondersteunen nu ook `transactions_insight`,
+    `category_insight` en `screen_explanation` naast `issue_intake`,
+    `spending_advice` en `general`
+  - planner geeft nu ook generieke `dataRequests` door (zoals maand-/categorie-/
+    merchant-scope en transactievraagtype), waarna de app conditioneel en
+    privacy-safe hydration uitvoert
+  - planner geeft nu ook verplicht een `insightsFlow` terug, zodat expliciet is
+    welk intern insights-pad nodig is voor het antwoord
+  - bij category/transactievragen geeft de app beschikbare category-scopes
+    (slug + label) mee als catalogus voor AI-scopekeuze en verduidelijking
+  - bij vragen over `vorige maand` probeert de assistant de juiste maandcontext
+    opnieuw te laden in plaats van automatisch op de huidige maand te blijven
+  - duidelijke intent-shifts mogen route-switches veroorzaken, ook met actieve flow
+  - korte verduidelijkingsantwoorden kunnen actieve flow voortzetten
   - issue-/idee-flow toont een compacte reviewkaart vast boven de chat
   - reviewkaart blijft zichtbaar en kan live worden bijgewerkt in de chat
   - `Annuleren` sluit de kaart direct
