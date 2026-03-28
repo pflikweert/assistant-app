@@ -90,6 +90,13 @@ export type ForecastEventNormalizationInput = {
   bankAccountsById?: Map<string, ForecastAccountInputLike>;
   bookedTransactions?: BookedTransactionInput[];
   timelineEvents?: ForecastTimelineEventLike[];
+  reserveRules?: {
+    id: string;
+    label: string;
+    monthlyAmount: number;
+    status: "active" | "paused";
+    scopeView?: "personal" | "shared" | "household" | "observation";
+  }[];
   carryover?: ForecastCarryover | null;
 };
 
@@ -329,6 +336,42 @@ function mapTimelineEvent(event: ForecastTimelineEventLike): ForecastEvent {
   };
 }
 
+function normalizeKey(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function resolveReserveRuleOwnerScope(
+  scopeView?: "personal" | "shared" | "household" | "observation",
+): ForecastEvent["ownerScope"] {
+  if (scopeView === "shared" || scopeView === "household") return "shared";
+  if (scopeView === "observation") return "external";
+  return "personal";
+}
+
+function hasReserveRuleLabelMatch(
+  labels: Set<string>,
+  values: (string | null | undefined)[],
+) {
+  const normalizedValues = values
+    .map((value) => normalizeKey(String(value || "")))
+    .filter(Boolean);
+  for (const value of normalizedValues) {
+    if (labels.has(value)) return true;
+    for (const label of labels) {
+      if (!label) continue;
+      if (value.includes(label) || label.includes(value)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function normalizeForecastEventsForMonth(
   input: ForecastEventNormalizationInput,
 ): ForecastEvent[] {
@@ -336,6 +379,12 @@ export function normalizeForecastEventsForMonth(
   const monthStartIso = dateToIso(input.monthStart);
   const monthEndIso = dateToIso(input.monthEndExclusive);
   const referenceIso = dateToIso(input.referenceDate);
+
+  const activeReserveRuleLabels = new Set(
+    (input.reserveRules || [])
+      .filter((rule) => rule.status === "active")
+      .map((rule) => normalizeKey(rule.label)),
+  );
 
   for (const tx of input.bookedTransactions || []) {
     if (tx.date < monthStartIso || tx.date >= monthEndIso) continue;
@@ -348,13 +397,76 @@ export function normalizeForecastEventsForMonth(
       input.categoryMap,
       input.bankAccountsById,
     );
+    if (
+      event?.type === "expense" &&
+      (tx.analysis_category === "fixed_costs" ||
+        tx.analysis_category === "subscriptions") &&
+      hasReserveRuleLabelMatch(activeReserveRuleLabels, [
+        event.label,
+        tx.counterparty,
+        tx.details,
+      ])
+    ) {
+      // Anti-double-counting: if a fixed/subscription obligation is already
+      // covered by an active annual reserve rule in this horizon, keep only
+      // the reserve allocation path.
+      continue;
+    }
     if (event) events.push(event);
   }
 
   for (const event of input.timelineEvents || []) {
     if (event.date < monthStartIso || event.date >= monthEndIso) continue;
     if (event.date <= referenceIso) continue;
+    if (
+      (event.kind === "fixed_cost" || event.kind === "subscription") &&
+      activeReserveRuleLabels.has(normalizeKey(event.label))
+    ) {
+      // Anti-double-counting: active annual reserve rules already model this
+      // obligation as reserve allocation, so do not add a second expense event.
+      continue;
+    }
     events.push(mapTimelineEvent(event));
+  }
+
+  for (const rule of input.reserveRules || []) {
+    if (rule.status !== "active") continue;
+    const amount = round2(Math.max(Math.abs(rule.monthlyAmount), 0));
+    if (amount <= 0) continue;
+    // Plan reserve allocations vanaf de eerstvolgende dag in de maandhorizon,
+    // zodat de maandnormalisatie voor de rest-van-de-maand ook echt een event krijgt.
+    const scheduleDay = Math.min(
+      28,
+      Math.max(1, new Date(input.referenceDate).getDate() + 1),
+    );
+    const ruleDate = `${monthStartIso.slice(0, 8)}${String(scheduleDay).padStart(2, "0")}`;
+    if (ruleDate <= referenceIso || ruleDate >= monthEndIso) continue;
+    events.push({
+      id: `reserve-rule:${rule.id}:${ruleDate}`,
+      date: ruleDate,
+      type: "reserve_allocation",
+      certainty: "committed",
+      moneyLayer: "reserved",
+      amount,
+      label: rule.label,
+      accountRole: "reserve",
+      ownerScope: resolveReserveRuleOwnerScope(rule.scopeView),
+      timelineKind: "savings_transfer",
+      timelineSource: "derived",
+      referenceId: rule.id,
+      sourceLabel: rule.label,
+      carryover: {
+        sourceMonthStart: null,
+        targetMonthStart: null,
+        sourceMoneyLayer: "operational",
+        targetMoneyLayer: "reserved",
+        amount,
+        certainty: "committed",
+        sourceEventType: "reserve_allocation",
+        sourceLabel: rule.label,
+        reason: "Maandelijkse reservering jaarlijkse verplichting",
+      },
+    });
   }
 
   const deduped = new Map<string, ForecastEvent>();

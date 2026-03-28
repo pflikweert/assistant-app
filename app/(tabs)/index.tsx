@@ -7,7 +7,8 @@ import {
 } from "@/components/dashboard/dashboard-overview-card";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceHeaderActions } from "@/components/ui/finance-header-actions";
-import { FinanceTopBar } from "@/components/ui/finance-top-bar";
+import { FinanceDashboardHeader } from "@/components/ui/finance-dashboard-header";
+import { FinanceButton } from "@/components/ui/finance-button";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SplashLoader } from "@/components/motions/SplashLoader";
 import { FinColors, FinSurfaces } from "@/constants/theme";
@@ -25,6 +26,8 @@ import {
   type MoneyViewScope,
 } from "@/services/finance-scope";
 import { loadMoneyViewScopePreference } from "@/services/finance-scope-preference";
+import { formatCurrency } from "@/services/ui-formatters/currency";
+import { formatDateLabel } from "@/services/ui-formatters/dates";
 import {
   parseRunningBalance,
 } from "@/services/latest-known-balance";
@@ -43,14 +46,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
+  Pressable,
   View,
 } from "react-native";
 
-const fmt = new Intl.NumberFormat("nl-NL", {
-  style: "currency",
-  currency: "EUR",
-});
 const CONTENT_MAX_WIDTH = 1040;
 
 type DashboardTx = {
@@ -68,12 +67,12 @@ type DashboardTx = {
 type DashboardTxRow = DashboardTx & { categoryLabel: string };
 
 function formatShortDateLabel(value: string) {
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("nl-NL", {
+  return (
+    formatDateLabel(value, {
     day: "2-digit",
     month: "2-digit",
-  });
+    }) || value
+  );
 }
 
 function isMissingRelationError(error: unknown) {
@@ -110,7 +109,7 @@ function TxRow({
       </View>
       <Text style={[styles.txAmount, isPositive && styles.txAmountPos]}>
         {isPositive ? "+" : ""}
-        {fmt.format(tx.amount)}
+        {formatCurrency(tx.amount)}
       </Text>
     </View>
   );
@@ -372,8 +371,8 @@ export default function DashboardScreen() {
   return (
     <View style={styles.root}>
       <FinanceScreenBackdrop tone="warm" />
-      <FinanceTopBar
-        shellStyle={styles.topBar}
+      <FinanceDashboardHeader
+        topBarStyle={styles.topBar}
         title="Budio"
         rightSlot={
           <FinanceHeaderActions
@@ -432,25 +431,28 @@ export default function DashboardScreen() {
               />
 
               <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.actionButtonPrimary]}
-              onPress={() => router.push("/transactions")}
-                >
-                  <Text style={styles.actionButtonPrimaryText}>Transacties bekijken</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
+                <FinanceButton
+                  label="Transacties bekijken"
+                  onPress={() => router.push("/transactions")}
+                  fullWidth
+                  size="lg"
                   style={styles.actionButton}
+                />
+                <FinanceButton
+                  label="Importeren"
+                  variant="secondary"
                   onPress={() => router.push("/csv-import")}
-                >
-                  <Text style={styles.actionButtonText}>Importeren</Text>
-                </TouchableOpacity>
+                  fullWidth
+                  size="lg"
+                  style={styles.actionButton}
+                />
               </View>
 
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Laatste transacties</Text>
-                <TouchableOpacity onPress={() => router.push("/transactions")}>
+                <Pressable onPress={() => router.push("/transactions")}>
                   <Text style={styles.seeAll}>Open lijst</Text>
-                </TouchableOpacity>
+                </Pressable>
               </View>
 
               <View style={styles.txCard}>
@@ -559,7 +561,7 @@ const styles = StyleSheet.create({
   },
   statusChipCritical: {
     backgroundColor: FinColors.redBg,
-    borderColor: "rgba(197,93,76,0.18)",
+    borderColor: FinColors.redBorder,
   },
   statusChipText: {
     fontSize: 12,
@@ -581,28 +583,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    minHeight: 56,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 18,
-  },
-  actionButtonPrimary: {
-    backgroundColor: FinColors.yellow,
-    borderColor: FinColors.yellow,
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: FinColors.textPrimary,
-  },
-  actionButtonPrimaryText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: FinColors.textPrimary,
+    minHeight: 54,
   },
   seeAll: {
     fontSize: 13,

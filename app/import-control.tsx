@@ -1,7 +1,6 @@
 import { AppIcon } from "@/components/ui/app-icon";
-import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
+import { FinanceDetailShell } from "@/components/ui/finance-detail-shell";
 import { FinanceHelpAssistantTrigger } from "@/components/ui/finance-help-assistant-trigger";
-import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceStepIndicator } from "@/components/ui/finance-step-indicator";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import { IMPORT_FLOW_STEPS } from "@/components/import/import-flow-steps";
@@ -18,7 +17,6 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -195,76 +193,61 @@ export default function ImportControlScreen() {
 
   if (!draft) {
     return (
-      <View style={styles.root}>
-        <FinanceScreenBackdrop tone="warm" />
-        <FinanceDetailTopBar
-          title="Transacties inlezen"
-          onBack={() => router.back()}
-          rightSlot={
-            <FinanceHelpAssistantTrigger
-              screenId="import"
-              screenContext={{
-                kind: "import",
-                stage: run.status,
-                progressMessage: run.progress?.message || undefined,
-              }}
-            />
-          }
-        />
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.contentMax}>
-            <View style={styles.emptyCard}>
-              <AppIcon name="folder-open" size={34} color={FinColors.warningText} variant="outlined" />
-              <Text style={styles.emptyTitle}>Geen import gevonden</Text>
-              <Text style={styles.emptyText}>
-                Ga terug naar importeren en kies opnieuw een bestand.
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.replace("/csv-import")}
-                style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.secondaryButtonText}>Terug naar import</Text>
-              </Pressable>
-            </View>
-          </View>
-        </ScrollView>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.root}>
-      <FinanceScreenBackdrop tone="warm" />
-      <FinanceDetailTopBar
+      <FinanceDetailShell
         title="Transacties inlezen"
         onBack={() => router.back()}
         rightSlot={
           <FinanceHelpAssistantTrigger
             screenId="import"
-            selectedPeriod={{ label: draft.summary.periodLabel }}
             screenContext={{
               kind: "import",
-              sourceLabel: draft.summary.sourceLabel,
-              totalTransactions: draft.summary.totalTransactions,
-              periodLabel: draft.summary.periodLabel,
               stage: run.status,
               progressMessage: run.progress?.message || undefined,
             }}
           />
         }
-      />
-
-      <ScrollView
-        style={styles.scroll}
         contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+        contentMaxStyle={styles.contentMax}
       >
-        <View style={styles.contentMax}>
+        <View style={styles.emptyCard}>
+          <AppIcon name="folder-open" size={34} color={FinColors.warningText} variant="outlined" />
+          <Text style={styles.emptyTitle}>Geen import gevonden</Text>
+          <Text style={styles.emptyText}>
+            Ga terug naar importeren en kies opnieuw een bestand.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.replace("/csv-import")}
+            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.secondaryButtonText}>Terug naar import</Text>
+          </Pressable>
+        </View>
+      </FinanceDetailShell>
+    );
+  }
+
+  return (
+    <FinanceDetailShell
+      title="Transacties inlezen"
+      onBack={() => router.back()}
+      rightSlot={
+        <FinanceHelpAssistantTrigger
+          screenId="import"
+          selectedPeriod={{ label: draft.summary.periodLabel }}
+          screenContext={{
+            kind: "import",
+            sourceLabel: draft.summary.sourceLabel,
+            totalTransactions: draft.summary.totalTransactions,
+            periodLabel: draft.summary.periodLabel,
+            stage: run.status,
+            progressMessage: run.progress?.message || undefined,
+          }}
+        />
+      }
+      contentContainerStyle={styles.content}
+      contentMaxStyle={styles.contentMax}
+    >
           <FinanceStepIndicator
             steps={IMPORT_FLOW_STEPS}
             currentStepKey="import-transactions"
@@ -364,21 +347,11 @@ export default function ImportControlScreen() {
               </View>
             </View>
           )}
-        </View>
-      </ScrollView>
-    </View>
+    </FinanceDetailShell>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: FinColors.bgBase,
-    overflow: "hidden",
-  },
-  scroll: {
-    flex: 1,
-  },
   content: {
     paddingBottom: 28,
   },
@@ -497,14 +470,14 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#ececec",
+    backgroundColor: FinColors.bgInput,
     flexShrink: 0,
   },
   stageDotDone: {
-    backgroundColor: "#e7f3a8",
+    backgroundColor: FinColors.greenBg,
   },
   stageDotCurrent: {
-    backgroundColor: "#fff0c2",
+    backgroundColor: FinColors.warningBg,
   },
   stageTextWrap: {
     flex: 1,

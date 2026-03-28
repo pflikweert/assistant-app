@@ -4,6 +4,7 @@ export type CategorizationRunMode = "import" | "pending" | "recategorize-all";
 
 export type CategorizationStatus = {
   phase: "idle" | "queued" | "running" | "paused" | "completed" | "error";
+  phaseLabel: "deterministic" | "openai" | null;
   mode: CategorizationRunMode | null;
   batchOwnerUserId: string | null;
   queuedCount: number;
@@ -12,6 +13,7 @@ export type CategorizationStatus = {
   updatedCount: number;
   ruleCount: number;
   openAiCount: number;
+  deferredOpenAiCount: number;
   skippedCount: number;
   message: string;
   lastCompletedAt: string | null;
@@ -26,6 +28,7 @@ const listeners = new Set<() => void>();
 function createInitialCategorizationStatus(): CategorizationStatus {
   return {
     phase: "idle",
+    phaseLabel: null,
     mode: null,
     batchOwnerUserId: null,
     queuedCount: 0,
@@ -34,6 +37,7 @@ function createInitialCategorizationStatus(): CategorizationStatus {
     updatedCount: 0,
     ruleCount: 0,
     openAiCount: 0,
+    deferredOpenAiCount: 0,
     skippedCount: 0,
     message: "Geen achtergrondtaken actief.",
     lastCompletedAt: null,
@@ -90,13 +94,16 @@ export function resetCategorizationStatus(
 export function formatCategorizationStatus(statusValue: CategorizationStatus) {
   if (statusValue.phase === "running") {
     const base = `${statusValue.processedCount}/${statusValue.totalCount} verwerkt, ${statusValue.queuedCount} in wachtrij`;
+    const withPhase = statusValue.phaseLabel
+      ? `${base} • fase: ${statusValue.phaseLabel}`
+      : base;
     if (
       statusValue.message &&
       statusValue.message !== "Categorisatie draait op de achtergrond."
     ) {
-      return `${base} • ${statusValue.message}`;
+      return `${withPhase} • ${statusValue.message}`;
     }
-    return base;
+    return withPhase;
   }
   if (statusValue.phase === "paused") {
     return `Gepauzeerd na ${statusValue.processedCount}/${statusValue.totalCount}, ${statusValue.queuedCount} resterend`;

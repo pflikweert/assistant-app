@@ -7,8 +7,9 @@ import {
 import { loadMoneyViewScopePreference } from "@/services/finance-scope-preference";
 import {
   buildFinancialBalanceSnapshot,
-  type FinancialBalanceSnapshot,
+  type FinancialSurfaceBalanceSnapshot,
 } from "@/services/financial-semantics";
+import { loadReserveSurfaceBreakdown, type ReserveSurfaceBreakdown } from "@/services/reserve-surface";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import { loadLatestKnownBalanceSnapshot } from "@/services/latest-known-balance";
 import { loadMonthForecastSummary } from "@/services/month-forecast-summary";
@@ -19,7 +20,11 @@ export type ForecastSurfaceSummary = {
   scopeView: MoneyViewScope;
   plan: BudgetPlanComputation;
   forecast: InsightsForecastSummary | null;
-  balances: FinancialBalanceSnapshot;
+  balances: FinancialSurfaceBalanceSnapshot;
+  // Canonical reserve contract for surface consumers.
+  reserveBreakdown: ReserveSurfaceBreakdown | null;
+  // Deprecated alias for temporary backward compatibility in older callers.
+  reserve: ReserveSurfaceBreakdown | null;
 };
 
 function startOfMonthIso(date: Date) {
@@ -91,15 +96,23 @@ export async function loadBudgetPlanForSurface(params: {
       forecast: loadedForecast,
       now: timelineReference,
     });
+  const reserveBreakdown = await loadReserveSurfaceBreakdown({
+    userId: resolvedUserId,
+    moneyViewScope: resolvedMoneyViewScope,
+    budgetPlan: plan,
+  }).catch(() => null);
 
   return {
     scopeView: resolvedMoneyViewScope,
     forecast: loadedForecast,
     plan,
+    reserveBreakdown,
+    reserve: reserveBreakdown,
     balances: buildFinancialBalanceSnapshot({
       forecast: loadedForecast,
       plan,
       currentBalanceOverride: latestKnownBalance.balance,
+      reserveSurface: reserveBreakdown,
     }),
   };
 }

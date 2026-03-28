@@ -22,6 +22,7 @@ import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceMonthSelector } from "@/components/ui/finance-month-selector";
 import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
+import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinanceScopeSwitch } from "@/components/ui/finance-scope-switch";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import {
@@ -66,6 +67,12 @@ import {
 } from "@/services/finance-scope-preference";
 import { markForecastDirty } from "@/services/forecast-refresh";
 import { listBankAccountsForUser } from "@/services/bank-accounts";
+import {
+  listAnnualObligationReserveRules,
+  setAnnualObligationReserveRuleStatus,
+  upsertAnnualObligationReserveRule,
+  type AnnualObligationReserveRule,
+} from "@/services/reserve-rules";
 import { listTransactionSubscriptionProfileNames } from "@/services/subscriptions";
 import { supabase } from "@/services/supabase";
 import {
@@ -83,6 +90,7 @@ import {
   formatForecastExpenseSourceLabel,
   getForecastExpenseSourceDescription,
 } from "@/services/forecast-expense-source-display";
+import { getBudgetInclusionTogglePresentation } from "@/services/ui-formatters/labels";
 import type { ForecastSurfaceSummary } from "@/services/budget-plan-surface";
 import type {
   BudgetCategoryKey,
@@ -190,6 +198,7 @@ function BudgetInlineTransactionRow({
   onToggle,
   isUpdating = false,
 }: BudgetInlineTransactionRowProps) {
+  const inclusion = getBudgetInclusionTogglePresentation(tx.budgetExcluded);
   const categoryLabel = getCategoryPathLabel(tx, categoryById);
   const metaParts = [formatDetailDateLabel(tx.date)];
   if (tx.counterparty) {
@@ -239,15 +248,9 @@ function BudgetInlineTransactionRow({
           >
             <View style={styles.inlineExcludeToggleInner}>
               <AppIcon
-                name={
-                  tx.budgetExcluded
-                    ? "remove-circle-outline"
-                    : "check-circle-outline"
-                }
+                name={inclusion.iconName}
                 size={12}
-                color={
-                  tx.budgetExcluded ? FinColors.warningText : FinColors.green
-                }
+                color={inclusion.tone === "excluded" ? FinColors.warningText : FinColors.green}
               />
               <Text
                 style={[
@@ -255,7 +258,7 @@ function BudgetInlineTransactionRow({
                   tx.budgetExcluded && styles.inlineExcludeToggleTextActive,
                 ]}
               >
-                {tx.budgetExcluded ? "Buiten" : "Binnen"}
+                {inclusion.label}
               </Text>
             </View>
           </Pressable>
@@ -941,6 +944,13 @@ export default function BudgetScreen() {
   const [monthSummaryModalOpen, setMonthSummaryModalOpen] = React.useState(false);
   const [assistantForecastSurface, setAssistantForecastSurface] =
     React.useState<ForecastSurfaceSummary | null>(null);
+  const [annualReserveRules, setAnnualReserveRules] = React.useState<
+    AnnualObligationReserveRule[]
+  >([]);
+  const [reserveRulesSheetOpen, setReserveRulesSheetOpen] = React.useState(false);
+  const [reserveRuleAmountDrafts, setReserveRuleAmountDrafts] = React.useState<
+    Record<string, string>
+  >({});
   const [expandedMonthSummaryCategories, setExpandedMonthSummaryCategories] =
     React.useState<string[]>([]);
   const [detailSection, setDetailSection] = React.useState<
@@ -1031,6 +1041,17 @@ export default function BudgetScreen() {
           : availableScopes[0] || preference.scopeView;
       setAvailableScopeOptions(availableScopes);
       setMoneyViewScope(resolvedScope);
+      const reserveRules = await listAnnualObligationReserveRules({
+        userId,
+        scopeView: resolvedScope,
+        includePaused: true,
+      }).catch(() => [] as AnnualObligationReserveRule[]);
+      setAnnualReserveRules(reserveRules);
+      setReserveRuleAmountDrafts(
+        Object.fromEntries(
+          reserveRules.map((rule) => [rule.id, String(Math.round(rule.monthlyAmount || 0))]),
+        ),
+      );
       const referenceDate =
         selectedMonth.isCurrentMonth
           ? new Date()
@@ -1066,6 +1087,43 @@ export default function BudgetScreen() {
       await loadBudget(scope);
     },
     [loadBudget],
+  );
+
+  const handleReserveRuleStatusChange = React.useCallback(
+    async (ruleId: string, nextActive: boolean) => {
+      await setAnnualObligationReserveRuleStatus({
+        id: ruleId,
+        status: nextActive ? "active" : "paused",
+      }).catch((error) => {
+        console.warn("[budget] reserve rule status update error", error);
+      });
+      await markForecastDirty("budget_save").catch(() => null);
+      await loadBudget(moneyViewScope);
+    },
+    [loadBudget, moneyViewScope],
+  );
+
+  const handleReserveRuleAmountSave = React.useCallback(
+    async (rule: AnnualObligationReserveRule) => {
+      const draft = String(reserveRuleAmountDrafts[rule.id] || "").replace(/[^0-9]/g, "");
+      const monthlyAmount = draft ? Number.parseInt(draft, 10) : 0;
+      await upsertAnnualObligationReserveRule({
+        id: rule.id,
+        label: rule.label,
+        scopeView: rule.scopeView,
+        source: rule.source,
+        status: rule.status,
+        semanticTag: rule.semanticTag,
+        annualAmount: monthlyAmount * 12,
+        monthlyAmount,
+        fingerprint: rule.fingerprint,
+      }).catch((error) => {
+        console.warn("[budget] reserve rule amount save error", error);
+      });
+      await markForecastDirty("budget_save").catch(() => null);
+      await loadBudget(moneyViewScope);
+    },
+    [loadBudget, moneyViewScope, reserveRuleAmountDrafts],
   );
 
   React.useEffect(() => {
@@ -2910,6 +2968,29 @@ export default function BudgetScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            {assistantForecastSurface?.reserveBreakdown ? (
+              <View style={styles.reserveSummaryCard}>
+                <Text style={styles.reserveSummaryTitle}>Reserveringen deze maand</Text>
+                <Text style={styles.reserveSummaryValue}>
+                  {fmt.format(
+                    assistantForecastSurface.reserveBreakdown
+                      .plannedReserveAllocationThisMonth || 0,
+                  )}
+                </Text>
+                <Text style={styles.reserveSummaryMeta}>
+                  Jaarlijkse lasten:{" "}
+                  {fmt.format(
+                    assistantForecastSurface.reserveBreakdown
+                      .annualObligationMonthlyTotal || 0,
+                  )}{" "}
+                  · Buffer:{" "}
+                  {fmt.format(
+                    assistantForecastSurface.reserveBreakdown
+                      .savingsTargetMonthly || 0,
+                  )}
+                </Text>
+              </View>
+            ) : null}
             <View style={styles.mainStack}>
               {segment === "new" ? (
                 <>
@@ -3319,6 +3400,36 @@ export default function BudgetScreen() {
                   </View>
 
                   <View style={styles.card}>
+                    <View style={styles.cardHeaderRow}>
+                      <Text style={styles.sectionTitle}>Jaarlijkse lasten</Text>
+                      <Pressable
+                        style={styles.sectionActionButton}
+                        onPress={() => setReserveRulesSheetOpen(true)}
+                      >
+                        <AppIcon name="edit" size={14} color={FinColors.textPrimary} />
+                        <Text style={styles.sectionActionButtonText}>Beheer</Text>
+                      </Pressable>
+                    </View>
+                    <Text style={styles.supportText}>
+                      Deze regels zetten maandelijks geld opzij voor piekmomenten.
+                    </Text>
+                    {annualReserveRules.length ? (
+                      annualReserveRules.slice(0, 3).map((rule) => (
+                        <View key={rule.id} style={styles.reserveRuleRow}>
+                          <Text style={styles.reserveRuleLabel}>{rule.label}</Text>
+                          <Text style={styles.reserveRuleAmount}>
+                            {fmt.format(rule.monthlyAmount)}
+                          </Text>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={styles.supportText}>
+                        Nog geen actieve jaarlijkse reserveringen gevonden.
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.card}>
                 <Text style={styles.sectionTitle}>Inkomstenbasis</Text>
                 <Text style={styles.supportText}>
                   Kies welke inkomsten je meeneemt in je maandplan en forecast.
@@ -3633,11 +3744,92 @@ export default function BudgetScreen() {
 
       <FinanceMonthSelectorModal
         visible={monthPickerOpen}
-        selectedKey={selectedMonth?.key || null}
+        selectedKey={selectedMonth.key}
         onClose={() => setMonthPickerOpen(false)}
         onConfirm={setSelectedMonthKey}
         monthOptions={monthOptions}
       />
+
+      <FinanceBottomSheetShell
+        visible={reserveRulesSheetOpen}
+        title="Jaarlijkse lasten"
+        subtitle="Zet maandelijks rustig geld opzij voor terugkerende piekmomenten."
+        onClose={() => setReserveRulesSheetOpen(false)}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.reserveRulesSheetContent}
+        >
+          {annualReserveRules.length ? (
+            annualReserveRules.map((rule) => {
+              const isActive = rule.status === "active";
+              return (
+                <View key={rule.id} style={styles.reserveRuleSheetCard}>
+                  <View style={styles.reserveRuleSheetHeader}>
+                    <View style={styles.reserveRuleSheetMain}>
+                      <Text style={styles.reserveRuleSheetTitle}>{rule.label}</Text>
+                      <Text style={styles.reserveRuleSheetMeta}>
+                        {rule.source === "inferred"
+                          ? "Automatisch herkend"
+                          : "Handmatig ingesteld"}
+                      </Text>
+                    </View>
+                    <Pressable
+                      style={[
+                        styles.reserveRuleStatusChip,
+                        isActive && styles.reserveRuleStatusChipActive,
+                      ]}
+                      onPress={() =>
+                        void handleReserveRuleStatusChange(rule.id, !isActive)
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.reserveRuleStatusChipText,
+                          isActive && styles.reserveRuleStatusChipTextActive,
+                        ]}
+                      >
+                        {isActive ? "Actief" : "Gepauzeerd"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <View style={styles.reserveRuleEditorRow}>
+                    <View style={styles.reserveRuleInputWrap}>
+                      <Text style={styles.reserveRuleInputLabel}>
+                        Bedrag per maand
+                      </Text>
+                      <TextInput
+                        value={reserveRuleAmountDrafts[rule.id] || ""}
+                        onChangeText={(text) =>
+                          setReserveRuleAmountDrafts((prev) => ({
+                            ...prev,
+                            [rule.id]: String(text || "").replace(/[^0-9]/g, ""),
+                          }))
+                        }
+                        keyboardType="number-pad"
+                        style={styles.reserveRuleInput}
+                      />
+                    </View>
+                    <Pressable
+                      style={styles.reserveRuleSaveButton}
+                      onPress={() => void handleReserveRuleAmountSave(rule)}
+                    >
+                      <Text style={styles.reserveRuleSaveButtonText}>Bewaar</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })
+          ) : (
+            <View style={styles.reserveRuleSheetCard}>
+              <Text style={styles.supportText}>
+                Nog geen jaarlijkse lasten gevonden. Zodra Budio zekere patronen
+                ziet, verschijnen ze hier als suggestie.
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      </FinanceBottomSheetShell>
 
       <Modal
         animationType="slide"
@@ -4649,6 +4841,145 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: FinColors.textPrimary,
   },
+  reserveSummaryCard: {
+    ...FinSurfaces.topLevelCard,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 4,
+  },
+  reserveSummaryTitle: {
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  reserveSummaryValue: {
+    fontSize: 26,
+    lineHeight: 30,
+    letterSpacing: -0.6,
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+  },
+  reserveSummaryMeta: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: FinColors.textSecondary,
+  },
+  reserveRuleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    borderRadius: 12,
+    paddingVertical: 8,
+  },
+  reserveRuleLabel: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "600",
+  },
+  reserveRuleAmount: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  reserveRulesSheetContent: {
+    gap: 10,
+    paddingBottom: 6,
+  },
+  reserveRuleSheetCard: {
+    borderRadius: 16,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 12,
+    gap: 10,
+  },
+  reserveRuleSheetHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  reserveRuleSheetMain: {
+    flex: 1,
+    gap: 2,
+  },
+  reserveRuleSheetTitle: {
+    fontSize: 15,
+    lineHeight: 19,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  reserveRuleSheetMeta: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: FinColors.textSecondary,
+  },
+  reserveRuleStatusChip: {
+    minHeight: 30,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgBase,
+    justifyContent: "center",
+  },
+  reserveRuleStatusChipActive: {
+    backgroundColor: FinColors.yellowSoft,
+    borderColor: FinColors.warningBorder,
+  },
+  reserveRuleStatusChipText: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  reserveRuleStatusChipTextActive: {
+    color: FinColors.textPrimary,
+  },
+  reserveRuleEditorRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 10,
+  },
+  reserveRuleInputWrap: {
+    flex: 1,
+    gap: 6,
+  },
+  reserveRuleInputLabel: {
+    fontSize: 12,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  reserveRuleInput: {
+    minHeight: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgInput,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  reserveRuleSaveButton: {
+    minHeight: 40,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: FinColors.yellow,
+  },
+  reserveRuleSaveButtonText: {
+    fontSize: 13,
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+  },
   cardHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -4978,7 +5309,6 @@ const styles = StyleSheet.create({
     borderColor: FinColors.borderSubtle,
     padding: 16,
     gap: 8,
-    boxShadow: "0px 6px 12px rgba(17,17,17,0.02)",
     elevation: 1,
   },
   modeDescriptionTitle: {
@@ -5260,7 +5590,7 @@ const styles = StyleSheet.create({
   sheetBackdrop: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(17, 17, 17, 0.28)",
+    backgroundColor: FinColors.overlayBackdrop,
   },
   sheetCard: {
     maxHeight: "88%",

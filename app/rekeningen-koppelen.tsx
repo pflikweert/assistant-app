@@ -1,7 +1,6 @@
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
-import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
-import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceDetailShell } from "@/components/ui/finance-detail-shell";
 import { FinanceStepIndicator } from "@/components/ui/finance-step-indicator";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import { ImportBankAccountSheet } from "@/components/import/import-bank-account-sheet";
@@ -15,7 +14,7 @@ import {
 } from "@/services/import/import-flow-state";
 import { hashAccountNumber, listBankAccounts, type BankAccount } from "@/services/bank-accounts";
 import { findBankAccountByHash } from "@/services/bank-accounts";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
@@ -199,7 +198,7 @@ function AccountPickerSheet({
   );
 }
 
-export default function RekeningenKoppelenScreen() {
+export function RekeningenKoppelenScreenContent() {
   const router = useRouter();
   const { draft } = useImportFlowState();
   const [bankAccounts, setBankAccounts] = React.useState<BankAccount[]>([]);
@@ -365,19 +364,12 @@ export default function RekeningenKoppelenScreen() {
   }, [router]);
 
   return (
-    <View style={styles.root}>
-      <FinanceScreenBackdrop tone="warm" />
-      <FinanceDetailTopBar
-        title="Rekeningen koppelen"
-        onBack={goToImportStepOne}
-      />
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.contentMax}>
+    <FinanceDetailShell
+      title="Rekeningen koppelen"
+      onBack={goToImportStepOne}
+      contentContainerStyle={styles.content}
+      contentMaxStyle={styles.contentMax}
+    >
           <FinanceStepIndicator
             steps={IMPORT_FLOW_STEPS}
             currentStepKey="link-accounts"
@@ -565,8 +557,7 @@ export default function RekeningenKoppelenScreen() {
               <Text style={styles.primaryWideButtonText}>Transacties inlezen</Text>
             </Pressable>
           </View>
-        </View>
-      </ScrollView>
+        
 
       <AccountPickerSheet
         visible={Boolean(selectedGroup)}
@@ -589,19 +580,15 @@ export default function RekeningenKoppelenScreen() {
         onClose={() => setCreateGroupKey(null)}
         onCreated={handleAccountCreated}
       />
-    </View>
+    </FinanceDetailShell>
   );
 }
 
+export default function LegacyRekeningenKoppelenRedirect() {
+  return <Redirect href="/accounts/link" />;
+}
+
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: FinColors.bgBase,
-    overflow: "hidden",
-  },
-  scroll: {
-    flex: 1,
-  },
   content: {
     paddingBottom: 28,
   },
@@ -734,14 +721,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: FinColors.bgElevated,
     borderWidth: 1,
-    borderColor: "rgba(17,17,17,0.05)",
+    borderColor: FinColors.borderSubtle,
     flexShrink: 0,
   },
   accountBadgeLinked: {
-    backgroundColor: "#edf4c8",
+    backgroundColor: FinColors.yellowSoft,
   },
   accountBadgeNeedsAction: {
-    backgroundColor: "#fff0c2",
+    backgroundColor: FinColors.warningBg,
   },
   groupProvider: {
     fontSize: 15,
@@ -779,8 +766,8 @@ const styles = StyleSheet.create({
   secondaryButton: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(17,17,17,0.08)",
-    backgroundColor: "#ececec",
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgInput,
     paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: "center",
@@ -812,7 +799,7 @@ const styles = StyleSheet.create({
   },
   linkedBox: {
     borderRadius: 18,
-    backgroundColor: "rgba(17,17,17,0.03)",
+    backgroundColor: FinColors.bgInput,
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 12,
@@ -852,7 +839,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: FinColors.bgCard,
     borderWidth: 1,
-    borderColor: "rgba(17,17,17,0.06)",
+    borderColor: FinColors.borderSubtle,
     flexShrink: 0,
   },
   footerCard: {
@@ -932,7 +919,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   statusPillGood: {
-    backgroundColor: "#e7f3a8",
+    backgroundColor: FinColors.greenBg,
   },
   statusPillWatch: {
     backgroundColor: FinColors.warningBg,
@@ -945,7 +932,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   statusPillTextGood: {
-    color: "#5b6a1b",
+    color: FinColors.green,
   },
   statusPillTextWatch: {
     color: FinColors.warningText,

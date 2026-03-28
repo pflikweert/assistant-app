@@ -1,5 +1,5 @@
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSpacing } from "@/constants/theme";
 import React from "react";
 import {
   StyleSheet,
@@ -74,20 +74,20 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 1040,
     alignSelf: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: FinSpacing.x4,
     paddingTop: 14,
-    paddingBottom: 12,
+    paddingBottom: FinSpacing.x3,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: FinSpacing.x3,
   },
   left: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: FinSpacing.x3,
     flex: 1,
   },
   titleWrap: {
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   subtitle: {
-    marginTop: 2,
+    marginTop: FinSpacing.x1 / 2,
     fontSize: 14,
     color: FinColors.textSecondary,
   },
@@ -108,6 +108,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   children: {
-    marginTop: 16,
+    marginTop: FinSpacing.x4,
   },
 });

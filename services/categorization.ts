@@ -35,7 +35,7 @@ const RULE_CONFIDENCE_THRESHOLD = 0.8;
 const BACKGROUND_SWEEP_LIMIT = 100;
 const RECAT_ALL_PAGE_SIZE = 500;
 const BACKGROUND_PROCESS_BATCH_SIZE = 20;
-const OPENAI_BATCH_SIZE = 5;
+const OPENAI_BATCH_SIZE = 10;
 const OPENAI_INTER_BATCH_DELAY_MS = 2000;
 const OPENAI_TOKEN_SAFETY_BUFFER = 250;
 const OPENAI_RETRY_ATTEMPTS = 5;
@@ -76,6 +76,29 @@ type CategorizationSummary = {
   openai: number;
   skipped: number;
   cleared: number;
+};
+
+type CategorizationPreparedContext = {
+  repo: ReturnType<typeof createSupabaseCategorizationRepository>;
+  transactions: TransactionCategorizationRecord[];
+  pendingTransactions: TransactionCategorizationRecord[];
+  categoriesById: Map<string, CategoryRecord>;
+  categoriesByKey: Map<string, CategoryRecord>;
+  selectableCategories: CategoryRecord[];
+  activeRules: CategoryRuleRecord[];
+  ownAccountHashes: Set<string>;
+};
+
+type DeterministicPhaseSummary = {
+  considered: number;
+  resolved: CategorizationResult[];
+  unresolved: TransactionCategorizationRecord[];
+  staleOtherAutoIds: string[];
+};
+
+type OpenAIPhaseSummary = {
+  resolved: CategorizationResult[];
+  unresolved: TransactionCategorizationRecord[];
 };
 
 type OpenAIResult = {

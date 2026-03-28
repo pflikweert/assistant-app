@@ -245,12 +245,12 @@ describe("import-runner", () => {
       error: null,
     });
 
-    const progressLog: Array<{
+    const progressLog: {
       phase: string;
       sourceAccountLabel?: string | null;
       linkedAccountName?: string | null;
       detail?: string | null;
-    }> = [];
+    }[] = [];
 
     beginImportRun();
     await executeImportDraft(linkedDraft!, {

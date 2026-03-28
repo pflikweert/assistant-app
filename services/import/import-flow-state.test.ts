@@ -116,11 +116,11 @@ describe("import-flow-state", () => {
   });
 
   it("notificeert subscribers bij draft- en run-updates", () => {
-    const calls: Array<{
+    const calls: {
       draftPresent: boolean;
       runStatus: string;
       hasResult: boolean;
-    }> = [];
+    }[] = [];
     const unsubscribe = subscribeImportFlowState(() => {
       const snapshot = getImportFlowSnapshot();
       calls.push({

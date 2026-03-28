@@ -1,4 +1,5 @@
 import type { FinanceStatusTone } from "@/components/ui/finance-status-chip";
+import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import { getInsightsDisplayExpectedEndBalance } from "@/services/insights-remaining-month";
 import type { BudgetPlanComputation } from "@/types/categorization";
@@ -60,19 +61,26 @@ function resolveStatus(expectedEnd: number | null, forecast: InsightsForecastSum
   return { label: "Verwacht positief", tone: "good" };
 }
 
-function buildExplanation(forecast: InsightsForecastSummary | null) {
-  if (!forecast) {
+function buildExplanation(input: {
+  hasForecast: boolean;
+  currentOperational: number | null;
+  reserved: number | null;
+  freeToSpendNow: number | null;
+}) {
+  if (!input.hasForecast) {
     return "We kunnen nog geen betrouwbare maandverwachting maken.";
   }
 
-  const currentOperational = forecast.currentOperationalBalance ?? null;
-  const reserved = forecast.currentReservedBalance ?? null;
-  const freeToSpendNow = forecast.freeToSpendNow ?? null;
-
   const parts = [
-    currentOperational == null ? null : `Huidig saldo ${fmt.format(currentOperational)}`,
-    reserved != null && reserved > 0 ? `Gereserveerd ${fmt.format(reserved)}` : null,
-    freeToSpendNow == null ? null : `Vrij besteedbaar ${fmt.format(freeToSpendNow)}`,
+    input.currentOperational == null
+      ? null
+      : `Huidig saldo ${fmt.format(input.currentOperational)}`,
+    input.reserved != null && input.reserved > 0
+      ? `Gereserveerd ${fmt.format(input.reserved)}`
+      : null,
+    input.freeToSpendNow == null
+      ? null
+      : `Vrij besteedbaar ${fmt.format(input.freeToSpendNow)}`,
   ].filter(Boolean);
 
   if (!parts.length) {
@@ -86,8 +94,9 @@ export function buildInsightsForecastCard(input: {
   forecast: InsightsForecastSummary | null;
   budgetPlan: BudgetPlanComputation | null;
   currentBalanceOverride?: number | null;
+  surfaceBalances?: FinancialSurfaceBalanceSnapshot | null;
 }): InsightsForecastCardModel {
-  const { forecast, budgetPlan, currentBalanceOverride } = input;
+  const { forecast, budgetPlan, currentBalanceOverride, surfaceBalances } = input;
   const title = "Verwacht eindsaldo";
   const displayExpectedEndBalance = getInsightsDisplayExpectedEndBalance({
     forecast,
@@ -111,9 +120,17 @@ export function buildInsightsForecastCard(input: {
     };
   }
 
-  const currentOperational = forecast.currentOperationalBalance ?? null;
-  const reserved = forecast.currentReservedBalance ?? null;
-  const freeToSpendNow = forecast.freeToSpendNow ?? null;
+  // Keep Insights aligned with the canonical surface summary when available.
+  const currentOperational =
+    surfaceBalances?.currentOperationalBalance.amount ??
+    forecast.currentOperationalBalance ??
+    null;
+  const reserved =
+    surfaceBalances?.currentReservedBalance.amount ??
+    forecast.currentReservedBalance ??
+    null;
+  const freeToSpendNow =
+    surfaceBalances?.freeToSpendNow.amount ?? forecast.freeToSpendNow ?? null;
   const status = resolveStatus(displayExpectedEndBalance, forecast);
   return {
     title,
@@ -134,7 +151,12 @@ export function buildInsightsForecastCard(input: {
             forecast.lowestOperationalPointInMonth ?? forecast.lowestExpectedBalance ?? null,
           ),
     lowestOperationalPointDateLabel: formatShortDate(forecast.lowestExpectedBalanceDate),
-    explanation: buildExplanation(forecast),
+    explanation: buildExplanation({
+      hasForecast: Boolean(forecast),
+      currentOperational,
+      reserved,
+      freeToSpendNow,
+    }),
     isFallback: false,
   };
 }

@@ -1,7 +1,6 @@
 import { AppIcon } from "@/components/ui/app-icon";
-import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
+import { FinanceDetailShell } from "@/components/ui/finance-detail-shell";
 import { FinColors, FinSurfaces } from "@/constants/theme";
-import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import {
   BUDGET_GROUP_LABELS,
   EDITABLE_BUDGET_GROUPS,
@@ -27,7 +26,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -357,32 +355,21 @@ export default function CategoryBudgetGroupsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.root}>
-        <FinanceScreenBackdrop tone="warm" />
-        <FinanceDetailTopBar
-          title="Categorie-indeling"
-          onBack={() => router.back()}
-        />
+      <FinanceDetailShell title="Categorie-indeling" onBack={() => router.back()}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={FinColors.green} />
         </View>
-      </View>
+      </FinanceDetailShell>
     );
   }
 
   return (
-    <View style={styles.root}>
-      <FinanceScreenBackdrop tone="warm" />
-      <FinanceDetailTopBar
-        title="Categorie-indeling"
-        onBack={() => router.back()}
-      />
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
+    <FinanceDetailShell
+      title="Categorie-indeling"
+      onBack={() => router.back()}
+      contentContainerStyle={styles.content}
+      scrollProps={{ keyboardShouldPersistTaps: "handled" }}
+    >
         <View style={styles.heroCard}>
           <Text style={styles.heroTitle}>Budgetgroep per categorie</Text>
           <Text style={styles.heroText}>
@@ -610,20 +597,11 @@ export default function CategoryBudgetGroupsScreen() {
           </View>
         </View>
       ))}
-      </ScrollView>
-    </View>
+    </FinanceDetailShell>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: "transparent",
-  },
-  scroll: {
-    flex: 1,
-    backgroundColor: "transparent",
-  },
   content: {
     padding: 24,
     paddingBottom: 40,

@@ -6,7 +6,7 @@ import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
 import { FinanceCircleIconButton } from "@/components/ui/finance-circle-icon-button";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinanceBudgetStatusToggle } from "@/components/ui/finance-budget-status-toggle";
-import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
+import { FinanceDetailShell } from "@/components/ui/finance-detail-shell";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceModalTopBar } from "@/components/ui/finance-modal-top-bar";
 import {
@@ -16,11 +16,11 @@ import {
 } from "@/components/ui/finance-category-sheet";
 import { FinanceSubscriptionCallout } from "@/components/ui/finance-subscription-callout";
 import { FinanceQuickMenu } from "@/components/navigation/finance-quick-menu";
-import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceTextBlock } from "@/components/ui/finance-text-block";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import { BUDGET_GROUP_LABELS } from "@/services/category-budget-groups";
 import { resolveTransactionCategoryIconName } from "@/services/category-icon";
+import { formatSignedCurrency } from "@/services/ui-formatters/currency";
 import { recategorizeTransactionWithAI } from "@/services/transaction-ai-categorization";
 import {
   bulkUpdateCategoryByCounterparty,
@@ -73,7 +73,6 @@ const euroFormatter = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
 });
-const CONTENT_MAX_WIDTH = 1040;
 const CATEGORY_SCROLL_CONTEXT_OFFSET = Platform.OS === "web" ? 56 : -24;
 
 function parseSaldo(value: unknown): number | null {
@@ -872,24 +871,19 @@ export default function TransactionDetailScreen() {
     return null;
   })();
   return (
-    <View style={styles.root}>
-      <FinanceScreenBackdrop tone="warm" />
-      <FinanceDetailTopBar
-        title="Transactie"
-        onBack={() => router.back()}
-      />
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        showsHorizontalScrollIndicator={false}
-      >
+    <FinanceDetailShell
+      title="Transactie"
+      onBack={() => router.back()}
+      contentContainerStyle={styles.scrollContent}
+      contentMaxStyle={styles.contentMax}
+      scrollProps={{ showsVerticalScrollIndicator: false }}
+    >
         <FinanceHeroShell
           shellStyle={styles.heroShell}
           innerStyle={styles.heroInner}
           eyebrow="Transactie detail"
           title={tx.counterparty || "Onbekende tegenpartij"}
-          subtitle={`${tx.amount < 0 ? "−" : "+"}${euroFormatter.format(Math.abs(tx.amount))}`}
+          subtitle={formatSignedCurrency(tx.amount)}
           titleStyle={styles.heroTitle}
           subtitleStyle={styles.heroAmountLine}
           subtitleLineStyle={styles.heroAmountWrap}
@@ -1024,7 +1018,7 @@ export default function TransactionDetailScreen() {
 
         <View style={{ height: 32 }} />
         </View>
-      </ScrollView>
+      
 
       <FinanceQuickMenu
         activeKey="transactions"
@@ -1126,7 +1120,7 @@ export default function TransactionDetailScreen() {
                   value={draftApplyCategoryToCounterparty}
                   onValueChange={setDraftApplyCategoryToCounterparty}
                   trackColor={{
-                    false: "#f7f8f9",
+                    false: FinColors.bgInput,
                     true: FinColors.greenBorder,
                   }}
                   thumbColor={
@@ -1149,7 +1143,7 @@ export default function TransactionDetailScreen() {
                   value={draftLearnCategoryFromCounterparty}
                   onValueChange={setDraftLearnCategoryFromCounterparty}
                   trackColor={{
-                    false: "#f7f8f9",
+                    false: FinColors.bgInput,
                     true: FinColors.greenBorder,
                   }}
                   thumbColor={
@@ -1421,28 +1415,17 @@ export default function TransactionDetailScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </FinanceDetailShell>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: FinColors.bgBase,
-    overflow: "hidden",
-  },
-  scroll: {
-    flex: 1,
-    backgroundColor: "transparent",
-    marginTop: -1,
-    overflow: "hidden",
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 0,
+  scrollContent: {
     paddingBottom: 132,
-    overflow: "hidden",
     gap: 32,
+  },
+  contentMax: {
+    paddingHorizontal: 16,
   },
   centered: {
     flex: 1,
@@ -1457,7 +1440,7 @@ const styles = StyleSheet.create({
     marginTop: 0,
     backgroundColor: FinColors.bgElevated,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.06)",
+    borderBottomColor: FinColors.borderSubtle,
   },
   heroInner: {
     paddingTop: 32,
@@ -1544,7 +1527,6 @@ const styles = StyleSheet.create({
   },
   mainColumn: {
     width: "100%",
-    maxWidth: CONTENT_MAX_WIDTH,
     alignSelf: "center",
     gap: 32,
   },
@@ -1693,7 +1675,7 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgCard,
   },
   actionTileIconWarning: {
-    backgroundColor: "rgba(255,255,255,0.55)",
+    backgroundColor: FinColors.bgCard,
   },
   actionTileLabel: {
     color: FinColors.textPrimary,
@@ -1718,7 +1700,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.5)",
+    backgroundColor: FinColors.bgCard,
   },
   calloutCopy: {
     flex: 1,
@@ -2040,7 +2022,7 @@ const styles = StyleSheet.create({
   // Subscription modal
   subscriptionModalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: FinColors.overlayStrong,
     justifyContent: "center",
     paddingHorizontal: 18,
   },
@@ -2276,6 +2258,9 @@ const styles = StyleSheet.create({
   categorySheetContent: {
     gap: 10,
     paddingBottom: 10,
+  },
+  categoryGroupWrap: {
+    gap: 8,
   },
   categorySearchWrap: {
     minHeight: 40,

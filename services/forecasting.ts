@@ -43,6 +43,11 @@ import type {
 } from "@/services/forecast-domain";
 import { resolveIncomeSemanticsForTransaction } from "@/services/income-semantics";
 import { detectRareSubscriptionItems } from "@/services/rare-subscriptions";
+import {
+  listAnnualObligationReserveRules,
+  seedAnnualObligationRulesFromRareSubscriptions,
+  type AnnualObligationReserveRule,
+} from "@/services/reserve-rules";
 import { supabase } from "@/services/supabase";
 import { normalizePattern } from "@/services/pattern-normalization";
 import type {
@@ -317,6 +322,23 @@ function labelForTransaction(tx: Pick<ForecastTx, "counterparty" | "details">) {
   return label || "Onbekend";
 }
 
+function normalizeReserveRuleKey(value: string) {
+  return normalizePattern(String(value || ""));
+}
+
+function isRareItemCoveredByReserveRule(
+  item: { label: string; descriptor: string },
+  rules: AnnualObligationReserveRule[],
+) {
+  const labelKey = normalizeReserveRuleKey(item.label);
+  const descriptorKey = normalizeReserveRuleKey(item.descriptor);
+  return rules.some((rule) => {
+    if (rule.status !== "active") return false;
+    const ruleKey = normalizeReserveRuleKey(rule.label);
+    return Boolean(ruleKey) && (ruleKey === labelKey || ruleKey === descriptorKey);
+  });
+}
+
 function emptyBookedMonthTotals(): BookedMonthTotals {
   return {
     incomeTotal: 0,
@@ -337,7 +359,7 @@ async function fetchTransactionsInRange(
   userId: string,
   moneyViewScope: MoneyViewScope = "personal",
 ): Promise<ForecastTx[]> {
-  const bankAccounts = await listBankAccounts(userId).catch((error) => {
+  const bankAccounts = await listBankAccounts().catch((error) => {
     console.warn("[forecast] bank accounts unavailable", error);
     return [] as Awaited<ReturnType<typeof listBankAccounts>>;
   });
@@ -1218,7 +1240,7 @@ export async function recomputeCurrentMonthCashflowForecast(
         userId,
         moneyViewScope,
       ),
-      listBankAccounts(userId).catch((error) => {
+      listBankAccounts().catch((error) => {
         console.warn("[forecast] bank accounts unavailable", error);
         return [] as Awaited<ReturnType<typeof listBankAccounts>>;
       }),
@@ -1257,6 +1279,18 @@ export async function recomputeCurrentMonthCashflowForecast(
     categories,
     referenceDate: dateToIso(now),
   });
+  await seedAnnualObligationRulesFromRareSubscriptions({
+    rareItems: rareSubscriptionItems,
+    scopeView: moneyViewScope,
+    userId,
+  }).catch((error) => {
+    console.warn("[forecast] reserve rule seeding skipped", error);
+  });
+  const reserveRules = await listAnnualObligationReserveRules({
+    userId,
+    scopeView: moneyViewScope,
+    includePaused: true,
+  }).catch(() => [] as AnnualObligationReserveRule[]);
 
   const forecastRows: StoredForecastSummary[] = [];
   const timelineRows: StoredForecastTimelineEvent[] = [];
@@ -1331,8 +1365,14 @@ export async function recomputeCurrentMonthCashflowForecast(
       monthEndExclusive,
       referenceDate,
     });
+    // Anti-double-counting:
+    // rare subscriptions that are already converted into active annual
+    // reserve rules should not be merged as extra forecast expenses.
+    const unmatchedRareItems = rareSubscriptionItems.filter(
+      (item) => !isRareItemCoveredByReserveRule(item, reserveRules),
+    );
     expenseEvents = mergeRareSubscriptionEvents({
-      rareItems: rareSubscriptionItems,
+      rareItems: unmatchedRareItems,
       existingEvents: expenseEvents,
       monthStart,
       monthEndExclusive,
@@ -1446,6 +1486,7 @@ export async function recomputeCurrentMonthCashflowForecast(
       bankAccountsById,
       bookedTransactions: transactions,
       timelineEvents: timelineEventsForProjection,
+      reserveRules,
       carryover: openingCarryover,
     });
 

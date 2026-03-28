@@ -1,7 +1,8 @@
 import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
-import { FinColors } from "@/constants/theme";
+import { FinancePressableSurface } from "@/components/ui/finance-pressable-surface";
+import { FinColors, FinTokens } from "@/constants/theme";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 export type FinanceInsightCardType = "trend" | "reassurance" | "attention" | "neutral";
 
@@ -35,11 +36,11 @@ function resolveVisual(type: FinanceInsightCardType): {
   if (type === "reassurance") {
     return {
       icon: "check-circle",
-      iconColor: "#5f7a08",
+      iconColor: FinTokens.color.statusGoodText,
       iconBg: "transparent",
       borderColor: "rgba(16,185,129,0.16)",
-      titleColor: "#5f7a08",
-      accentColor: "#5f7a08",
+      titleColor: FinTokens.color.statusGoodText,
+      accentColor: FinTokens.color.statusGoodText,
     };
   }
 
@@ -75,14 +76,11 @@ export function FinanceInsightCard({
   const pressable = Boolean(onPress);
 
   return (
-    <Pressable
-      disabled={!pressable}
+    <FinancePressableSurface
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.card,
-        { borderColor: visual.borderColor },
-        pressed && pressable ? styles.cardPressed : null,
-      ]}
+      disabled={!pressable}
+      style={[styles.card, { borderColor: visual.borderColor }]}
+      pressedStyle={pressable ? styles.cardPressed : null}
     >
       <View style={[styles.leftAccent, { backgroundColor: visual.accentColor }]} />
 
@@ -107,7 +105,7 @@ export function FinanceInsightCard({
           </View>
         ) : null}
       </View>
-    </Pressable>
+    </FinancePressableSurface>
   );
 }
 

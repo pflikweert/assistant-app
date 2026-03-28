@@ -1,6 +1,5 @@
 import { AppIcon } from "@/components/ui/app-icon";
-import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
-import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceDetailShell } from "@/components/ui/finance-detail-shell";
 import { FinanceStepIndicator } from "@/components/ui/finance-step-indicator";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import { IMPORT_FLOW_STEPS } from "@/components/import/import-flow-steps";
@@ -14,7 +13,6 @@ import React from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -65,106 +63,92 @@ export default function ImportAfrondenScreen() {
     : "Je kunt nu direct verder.";
 
   return (
-    <View style={styles.root}>
-      <FinanceScreenBackdrop tone="warm" />
-      <FinanceDetailTopBar title={topBarTitle} onBack={goToNewImport} />
+    <FinanceDetailShell
+      title={topBarTitle}
+      onBack={goToNewImport}
+      contentContainerStyle={styles.content}
+      contentMaxStyle={styles.contentMax}
+    >
+      <FinanceStepIndicator
+        steps={IMPORT_FLOW_STEPS}
+        currentStepKey="finish"
+        completedStepKeys={[
+          "choose-file",
+          "link-accounts",
+          "import-transactions",
+        ]}
+      />
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.contentMax}>
-          <FinanceStepIndicator
-            steps={IMPORT_FLOW_STEPS}
-            currentStepKey="finish"
-            completedStepKeys={[
-              "choose-file",
-              "link-accounts",
-              "import-transactions",
-            ]}
-          />
+      <View style={styles.heroCard}>
+        <View style={styles.heroIconWrap}>
+          <AppIcon name="check" size={30} color={FinColors.textPrimary} variant="outlined" />
+        </View>
+        <Text style={styles.heroTitle}>{heroTitle}</Text>
+        <Text style={styles.heroText}>{heroText}</Text>
+      </View>
 
-          <View style={styles.heroCard}>
-            <View style={styles.heroIconWrap}>
-              <AppIcon name="check" size={30} color={FinColors.textPrimary} variant="outlined" />
-            </View>
-            <Text style={styles.heroTitle}>{heroTitle}</Text>
-            <Text style={styles.heroText}>{heroText}</Text>
+      <View style={styles.summaryCard}>
+        <Text style={styles.sectionTitle}>Samenvatting</Text>
+        <View style={styles.summaryGrid}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Ingelezen</Text>
+            <Text style={styles.summaryValue}>{result.importedTransactions}</Text>
           </View>
-
-          <View style={styles.summaryCard}>
-            <Text style={styles.sectionTitle}>Samenvatting</Text>
-            <View style={styles.summaryGrid}>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>Ingelezen</Text>
-                <Text style={styles.summaryValue}>{result.importedTransactions}</Text>
-              </View>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>Overgeslagen</Text>
-                <Text style={styles.summaryValue}>{result.skippedTransactions}</Text>
-              </View>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>Rekeningen</Text>
-                <Text style={styles.summaryValue}>{result.linkedAccounts}</Text>
-              </View>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>Periode</Text>
-                <Text style={styles.summaryValue}>{result.periodLabel}</Text>
-              </View>
-            </View>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Overgeslagen</Text>
+            <Text style={styles.summaryValue}>{result.skippedTransactions}</Text>
           </View>
-
-          <View style={styles.noteCard}>
-            <View style={styles.noteHeader}>
-              <View style={styles.noteTitleWrap}>
-                <Text style={styles.noteTitle}>{noteTitle}</Text>
-                <Text style={styles.noteText}>{noteText}</Text>
-              </View>
-              <View style={styles.noteStatusBadge}>
-                {result.categorizationQueued ? (
-                  <ActivityIndicator size="small" color={FinColors.warningText} />
-                ) : (
-                  <AppIcon name="check" size={16} color={FinColors.warningText} variant="outlined" />
-                )}
-              </View>
-            </View>
-            <Text style={styles.noteHint}>{noteHint}</Text>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Rekeningen</Text>
+            <Text style={styles.summaryValue}>{result.linkedAccounts}</Text>
           </View>
-
-          <View style={styles.actionsCard}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={goToTransactions}
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-            >
-              <AppIcon name="receipt-long" size={18} color={FinColors.bgBase} variant="outlined" />
-              <Text style={styles.primaryButtonText}>Ga naar transacties</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={goToNewImport}
-              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-            >
-              <AppIcon name="upload-file" size={18} color={FinColors.textPrimary} variant="outlined" />
-              <Text style={styles.secondaryButtonText}>Nog een bestand inlezen</Text>
-            </Pressable>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Periode</Text>
+            <Text style={styles.summaryValue}>{result.periodLabel}</Text>
           </View>
         </View>
-      </ScrollView>
-    </View>
+      </View>
+
+      <View style={styles.noteCard}>
+        <View style={styles.noteHeader}>
+          <View style={styles.noteTitleWrap}>
+            <Text style={styles.noteTitle}>{noteTitle}</Text>
+            <Text style={styles.noteText}>{noteText}</Text>
+          </View>
+          <View style={styles.noteStatusBadge}>
+            {result.categorizationQueued ? (
+              <ActivityIndicator size="small" color={FinColors.warningText} />
+            ) : (
+              <AppIcon name="check" size={16} color={FinColors.warningText} variant="outlined" />
+            )}
+          </View>
+        </View>
+        <Text style={styles.noteHint}>{noteHint}</Text>
+      </View>
+
+      <View style={styles.actionsCard}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={goToTransactions}
+          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+        >
+          <AppIcon name="receipt-long" size={18} color={FinColors.bgBase} variant="outlined" />
+          <Text style={styles.primaryButtonText}>Ga naar transacties</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={goToNewImport}
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+        >
+          <AppIcon name="upload-file" size={18} color={FinColors.textPrimary} variant="outlined" />
+          <Text style={styles.secondaryButtonText}>Nog een bestand inlezen</Text>
+        </Pressable>
+      </View>
+    </FinanceDetailShell>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: FinColors.bgBase,
-    overflow: "hidden",
-  },
-  scroll: {
-    flex: 1,
-  },
   content: {
     paddingBottom: 28,
   },
@@ -187,7 +171,7 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 999,
-    backgroundColor: "#fff0c2",
+    backgroundColor: FinColors.warningBg,
     alignItems: "center",
     justifyContent: "center",
   },

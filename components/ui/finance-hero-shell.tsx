@@ -1,4 +1,4 @@
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSpacing } from "@/constants/theme";
 import React from "react";
 import {
   StyleSheet,
@@ -55,21 +55,21 @@ const styles = StyleSheet.create({
   shell: {
     backgroundColor: FinColors.bgElevated,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(17,17,17,0.05)",
+    borderBottomColor: FinColors.borderSubtle,
   },
   inner: {
     width: "100%",
     maxWidth: 1040,
     alignSelf: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: FinSpacing.x4,
     paddingTop: 102,
-    paddingBottom: 24,
+    paddingBottom: FinSpacing.x6,
   },
   eyebrowRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
+    gap: FinSpacing.x2,
+    marginBottom: FinSpacing.x2,
   },
   eyebrowDot: {
     width: 8,
@@ -92,10 +92,10 @@ const styles = StyleSheet.create({
     letterSpacing: -1.8,
   },
   subtitleWrap: {
-    marginTop: 12,
+    marginTop: FinSpacing.x3,
     borderLeftWidth: 2,
     borderLeftColor: FinColors.border,
-    paddingLeft: 14,
+    paddingLeft: FinSpacing.x3,
   },
   subtitle: {
     fontSize: 18,
@@ -103,6 +103,6 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
   },
   children: {
-    marginTop: 16,
+    marginTop: FinSpacing.x4,
   },
 });

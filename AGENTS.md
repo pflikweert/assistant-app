@@ -29,7 +29,8 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 
 ## Design Richting
 
-- Voor UI-patronen, kleuren, spacing, typografie, headers, cards, filters, detailopbouw en mobile-first ontwerpkeuzes is `docs/UI_PATTERNS.md` de primaire designreferentie
+- Voor designwerk lees je altijd eerst `docs/design/design-system-rules.md`, daarna `docs/design/screen-inventory.md`, en daarna `docs/UI_PATTERNS.md`
+- Voor UI-patronen, kleuren, spacing, typografie, headers, cards, filters, detailopbouw en mobile-first ontwerpkeuzes is `docs/UI_PATTERNS.md` de primaire visuele referentie
 - Basispalet blijft wit, grijs en zwart met geel als spaarzaam functioneel accent, zoals uitgewerkt in `docs/UI_PATTERNS.md`
 - Pas bestaande Stitch-afgeleide patronen uit `docs/UI_PATTERNS.md` toe voordat je nieuwe visuele patronen introduceert
 - Als een scherm bewust afwijkt van `docs/UI_PATTERNS.md`, benoem dan expliciet waarom dat productmatig of technisch nodig is
@@ -50,6 +51,24 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
   - centraliseer backdrop, sheet-radius, handle, close-knop, footer en scrollgedrag
   - modal shells mogen per flow alleen inhoud en beperkte accentkleuren aanpassen
   - nieuwe picker- of selectieflows mogen geen eigen losse sheet-rand of backdrop opnieuw uitvinden
+
+## Design Workflow Voor Schermen
+
+- Lees altijd eerst `docs/design/design-system-rules.md`
+- Lees daarna `docs/design/screen-inventory.md`
+- Raadpleeg daarna `docs/UI_PATTERNS.md` en pas bestaande patronen toe voordat je iets nieuws ontwerpt
+- Behoud bestaande businesslogica, services en routing; designwerk mag geen nieuwe financiële waarheid introduceren
+- Refactor UI in kleine stappen en centraliseer terugkerende patronen zo vroeg mogelijk
+- Gebruik bestaande tokens, helpers en componenten waar mogelijk
+- Voeg geen nieuwe dependencies toe zonder duidelijke noodzaak
+- Bouw geen desktop-web layout als het scherm mobile-first bedoeld is
+- Maak loading, empty, partial en error states expliciet
+- Gebruik design-governance checks (`design:check`) voordat je grotere UI-refactors afrondt
+- Als een route nog niet in de screen inventory staat, voeg die eerst toe of markeer hem expliciet als legacy, utility of structural
+- Bij designwerk moet het antwoord altijd noemen:
+  1. welke bestanden worden aangepast
+  2. welke risico's er zijn
+  3. hoe handmatig getest wordt
 
 ## Shell-beslisregel
 
@@ -312,6 +331,7 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Controleer regressies op huidige maand, toekomstige maand en overlapweken
 - Test web-compatibiliteit als styling of navigation wrappers veranderen
 - Houd lint en tests groen voor de bestanden die je aanpast
+- Voor elke commit is het verplicht om alle unit tests te draaien (`npm run test:unit`), inclusief nieuw toegevoegde tests in de huidige wijziging
 - Doe handmatige verificatie als een wijziging saldo, forecast of importgedrag raakt
 - Plaats Vitest testbestanden niet onder `app/` (Expo Router map), maar in een niet-route map zoals `services/` of `components/`
 

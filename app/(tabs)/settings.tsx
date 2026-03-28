@@ -1,14 +1,14 @@
-import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
+import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
-import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
+import { FinanceSettingsGroup } from "@/components/ui/finance-settings-group";
+import { FinanceSettingsRow } from "@/components/ui/finance-settings-row";
+import { FinanceUtilityShell } from "@/components/ui/finance-utility-shell";
 import {
   FinanceQuickMenu,
   type FinanceQuickMenuKey,
 } from "@/components/navigation/finance-quick-menu";
-import { FinanceTopBar } from "@/components/ui/finance-top-bar";
-import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { useSession } from "@/app/_layout";
 import { useAdminAccess } from "@/services/admin-access";
 import {
@@ -39,21 +39,11 @@ import React from "react";
 import {
     ActivityIndicator,
     Modal,
-    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from "react-native";
-
-type RowProps = {
-  iconName?: AppIconName;
-  label: string;
-  subtitle?: string;
-  value?: string;
-  onPress?: () => void;
-  rightElement?: React.ReactNode;
-};
 
 function CleanupScopeSheet({
   visible,
@@ -74,14 +64,14 @@ function CleanupScopeSheet({
       onClose={onCancel}
     >
       <View style={styles.cleanupChoiceCard}>
-        <SettingsRow
+        <FinanceSettingsRow
           iconName="event"
           label="Huidige maand"
           subtitle={`Verwijder alle transacties van ${currentMonthLabel}.`}
           onPress={() => onSelect("current_month")}
         />
         <View style={styles.divider} />
-        <SettingsRow
+        <FinanceSettingsRow
           iconName="delete-outline"
           label="Alles"
           subtitle="Verwijder alle transacties, categorisaties en auditlogs."
@@ -238,55 +228,6 @@ function ErrorModal({
       </View>
     </Modal>
   );
-}
-
-function SettingsRow({
-  label,
-  subtitle,
-  value,
-  onPress,
-  rightElement,
-  iconName,
-}: RowProps) {
-  return (
-    <TouchableOpacity
-      style={styles.row}
-      onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-    >
-      {iconName ? (
-        <View style={styles.rowIconWrap}>
-          <AppIcon
-            name={iconName}
-            size={18}
-            color={FinColors.textSecondary}
-            variant="outlined"
-          />
-        </View>
-      ) : null}
-      <View style={styles.rowContent}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        {subtitle ? <Text style={styles.rowSub}>{subtitle}</Text> : null}
-      </View>
-      {rightElement ?? (
-        <View style={styles.rowRight}>
-          {value ? <Text style={styles.rowValue}>{value}</Text> : null}
-          {onPress ? (
-            <AppIcon
-              name="chevron-right"
-              size={18}
-              color={FinColors.textMuted}
-              variant="outlined"
-            />
-          ) : null}
-        </View>
-      )}
-    </TouchableOpacity>
-  );
-}
-
-function SectionHeader({ title }: { title: string }) {
-  return <Text style={styles.sectionHeader}>{title}</Text>;
 }
 
 export default function SettingsScreen() {
@@ -481,338 +422,320 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={styles.root}>
-      <FinanceScreenBackdrop tone="warm" />
-      <FinanceTopBar
-        shellStyle={styles.topBar}
-        title="Instellingen"
-        rightSlot={<FinanceAvatarBadge />}
-      />
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
-      >
-        <FinanceHeroShell
-          eyebrow="Account"
-          title="Instellingen"
-          subtitle="Beheer je account, data en forecast vanuit één plek."
-          subtitleStyle={styles.heroSubtitle}
-          titleStyle={styles.heroTitle}
-          shellStyle={styles.heroShell}
-        >
-          <View style={styles.profileCard}>
-            <View style={styles.profileTopRow}>
-              <View style={styles.avatarLarge}>
-                <Text style={styles.avatarText}>{userInitials || "G"}</Text>
-              </View>
-              <View style={styles.profileInfo}>
-                <Text style={styles.profileName}>{userName}</Text>
-                <Text style={styles.profileEmail}>{userEmail}</Text>
-              </View>
-            </View>
-            <View style={styles.profileMetaRow}>
-              <View style={styles.profileStatusPill}>
-                <Text style={styles.profileStatusPillText}>{backgroundSummary}</Text>
-              </View>
-              <Text style={styles.profileMetaText}>
-                {backgroundStatus.updatedCount} transacties recent bijgewerkt
-              </Text>
-            </View>
+    <FinanceUtilityShell
+      title="Instellingen"
+      rightSlot={<FinanceAvatarBadge />}
+      contentContainerStyle={styles.scroll}
+      hero={{
+        eyebrow: "Account",
+        title: "Instellingen",
+        subtitle: "Beheer je account, data en forecast vanuit één plek.",
+        shellStyle: styles.heroShell,
+      }}
+    >
+      <View style={styles.profileCard}>
+        <View style={styles.profileTopRow}>
+          <View style={styles.avatarLarge}>
+            <Text style={styles.avatarText}>{userInitials || "G"}</Text>
           </View>
-        </FinanceHeroShell>
-
-        <View style={styles.contentMax}>
-          <SectionHeader title="Import en accounts" />
-          <View style={styles.card}>
-            <SettingsRow
-              iconName="upload-file"
-              label="Transacties importeren"
-              subtitle="Upload een export van je bank"
-              onPress={() => router.push("/csv-import")}
-            />
-            <View style={styles.divider} />
-            <SettingsRow
-              iconName="manage-accounts"
-              label="Rekeningen beheren"
-              subtitle="Bankrekeningen toevoegen, bewerken of verwijderen"
-              onPress={() => router.push("/bankrekeningen")}
-            />
-            <View style={styles.divider} />
-            <SettingsRow
-              iconName="password"
-              label="Wachtwoord wijzigen"
-              subtitle="Wijzig je accountwachtwoord"
-              onPress={() => router.push("/account/change-password")}
-            />
+          <View style={styles.profileInfo}>
+            <Text style={styles.profileName}>{userName}</Text>
+            <Text style={styles.profileEmail}>{userEmail}</Text>
           </View>
-
-          <SectionHeader title="Voorkeuren" />
-          <View style={styles.card}>
-            <SettingsRow
-              iconName="euro-symbol"
-              label="Valuta"
-              value="EUR"
-              onPress={() => {}}
-            />
-            <SettingsRow
-              iconName="palette"
-              label="Weergave"
-              value="Standaard"
-              subtitle="Meer thema-opties volgen later"
-            />
+        </View>
+        <View style={styles.profileMetaRow}>
+          <View style={styles.profileStatusPill}>
+            <Text style={styles.profileStatusPillText}>{backgroundSummary}</Text>
           </View>
+          <Text style={styles.profileMetaText}>
+            {backgroundStatus.updatedCount} transacties recent bijgewerkt
+          </Text>
+        </View>
+      </View>
 
-          <SectionHeader title="Beheer" />
-          <View style={styles.card}>
-            {adminAccess.loading ? null : adminAccess.isAdmin ? (
-              <>
-                <SettingsRow
-                  iconName="shield"
-                  label="Budio beheer"
-                  subtitle="Assistent review, AI-verbruik en route-instellingen"
-                  onPress={() => router.push("/admin" as Href)}
-                />
-                <View style={styles.divider} />
-              </>
-            ) : null}
-            <SettingsRow
-              iconName="tune"
-              label="Categorie-indeling"
-              subtitle="Beheer wat onder vaste lasten, variabel of abonnementen valt"
-              onPress={() => router.push("/category-budget-groups")}
-            />
-            <View style={styles.divider} />
-            <SettingsRow
-              iconName="subscriptions"
-              label="Abonnementen"
-              subtitle="Beheer profielen, PSP-koppelingen en regels"
-              onPress={() => router.push("/subscriptions")}
-            />
-          </View>
-
-          <SectionHeader title="Forecast" />
-          <View style={styles.card}>
-            <SettingsRow
-              iconName="autorenew"
-              label="Forecast opnieuw berekenen"
-              subtitle={forecastSummary}
-              onPress={handleRefreshForecast}
-              rightElement={
-                isRefreshingForecast ? (
-                  <ActivityIndicator size="small" color={FinColors.green} />
-                ) : undefined
-              }
-            />
-            {adminAccess.loading ? null : adminAccess.isAdmin ? (
-              <>
-                <View style={styles.divider} />
-                <SettingsRow
-                  iconName="delete-outline"
-                  label="Forecast opnieuw opbouwen"
-                  subtitle="Wis forecastdata en bereken meteen opnieuw"
-                  onPress={handleResetForecast}
-                  rightElement={
-                    isResettingForecast ? (
-                      <ActivityIndicator
-                        size="small"
-                        color={FinColors.green}
-                      />
-                    ) : undefined
-                  }
-                />
-              </>
-            ) : null}
-            {forecastRefreshStatus?.lastError ? (
-              <>
-                <View style={styles.divider} />
-                <View style={styles.inlineNote}>
-                  <Text style={styles.inlineNoteError}>
-                    Laatste fout: {forecastRefreshStatus.lastError}
-                  </Text>
-                </View>
-              </>
-            ) : null}
-          </View>
-
-          <ConfirmCleanupModal
-            visible={showForecastResetConfirmModal}
-            isClearing={isResettingForecast}
-            title="Forecast opnieuw opbouwen?"
-            body="Dit wist de forecastdata van je huidige account en laat de forecast daarna direct opnieuw berekenen. Transacties en budget blijven staan."
-            confirmLabel="Opnieuw opbouwen"
-            onConfirm={handleConfirmResetForecast}
-            onCancel={() => setShowForecastResetConfirmModal(false)}
+      <View style={styles.contentMax}>
+        <FinanceSettingsGroup title="Import en accounts">
+          <FinanceSettingsRow
+            iconName="upload-file"
+            label="Transacties importeren"
+            subtitle="Upload een export van je bank"
+            onPress={() => router.push("/csv-import")}
           />
-          <SuccessModal
-            visible={showForecastResetSuccessModal}
-            message={forecastResetSuccessMessage}
-            onClose={() => setShowForecastResetSuccessModal(false)}
+          <View style={styles.divider} />
+          <FinanceSettingsRow
+            iconName="manage-accounts"
+            label="Rekeningen beheren"
+            subtitle="Bankrekeningen toevoegen, bewerken of verwijderen"
+            onPress={() => router.push("/bankrekeningen")}
           />
-          <ErrorModal
-            visible={showForecastResetErrorModal}
-            error={forecastResetErrorMessage}
-            onClose={() => setShowForecastResetErrorModal(false)}
+          <View style={styles.divider} />
+          <FinanceSettingsRow
+            iconName="password"
+            label="Wachtwoord wijzigen"
+            subtitle="Wijzig je accountwachtwoord"
+            onPress={() => router.push("/settings/security/password")}
           />
+        </FinanceSettingsGroup>
 
-          <SectionHeader title="Data" />
-          <View style={styles.card}>
-            <SettingsRow
-              iconName="download"
-              label="Data exporteren"
-              subtitle="Download alle transacties als CSV"
-              onPress={() => {}}
-            />
-            <View style={styles.divider} />
-            <SettingsRow
-              iconName="autorenew"
-              label="Alles hercategoriseren"
-              subtitle="Zet alle niet-handmatige transacties opnieuw door rules en OpenAI"
-              onPress={() => runRecategorizationForAllInBackground()}
-              rightElement={
-                isBusy ? (
-                  <ActivityIndicator size="small" color={FinColors.green} />
-                ) : undefined
-              }
-            />
-            <View style={styles.divider} />
-            <SettingsRow
-              iconName="delete-outline"
-              label="Transacties opschonen"
-              subtitle="Kies tussen de huidige maand of alles"
-              onPress={handleResetPress}
-              rightElement={
-                isClearing ? (
-                  <ActivityIndicator size="small" color={FinColors.green} />
-                ) : undefined
-              }
-            />
+        <FinanceSettingsGroup title="Voorkeuren">
+          <FinanceSettingsRow
+            iconName="euro-symbol"
+            label="Valuta"
+            value="EUR"
+            onPress={() => {}}
+          />
+          <View style={styles.divider} />
+          <FinanceSettingsRow
+            iconName="palette"
+            label="Weergave"
+            value="Standaard"
+            subtitle="Meer thema-opties volgen later"
+          />
+        </FinanceSettingsGroup>
+
+        <FinanceSettingsGroup title="Beheer">
+          {adminAccess.loading ? null : adminAccess.isAdmin ? (
+            <>
+              <FinanceSettingsRow
+                iconName="shield"
+                label="Budio beheer"
+                subtitle="Assistent review, AI-verbruik en route-instellingen"
+                onPress={() => router.push("/admin" as Href)}
+              />
+              <View style={styles.divider} />
+            </>
+          ) : null}
+          <FinanceSettingsRow
+            iconName="tune"
+            label="Categorie-indeling"
+            subtitle="Beheer wat onder vaste lasten, variabel of abonnementen valt"
+            onPress={() => router.push("/category-budget-groups")}
+          />
+          <View style={styles.divider} />
+          <FinanceSettingsRow
+            iconName="subscriptions"
+            label="Abonnementen"
+            subtitle="Beheer profielen, PSP-koppelingen en regels"
+            onPress={() => router.push("/subscriptions")}
+          />
+        </FinanceSettingsGroup>
+
+        <FinanceSettingsGroup title="Forecast">
+          <FinanceSettingsRow
+            iconName="autorenew"
+            label="Forecast opnieuw berekenen"
+            subtitle={forecastSummary}
+            onPress={handleRefreshForecast}
+            rightElement={
+              isRefreshingForecast ? (
+                <ActivityIndicator size="small" color={FinColors.green} />
+              ) : undefined
+            }
+          />
+          {adminAccess.loading ? null : adminAccess.isAdmin ? (
+            <>
+              <View style={styles.divider} />
+              <FinanceSettingsRow
+                iconName="delete-outline"
+                label="Forecast opnieuw opbouwen"
+                subtitle="Wis forecastdata en bereken meteen opnieuw"
+                onPress={handleResetForecast}
+                rightElement={
+                  isResettingForecast ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={FinColors.green}
+                    />
+                  ) : undefined
+                }
+              />
+            </>
+          ) : null}
+          {forecastRefreshStatus?.lastError ? (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.inlineNote}>
+                <Text style={styles.inlineNoteError}>
+                  Laatste fout: {forecastRefreshStatus.lastError}
+                </Text>
+              </View>
+            </>
+          ) : null}
+        </FinanceSettingsGroup>
+
+        <ConfirmCleanupModal
+          visible={showForecastResetConfirmModal}
+          isClearing={isResettingForecast}
+          title="Forecast opnieuw opbouwen?"
+          body="Dit wist de forecastdata van je huidige account en laat de forecast daarna direct opnieuw berekenen. Transacties en budget blijven staan."
+          confirmLabel="Opnieuw opbouwen"
+          onConfirm={handleConfirmResetForecast}
+          onCancel={() => setShowForecastResetConfirmModal(false)}
+        />
+        <SuccessModal
+          visible={showForecastResetSuccessModal}
+          message={forecastResetSuccessMessage}
+          onClose={() => setShowForecastResetSuccessModal(false)}
+        />
+        <ErrorModal
+          visible={showForecastResetErrorModal}
+          error={forecastResetErrorMessage}
+          onClose={() => setShowForecastResetErrorModal(false)}
+        />
+
+        <FinanceSettingsGroup title="Data">
+          <FinanceSettingsRow
+            iconName="download"
+            label="Data exporteren"
+            subtitle="Download alle transacties als CSV"
+            onPress={() => {}}
+          />
+          <View style={styles.divider} />
+          <FinanceSettingsRow
+            iconName="autorenew"
+            label="Alles hercategoriseren"
+            subtitle="Zet alle niet-handmatige transacties opnieuw door rules en OpenAI"
+            onPress={() => runRecategorizationForAllInBackground()}
+            rightElement={
+              isBusy ? (
+                <ActivityIndicator size="small" color={FinColors.green} />
+              ) : undefined
+            }
+          />
+          <View style={styles.divider} />
+          <FinanceSettingsRow
+            iconName="delete-outline"
+            label="Transacties opschonen"
+            subtitle="Kies tussen de huidige maand of alles"
+            onPress={handleResetPress}
+            rightElement={
+              isClearing ? (
+                <ActivityIndicator size="small" color={FinColors.green} />
+              ) : undefined
+            }
+          />
+        </FinanceSettingsGroup>
+
+        <FinanceSettingsGroup title="Achtergrondtaken" cardStyle={styles.statusCard}>
+          <View style={styles.statusHeader}>
+            <Text style={styles.statusTitle}>Categorisatie</Text>
+            <Text style={styles.statusPhase}>{backgroundStatus.phase}</Text>
           </View>
-
-          <SectionHeader title="Achtergrondtaken" />
-          <View style={styles.statusCard}>
-            <View style={styles.statusHeader}>
-              <Text style={styles.statusTitle}>Categorisatie</Text>
-              <Text style={styles.statusPhase}>{backgroundStatus.phase}</Text>
-            </View>
-            <Text style={styles.statusHint}>
-              Automatische categorisatie start na import. Handmatig kun je altijd
-              {'"'}Alles hercategoriseren{'"'} gebruiken.
-            </Text>
-            <Text style={styles.statusText}>
-              {formatCategorizationStatus(backgroundStatus)}
-            </Text>
-            <View style={styles.controlRow}>
-              <TouchableOpacity
-                style={[
-                  styles.controlButton,
-                  (isPaused || !isBusy) && styles.controlButtonDisabled,
-                ]}
-                onPress={pauseBackgroundCategorization}
-                disabled={isPaused || !isBusy}
-              >
-                <Text style={styles.controlButtonText}>Pauzeer</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.controlButton,
-                  !isPaused &&
-                    !backgroundStatus.queuedCount &&
-                    styles.controlButtonDisabled,
-                ]}
-                onPress={resumeBackgroundCategorization}
-                disabled={!isPaused && !backgroundStatus.queuedCount}
-              >
-                <Text style={styles.controlButtonText}>Hervat</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.controlButton,
-                  !isBusy && !isPaused && styles.controlButtonDisabled,
-                ]}
-                onPress={stopBackgroundCategorization}
-                disabled={!isBusy && !isPaused}
-              >
-                <Text style={styles.controlButtonText}>Stop</Text>
-              </TouchableOpacity>
-            </View>
+          <Text style={styles.statusHint}>
+            Automatische categorisatie start na import. Handmatig kun je altijd
+            {'"'}Alles hercategoriseren{'"'} gebruiken.
+          </Text>
+          <Text style={styles.statusText}>
+            {formatCategorizationStatus(backgroundStatus)}
+          </Text>
+          <View style={styles.controlRow}>
             <TouchableOpacity
               style={[
-                styles.secondaryControlButton,
-                !backgroundStatus.queuedCount && styles.controlButtonDisabled,
+                styles.controlButton,
+                (isPaused || !isBusy) && styles.controlButtonDisabled,
               ]}
-              onPress={clearQueuedCategorizationQueue}
-              disabled={!backgroundStatus.queuedCount}
+              onPress={pauseBackgroundCategorization}
+              disabled={isPaused || !isBusy}
             >
-              <Text style={styles.secondaryControlButtonText}>
-                Wachtrij leegmaken
-              </Text>
+              <Text style={styles.controlButtonText}>Pauzeer</Text>
             </TouchableOpacity>
-            <View style={styles.statusMetaRow}>
-              <Text style={styles.statusMetaText}>
-                Verwerkt: {backgroundStatus.processedCount}
-              </Text>
-              <Text style={styles.statusMetaText}>
-                Bijgewerkt: {backgroundStatus.updatedCount}
-              </Text>
-            </View>
-            <View style={styles.statusMetaRow}>
-              <Text style={styles.statusMetaText}>
-                Rules: {backgroundStatus.ruleCount}
-              </Text>
-              <Text style={styles.statusMetaText}>
-                OpenAI: {backgroundStatus.openAiCount}
-              </Text>
-            </View>
-            <View style={styles.statusMetaRow}>
-              <Text style={styles.statusMetaText}>
-                Laatste mode: {backgroundStatus.lastRunMode || "-"}
-              </Text>
-              <Text style={styles.statusMetaText}>
-                Overgeslagen: {backgroundStatus.skippedCount}
-              </Text>
-            </View>
-            {backgroundStatus.lastError ? (
-              <Text style={styles.statusError}>
-                Laatste fout: {backgroundStatus.lastError}
-              </Text>
-            ) : null}
-            {backgroundStatus.lastCompletedAt ? (
-              <Text style={styles.statusTimestamp}>
-                Laatste afronding:{" "}
-                {new Date(backgroundStatus.lastCompletedAt).toLocaleString(
-                  "nl-NL",
-                )}
-              </Text>
-            ) : null}
+            <TouchableOpacity
+              style={[
+                styles.controlButton,
+                !isPaused &&
+                  !backgroundStatus.queuedCount &&
+                  styles.controlButtonDisabled,
+              ]}
+              onPress={resumeBackgroundCategorization}
+              disabled={!isPaused && !backgroundStatus.queuedCount}
+            >
+              <Text style={styles.controlButtonText}>Hervat</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.controlButton,
+                !isBusy && !isPaused && styles.controlButtonDisabled,
+              ]}
+              onPress={stopBackgroundCategorization}
+              disabled={!isBusy && !isPaused}
+            >
+              <Text style={styles.controlButtonText}>Stop</Text>
+            </TouchableOpacity>
           </View>
-
-          {/* Over Budio */}
-          <SectionHeader title="Over Budio" />
-          <View style={styles.card}>
-            <SettingsRow iconName="info-outline" label="Versie" value="0.1" />
-            <View style={styles.divider} />
-            <SettingsRow
-              iconName="support-agent"
-              label="Hulp en support"
-              onPress={() => {}}
-            />
-          </View>
-
           <TouchableOpacity
-            style={styles.signOutBtn}
-            activeOpacity={0.7}
-            onPress={handleLogout}
-            disabled={isSigningOut}
+            style={[
+              styles.secondaryControlButton,
+              !backgroundStatus.queuedCount && styles.controlButtonDisabled,
+            ]}
+            onPress={clearQueuedCategorizationQueue}
+            disabled={!backgroundStatus.queuedCount}
           >
-            {isSigningOut ? (
-              <ActivityIndicator size="small" color={FinColors.red} />
-            ) : (
-              <Text style={styles.signOutText}>Uitloggen</Text>
-            )}
+            <Text style={styles.secondaryControlButtonText}>
+              Wachtrij leegmaken
+            </Text>
           </TouchableOpacity>
-        </View>
-      </ScrollView>
+          <View style={styles.statusMetaRow}>
+            <Text style={styles.statusMetaText}>
+              Verwerkt: {backgroundStatus.processedCount}
+            </Text>
+            <Text style={styles.statusMetaText}>
+              Bijgewerkt: {backgroundStatus.updatedCount}
+            </Text>
+          </View>
+          <View style={styles.statusMetaRow}>
+            <Text style={styles.statusMetaText}>
+              Rules: {backgroundStatus.ruleCount}
+            </Text>
+            <Text style={styles.statusMetaText}>
+              OpenAI: {backgroundStatus.openAiCount}
+            </Text>
+          </View>
+          <View style={styles.statusMetaRow}>
+            <Text style={styles.statusMetaText}>
+              Laatste mode: {backgroundStatus.lastRunMode || "-"}
+            </Text>
+            <Text style={styles.statusMetaText}>
+              Overgeslagen: {backgroundStatus.skippedCount}
+            </Text>
+          </View>
+          {backgroundStatus.lastError ? (
+            <Text style={styles.statusError}>
+              Laatste fout: {backgroundStatus.lastError}
+            </Text>
+          ) : null}
+          {backgroundStatus.lastCompletedAt ? (
+            <Text style={styles.statusTimestamp}>
+              Laatste afronding:{" "}
+              {new Date(backgroundStatus.lastCompletedAt).toLocaleString(
+                "nl-NL",
+              )}
+            </Text>
+          ) : null}
+        </FinanceSettingsGroup>
+
+        <FinanceSettingsGroup title="Over Budio">
+          <FinanceSettingsRow iconName="info-outline" label="Versie" value="0.1" />
+          <View style={styles.divider} />
+          <FinanceSettingsRow
+            iconName="support-agent"
+            label="Hulp en support"
+            onPress={() => {}}
+          />
+        </FinanceSettingsGroup>
+
+        <TouchableOpacity
+          style={styles.signOutBtn}
+          activeOpacity={0.7}
+          onPress={handleLogout}
+          disabled={isSigningOut}
+        >
+          {isSigningOut ? (
+            <ActivityIndicator size="small" color={FinColors.red} />
+          ) : (
+            <Text style={styles.signOutText}>Uitloggen</Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
       <FinanceQuickMenu
         activeKey={null}
@@ -849,7 +772,7 @@ export default function SettingsScreen() {
         error={errorMessage}
         onClose={() => setShowErrorModal(false)}
       />
-    </View>
+    </FinanceUtilityShell>
   );
 }
 

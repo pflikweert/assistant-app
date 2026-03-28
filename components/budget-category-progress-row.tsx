@@ -1,10 +1,10 @@
 import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
+import { FinancePressableSurface } from "@/components/ui/finance-pressable-surface";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import { FinColors } from "@/constants/theme";
 import { getBudgetRiskTone } from "@/services/budget-risk";
 import React from "react";
 import {
-    Pressable,
     StyleProp,
     StyleSheet,
     Text,
@@ -101,9 +101,9 @@ export function BudgetCategoryProgressRow({
 
   if (onPress) {
     return (
-      <Pressable style={[styles.root, style]} onPress={onPress}>
+      <FinancePressableSurface style={[styles.root, style]} onPress={onPress}>
         {content}
-      </Pressable>
+      </FinancePressableSurface>
     );
   }
 

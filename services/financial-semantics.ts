@@ -1,5 +1,6 @@
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import { resolveForecastDisplayExpectedEndBalance } from "@/services/insights-remaining-month";
+import type { ReserveSurfaceBreakdown } from "@/services/reserve-surface";
 import type {
   AnalysisCategory,
   AnalysisMainGroup,
@@ -194,30 +195,61 @@ export function buildFinancialBalanceSnapshot(params: {
   forecast: InsightsForecastSummary | null;
   plan: BudgetPlanComputation | null;
   currentBalanceOverride?: number | null;
+  reserveSurface?: ReserveSurfaceBreakdown | null;
 }): FinancialSurfaceBalanceSnapshot {
-  const { forecast, plan, currentBalanceOverride } = params;
+  const { forecast, plan, currentBalanceOverride, reserveSurface } = params;
 
   const operationalBalance =
     currentBalanceOverride ??
     forecast?.currentOperationalBalance ??
     forecast?.currentBalanceAnchor ??
     null;
-  const reservedBalance = resolveReservedBalanceValue(forecast);
+  const reserveSurfaceTotal =
+    reserveSurface?.reservedInAccountsNow == null &&
+    reserveSurface?.reservedProtectedInOperationalNow == null
+      ? null
+      : round2(
+          Math.max(reserveSurface?.reservedInAccountsNow ?? 0, 0) +
+            Math.max(reserveSurface?.reservedProtectedInOperationalNow ?? 0, 0),
+        );
+  const reservedBalance =
+    reserveSurface?.source === "modeled"
+      ? reserveSurfaceTotal == null
+        ? { amount: null as number | null, source: "not_configured" as const }
+        : reserveSurfaceTotal === 0
+          ? { amount: 0 as number, source: "zero" as const }
+          : { amount: reserveSurfaceTotal, source: "derived" as const }
+      : resolveReservedBalanceValue(forecast);
   const netWorth = forecast?.currentNetWorth ?? null;
   // freeToSpendNow is the operational room after reserved money.
   // It is intentionally separate from month budget and week budget:
   // those come from the budget surface, while this field is only about
   // what remains in the current operational layer right now.
+  const protectedOperationalReserve =
+    reserveSurface?.reservedProtectedInOperationalNow == null
+      ? null
+      : round2(Math.max(reserveSurface.reservedProtectedInOperationalNow, 0));
+  const hasModeledReserveSurface = reserveSurface?.source === "modeled";
+  const effectiveProtectedOperationalReserve =
+    hasModeledReserveSurface && operationalBalance != null
+      ? Math.max(protectedOperationalReserve ?? 0, 0)
+      : protectedOperationalReserve;
   const freeToSpendNow =
-    reservedBalance.amount == null
+    effectiveProtectedOperationalReserve == null && reservedBalance.amount == null
       ? null
       : currentBalanceOverride != null
-        ? round2(currentBalanceOverride - reservedBalance.amount)
+        ? round2(
+            currentBalanceOverride -
+              (effectiveProtectedOperationalReserve ??
+                Math.max(reservedBalance.amount || 0, 0)),
+          )
+        : effectiveProtectedOperationalReserve != null && operationalBalance != null
+          ? round2(operationalBalance - effectiveProtectedOperationalReserve)
         : forecast?.freeToSpendNow != null
         ? forecast.freeToSpendNow
         : operationalBalance == null
           ? null
-          : round2(operationalBalance - reservedBalance.amount);
+          : round2(operationalBalance - Math.max(reservedBalance.amount || 0, 0));
   const expectedEndOperationalBalance = resolveForecastDisplayExpectedEndBalance({
     forecast,
     budgetPlan: plan,
@@ -277,6 +309,8 @@ export function buildFinancialBalanceSnapshot(params: {
           ? "unavailable"
           : currentBalanceOverride != null
             ? "derived"
+            : hasModeledReserveSurface
+              ? "derived"
             : forecast?.freeToSpendNow != null
             ? "forecast_anchor"
             : "derived",

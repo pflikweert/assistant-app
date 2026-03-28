@@ -139,7 +139,7 @@ export default function CSVImportScreen() {
         );
         return;
       }
-      router.push("/rekeningen-koppelen");
+      router.push("/accounts/link");
     },
     [router],
   );

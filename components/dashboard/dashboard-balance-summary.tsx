@@ -1,4 +1,4 @@
-import { AppIcon } from "@/components/ui/app-icon";
+import { FinanceInlineCallout } from "@/components/ui/finance-inline-callout";
 import { FinColors } from "@/constants/theme";
 import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import React from "react";
@@ -150,21 +150,15 @@ export function DashboardBalanceSummary({
           ))}
         </View>
 
-        <View style={styles.statusCard}>
-          <View style={styles.statusIconWrap}>
-            <AppIcon
-              name={
-                expectedEnd != null && expectedEnd < 0
-                  ? "warning"
-                  : "check-circle-outline"
-              }
-              size={16}
-              color={FinColors.warningText}
-              variant="outlined"
-            />
-          </View>
-          <Text style={styles.statusText}>{statusLabel}</Text>
-        </View>
+        <FinanceInlineCallout
+          text={statusLabel}
+          iconName={
+            expectedEnd != null && expectedEnd < 0
+              ? "warning"
+              : "check-circle-outline"
+          }
+          tone="highlight"
+        />
       </View>
     </View>
   );
@@ -198,7 +192,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     fontWeight: "900",
-    color: "#9a9a9a",
+    color: FinColors.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 2.1,
   },
@@ -221,7 +215,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "700",
-    color: "#666666",
+    color: FinColors.textSecondary,
   },
   forecastPillValue: {
     fontSize: 17,
@@ -272,14 +266,14 @@ const styles = StyleSheet.create({
     fontSize: 66,
     lineHeight: 70,
     fontWeight: "900",
-    color: "#6b6b6b",
+    color: FinColors.textSecondary,
     letterSpacing: -2.4,
   },
   fraction: {
     fontSize: 66,
     lineHeight: 70,
     fontWeight: "900",
-    color: "#6b6b6b",
+    color: FinColors.textSecondary,
     letterSpacing: -2.4,
   },
   supportGrid: {
@@ -302,7 +296,7 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     fontWeight: "900",
     letterSpacing: 0.9,
-    color: "#9a9a9a",
+    color: FinColors.textSecondary,
     textTransform: "uppercase",
   },
   supportValue: {
@@ -311,32 +305,5 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: FinColors.textPrimary,
     letterSpacing: -0.8,
-  },
-  statusCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    alignSelf: "center",
-    borderRadius: 22,
-    backgroundColor: FinColors.yellowSoft,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    boxShadow: "0px 8px 16px rgba(242,201,76,0.18)",
-    elevation: 1,
-  },
-  statusIconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.42)",
-  },
-  statusText: {
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "800",
-    color: FinColors.warningText,
   },
 });

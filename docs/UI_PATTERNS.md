@@ -5,6 +5,7 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 ## Algemene Designprincipes
 
 - Werk mobile-first: eerst de verticale flow, daarna pas bredere web-layouts.
+- Gebruik semantische design tokens uit `constants/theme.ts` (`FinTokens.color`, `FinTokens.spacing`, `FinTokens.radius`) in plaats van losse literals.
 - Gebruik full-bleed achtergrondvlakken alleen voor hero- of sectie-ankers; houd inhoud zelf binnen een vaste, gecentreerde contentkolom.
 - Gebruik voor de app-backdrop een rustige, consistente basis (`#fafbff`) met subtiele decoratie; decoratie mag nooit concurreren met content.
 - Basis is wit, warm grijs en zwart; geel is functioneel accent en geen dominante basiskleur.
@@ -20,6 +21,23 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 - Lege staten moeten richting geven: wat zie ik niet, waarom niet, en wat kan ik nu doen?
 - Hero- en topbar-ritmiek is onderdeel van de shell: gelijke shell betekent gelijke verticale offset.
 
+## Pattern Map (Korte Referentie)
+
+- Dashboard gebruikt canoniek: `FinanceDashboardHeader` + gecentreerde contentkolom (hero-less).
+- Overige hoofdschermen gebruiken: `FinanceTopBar` + `FinanceHeroShell` + gecentreerde contentkolom.
+- Utility/detailschermen gebruiken: `FinanceDetailShell` (met ingebouwde `FinanceDetailTopBar`) + compacte contentopbouw.
+- Selectie/modals gebruiken: `FinanceBottomSheetShell` als vaste shell.
+- Signaalcallouts gebruiken: `FinanceInlineCallout` als standaard.
+
+## Dashboard Shell (Hero-less Canoniek)
+
+- Gebruik `FinanceDashboardHeader` als vaste dashboard-header.
+- Deze pattern heeft geen hero-offset en voorkomt overlap met topbar/content.
+- Header-ritme:
+  - `FinanceTopBar` binnen `FinanceDashboardHeader`
+  - content start onder een vaste, token-gedreven top padding
+- Gebruik voor dashboardacties en callouts dezelfde contentkolom als de overige hoofdschermen.
+
 ## Component-First Werkafspraken
 
 - Bouw nieuwe UI eerst als herbruikbare component of style-module als het patroon op meer dan één scherm relevant kan zijn.
@@ -28,6 +46,7 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 - Ruim oude inline varianten meteen op zodra een gedeelde component bestaat, zodat we geen parallelle stylingpaden behouden.
 - Verander terugkerende shell-elementen nooit alleen lokaal in één scherm als het een app-brede component hoort te zijn.
 - Kies liever één sterke gedeelde implementatie met kleine props dan meerdere bijna-gelijke schermspecifieke varianten.
+- Voor klikbare cards/rows gebruik `FinancePressableSurface` als basis (niet per scherm een nieuwe `Pressable`-stijl).
 - Als een nieuwe uitzondering echt nodig is, documenteer die in de betreffende sectie van dit bestand.
 - Pas hero-offset eerst in de gedeelde hero-component aan, niet met losse scherm-overrides.
 - Verwijder tijdelijke scherm-overrides zodra de component-default klopt.
@@ -249,8 +268,29 @@ De onderstaande patronen vormen de vaste bouwstenen. Gebruik deze sectie als pri
   - gebruik actiegerichte labels zoals `Uitsluiten` en `Meenemen`
   - vermijd vage statuslabels zoals `Binnen` als primaire actie
 - Interactie:
-  - bij uitsluiten van budget in maandlijsten verdwijnt de transactie direct uit de actieve lijst
-  - toon tijdens schrijven een korte disabled-state (`Bezig...`)
+- bij uitsluiten van budget in maandlijsten verdwijnt de transactie direct uit de actieve lijst
+- toon tijdens schrijven een korte disabled-state (`Bezig...`)
+
+### Patroon: Inline Call-out (Standaard)
+
+- Naam: `FinanceInlineCallout`
+- Doel: één rustige, herbruikbare inline melding voor korte context zoals tempo, status of aandachtspunt
+- Waar toepasbaar in de app: Dashboard, Budget, Insights en utility-kaarten met compacte tekst + icoon
+- Shared implementation: gebruik `components/ui/finance-inline-callout.tsx`
+- Structuur / opbouw:
+  - icoon links in kleine bubble
+  - één regel (of korte twee-regelige) tekst rechts
+  - afgeronde pill-vorm met compacte padding
+- Variants:
+  - `default`: neutrale contextmelding (bijv. weektempo)
+  - `highlight`: positieve of belangrijke status met gele ondergrond (bijv. `Je zit op schema...`)
+- Belangrijkste visuele regels:
+  - gebruik dezelfde component voor gelijksoortige call-outs; niet per scherm opnieuw stylen
+  - verschil tussen varianten zit alleen in tone, niet in structurele layout
+  - houd de tekst kort en productmatig (geen technische labels)
+- Componentrichtlijn:
+  - gebruik dit patroon voor inline contextmeldingen zonder CTA
+  - voor grotere call-outs met actieknop blijft een aparte cardcomponent toegestaan (bijv. subscription call-out)
 
 ### Patroon: Stat Blocks
 

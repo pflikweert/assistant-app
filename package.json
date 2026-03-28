@@ -15,10 +15,20 @@
     "db:push:dry": "npm run migrations:check && supabase db push --dry-run",
     "backfill:tenant-owner": "node ./scripts/backfill-multi-tenant-owner.js",
     "reset-project": "node ./scripts/reset-project.js",
+    "design:forbidden-hex": "node ./scripts/design-forbidden-hex.mjs",
+    "design:forbidden-hex:baseline": "node ./scripts/design-forbidden-hex.mjs --write-baseline",
+    "design:style-literals": "node ./scripts/design-style-literals-check.mjs",
+    "design:style-literals:baseline": "node ./scripts/design-style-literals-check.mjs --write-baseline",
+    "design:touchables": "node ./scripts/design-touchables-check.mjs",
+    "design:touchables:baseline": "node ./scripts/design-touchables-check.mjs --write-baseline",
+    "design:inventory": "node ./scripts/design-route-inventory-check.mjs",
+    "design:shells": "node ./scripts/design-shell-pattern-check.mjs",
+    "design:report": "node ./scripts/design-compliance-report.mjs",
+    "design:check": "npm run design:forbidden-hex && npm run design:style-literals && npm run design:touchables && npm run design:inventory && npm run design:shells && npm run design:report",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

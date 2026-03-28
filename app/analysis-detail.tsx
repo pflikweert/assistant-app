@@ -1,7 +1,6 @@
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { FinColors } from "@/constants/theme";
-import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
-import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceDetailShell } from "@/components/ui/finance-detail-shell";
 import { getTransactionCategories } from "@/services/categorization-repository";
 import {
   buildCategoryRecordMap,
@@ -21,7 +20,6 @@ import React from "react";
 import {
     ActivityIndicator,
     Pressable,
-    ScrollView,
     StyleSheet,
     Text,
     View,
@@ -764,41 +762,32 @@ export default function AnalysisDetailScreen() {
 
   if (!validGroup || !monthStart || !monthEnd) {
     return (
-      <View style={styles.root}>
-        <FinanceScreenBackdrop tone="warm" />
-        <FinanceDetailTopBar
-          title="Analyse"
-          onBack={() => router.back()}
-        />
+      <FinanceDetailShell title="Analyse" onBack={() => router.back()}>
         <View style={styles.centered}>
           <Text style={styles.emptyText}>Ongeldige detailparameter.</Text>
         </View>
-      </View>
+      </FinanceDetailShell>
     );
   }
 
   if (loading) {
     return (
-      <View style={styles.root}>
-        <FinanceScreenBackdrop tone="warm" />
-        <FinanceDetailTopBar
-          title="Analyse"
-          onBack={() => router.back()}
-        />
+      <FinanceDetailShell title="Analyse" onBack={() => router.back()}>
         <View style={styles.centered}>
           <ActivityIndicator color={FinColors.green} size="large" />
         </View>
-      </View>
+      </FinanceDetailShell>
     );
   }
 
   const maxTrend = Math.max(1, ...derivedData.trend.map((item) => item.amount));
 
   return (
-    <View style={styles.root}>
-      <FinanceScreenBackdrop tone="warm" />
-      <FinanceDetailTopBar title="Analyse" onBack={() => router.back()} />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+    <FinanceDetailShell
+      title="Analyse"
+      onBack={() => router.back()}
+      contentContainerStyle={styles.content}
+    >
         <View style={styles.card}>
         <Text style={styles.title}>{labelForGroup(validGroup)}</Text>
         <Text style={styles.subTitle}>{monthLabel}</Text>
@@ -954,14 +943,11 @@ export default function AnalysisDetailScreen() {
           </Text>
         )}
         </View>
-      </ScrollView>
-    </View>
+    </FinanceDetailShell>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "transparent" },
-  scroll: { flex: 1, backgroundColor: "transparent" },
   content: { padding: 16, gap: 12, paddingBottom: 24 },
   centered: {
     flex: 1,

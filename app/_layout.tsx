@@ -372,6 +372,12 @@ function RootNavigator() {
           }}
         />
         <Stack.Screen
+          name="accounts/link"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
           name="import-control"
           options={{
             headerShown: false,

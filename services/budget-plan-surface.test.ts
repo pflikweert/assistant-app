@@ -1,4 +1,3 @@
-/* eslint-disable import/first */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -8,6 +7,7 @@ const {
   loadLatestKnownBalanceSnapshotMock,
   loadMonthForecastSummaryMock,
   buildFinancialBalanceSnapshotMock,
+  loadReserveSurfaceBreakdownMock,
 } = vi.hoisted(() => ({
   computeBudgetPlanMock: vi.fn(),
   applyBudgetWeekRebalanceGuardrailsMock: vi.fn((value) => value),
@@ -15,6 +15,7 @@ const {
   loadLatestKnownBalanceSnapshotMock: vi.fn(),
   loadMonthForecastSummaryMock: vi.fn(),
   buildFinancialBalanceSnapshotMock: vi.fn(),
+  loadReserveSurfaceBreakdownMock: vi.fn(),
 }));
 
 vi.mock("@/services/budget-plan", () => ({
@@ -41,6 +42,10 @@ vi.mock("@/services/financial-semantics", () => ({
   buildFinancialBalanceSnapshot: buildFinancialBalanceSnapshotMock,
 }));
 
+vi.mock("@/services/reserve-surface", () => ({
+  loadReserveSurfaceBreakdown: loadReserveSurfaceBreakdownMock,
+}));
+
 let loadBudgetPlanForSurface: typeof import("./budget-plan-surface").loadBudgetPlanForSurface;
 
 describe("budget-plan-surface", () => {
@@ -53,6 +58,7 @@ describe("budget-plan-surface", () => {
     loadLatestKnownBalanceSnapshotMock.mockReset();
     loadMonthForecastSummaryMock.mockReset();
     buildFinancialBalanceSnapshotMock.mockReset();
+    loadReserveSurfaceBreakdownMock.mockReset();
 
     loadMoneyViewScopePreferenceMock.mockResolvedValue({
       scopeView: "shared",
@@ -102,6 +108,14 @@ describe("budget-plan-surface", () => {
       carryoverIntoNextMonth: { amount: 1803.31, source: "forecast_anchor" },
       lowestOperationalPointInMonth: { amount: 392.82, source: "forecast_anchor" },
     });
+    loadReserveSurfaceBreakdownMock.mockResolvedValue({
+      reservedInAccountsNow: 200,
+      reservedProtectedInOperationalNow: 120,
+      plannedReserveAllocationThisMonth: 120,
+      annualObligationMonthlyTotal: 60,
+      savingsTargetMonthly: 60,
+      source: "modeled",
+    });
   });
 
   it("gebruikt één app-level scope preference voor budget, forecast en current balance", async () => {
@@ -128,8 +142,13 @@ describe("budget-plan-surface", () => {
         moneyViewScope: "shared",
       }),
     );
+    expect(loadReserveSurfaceBreakdownMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        moneyViewScope: "shared",
+      }),
+    );
     expect(surface.scopeView).toBe("shared");
     expect(surface.balances.expectedEndOperationalBalance.amount).toBe(1803.31);
+    expect(surface.reserveBreakdown?.annualObligationMonthlyTotal).toBe(60);
   });
 });
-

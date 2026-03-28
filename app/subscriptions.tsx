@@ -2,8 +2,7 @@ import { FinColors, FinSurfaces } from "@/constants/theme";
 import { normalizePattern } from "@/services/categorization-repository";
 import { FinanceAvatarBadge } from "@/components/ui/finance-avatar-badge";
 import { FinanceQuickMenu } from "@/components/navigation/finance-quick-menu";
-import { FinanceTopBar } from "@/components/ui/finance-top-bar";
-import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceUtilityShell } from "@/components/ui/finance-utility-shell";
 import {
     createSubscriptionProfile,
     deleteSubscriptionProfile,
@@ -979,12 +978,12 @@ export default function SubscriptionsScreen() {
   );
 
   return (
-    <View style={styles.root}>
-      <FinanceScreenBackdrop tone="warm" />
-      <FinanceTopBar
-        title="Abonnementen"
-        rightSlot={<FinanceAvatarBadge />}
-      />
+    <FinanceUtilityShell
+      title="Abonnementen"
+      rightSlot={<FinanceAvatarBadge />}
+      disableScroll
+      contentContainerStyle={styles.utilityContent}
+    >
       {loading ? (
         <View style={styles.centered}>
           <ActivityIndicator color={FinColors.warningText} size="large" />
@@ -2194,7 +2193,7 @@ export default function SubscriptionsScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </FinanceUtilityShell>
   );
 }
 
@@ -2202,6 +2201,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: FinColors.bgBase,
+  },
+  utilityContent: {
+    flex: 1,
   },
   centered: {
     flex: 1,

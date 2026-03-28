@@ -1,0 +1,29 @@
+{
+  "scanRoots": ["app", "components", "screens"],
+  "includeExtensions": [".ts", ".tsx"],
+  "excludeSuffixes": [".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"],
+  "excludePathIncludes": [
+    "/node_modules/",
+    "/dist/",
+    "/.expo/",
+    "/app/admin/",
+    "/app/insights-legacy.tsx",
+    "/app/modal.tsx"
+  ],
+  "styleLiteralExcludePathIncludes": [
+    "/app/admin/",
+    "/app/modal.tsx",
+    "/app/insights-legacy.tsx",
+    "/components/ui/finance-text.tsx",
+    "/components/ui/finance-button.tsx",
+    "/components/ui/finance-hero-shell.tsx",
+    "/components/ui/finance-top-bar.tsx",
+    "/components/ui/finance-dashboard-header.tsx"
+  ],
+  "touchablesExcludePathIncludes": [
+    "/app/admin/",
+    "/app/insights-legacy.tsx",
+    "/components/ui/finance-button.tsx",
+    "/components/ui/finance-pressable-surface.tsx"
+  ]
+}

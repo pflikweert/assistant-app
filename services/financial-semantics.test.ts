@@ -285,4 +285,81 @@ describe("financial semantics", () => {
       snapshot.lowestOperationalPointInMonth,
     );
   });
+
+  it("berekent free-to-spend vanuit operational minus protected reserve, zonder reserve-account dubbeltelling", () => {
+    const snapshot = buildFinancialBalanceSnapshot({
+      forecast: buildForecast({
+        currentOperationalBalance: 2748.36,
+        currentReservedBalance: 500,
+        freeToSpendNow: null,
+      }),
+      plan: buildPlan({ variableBudget: 857, variableSpent: 857 }),
+      currentBalanceOverride: 2748.36,
+      reserveSurface: {
+        reservedInAccountsNow: 1200,
+        reservedProtectedInOperationalNow: 945.05,
+        plannedReserveAllocationThisMonth: 120,
+        annualObligationMonthlyTotal: 60,
+        savingsTargetMonthly: 60,
+        source: "modeled",
+      },
+    });
+
+    expect(snapshot.currentReservedBalance).toEqual({
+      amount: 2145.05,
+      source: "derived",
+    });
+    expect(snapshot.freeToSpendNow).toEqual({
+      amount: 1803.31,
+      source: "derived",
+    });
+  });
+
+  it("houdt free-to-spend gescheiden van maand- en weekbudgetruimte", () => {
+    const snapshot = buildFinancialBalanceSnapshot({
+      forecast: buildForecast({
+        currentOperationalBalance: 1000,
+        currentReservedBalance: 0,
+      }),
+      plan: buildPlan({ variableBudget: 200, variableSpent: 150 }),
+      reserveSurface: {
+        reservedInAccountsNow: 400,
+        reservedProtectedInOperationalNow: 100,
+        plannedReserveAllocationThisMonth: 100,
+        annualObligationMonthlyTotal: 50,
+        savingsTargetMonthly: 50,
+        source: "modeled",
+      },
+    });
+
+    expect(snapshot.freeToSpend.amount).toBe(50);
+    expect(snapshot.freeToSpendNow.amount).toBe(900);
+  });
+
+  it("trekt reserve-account context niet dubbel af als operational protection nul is", () => {
+    const snapshot = buildFinancialBalanceSnapshot({
+      forecast: buildForecast({
+        currentOperationalBalance: 1000,
+        currentReservedBalance: 400,
+      }),
+      plan: buildPlan({ variableBudget: 200, variableSpent: 0 }),
+      reserveSurface: {
+        reservedInAccountsNow: 400,
+        reservedProtectedInOperationalNow: null,
+        plannedReserveAllocationThisMonth: 0,
+        annualObligationMonthlyTotal: 0,
+        savingsTargetMonthly: 0,
+        source: "modeled",
+      },
+    });
+
+    expect(snapshot.currentReservedBalance).toEqual({
+      amount: 400,
+      source: "derived",
+    });
+    expect(snapshot.freeToSpendNow).toEqual({
+      amount: 1000,
+      source: "derived",
+    });
+  });
 });

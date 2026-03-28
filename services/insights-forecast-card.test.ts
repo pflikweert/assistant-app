@@ -1,4 +1,5 @@
 import { buildInsightsForecastCard } from "@/services/insights-forecast-card";
+import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
 import type { InsightsForecastSummary } from "@/services/insights-month-context";
 import type { BudgetPlanComputation } from "@/types/categorization";
 import { describe, expect, it } from "vitest";
@@ -202,5 +203,27 @@ describe("buildInsightsForecastCard", () => {
     expect(result.amountLabel).toBe(fmt.format(1803.31));
     expect(result.amountLabel).not.toBe(fmt.format(359.85));
     expect(result.lowestOperationalPointValue).toBe(fmt.format(392.82));
+  });
+
+  it("gebruikt canonieke surface-balances boven losse forecastvelden", () => {
+    const surfaceBalances = {
+      currentOperationalBalance: { amount: 2000, source: "forecast_anchor" },
+      currentReservedBalance: { amount: 300, source: "derived" },
+      freeToSpendNow: { amount: 1700, source: "derived" },
+    } as unknown as FinancialSurfaceBalanceSnapshot;
+
+    const result = buildInsightsForecastCard({
+      forecast: buildForecast({
+        currentOperationalBalance: 1800,
+        currentReservedBalance: 100,
+        freeToSpendNow: 1700,
+      }),
+      budgetPlan: null,
+      surfaceBalances,
+    });
+
+    expect(result.currentOperationalValue).toBe(fmt.format(2000));
+    expect(result.reservedValue).toBe(fmt.format(300));
+    expect(result.freeToSpendNowValue).toBe(fmt.format(1700));
   });
 });

@@ -150,7 +150,7 @@ async function insertTransactionBatch(batch: Record<string, unknown>[]): Promise
 async function loadExistingTransactionCandidates(
   userId: string,
   bankAccountId: string,
-  rows: Array<{ date: string; amount: number }>,
+  rows: { date: string; amount: number }[],
 ): Promise<ExistingImportedTransactionCandidate[]> {
   if (!rows.length) return [];
 

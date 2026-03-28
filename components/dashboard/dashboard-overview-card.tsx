@@ -1,5 +1,7 @@
 import { AppIcon } from "@/components/ui/app-icon";
+import { FinanceInlineCallout } from "@/components/ui/finance-inline-callout";
 import { FinanceBudgetProgressBar } from "@/components/ui/finance-budget-progress-bar";
+import { FinancePressableSurface } from "@/components/ui/finance-pressable-surface";
 import { FinanceStatusChip, type FinanceStatusTone } from "@/components/ui/finance-status-chip";
 import { FinColors } from "@/constants/theme";
 import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
@@ -16,7 +18,6 @@ import type {
 } from "@/types/categorization";
 import React from "react";
 import {
-  Pressable,
   StyleSheet,
   Text,
   type StyleProp,
@@ -260,30 +261,20 @@ export function DashboardBudgetOverviewCard({
         tone={week.tone}
       />
 
-      <View style={styles.weekHintCard}>
-        <View style={styles.weekHintIconWrap}>
-          <AppIcon
-            name="trending-up"
-            size={14}
-            color={FinColors.warningText}
-            variant="outlined"
-          />
-        </View>
-        <Text style={styles.weekHintText}>{model.weekTempoMessage}</Text>
-      </View>
+      <FinanceInlineCallout
+        text={model.weekTempoMessage}
+        iconName="trending-up"
+      />
     </View>
   );
 
-  if (!onPress) return cardContent;
-
   return (
-    <Pressable
-      accessibilityRole="button"
+    <FinancePressableSurface
       onPress={onPress}
-      style={({ pressed }) => [pressed ? styles.cardPressed : null]}
+      pressedStyle={styles.cardPressed}
     >
       {cardContent}
-    </Pressable>
+    </FinancePressableSurface>
   );
 }
 
@@ -438,29 +429,5 @@ const styles = StyleSheet.create({
     color: FinColors.textMuted,
     fontWeight: "700",
     textAlign: "right",
-  },
-  weekHintCard: {
-    borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  weekHintIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: FinColors.bgCard,
-  },
-  weekHintText: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    color: FinColors.textSecondary,
-    fontWeight: "600",
   },
 });

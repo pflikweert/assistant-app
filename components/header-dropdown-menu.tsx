@@ -30,7 +30,7 @@ type MenuItem = {
 type SecondaryMenuItem = {
   label: string;
   iconName: AppIconName;
-  path: "/settings" | "/account/change-password";
+  path: "/settings" | "/settings/security/password";
 };
 
 const MAIN_ITEMS: MenuItem[] = [
@@ -42,7 +42,7 @@ const MAIN_ITEMS: MenuItem[] = [
 
 const SETTINGS_ITEMS: SecondaryMenuItem[] = [
   { label: "Profiel Instellingen", iconName: "manage-accounts", path: "/settings" },
-  { label: "Beveiliging", iconName: "shield", path: "/account/change-password" },
+  { label: "Beveiliging", iconName: "shield", path: "/settings/security/password" },
 ];
 
 const SUPPORT_ITEMS: SecondaryMenuItem[] = [

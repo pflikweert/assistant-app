@@ -1,4 +1,4 @@
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSpacing, FinTokens } from "@/constants/theme";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -38,14 +38,14 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
+    gap: FinSpacing.x2,
     borderRadius: 999,
     backgroundColor: FinColors.bgInput,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: FinSpacing.x2,
   },
   chipGood: {
-    backgroundColor: "#e7f3a8",
+    backgroundColor: FinTokens.color.statusGoodBg,
   },
   chipWatch: {
     backgroundColor: FinColors.warningBg,
@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.textMuted,
   },
   dotGood: {
-    backgroundColor: "#10b981",
+    backgroundColor: FinColors.green,
   },
   dotWatch: {
     backgroundColor: FinColors.warningText,
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   labelGood: {
-    color: "#5b6a1b",
+    color: FinTokens.color.statusGoodText,
   },
   labelWatch: {
     color: FinColors.warningText,

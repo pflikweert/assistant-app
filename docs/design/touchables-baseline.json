@@ -1,0 +1,1128 @@
+{
+  "generatedAt": "2026-03-28T08:53:43.428Z",
+  "count": 187,
+  "entries": [
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable onPress={() => setOutsideBudgetOpen(true)}>",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable onPress={() => setOutsideBudgetOpen(true)}>"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|Pressable|<Pressable style={styles.inlineTransactionMainPressable} onPress={onOpen}>",
+      "kind": "Pressable",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<Pressable style={styles.inlineTransactionMainPressable} onPress={onOpen}>"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/budget.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/budget.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/index.tsx|Pressable|<Pressable onPress={() => router.push(\"/transactions\")}>",
+      "kind": "Pressable",
+      "file": "app/(tabs)/index.tsx",
+      "snippet": "<Pressable onPress={() => router.push(\"/transactions\")}>"
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/insights.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/insights.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/(tabs)/insights.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/(tabs)/settings.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/(tabs)/settings.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/account/change-password.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/account/change-password.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/account/change-password.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/account/change-password.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/analysis-detail.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/analysis-detail.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/analysis-detail.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/analysis-detail.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/auth/forgot-password.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/auth/forgot-password.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/auth/login.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/auth/login.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/auth/register.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/auth/register.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/auth/reset-password.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/auth/reset-password.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/bankrekeningen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/bankrekeningen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/bankrekeningen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/bankrekeningen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/bankrekeningen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/bankrekeningen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/bankrekeningen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/bankrekeningen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/bankrekeningen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/bankrekeningen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/bankrekeningen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/bankrekeningen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/category-budget-groups.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/category-budget-groups.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/category-budget-groups.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/category-budget-groups.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/category-budget-groups.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/category-budget-groups.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/category-budget-groups.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/category-budget-groups.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/import-afronden.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/import-afronden.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/import-afronden.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/import-afronden.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/import-control.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/import-control.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/import-control.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/import-control.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/import-control.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/import-control.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/rekeningen-koppelen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/rekeningen-koppelen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/rekeningen-koppelen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/rekeningen-koppelen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/rekeningen-koppelen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/rekeningen-koppelen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/rekeningen-koppelen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/rekeningen-koppelen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/rekeningen-koppelen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/rekeningen-koppelen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/rekeningen-koppelen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/rekeningen-koppelen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/rekeningen-koppelen.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "app/rekeningen-koppelen.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity onPress={() => setChooseProfileTx(null)}>",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity onPress={() => setChooseProfileTx(null)}>"
+    },
+    {
+      "key": "app/subscriptions.tsx|TouchableOpacity|<TouchableOpacity onPress={() => setProfileModalOpen(false)}>",
+      "kind": "TouchableOpacity",
+      "file": "app/subscriptions.tsx",
+      "snippet": "<TouchableOpacity onPress={() => setProfileModalOpen(false)}>"
+    },
+    {
+      "key": "app/transaction-detail.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/transaction-detail.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/transaction-detail.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/transaction-detail.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/transaction-detail.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/transaction-detail.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/transaction-detail.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/transaction-detail.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/transaction-detail.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/transaction-detail.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/transaction-detail.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/transaction-detail.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/transaction-detail.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/transaction-detail.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "app/transaction-detail.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "app/transaction-detail.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "components/auth/AuthErrorMessage.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/auth/AuthErrorMessage.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/budget-amount-slider.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/budget-amount-slider.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/budget-amount-slider.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/budget-amount-slider.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/budget-month-summary-card.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/budget-month-summary-card.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/budget-pressure-list.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/budget-pressure-list.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/budget-week-breakdown-modal.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/budget-week-breakdown-modal.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/budget-week-rhythm-card.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/budget-week-rhythm-card.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/dashboard/dashboard-assistant-callout.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/dashboard/dashboard-assistant-callout.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/header-dropdown-menu.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/header-dropdown-menu.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/header-dropdown-menu.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/header-dropdown-menu.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/header-dropdown-menu.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/header-dropdown-menu.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/header-dropdown-menu.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/header-dropdown-menu.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/header-dropdown-menu.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/header-dropdown-menu.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/header-dropdown-menu.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/header-dropdown-menu.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/header-dropdown-menu.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/header-dropdown-menu.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/header-dropdown-menu.tsx|Pressable|<Pressable style={styles.scrim} onPress={() => setOpen(false)} />",
+      "kind": "Pressable",
+      "file": "components/header-dropdown-menu.tsx",
+      "snippet": "<Pressable style={styles.scrim} onPress={() => setOpen(false)} />"
+    },
+    {
+      "key": "components/help-assistant/budio-assistant-empty-state.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/help-assistant/budio-assistant-empty-state.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/help-assistant/help-assistant-composer.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/help-assistant/help-assistant-composer.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/help-assistant/help-assistant-issue-draft-preview.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/help-assistant/help-assistant-issue-draft-preview.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/help-assistant/help-assistant-issue-draft-preview.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/help-assistant/help-assistant-issue-draft-preview.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/help-assistant/help-assistant-issue-draft-preview.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/help-assistant/help-assistant-issue-draft-preview.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/help-assistant/help-assistant-quick-actions.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/help-assistant/help-assistant-quick-actions.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/month-picker-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/month-picker-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/month-picker-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/month-picker-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/month-picker-sheet.tsx|Pressable|<Pressable style={styles.backdrop} onPress={onClose} />",
+      "kind": "Pressable",
+      "file": "components/month-picker-sheet.tsx",
+      "snippet": "<Pressable style={styles.backdrop} onPress={onClose} />"
+    },
+    {
+      "key": "components/month-picker-sheet.tsx|Pressable|<Pressable style={styles.closeButton} onPress={onClose}>",
+      "kind": "Pressable",
+      "file": "components/month-picker-sheet.tsx",
+      "snippet": "<Pressable style={styles.closeButton} onPress={onClose}>"
+    },
+    {
+      "key": "components/navigation/finance-quick-menu.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/navigation/finance-quick-menu.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/TopMenu.tsx|TouchableOpacity|<TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={() => router.push(\"/transactions\")}>",
+      "kind": "TouchableOpacity",
+      "file": "components/TopMenu.tsx",
+      "snippet": "<TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={() => router.push(\"/transactions\")}>"
+    },
+    {
+      "key": "components/TopMenu.tsx|TouchableOpacity|<TouchableOpacity style={styles.btn} onPress={() => router.push(\"/csv-import\")}>",
+      "kind": "TouchableOpacity",
+      "file": "components/TopMenu.tsx",
+      "snippet": "<TouchableOpacity style={styles.btn} onPress={() => router.push(\"/csv-import\")}>"
+    },
+    {
+      "key": "components/transactions/finance-transactions-block.tsx|TouchableOpacity|<TouchableOpacity onPress={onPressSeeAll}>",
+      "kind": "TouchableOpacity",
+      "file": "components/transactions/finance-transactions-block.tsx",
+      "snippet": "<TouchableOpacity onPress={onPressSeeAll}>"
+    },
+    {
+      "key": "components/transactions/transaction-list-row.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "components/transactions/transaction-list-row.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "components/transactions/transaction-list-row.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "components/transactions/transaction-list-row.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "components/ui/collapsible.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "components/ui/collapsible.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "components/ui/finance-bottom-sheet-shell.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-bottom-sheet-shell.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-bottom-sheet-shell.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-bottom-sheet-shell.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-category-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-category-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-category-sheet.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-category-sheet.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-circle-icon-button.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "components/ui/finance-circle-icon-button.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "components/ui/finance-detail-top-bar.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-detail-top-bar.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-modal-top-bar.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-modal-top-bar.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-month-selector-modal.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-month-selector-modal.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-month-selector-modal.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-month-selector-modal.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-month-selector-modal.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-month-selector-modal.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-month-selector-modal.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-month-selector-modal.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-month-selector-modal.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-month-selector-modal.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-month-selector.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-month-selector.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-month-selector.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-month-selector.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-month-selector.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-month-selector.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-primary-cta-button.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "components/ui/finance-primary-cta-button.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "components/ui/finance-scope-switch.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/finance-scope-switch.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "components/ui/finance-subscription-callout.tsx|TouchableOpacity|<TouchableOpacity style={styles.actionButton} onPress={onPress} activeOpacity={0.88}>",
+      "kind": "TouchableOpacity",
+      "file": "components/ui/finance-subscription-callout.tsx",
+      "snippet": "<TouchableOpacity style={styles.actionButton} onPress={onPress} activeOpacity={0.88}>"
+    },
+    {
+      "key": "components/ui/square-accent-block.tsx|Pressable|<Pressable",
+      "kind": "Pressable",
+      "file": "components/ui/square-accent-block.tsx",
+      "snippet": "<Pressable"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity style={[styles.emptyActionButton, styles.emptyActionPrimary]} onPress={handleResetFilters}>",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity style={[styles.emptyActionButton, styles.emptyActionPrimary]} onPress={handleResetFilters}>"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity style={styles.clearLink} onPress={handleResetFilters}>",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity style={styles.clearLink} onPress={handleResetFilters}>"
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|TouchableOpacity|<TouchableOpacity style={styles.emptyActionButton} onPress={() => router.push(\"/csv-import\")}>",
+      "kind": "TouchableOpacity",
+      "file": "screens/TransactionsScreen.tsx",
+      "snippet": "<TouchableOpacity style={styles.emptyActionButton} onPress={() => router.push(\"/csv-import\")}>"
+    }
+  ]
+}

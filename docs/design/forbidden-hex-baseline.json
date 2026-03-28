@@ -1,0 +1,774 @@
+{
+  "generatedAt": "2026-03-28T08:28:09.232Z",
+  "count": 128,
+  "entries": [
+    {
+      "key": "app/account/change-password.tsx|#7E8A9A|placeholderTextColor=\"#7E8A9A\"",
+      "file": "app/account/change-password.tsx",
+      "value": "#7E8A9A",
+      "snippet": "placeholderTextColor=\"#7E8A9A\""
+    },
+    {
+      "key": "app/account/change-password.tsx|#7E8A9A|placeholderTextColor=\"#7E8A9A\"",
+      "file": "app/account/change-password.tsx",
+      "value": "#7E8A9A",
+      "snippet": "placeholderTextColor=\"#7E8A9A\""
+    },
+    {
+      "key": "app/analysis-detail.tsx|#67b8ff|comparisonBadgeTextFlat: { color: \"#67b8ff\" },",
+      "file": "app/analysis-detail.tsx",
+      "value": "#67b8ff",
+      "snippet": "comparisonBadgeTextFlat: { color: \"#67b8ff\" },"
+    },
+    {
+      "key": "app/analysis-detail.tsx|#67b8ff|comparisonBadgeTextNew: { color: \"#67b8ff\" },",
+      "file": "app/analysis-detail.tsx",
+      "value": "#67b8ff",
+      "snippet": "comparisonBadgeTextNew: { color: \"#67b8ff\" },"
+    },
+    {
+      "key": "app/auth/forgot-password.tsx|#07130D|<ActivityIndicator color=\"#07130D\" />",
+      "file": "app/auth/forgot-password.tsx",
+      "value": "#07130D",
+      "snippet": "<ActivityIndicator color=\"#07130D\" />"
+    },
+    {
+      "key": "app/auth/forgot-password.tsx|#7E8A9A|placeholderTextColor=\"#7E8A9A\"",
+      "file": "app/auth/forgot-password.tsx",
+      "value": "#7E8A9A",
+      "snippet": "placeholderTextColor=\"#7E8A9A\""
+    },
+    {
+      "key": "app/auth/login.tsx|#111111|<ActivityIndicator color=\"#111111\" />",
+      "file": "app/auth/login.tsx",
+      "value": "#111111",
+      "snippet": "<ActivityIndicator color=\"#111111\" />"
+    },
+    {
+      "key": "app/auth/login.tsx|#5F5A54|color: \"#5F5A54\",",
+      "file": "app/auth/login.tsx",
+      "value": "#5F5A54",
+      "snippet": "color: \"#5F5A54\","
+    },
+    {
+      "key": "app/auth/login.tsx|#8F8A83|color: \"#8F8A83\",",
+      "file": "app/auth/login.tsx",
+      "value": "#8F8A83",
+      "snippet": "color: \"#8F8A83\","
+    },
+    {
+      "key": "app/auth/login.tsx|#8F8A83|placeholderTextColor=\"#8F8A83\"",
+      "file": "app/auth/login.tsx",
+      "value": "#8F8A83",
+      "snippet": "placeholderTextColor=\"#8F8A83\""
+    },
+    {
+      "key": "app/auth/login.tsx|#8F8A83|placeholderTextColor=\"#8F8A83\"",
+      "file": "app/auth/login.tsx",
+      "value": "#8F8A83",
+      "snippet": "placeholderTextColor=\"#8F8A83\""
+    },
+    {
+      "key": "app/auth/register.tsx|#07130D|<ActivityIndicator color=\"#07130D\" />",
+      "file": "app/auth/register.tsx",
+      "value": "#07130D",
+      "snippet": "<ActivityIndicator color=\"#07130D\" />"
+    },
+    {
+      "key": "app/auth/register.tsx|#7E8A9A|placeholderTextColor=\"#7E8A9A\"",
+      "file": "app/auth/register.tsx",
+      "value": "#7E8A9A",
+      "snippet": "placeholderTextColor=\"#7E8A9A\""
+    },
+    {
+      "key": "app/auth/register.tsx|#7E8A9A|placeholderTextColor=\"#7E8A9A\"",
+      "file": "app/auth/register.tsx",
+      "value": "#7E8A9A",
+      "snippet": "placeholderTextColor=\"#7E8A9A\""
+    },
+    {
+      "key": "app/auth/register.tsx|#7E8A9A|placeholderTextColor=\"#7E8A9A\"",
+      "file": "app/auth/register.tsx",
+      "value": "#7E8A9A",
+      "snippet": "placeholderTextColor=\"#7E8A9A\""
+    },
+    {
+      "key": "app/auth/register.tsx|#7E8A9A|placeholderTextColor=\"#7E8A9A\"",
+      "file": "app/auth/register.tsx",
+      "value": "#7E8A9A",
+      "snippet": "placeholderTextColor=\"#7E8A9A\""
+    },
+    {
+      "key": "app/auth/reset-password.tsx|#111111|<ActivityIndicator color=\"#111111\" />",
+      "file": "app/auth/reset-password.tsx",
+      "value": "#111111",
+      "snippet": "<ActivityIndicator color=\"#111111\" />"
+    },
+    {
+      "key": "app/auth/reset-password.tsx|#111111|<ActivityIndicator size=\"large\" color=\"#111111\" />",
+      "file": "app/auth/reset-password.tsx",
+      "value": "#111111",
+      "snippet": "<ActivityIndicator size=\"large\" color=\"#111111\" />"
+    },
+    {
+      "key": "app/auth/reset-password.tsx|#5F5A54|color: \"#5F5A54\",",
+      "file": "app/auth/reset-password.tsx",
+      "value": "#5F5A54",
+      "snippet": "color: \"#5F5A54\","
+    },
+    {
+      "key": "app/auth/reset-password.tsx|#8F8A83|placeholderTextColor=\"#8F8A83\"",
+      "file": "app/auth/reset-password.tsx",
+      "value": "#8F8A83",
+      "snippet": "placeholderTextColor=\"#8F8A83\""
+    },
+    {
+      "key": "app/auth/reset-password.tsx|#8F8A83|placeholderTextColor=\"#8F8A83\"",
+      "file": "app/auth/reset-password.tsx",
+      "value": "#8F8A83",
+      "snippet": "placeholderTextColor=\"#8F8A83\""
+    },
+    {
+      "key": "app/category-budget-groups.tsx|#705B00|color: \"#705B00\",",
+      "file": "app/category-budget-groups.tsx",
+      "value": "#705B00",
+      "snippet": "color: \"#705B00\","
+    },
+    {
+      "key": "components/auth/auth-screen-shell.tsx|#705B00|color: \"#705B00\",",
+      "file": "components/auth/auth-screen-shell.tsx",
+      "value": "#705B00",
+      "snippet": "color: \"#705B00\","
+    },
+    {
+      "key": "components/auth/auth-screen-shell.tsx|#B45B5B|color: \"#B45B5B\",",
+      "file": "components/auth/auth-screen-shell.tsx",
+      "value": "#B45B5B",
+      "snippet": "color: \"#B45B5B\","
+    },
+    {
+      "key": "components/auth/AuthErrorMessage.tsx|#111111|color: \"#111111\",",
+      "file": "components/auth/AuthErrorMessage.tsx",
+      "value": "#111111",
+      "snippet": "color: \"#111111\","
+    },
+    {
+      "key": "components/auth/AuthErrorMessage.tsx|#5F5A54|color: \"#5F5A54\",",
+      "file": "components/auth/AuthErrorMessage.tsx",
+      "value": "#5F5A54",
+      "snippet": "color: \"#5F5A54\","
+    },
+    {
+      "key": "components/auth/AuthErrorMessage.tsx|#5F5A54|color: \"#5F5A54\",",
+      "file": "components/auth/AuthErrorMessage.tsx",
+      "value": "#5F5A54",
+      "snippet": "color: \"#5F5A54\","
+    },
+    {
+      "key": "components/auth/AuthErrorMessage.tsx|#8F8A83|color: \"#8F8A83\",",
+      "file": "components/auth/AuthErrorMessage.tsx",
+      "value": "#8F8A83",
+      "snippet": "color: \"#8F8A83\","
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#d7d7d7|ios_backgroundColor=\"#d7d7d7\"",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#d7d7d7",
+      "snippet": "ios_backgroundColor=\"#d7d7d7\""
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#d7d7d7|ios_backgroundColor=\"#d7d7d7\"",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#d7d7d7",
+      "snippet": "ios_backgroundColor=\"#d7d7d7\""
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#d7d7d7|ios_backgroundColor=\"#d7d7d7\"",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#d7d7d7",
+      "snippet": "ios_backgroundColor=\"#d7d7d7\""
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#d7d7d7|ios_backgroundColor=\"#d7d7d7\"",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#d7d7d7",
+      "snippet": "ios_backgroundColor=\"#d7d7d7\""
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#d7d7d7|trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#d7d7d7",
+      "snippet": "trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#d7d7d7|trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#d7d7d7",
+      "snippet": "trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#d7d7d7|trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#d7d7d7",
+      "snippet": "trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#d7d7d7|trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#d7d7d7",
+      "snippet": "trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#f1d96a|trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#f1d96a",
+      "snippet": "trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#f1d96a|trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#f1d96a",
+      "snippet": "trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#f1d96a|trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#f1d96a",
+      "snippet": "trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#f1d96a|trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#f1d96a",
+      "snippet": "trackColor={{ false: \"#d7d7d7\", true: \"#f1d96a\" }}"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#f4f4f4|thumbColor={includeInBudget ? FinColors.warningText : \"#f4f4f4\"}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#f4f4f4",
+      "snippet": "thumbColor={includeInBudget ? FinColors.warningText : \"#f4f4f4\"}"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#f4f4f4|thumbColor={includeInCashflow ? FinColors.warningText : \"#f4f4f4\"}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#f4f4f4",
+      "snippet": "thumbColor={includeInCashflow ? FinColors.warningText : \"#f4f4f4\"}"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#f4f4f4|thumbColor={includeInNetWorth ? FinColors.warningText : \"#f4f4f4\"}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#f4f4f4",
+      "snippet": "thumbColor={includeInNetWorth ? FinColors.warningText : \"#f4f4f4\"}"
+    },
+    {
+      "key": "components/bank-accounts/bank-account-form-sheet.tsx|#f4f4f4|thumbColor={isActive ? FinColors.warningText : \"#f4f4f4\"}",
+      "file": "components/bank-accounts/bank-account-form-sheet.tsx",
+      "value": "#f4f4f4",
+      "snippet": "thumbColor={isActive ? FinColors.warningText : \"#f4f4f4\"}"
+    },
+    {
+      "key": "components/bank-accounts/forecast-account-meta.tsx|#5b6a1b|color: \"#5b6a1b\",",
+      "file": "components/bank-accounts/forecast-account-meta.tsx",
+      "value": "#5b6a1b",
+      "snippet": "color: \"#5b6a1b\","
+    },
+    {
+      "key": "components/bank-accounts/forecast-account-meta.tsx|#5b6a1b|color: \"#5b6a1b\",",
+      "file": "components/bank-accounts/forecast-account-meta.tsx",
+      "value": "#5b6a1b",
+      "snippet": "color: \"#5b6a1b\","
+    },
+    {
+      "key": "components/bank-accounts/forecast-account-meta.tsx|#e7f3a8|backgroundColor: \"#e7f3a8\",",
+      "file": "components/bank-accounts/forecast-account-meta.tsx",
+      "value": "#e7f3a8",
+      "snippet": "backgroundColor: \"#e7f3a8\","
+    },
+    {
+      "key": "components/bank-accounts/forecast-account-meta.tsx|#e7f3a8|backgroundColor: \"#e7f3a8\",",
+      "file": "components/bank-accounts/forecast-account-meta.tsx",
+      "value": "#e7f3a8",
+      "snippet": "backgroundColor: \"#e7f3a8\","
+    },
+    {
+      "key": "components/budget-week-breakdown-modal.tsx|#594a00|color: \"#594a00\",",
+      "file": "components/budget-week-breakdown-modal.tsx",
+      "value": "#594a00",
+      "snippet": "color: \"#594a00\","
+    },
+    {
+      "key": "components/budget-week-breakdown-modal.tsx|#594a00|color: \"#594a00\",",
+      "file": "components/budget-week-breakdown-modal.tsx",
+      "value": "#594a00",
+      "snippet": "color: \"#594a00\","
+    },
+    {
+      "key": "components/budget-week-breakdown-modal.tsx|#856a00|color: \"#856a00\",",
+      "file": "components/budget-week-breakdown-modal.tsx",
+      "value": "#856a00",
+      "snippet": "color: \"#856a00\","
+    },
+    {
+      "key": "components/budget-week-breakdown-modal.tsx|#d4d5d8|backgroundColor: \"#d4d5d8\",",
+      "file": "components/budget-week-breakdown-modal.tsx",
+      "value": "#d4d5d8",
+      "snippet": "backgroundColor: \"#d4d5d8\","
+    },
+    {
+      "key": "components/budget-week-breakdown-modal.tsx|#d8b300|backgroundColor: \"#d8b300\",",
+      "file": "components/budget-week-breakdown-modal.tsx",
+      "value": "#d8b300",
+      "snippet": "backgroundColor: \"#d8b300\","
+    },
+    {
+      "key": "components/budget-week-breakdown-modal.tsx|#e5e4e1|borderColor: \"#e5e4e1\",",
+      "file": "components/budget-week-breakdown-modal.tsx",
+      "value": "#e5e4e1",
+      "snippet": "borderColor: \"#e5e4e1\","
+    },
+    {
+      "key": "components/budget-week-breakdown-modal.tsx|#f7f7f7|backgroundColor: \"#f7f7f7\",",
+      "file": "components/budget-week-breakdown-modal.tsx",
+      "value": "#f7f7f7",
+      "snippet": "backgroundColor: \"#f7f7f7\","
+    },
+    {
+      "key": "components/budget-week-breakdown-modal.tsx|#fdd406|backgroundColor: \"#fdd406\",",
+      "file": "components/budget-week-breakdown-modal.tsx",
+      "value": "#fdd406",
+      "snippet": "backgroundColor: \"#fdd406\","
+    },
+    {
+      "key": "components/budget-week-breakdown-modal.tsx|#fdd406|borderColor: \"#fdd406\",",
+      "file": "components/budget-week-breakdown-modal.tsx",
+      "value": "#fdd406",
+      "snippet": "borderColor: \"#fdd406\","
+    },
+    {
+      "key": "components/budget-week-rhythm-card.tsx|#f3f3f5|backgroundColor: \"#f3f3f5\",",
+      "file": "components/budget-week-rhythm-card.tsx",
+      "value": "#f3f3f5",
+      "snippet": "backgroundColor: \"#f3f3f5\","
+    },
+    {
+      "key": "components/dashboard/dashboard-balance-summary.tsx|#666666|color: \"#666666\",",
+      "file": "components/dashboard/dashboard-balance-summary.tsx",
+      "value": "#666666",
+      "snippet": "color: \"#666666\","
+    },
+    {
+      "key": "components/dashboard/dashboard-balance-summary.tsx|#6b6b6b|color: \"#6b6b6b\",",
+      "file": "components/dashboard/dashboard-balance-summary.tsx",
+      "value": "#6b6b6b",
+      "snippet": "color: \"#6b6b6b\","
+    },
+    {
+      "key": "components/dashboard/dashboard-balance-summary.tsx|#6b6b6b|color: \"#6b6b6b\",",
+      "file": "components/dashboard/dashboard-balance-summary.tsx",
+      "value": "#6b6b6b",
+      "snippet": "color: \"#6b6b6b\","
+    },
+    {
+      "key": "components/dashboard/dashboard-balance-summary.tsx|#9a9a9a|color: \"#9a9a9a\",",
+      "file": "components/dashboard/dashboard-balance-summary.tsx",
+      "value": "#9a9a9a",
+      "snippet": "color: \"#9a9a9a\","
+    },
+    {
+      "key": "components/dashboard/dashboard-balance-summary.tsx|#9a9a9a|color: \"#9a9a9a\",",
+      "file": "components/dashboard/dashboard-balance-summary.tsx",
+      "value": "#9a9a9a",
+      "snippet": "color: \"#9a9a9a\","
+    },
+    {
+      "key": "components/dashboard/dashboard-balance-summary.tsx|#fff|backgroundColor: \"#fff\",",
+      "file": "components/dashboard/dashboard-balance-summary.tsx",
+      "value": "#fff",
+      "snippet": "backgroundColor: \"#fff\","
+    },
+    {
+      "key": "components/header-dropdown-menu.tsx|#2fbe62|backgroundColor: \"#2fbe62\",",
+      "file": "components/header-dropdown-menu.tsx",
+      "value": "#2fbe62",
+      "snippet": "backgroundColor: \"#2fbe62\","
+    },
+    {
+      "key": "components/header-dropdown-menu.tsx|#7d6f2d|color: \"#7d6f2d\",",
+      "file": "components/header-dropdown-menu.tsx",
+      "value": "#7d6f2d",
+      "snippet": "color: \"#7d6f2d\","
+    },
+    {
+      "key": "components/help-assistant/budio-assistant-empty-state.tsx|#f0f1f2|const EMPTY_STATE_BG = \"#f0f1f2\";",
+      "file": "components/help-assistant/budio-assistant-empty-state.tsx",
+      "value": "#f0f1f2",
+      "snippet": "const EMPTY_STATE_BG = \"#f0f1f2\";"
+    },
+    {
+      "key": "components/help-assistant/help-assistant-composer.tsx|#ffffff|backgroundColor: \"#ffffff\",",
+      "file": "components/help-assistant/help-assistant-composer.tsx",
+      "value": "#ffffff",
+      "snippet": "backgroundColor: \"#ffffff\","
+    },
+    {
+      "key": "components/help-assistant/help-assistant-composer.tsx|#ffffff|color=\"#ffffff\"",
+      "file": "components/help-assistant/help-assistant-composer.tsx",
+      "value": "#ffffff",
+      "snippet": "color=\"#ffffff\""
+    },
+    {
+      "key": "components/help-assistant/help-assistant-issue-draft-preview.tsx|#000|shadowColor: \"#000\",",
+      "file": "components/help-assistant/help-assistant-issue-draft-preview.tsx",
+      "value": "#000",
+      "snippet": "shadowColor: \"#000\","
+    },
+    {
+      "key": "components/help-assistant/help-assistant-issue-draft-preview.tsx|#f7f7f8|backgroundColor: \"#f7f7f8\",",
+      "file": "components/help-assistant/help-assistant-issue-draft-preview.tsx",
+      "value": "#f7f7f8",
+      "snippet": "backgroundColor: \"#f7f7f8\","
+    },
+    {
+      "key": "components/help-assistant/help-assistant-issue-draft-preview.tsx|#ffffff|backgroundColor: \"#ffffff\",",
+      "file": "components/help-assistant/help-assistant-issue-draft-preview.tsx",
+      "value": "#ffffff",
+      "snippet": "backgroundColor: \"#ffffff\","
+    },
+    {
+      "key": "components/help-assistant/help-assistant-sheet.tsx|#e9e9ea|backgroundColor: \"#e9e9ea\",",
+      "file": "components/help-assistant/help-assistant-sheet.tsx",
+      "value": "#e9e9ea",
+      "snippet": "backgroundColor: \"#e9e9ea\","
+    },
+    {
+      "key": "components/motions/finance-assistant-motion-button.tsx|#5b4a00|color=\"#5b4a00\"",
+      "file": "components/motions/finance-assistant-motion-button.tsx",
+      "value": "#5b4a00",
+      "snippet": "color=\"#5b4a00\""
+    },
+    {
+      "key": "components/motions/finance-assistant-motion-glyph.tsx|#5b4a00|color = \"#5b4a00\",",
+      "file": "components/motions/finance-assistant-motion-glyph.tsx",
+      "value": "#5b4a00",
+      "snippet": "color = \"#5b4a00\","
+    },
+    {
+      "key": "components/TopMenu.tsx|#0f172a|<Text style={[styles.btnText, { color: \"#0f172a\" }]}>View all</Text>",
+      "file": "components/TopMenu.tsx",
+      "value": "#0f172a",
+      "snippet": "<Text style={[styles.btnText, { color: \"#0f172a\" }]}>View all</Text>"
+    },
+    {
+      "key": "components/transactions/transaction-list-row.tsx|#ebecef|backgroundColor: \"#ebecef\",",
+      "file": "components/transactions/transaction-list-row.tsx",
+      "value": "#ebecef",
+      "snippet": "backgroundColor: \"#ebecef\","
+    },
+    {
+      "key": "components/transactions/transaction-list-row.tsx|#f4f1e6|backgroundColor: \"#f4f1e6\",",
+      "file": "components/transactions/transaction-list-row.tsx",
+      "value": "#f4f1e6",
+      "snippet": "backgroundColor: \"#f4f1e6\","
+    },
+    {
+      "key": "components/ui/finance-budget-progress-bar.tsx|#10b981|if (tone === \"good\") return \"#10b981\";",
+      "file": "components/ui/finance-budget-progress-bar.tsx",
+      "value": "#10b981",
+      "snippet": "if (tone === \"good\") return \"#10b981\";"
+    },
+    {
+      "key": "components/ui/finance-budget-status-toggle.tsx|#e7e8ea|false: \"#e7e8ea\",",
+      "file": "components/ui/finance-budget-status-toggle.tsx",
+      "value": "#e7e8ea",
+      "snippet": "false: \"#e7e8ea\","
+    },
+    {
+      "key": "components/ui/finance-budget-status-toggle.tsx|#e7e8ea|ios_backgroundColor=\"#e7e8ea\"",
+      "file": "components/ui/finance-budget-status-toggle.tsx",
+      "value": "#e7e8ea",
+      "snippet": "ios_backgroundColor=\"#e7e8ea\""
+    },
+    {
+      "key": "components/ui/finance-budget-status-toggle.tsx|#e7e8ea|true: \"#e7e8ea\",",
+      "file": "components/ui/finance-budget-status-toggle.tsx",
+      "value": "#e7e8ea",
+      "snippet": "true: \"#e7e8ea\","
+    },
+    {
+      "key": "components/ui/finance-budget-status-toggle.tsx|#f0f1f2|backgroundColor: \"#f0f1f2\",",
+      "file": "components/ui/finance-budget-status-toggle.tsx",
+      "value": "#f0f1f2",
+      "snippet": "backgroundColor: \"#f0f1f2\","
+    },
+    {
+      "key": "components/ui/finance-budget-status-toggle.tsx|#f0f1f2|backgroundColor: \"#f0f1f2\",",
+      "file": "components/ui/finance-budget-status-toggle.tsx",
+      "value": "#f0f1f2",
+      "snippet": "backgroundColor: \"#f0f1f2\","
+    },
+    {
+      "key": "components/ui/finance-budget-status-toggle.tsx|#f0f1f2|backgroundColor: \"#f0f1f2\",",
+      "file": "components/ui/finance-budget-status-toggle.tsx",
+      "value": "#f0f1f2",
+      "snippet": "backgroundColor: \"#f0f1f2\","
+    },
+    {
+      "key": "components/ui/finance-budget-status-toggle.tsx|#ffffff|thumbColor={excluded ? FinColors.red : \"#ffffff\"}",
+      "file": "components/ui/finance-budget-status-toggle.tsx",
+      "value": "#ffffff",
+      "snippet": "thumbColor={excluded ? FinColors.red : \"#ffffff\"}"
+    },
+    {
+      "key": "components/ui/finance-category-sheet.tsx|#e7e9ea|backgroundColor: \"#e7e9ea\",",
+      "file": "components/ui/finance-category-sheet.tsx",
+      "value": "#e7e9ea",
+      "snippet": "backgroundColor: \"#e7e9ea\","
+    },
+    {
+      "key": "components/ui/finance-category-sheet.tsx|#eef0f1|backgroundColor: \"#eef0f1\",",
+      "file": "components/ui/finance-category-sheet.tsx",
+      "value": "#eef0f1",
+      "snippet": "backgroundColor: \"#eef0f1\","
+    },
+    {
+      "key": "components/ui/finance-category-sheet.tsx|#f0f1f2|backgroundColor: \"#f0f1f2\",",
+      "file": "components/ui/finance-category-sheet.tsx",
+      "value": "#f0f1f2",
+      "snippet": "backgroundColor: \"#f0f1f2\","
+    },
+    {
+      "key": "components/ui/finance-category-sheet.tsx|#f0f1f2|backgroundColor: \"#f0f1f2\",",
+      "file": "components/ui/finance-category-sheet.tsx",
+      "value": "#f0f1f2",
+      "snippet": "backgroundColor: \"#f0f1f2\","
+    },
+    {
+      "key": "components/ui/finance-category-sheet.tsx|#f7f8f9|backgroundColor: \"#f7f8f9\",",
+      "file": "components/ui/finance-category-sheet.tsx",
+      "value": "#f7f8f9",
+      "snippet": "backgroundColor: \"#f7f8f9\","
+    },
+    {
+      "key": "components/ui/finance-category-sheet.tsx|#f7f8f9|backgroundColor: \"#f7f8f9\",",
+      "file": "components/ui/finance-category-sheet.tsx",
+      "value": "#f7f8f9",
+      "snippet": "backgroundColor: \"#f7f8f9\","
+    },
+    {
+      "key": "components/ui/finance-category-summary-card.tsx|#f3f3f5|backgroundColor: \"#f3f3f5\",",
+      "file": "components/ui/finance-category-summary-card.tsx",
+      "value": "#f3f3f5",
+      "snippet": "backgroundColor: \"#f3f3f5\","
+    },
+    {
+      "key": "components/ui/finance-category-summary-card.tsx|#f7f8f9|backgroundColor: \"#f7f8f9\",",
+      "file": "components/ui/finance-category-summary-card.tsx",
+      "value": "#f7f8f9",
+      "snippet": "backgroundColor: \"#f7f8f9\","
+    },
+    {
+      "key": "components/ui/finance-forecast-summary-card.tsx|#080b08|backgroundColor: \"#080b08\",",
+      "file": "components/ui/finance-forecast-summary-card.tsx",
+      "value": "#080b08",
+      "snippet": "backgroundColor: \"#080b08\","
+    },
+    {
+      "key": "components/ui/finance-forecast-summary-card.tsx|#2b2500|color: \"#2b2500\",",
+      "file": "components/ui/finance-forecast-summary-card.tsx",
+      "value": "#2b2500",
+      "snippet": "color: \"#2b2500\","
+    },
+    {
+      "key": "components/ui/finance-insight-card.tsx|#5f7a08|accentColor: \"#5f7a08\",",
+      "file": "components/ui/finance-insight-card.tsx",
+      "value": "#5f7a08",
+      "snippet": "accentColor: \"#5f7a08\","
+    },
+    {
+      "key": "components/ui/finance-insight-card.tsx|#5f7a08|iconColor: \"#5f7a08\",",
+      "file": "components/ui/finance-insight-card.tsx",
+      "value": "#5f7a08",
+      "snippet": "iconColor: \"#5f7a08\","
+    },
+    {
+      "key": "components/ui/finance-insight-card.tsx|#5f7a08|titleColor: \"#5f7a08\",",
+      "file": "components/ui/finance-insight-card.tsx",
+      "value": "#5f7a08",
+      "snippet": "titleColor: \"#5f7a08\","
+    },
+    {
+      "key": "components/ui/finance-month-selector-modal.tsx|#4f73b8|color: \"#4f73b8\",",
+      "file": "components/ui/finance-month-selector-modal.tsx",
+      "value": "#4f73b8",
+      "snippet": "color: \"#4f73b8\","
+    },
+    {
+      "key": "components/ui/finance-month-selector-modal.tsx|#5a5d5f|color: \"#5a5d5f\",",
+      "file": "components/ui/finance-month-selector-modal.tsx",
+      "value": "#5a5d5f",
+      "snippet": "color: \"#5a5d5f\","
+    },
+    {
+      "key": "components/ui/finance-month-selector-modal.tsx|#c2c7cb|color: \"#c2c7cb\",",
+      "file": "components/ui/finance-month-selector-modal.tsx",
+      "value": "#c2c7cb",
+      "snippet": "color: \"#c2c7cb\","
+    },
+    {
+      "key": "components/ui/finance-month-selector-modal.tsx|#eff1f2|backgroundColor: \"#eff1f2\",",
+      "file": "components/ui/finance-month-selector-modal.tsx",
+      "value": "#eff1f2",
+      "snippet": "backgroundColor: \"#eff1f2\","
+    },
+    {
+      "key": "components/ui/finance-scope-switch.tsx|#757575|color: \"#757575\",",
+      "file": "components/ui/finance-scope-switch.tsx",
+      "value": "#757575",
+      "snippet": "color: \"#757575\","
+    },
+    {
+      "key": "components/ui/finance-scope-switch.tsx|#8a7200|color: \"#8a7200\",",
+      "file": "components/ui/finance-scope-switch.tsx",
+      "value": "#8a7200",
+      "snippet": "color: \"#8a7200\","
+    },
+    {
+      "key": "components/ui/finance-scope-switch.tsx|#f2f2ef|backgroundColor: \"#f2f2ef\",",
+      "file": "components/ui/finance-scope-switch.tsx",
+      "value": "#f2f2ef",
+      "snippet": "backgroundColor: \"#f2f2ef\","
+    },
+    {
+      "key": "components/ui/finance-scope-switch.tsx|#ffffff|backgroundColor: \"#ffffff\",",
+      "file": "components/ui/finance-scope-switch.tsx",
+      "value": "#ffffff",
+      "snippet": "backgroundColor: \"#ffffff\","
+    },
+    {
+      "key": "components/ui/finance-screen-backdrop.tsx|#fafbff|backgroundColor: \"#fafbff\",",
+      "file": "components/ui/finance-screen-backdrop.tsx",
+      "value": "#fafbff",
+      "snippet": "backgroundColor: \"#fafbff\","
+    },
+    {
+      "key": "components/ui/finance-status-chip.tsx|#10b981|backgroundColor: \"#10b981\",",
+      "file": "components/ui/finance-status-chip.tsx",
+      "value": "#10b981",
+      "snippet": "backgroundColor: \"#10b981\","
+    },
+    {
+      "key": "components/ui/finance-status-chip.tsx|#5b6a1b|color: \"#5b6a1b\",",
+      "file": "components/ui/finance-status-chip.tsx",
+      "value": "#5b6a1b",
+      "snippet": "color: \"#5b6a1b\","
+    },
+    {
+      "key": "components/ui/finance-status-chip.tsx|#e7f3a8|backgroundColor: \"#e7f3a8\",",
+      "file": "components/ui/finance-status-chip.tsx",
+      "value": "#e7f3a8",
+      "snippet": "backgroundColor: \"#e7f3a8\","
+    },
+    {
+      "key": "components/ui/finance-subscription-callout.tsx|#6a5c13|color: \"#6a5c13\",",
+      "file": "components/ui/finance-subscription-callout.tsx",
+      "value": "#6a5c13",
+      "snippet": "color: \"#6a5c13\","
+    },
+    {
+      "key": "components/ui/finance-subscription-callout.tsx|#6a5c13|color: \"#6a5c13\",",
+      "file": "components/ui/finance-subscription-callout.tsx",
+      "value": "#6a5c13",
+      "snippet": "color: \"#6a5c13\","
+    },
+    {
+      "key": "components/ui/finance-subscription-callout.tsx|#6d5a00|backgroundColor: \"#6d5a00\",",
+      "file": "components/ui/finance-subscription-callout.tsx",
+      "value": "#6d5a00",
+      "snippet": "backgroundColor: \"#6d5a00\","
+    },
+    {
+      "key": "components/ui/finance-subscription-callout.tsx|#fef2bc|borderColor: \"#fef2bc\",",
+      "file": "components/ui/finance-subscription-callout.tsx",
+      "value": "#fef2bc",
+      "snippet": "borderColor: \"#fef2bc\","
+    },
+    {
+      "key": "components/ui/finance-subscription-callout.tsx|#fff6d3|backgroundColor: \"#fff6d3\",",
+      "file": "components/ui/finance-subscription-callout.tsx",
+      "value": "#fff6d3",
+      "snippet": "backgroundColor: \"#fff6d3\","
+    },
+    {
+      "key": "components/ui/finance-subscription-callout.tsx|#fff6d4|<AppIcon name=\"link\" size={14} color=\"#fff6d4\" variant=\"outlined\" />",
+      "file": "components/ui/finance-subscription-callout.tsx",
+      "value": "#fff6d4",
+      "snippet": "<AppIcon name=\"link\" size={14} color=\"#fff6d4\" variant=\"outlined\" />"
+    },
+    {
+      "key": "components/ui/finance-subscription-callout.tsx|#fff6d4|color: \"#fff6d4\",",
+      "file": "components/ui/finance-subscription-callout.tsx",
+      "value": "#fff6d4",
+      "snippet": "color: \"#fff6d4\","
+    },
+    {
+      "key": "components/ui/finance-upcoming-moments-card.tsx|#567300|if (tone === \"income\") return \"#567300\";",
+      "file": "components/ui/finance-upcoming-moments-card.tsx",
+      "value": "#567300",
+      "snippet": "if (tone === \"income\") return \"#567300\";"
+    },
+    {
+      "key": "components/ui/finance-upcoming-moments-card.tsx|#f3f3f5|backgroundColor: \"#f3f3f5\",",
+      "file": "components/ui/finance-upcoming-moments-card.tsx",
+      "value": "#f3f3f5",
+      "snippet": "backgroundColor: \"#f3f3f5\","
+    },
+    {
+      "key": "components/ui/finance-upcoming-moments-card.tsx|#f3f3f5|backgroundColor: \"#f3f3f5\",",
+      "file": "components/ui/finance-upcoming-moments-card.tsx",
+      "value": "#f3f3f5",
+      "snippet": "backgroundColor: \"#f3f3f5\","
+    },
+    {
+      "key": "components/ui/square-accent-block.tsx|#FDE68A|backgroundColor: \"#FDE68A\",",
+      "file": "components/ui/square-accent-block.tsx",
+      "value": "#FDE68A",
+      "snippet": "backgroundColor: \"#FDE68A\","
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|#000|shadowColor: \"#000\",",
+      "file": "screens/TransactionsScreen.tsx",
+      "value": "#000",
+      "snippet": "shadowColor: \"#000\","
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|#6f5c00|color: \"#6f5c00\",",
+      "file": "screens/TransactionsScreen.tsx",
+      "value": "#6f5c00",
+      "snippet": "color: \"#6f5c00\","
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|#6f5c00|color: \"#6f5c00\",",
+      "file": "screens/TransactionsScreen.tsx",
+      "value": "#6f5c00",
+      "snippet": "color: \"#6f5c00\","
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|#d6dadd|backgroundColor: \"#d6dadd\",",
+      "file": "screens/TransactionsScreen.tsx",
+      "value": "#d6dadd",
+      "snippet": "backgroundColor: \"#d6dadd\","
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|#e2cc7e|borderColor: \"#e2cc7e\",",
+      "file": "screens/TransactionsScreen.tsx",
+      "value": "#e2cc7e",
+      "snippet": "borderColor: \"#e2cc7e\","
+    },
+    {
+      "key": "screens/TransactionsScreen.tsx|#f8efc6|backgroundColor: \"#f8efc6\",",
+      "file": "screens/TransactionsScreen.tsx",
+      "value": "#f8efc6",
+      "snippet": "backgroundColor: \"#f8efc6\","
+    }
+  ]
+}

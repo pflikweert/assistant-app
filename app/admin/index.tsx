@@ -1,8 +1,7 @@
 import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
-import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
+import { FinanceAdminShell } from "@/components/ui/finance-admin-shell";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
-import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
 import { FinanceSectionHeader } from "@/components/ui/finance-section-header";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import { fetchAdminBootstrap } from "@/services/admin-api";
@@ -32,7 +31,6 @@ import React from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -299,28 +297,26 @@ export default function AdminScreen() {
 
   if (access.loading || loading) {
     return (
-      <View style={styles.loadingRoot}>
-        <FinanceScreenBackdrop tone="warm" />
+      <FinanceAdminShell
+        title="Budio beheer"
+        subtitle="Compacte beheeromgeving voor AI-inzicht, review en route-instellingen."
+        onBack={() => router.back()}
+      >
         <View style={styles.loadingCard}>
           <ActivityIndicator size="large" color={FinColors.green} />
           <Text style={styles.loadingText}>Budio beheer wordt geladen…</Text>
         </View>
-      </View>
+      </FinanceAdminShell>
     );
   }
 
   return (
-    <View style={styles.root}>
-      <FinanceScreenBackdrop tone="warm" />
-      <FinanceDetailTopBar
+    <>
+      <FinanceAdminShell
         title="Budio beheer"
         subtitle="Compacte beheeromgeving voor AI-inzicht, review en route-instellingen."
         onBack={() => router.back()}
-      />
-
-      <ScrollView
         contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
       >
         <FinanceHeroShell
           eyebrow="Beheer"
@@ -590,7 +586,7 @@ export default function AdminScreen() {
             </View>
           </SectionCard>
         </View>
-      </ScrollView>
+      </FinanceAdminShell>
 
       <FinanceBottomSheetShell
         visible={Boolean(selectedReviewItem)}
@@ -756,7 +752,7 @@ export default function AdminScreen() {
           </View>
         ) : null}
       </FinanceBottomSheetShell>
-    </View>
+    </>
   );
 }
 

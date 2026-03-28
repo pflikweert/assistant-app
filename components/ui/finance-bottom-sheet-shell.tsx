@@ -1,5 +1,5 @@
 import { AppIcon } from "@/components/ui/app-icon";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinRadius, FinSpacing } from "@/constants/theme";
 import React from "react";
 import {
   Modal,
@@ -107,11 +107,11 @@ const styles = StyleSheet.create({
   },
   sheet: {
     maxHeight: "92%",
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 34,
-    backgroundColor: "#f5f6f7",
-    paddingHorizontal: 24,
-    paddingTop: 12,
+    borderTopLeftRadius: FinRadius.sheet,
+    borderTopRightRadius: FinRadius.sheet,
+    backgroundColor: FinColors.bgBase,
+    paddingHorizontal: FinSpacing.x6,
+    paddingTop: FinSpacing.x3,
     paddingBottom: 18,
     boxShadow: "0px -12px 32px rgba(17,17,17,0.10)",
     elevation: 18,
@@ -128,11 +128,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 16,
+    gap: FinSpacing.x4,
   },
   headerMain: {
     flex: 1,
-    gap: 6,
+    gap: FinSpacing.x2,
   },
   title: {
     fontSize: 29,
@@ -149,10 +149,10 @@ const styles = StyleSheet.create({
   closeButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: FinRadius.pill,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#eff1f2",
+    backgroundColor: FinColors.bgInput,
   },
   closeButtonPressed: {
     opacity: 0.86,
@@ -160,9 +160,9 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     minHeight: 0,
-    marginTop: 24,
+    marginTop: FinSpacing.x6,
   },
   footer: {
-    marginTop: 20,
+    marginTop: FinSpacing.x5,
   },
 });

@@ -1,6 +1,6 @@
 import HeaderDropdownMenu from "@/components/header-dropdown-menu";
 import { AppIcon } from "@/components/ui/app-icon";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSpacing } from "@/constants/theme";
 import React from "react";
 import {
   Pressable,
@@ -83,15 +83,15 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 1040,
     alignSelf: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: FinSpacing.x4,
     paddingTop: 14,
-    paddingBottom: 12,
+    paddingBottom: FinSpacing.x3,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: FinSpacing.x3,
   },
   backButton: {
     width: 40,
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
   },
   titleWrap: {
     flex: 1,
-    gap: 2,
+    gap: FinSpacing.x1 / 2,
   },
   title: {
     fontSize: 20,
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: FinSpacing.x2,
   },
   rightExtra: {
     flexShrink: 0,

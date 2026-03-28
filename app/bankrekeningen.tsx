@@ -6,8 +6,7 @@ import {
 } from "@/components/bank-accounts/account-overview-summary";
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
-import { FinanceDetailTopBar } from "@/components/ui/finance-detail-top-bar";
-import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceDetailShell } from "@/components/ui/finance-detail-shell";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import {
   deleteBankAccountWithTransactions,
@@ -22,7 +21,6 @@ import React from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -264,16 +262,12 @@ export default function BankrekeningenScreen() {
   }, [deletingAccount]);
 
   return (
-    <View style={styles.root}>
-      <FinanceScreenBackdrop tone="warm" />
-      <FinanceDetailTopBar title="Bankrekeningen" onBack={() => router.back()} />
-
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.contentMax}>
+    <FinanceDetailShell
+      title="Bankrekeningen"
+      onBack={() => router.back()}
+      contentContainerStyle={styles.content}
+      contentMaxStyle={styles.contentMax}
+    >
           <View style={styles.heroCard}>
             <Text style={styles.heroEyebrow}>Beheer</Text>
             <Text style={styles.heroTitle}>Je bankrekeningen</Text>
@@ -386,8 +380,7 @@ export default function BankrekeningenScreen() {
               </Pressable>
             </View>
           )}
-        </View>
-      </ScrollView>
+        
 
       <BankAccountFormSheet
         visible={showCreateSheet}
@@ -428,19 +421,11 @@ export default function BankrekeningenScreen() {
         }}
         onConfirm={() => void handleDeleteConfirm()}
       />
-    </View>
+    </FinanceDetailShell>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: FinColors.bgBase,
-    overflow: "hidden",
-  },
-  scroll: {
-    flex: 1,
-  },
   content: {
     paddingBottom: 28,
   },
@@ -563,7 +548,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(17,17,17,0.06)",
+    backgroundColor: FinColors.bgInput,
   },
   accountName: {
     fontSize: 18,
@@ -597,7 +582,7 @@ const styles = StyleSheet.create({
   },
   contextChip: {
     borderRadius: 999,
-    backgroundColor: "rgba(17,17,17,0.07)",
+    backgroundColor: FinColors.bgInput,
     paddingHorizontal: 10,
     paddingVertical: 5,
     alignSelf: "flex-start",

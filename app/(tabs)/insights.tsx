@@ -15,7 +15,7 @@ import { FinanceSectionHeader } from "@/components/ui/finance-section-header";
 import { FinanceStatusChip } from "@/components/ui/finance-status-chip";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
 import { FinanceUpcomingMomentsCard } from "@/components/ui/finance-upcoming-moments-card";
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinSurfaces } from "@/constants/theme";
 import { loadBudgetPlanForSurface } from "@/services/budget-plan-surface";
 import { requireCurrentUserId } from "@/services/current-user";
 import {
@@ -51,6 +51,11 @@ import {
   getInsightsRemainingVariableExpenseEstimate,
 } from "@/services/insights-remaining-month";
 import {
+  formatCurrency,
+  formatSignedCurrency,
+} from "@/services/ui-formatters/currency";
+import { formatDateLabel } from "@/services/ui-formatters/dates";
+import {
   loadMoneyViewScopePreference,
   upsertMoneyViewScopePreference,
 } from "@/services/finance-scope-preference";
@@ -58,6 +63,8 @@ import {
   resolveAvailableMoneyViewScopes,
   type MoneyViewScope,
 } from "@/services/finance-scope";
+import type { FinancialSurfaceBalanceSnapshot } from "@/services/financial-semantics";
+import type { ReserveSurfaceBreakdown } from "@/services/reserve-surface";
 import { buildInsightsCategorySummary } from "@/services/insights-category-summary";
 import { buildInsightsUpcomingMoments } from "@/services/insights-upcoming-moments";
 import { supabase } from "@/services/supabase";
@@ -79,11 +86,6 @@ type InsightSignals = {
   previousMonth: InsightsSignalTransaction[];
   lookback: InsightsSignalTransaction[];
 };
-
-const eur = new Intl.NumberFormat("nl-NL", {
-  style: "currency",
-  currency: "EUR",
-});
 
 function isMissingColumnError(error: unknown) {
   const code = String((error as { code?: string } | null)?.code || "");
@@ -149,21 +151,15 @@ function resolveLatestTransactionDate(rows: InsightsSignalTransaction[]) {
 }
 
 function formatAmount(value: number | null) {
-  if (value == null) return "Onbekend";
-  return eur.format(value);
+  return formatCurrency(value);
 }
 
 function formatSignedAmount(value: number | null) {
-  if (value == null) return "Onbekend";
-  const prefix = value > 0 ? "+" : value < 0 ? "-" : "";
-  return `${prefix}${eur.format(Math.abs(value))}`;
+  return formatSignedCurrency(value);
 }
 
 function formatSheetDate(value: string | null) {
-  if (!value) return null;
-  const parsed = new Date(`${value}T12:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("nl-NL", {
+  return formatDateLabel(value, {
     day: "numeric",
     month: "long",
   });
@@ -210,6 +206,9 @@ export default function InsightsScreen() {
   const [availableScopeOptions, setAvailableScopeOptions] = React.useState<
     readonly MoneyViewScope[]
   >(["personal"]);
+  const [reserveSurface, setReserveSurface] = React.useState<ReserveSurfaceBreakdown | null>(null);
+  const [surfaceBalances, setSurfaceBalances] =
+    React.useState<FinancialSurfaceBalanceSnapshot | null>(null);
   const [monthPickerOpen, setMonthPickerOpen] = React.useState(false);
   const [allCategoriesOpen, setAllCategoriesOpen] = React.useState(false);
   const [remainingMonthOpen, setRemainingMonthOpen] = React.useState(false);
@@ -246,8 +245,9 @@ export default function InsightsScreen() {
         forecast,
         budgetPlan,
         currentBalanceOverride: latestKnownBalance.balance,
+        surfaceBalances,
       }),
-    [budgetPlan, forecast, latestKnownBalance.balance],
+    [budgetPlan, forecast, latestKnownBalance.balance, surfaceBalances],
   );
   const categorySummary = React.useMemo(
     () =>
@@ -317,6 +317,8 @@ export default function InsightsScreen() {
       forecast: InsightsForecastSummary | null;
       plan: BudgetPlanComputation | null;
       scopeView: import("@/services/finance-scope").MoneyViewScope;
+      reserveBreakdown: ReserveSurfaceBreakdown | null;
+      balances: FinancialSurfaceBalanceSnapshot | null;
     }> => {
       try {
         const reason = selectedMonth.isCurrentMonth
@@ -335,14 +337,18 @@ export default function InsightsScreen() {
           userId,
         });
 
-        return result;
+        return {
+          ...result,
+          reserveBreakdown: result.reserveBreakdown,
+          balances: result.balances,
+        };
       } catch (error) {
         if (isMissingRelationError(error)) {
-          return { forecast: null, plan: null, scopeView };
+          return { forecast: null, plan: null, scopeView, reserveBreakdown: null, balances: null };
         }
 
         console.error("[insights] budget surface load error", error);
-        return { forecast: null, plan: null, scopeView };
+        return { forecast: null, plan: null, scopeView, reserveBreakdown: null, balances: null };
       }
     },
     [selectedMonth],
@@ -491,6 +497,8 @@ export default function InsightsScreen() {
       ]);
     const forecastSummary = budgetSurface.forecast;
     const budgetSummary = budgetSurface.plan;
+    setReserveSurface(budgetSurface.reserveBreakdown);
+    setSurfaceBalances(budgetSurface.balances);
 
     setForecast(forecastSummary);
     setBudgetPlan(budgetSummary);
@@ -638,6 +646,15 @@ export default function InsightsScreen() {
 
           <View style={styles.sectionBlock}>
             <FinanceSectionHeader title="Forecast" />
+            {reserveSurface ? (
+              <View style={styles.reserveContextCard}>
+                <Text style={styles.reserveContextTitle}>Reserveringen</Text>
+                <Text style={styles.reserveContextText}>
+                  Jaarlijkse lasten opzij: {formatAmount(reserveSurface.annualObligationMonthlyTotal)} per maand ·
+                  gepland deze maand {formatAmount(reserveSurface.plannedReserveAllocationThisMonth)}.
+                </Text>
+              </View>
+            ) : null}
             <FinanceForecastSummaryCard model={forecastCard} />
           </View>
 
@@ -948,13 +965,34 @@ const styles = StyleSheet.create({
   sectionBlock: {
     gap: 12,
   },
+  reserveContextCard: {
+    borderRadius: 16,
+    backgroundColor: FinColors.bgInput,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  reserveContextTitle: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: FinColors.textSecondary,
+  },
+  reserveContextText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "600",
+  },
   insightsList: {
     gap: 10,
   },
   showAllButton: {
     marginTop: 14,
     borderRadius: 18,
-    backgroundColor: "#f0f1f2",
+    backgroundColor: FinColors.bgInput,
     paddingVertical: 14,
     paddingHorizontal: 16,
     alignItems: "center",
@@ -971,7 +1009,7 @@ const styles = StyleSheet.create({
   remainingMonthButton: {
     minHeight: 34,
     borderRadius: 17,
-    backgroundColor: "#f0f1f2",
+    backgroundColor: FinColors.bgInput,
     paddingHorizontal: 14,
     paddingVertical: 8,
     alignItems: "center",
@@ -999,22 +1037,20 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
   },
   remainingMonthAnchorCard: {
+    ...FinSurfaces.topLevelCard,
     borderRadius: 28,
-    backgroundColor: "#ffffff",
+    backgroundColor: FinColors.bgCard,
     paddingHorizontal: 16,
     paddingVertical: 15,
     gap: 6,
-    boxShadow: "0px 8px 16px rgba(17,17,17,0.04)",
-    elevation: 1,
   },
   remainingMonthCard: {
+    ...FinSurfaces.topLevelCard,
     borderRadius: 26,
-    backgroundColor: "#ffffff",
+    backgroundColor: FinColors.bgCard,
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 8,
-    boxShadow: "0px 8px 16px rgba(17,17,17,0.04)",
-    elevation: 1,
   },
   remainingMonthRow: {
     minHeight: 52,
@@ -1070,19 +1106,18 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   remainingMonthValueIncome: {
-    color: "#567300",
+    color: FinColors.green,
   },
   remainingMonthValueExpense: {
     color: FinColors.textPrimary,
   },
   remainingMonthNetCard: {
+    ...FinSurfaces.topLevelCard,
     borderRadius: 26,
-    backgroundColor: "#ffffff",
+    backgroundColor: FinColors.bgCard,
     paddingHorizontal: 16,
     paddingVertical: 15,
     gap: 6,
-    boxShadow: "0px 8px 16px rgba(17,17,17,0.04)",
-    elevation: 1,
   },
   remainingMonthNetValue: {
     fontSize: 24,
@@ -1105,7 +1140,7 @@ const styles = StyleSheet.create({
   remainingMonthHighlightLabel: {
     fontSize: 11,
     lineHeight: 14,
-    color: "rgba(17,17,17,0.62)",
+    color: FinColors.textSecondary,
     fontWeight: "800",
     textTransform: "uppercase",
     letterSpacing: 0.8,
@@ -1120,6 +1155,6 @@ const styles = StyleSheet.create({
   remainingMonthHighlightMeta: {
     fontSize: 12,
     lineHeight: 16,
-    color: "rgba(17,17,17,0.62)",
+    color: FinColors.textSecondary,
   },
 });

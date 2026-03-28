@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getAuthRedirectUrl } from "./auth-url";
 
 const { createURLMock } = vi.hoisted(() => ({
   createURLMock: vi.fn(),
@@ -18,8 +19,6 @@ vi.mock("expo-constants", () => ({
     },
   },
 }));
-
-import { getAuthRedirectUrl } from "./auth-url";
 
 describe("getAuthRedirectUrl", () => {
   afterEach(() => {

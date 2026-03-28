@@ -469,3 +469,24 @@ Niet blokkerend, wel waardevol voor later:
   `geboekt` per categorie?
 - Willen we voor meevallers een vaste verdelingsnudge tonen richting buffer,
   jaarlijkse lasten en spaardoelen?
+
+## UI/Design hardening open acties (na huidige batches)
+
+- Grote cleanup van style literals in productsurfaces:
+  - vooral `app/(tabs)/budget.tsx`, `app/transaction-detail.tsx`,
+    `components/bank-accounts/bank-account-form-sheet.tsx`
+  - literals gefaseerd vervangen door `FinTokens.spacing`,
+    `FinTokens.typography` en gedeelde atomics
+- Logic leakage verder reduceren:
+  - renderpad-berekeningen uit `Dashboard`, `Budget`, `Insights`,
+    `Transactions` centraliseren in selectors/`services/ui-formatters`
+  - UI-componenten alleen formatteren en renderen
+- Interactiepatronen verder harmoniseren:
+  - overgebleven `TouchableOpacity`/`Pressable` op productoppervlakken
+    migreren naar `FinanceButton` of `FinancePressableSurface`
+- Inventory/governance:
+  - `screen-inventory` up-to-date houden bij routewijzigingen
+  - shell-check lijst uitbreiden wanneer extra routes canoniek zijn gemaakt
+- Lint/tooling:
+  - resterende warnings opruimen in testbestanden (`import/first`,
+    `Array<T>`-notatie, oude eslint-disable comment)

@@ -1,4 +1,4 @@
-import { FinColors } from "@/constants/theme";
+import { FinColors, FinTokens } from "@/constants/theme";
 import { resolveForecastAccountRules } from "@/services/forecast-account-rules";
 import type { BankAccount } from "@/services/bank-accounts";
 import React from "react";
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   chipGood: {
-    backgroundColor: "#e7f3a8",
+    backgroundColor: FinTokens.color.statusGoodBg,
   },
   chipWatch: {
     backgroundColor: FinColors.warningBg,
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   chipTextGood: {
-    color: "#5b6a1b",
+    color: FinTokens.color.statusGoodText,
   },
   chipTextWatch: {
     color: FinColors.warningText,
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   rowValueGood: {
-    backgroundColor: "#e7f3a8",
+    backgroundColor: FinTokens.color.statusGoodBg,
   },
   rowValueWatch: {
     backgroundColor: FinColors.warningBg,
@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   rowValueTextGood: {
-    color: "#5b6a1b",
+    color: FinTokens.color.statusGoodText,
   },
   rowValueTextWatch: {
     color: FinColors.warningText,

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getApiBaseUrl } from "./api-base";
 
 vi.mock("expo-constants", () => ({
   default: {
@@ -7,8 +8,6 @@ vi.mock("expo-constants", () => ({
     },
   },
 }));
-
-import { getApiBaseUrl } from "./api-base";
 
 describe("getApiBaseUrl", () => {
   afterEach(() => {

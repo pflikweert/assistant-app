@@ -208,4 +208,129 @@ describe("normalizeForecastEventsForMonth", () => {
 
     expect(events[0]?.ownerScope).toBe("shared");
   });
+
+  it("voegt actieve annual-obligation rules toe als reserve_allocation event", () => {
+    const events = normalizeForecastEventsForMonth({
+      monthStart: new Date("2026-03-01T00:00:00.000Z"),
+      monthEndExclusive: new Date("2026-04-01T00:00:00.000Z"),
+      referenceDate: new Date("2026-03-10T00:00:00.000Z"),
+      categoryMap: new Map(),
+      bankAccountsById: new Map(),
+      bookedTransactions: [],
+      timelineEvents: [],
+      reserveRules: [
+        {
+          id: "rule-1",
+          label: "Gemeentelijke lasten",
+          monthlyAmount: 120,
+          status: "active",
+        },
+      ],
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "reserve_allocation",
+      amount: 120,
+      certainty: "committed",
+      label: "Gemeentelijke lasten",
+    });
+  });
+
+  it("voorkomt dubbele aftrek van vaste lasten als een actieve reserve rule dezelfde verplichting dekt", () => {
+    const events = normalizeForecastEventsForMonth({
+      monthStart: new Date("2026-03-01T00:00:00.000Z"),
+      monthEndExclusive: new Date("2026-04-01T00:00:00.000Z"),
+      referenceDate: new Date("2026-03-10T00:00:00.000Z"),
+      categoryMap: new Map(),
+      bankAccountsById: new Map(),
+      bookedTransactions: [],
+      timelineEvents: [
+        {
+          id: "fixed-1",
+          date: "2026-03-21",
+          amount: 120,
+          kind: "fixed_cost",
+          label: "Gemeentelijke lasten",
+          confidence: 0.9,
+          source: "rare_subscription",
+        },
+      ],
+      reserveRules: [
+        {
+          id: "rule-1",
+          label: "Gemeentelijke lasten",
+          monthlyAmount: 120,
+          status: "active",
+        },
+      ],
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("reserve_allocation");
+    expect(events[0]?.label).toBe("Gemeentelijke lasten");
+  });
+
+  it("voorkomt dubbele aftrek wanneer een geboekte vaste last al door een reserve rule is afgedekt", () => {
+    const events = normalizeForecastEventsForMonth({
+      monthStart: new Date("2026-03-01T00:00:00.000Z"),
+      monthEndExclusive: new Date("2026-04-01T00:00:00.000Z"),
+      referenceDate: new Date("2026-03-10T00:00:00.000Z"),
+      categoryMap: new Map(),
+      bankAccountsById: new Map(),
+      bookedTransactions: [
+        {
+          id: "booked-fixed-1",
+          date: "2026-03-20",
+          amount: -120,
+          details: "Gemeentelijke lasten",
+          counterparty: "Gemeente",
+          analysis_main_group: "expense",
+          analysis_category: "fixed_costs",
+          recurring: false,
+          recurring_type: null,
+          category_id_auto: null,
+          category_id_user: null,
+          bank_account_id: null,
+          budget_excluded: false,
+          metadata: {},
+        },
+      ],
+      timelineEvents: [],
+      reserveRules: [
+        {
+          id: "rule-1",
+          label: "Gemeentelijke lasten",
+          monthlyAmount: 120,
+          status: "active",
+        },
+      ],
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("reserve_allocation");
+  });
+
+  it("mapt reserve-rule owner scope naar de event owner scope", () => {
+    const events = normalizeForecastEventsForMonth({
+      monthStart: new Date("2026-03-01T00:00:00.000Z"),
+      monthEndExclusive: new Date("2026-04-01T00:00:00.000Z"),
+      referenceDate: new Date("2026-03-10T00:00:00.000Z"),
+      categoryMap: new Map(),
+      bankAccountsById: new Map(),
+      bookedTransactions: [],
+      timelineEvents: [],
+      reserveRules: [
+        {
+          id: "rule-shared",
+          label: "Gezamenlijke jaarlijkse last",
+          monthlyAmount: 90,
+          status: "active",
+          scopeView: "shared",
+        },
+      ],
+    });
+
+    expect(events[0]?.ownerScope).toBe("shared");
+  });
 });

@@ -74,6 +74,7 @@ Niet bedoeld voor:
   - huidig saldo
   - recente transacties
   - maand- en weektempo-indicatie
+  - compacte inline call-outs voor status en tempo (gedeelde `FinanceInlineCallout`-standaard)
 - Belangrijkste acties:
   - doorklik naar transacties en detail
 - Relatie met andere pagina's:
@@ -277,7 +278,7 @@ Niet bedoeld voor:
 - Relatie met andere pagina's:
   - beïnvloedt transactiefilters en budget-inclusie
 
-### Route: `app/rekeningen-koppelen.tsx`
+### Route: `app/accounts/link.tsx`
 
 - Status: `Actief`
 - Doel van deze pagina: rekeningen koppelen in importflow
@@ -289,6 +290,18 @@ Niet bedoeld voor:
   - koppeling bevestigen
 - Relatie met andere pagina's:
   - onderdeel van importketen
+
+### Route: `app/rekeningen-koppelen.tsx`
+
+- Status: `Legacy redirect`
+- Doel van deze pagina: compatibele doorsturing naar de nieuwe accounts-link route
+- Voor wie / wanneer: oude links/bookmarks
+- Kernfunctionaliteiten:
+  - directe redirect naar `app/accounts/link.tsx`
+- Belangrijkste acties:
+  - geen
+- Relatie met andere pagina's:
+  - bridge naar de nieuwe import-koppelroute
 
 ### Route: `app/import-control.tsx`
 
@@ -342,7 +355,7 @@ Niet bedoeld voor:
 - Relatie met andere pagina's:
   - impact op budget en insights
 
-### Route: `app/account/change-password.tsx`
+### Route: `app/settings/security/password.tsx`
 
 - Status: `Actief`
 - Doel van deze pagina: wachtwoord wijzigen
@@ -354,6 +367,18 @@ Niet bedoeld voor:
   - wijziging bevestigen
 - Relatie met andere pagina's:
   - gekoppeld aan auth en settings
+
+### Route: `app/account/change-password.tsx`
+
+- Status: `Legacy redirect`
+- Doel van deze pagina: compatibele doorsturing naar de nieuwe settings-security route
+- Voor wie / wanneer: oude links/bookmarks
+- Kernfunctionaliteiten:
+  - directe redirect naar `app/settings/security/password.tsx`
+- Belangrijkste acties:
+  - geen
+- Relatie met andere pagina's:
+  - bridge naar de nieuwe security-locatie
 
 ### Auth- en systeemroutes
 
@@ -790,7 +815,7 @@ Het model kiest bewust voor voorzichtigheid:
 
 - Gebruikerswaarde: bankdata snel in de app en veilig gecontroleerd.
 - Onderliggende onderdelen:
-  - Pagina's: `csv-import`, `import-control`, `import-afronden`, `rekeningen-koppelen`
+  - Pagina's: `csv-import`, `accounts/link`, `import-control`, `import-afronden`
   - Services: `services/import/*`, `bank-accounts`, `transaction-import-match`
 
 ### 7. Abonnementen en vaste lasten
@@ -813,7 +838,7 @@ Het model kiest bewust voor voorzichtigheid:
 | `app/(tabs)/settings.tsx`         | Actief              | Instellingen en beheer            | Pagina-overzicht |
 | `app/(tabs)/transactions.tsx`     | Actief              | Transactielijst met filters       | Pagina-overzicht |
 | `app/_layout.tsx`                 | Technisch/Hulproute | Rootlayout en providers           | Pagina-overzicht |
-| `app/account/change-password.tsx` | Actief              | Wachtwoord wijzigen               | Pagina-overzicht |
+| `app/account/change-password.tsx` | Legacy redirect     | Bridge naar settings security     | Pagina-overzicht |
 | `app/analysis-detail.tsx`         | Actief              | Detailuitleg analyses             | Pagina-overzicht |
 | `app/auth/_layout.tsx`            | Technisch/Hulproute | Authrouterlayout                  | Pagina-overzicht |
 | `app/auth/forgot-password.tsx`    | Actief              | Wachtwoord reset aanvragen        | Pagina-overzicht |
@@ -821,6 +846,8 @@ Het model kiest bewust voor voorzichtigheid:
 | `app/auth/new-password.tsx`       | Actief              | Nieuw wachtwoord instellen        | Pagina-overzicht |
 | `app/auth/register.tsx`           | Actief              | Accountregistratie                | Pagina-overzicht |
 | `app/auth/reset-password.tsx`     | Actief              | Resetflow afronden                | Pagina-overzicht |
+| `app/settings/security/password.tsx` | Actief           | Wachtwoord wijzigen               | Pagina-overzicht |
+| `app/accounts/link.tsx`           | Actief              | Rekeningen koppelen in importflow | Pagina-overzicht |
 | `app/bankrekeningen.tsx`          | Actief              | Rekeningen beheren                | Pagina-overzicht |
 | `app/category-budget-groups.tsx`  | Actief              | Budgetgroepbeheer                 | Pagina-overzicht |
 | `app/csv-import.tsx`              | Actief              | Import starten                    | Pagina-overzicht |
@@ -829,7 +856,7 @@ Het model kiest bewust voor voorzichtigheid:
 | `app/insights-legacy.tsx`         | Legacy              | Oude inzichtenflow                | Pagina-overzicht |
 | `app/login.tsx`                   | Technisch/Hulproute | Login bridge-route                | Pagina-overzicht |
 | `app/modal.tsx`                   | Technisch/Hulproute | Generieke modalroute              | Pagina-overzicht |
-| `app/rekeningen-koppelen.tsx`     | Actief              | Rekeningen koppelen in importflow | Pagina-overzicht |
+| `app/rekeningen-koppelen.tsx`     | Legacy redirect     | Bridge naar accounts link          | Pagina-overzicht |
 | `app/subscriptions.tsx`           | Actief              | Abonnementenbeheer                | Pagina-overzicht |
 | `app/transaction-detail.tsx`      | Actief              | Transactiecontext en correctie    | Pagina-overzicht |
 | `app/transactions.tsx`            | Technisch/Hulproute | Transacties route-entry           | Pagina-overzicht |
