@@ -50,18 +50,24 @@ export type ForecastSurfaceSummary = {
   projectedNetUntilNextIncome: number | null;
   nextIncomeDateAnchor: string | null;
   nextIncomeLabelAnchor: string | null;
+  nextIncomeAmountAnchor: number | null;
+  nextIncomeAmountAnchorMeta: SafetySpendWindowSummary["nextIncomeAmountAnchorMeta"];
   safeToSpendAnchorType:
     | "configured"
     | "recurring_semantic"
     | "significant_fallback"
+    | "summary_fallback"
     | "fallback_end_next_month"
     | "none";
   safeToSpendIsEstimatedAnchorDate: boolean;
+  knownUpcomingFixedCostsUntilAnchor: number | null;
+  knownUpcomingSubscriptionsUntilAnchor: number | null;
   safeToSpendLabel: string;
   safeToSpendSubtitle: string;
   bridgeCrossMonthCostsUntilIncome: number | null;
   safeToSpendExplanation: string | null;
   safeToSpendExplanationParts: SafetySpendWindowSummary["safeToSpendExplanationParts"];
+  safeToSpendConfidenceScore: SafetySpendWindowSummary["safeToSpendConfidenceScore"];
   confidenceLayer: ConfidenceLayerMetadata;
   // Deprecated alias for temporary backward compatibility in older callers.
   reserve: ReserveSurfaceBreakdown | null;
@@ -172,12 +178,24 @@ export async function loadBudgetPlanForSurface(params: {
           projectedNetUntilNextIncome: null,
           nextIncomeDateAnchor: null,
           nextIncomeLabelAnchor: null,
+          nextIncomeAmountAnchor: null,
+          nextIncomeAmountAnchorMeta: {
+            isAvailable: false,
+            isCanonical: false,
+            isDerived: false,
+            isFallback: false,
+            source: "surface_fallback",
+            dataGapReason: "surface_not_loaded",
+          },
           anchorType: "none" as const,
           isEstimatedAnchorDate: true,
           bridgeCrossMonthCostsUntilIncome: null,
+          knownUpcomingFixedCostsUntilAnchor: null,
+          knownUpcomingSubscriptionsUntilAnchor: null,
           safeToSpendExplanation: null,
           safeToSpendExplanationParts: null,
           confidenceScore: "INDICATIVE" as const,
+          safeToSpendConfidenceScore: "INDICATIVE" as const,
           deltaReasonLabel: null,
           deltaReasonAmount: null,
         }
@@ -205,12 +223,24 @@ export async function loadBudgetPlanForSurface(params: {
           projectedNetUntilNextIncome: null,
           nextIncomeDateAnchor: null,
           nextIncomeLabelAnchor: null,
+          nextIncomeAmountAnchor: null,
+          nextIncomeAmountAnchorMeta: {
+            isAvailable: false,
+            isCanonical: false,
+            isDerived: false,
+            isFallback: false,
+            source: "surface_fallback",
+            dataGapReason: "safety_window_unavailable",
+          },
           anchorType: "none" as const,
           isEstimatedAnchorDate: true,
           bridgeCrossMonthCostsUntilIncome: null,
+          knownUpcomingFixedCostsUntilAnchor: null,
+          knownUpcomingSubscriptionsUntilAnchor: null,
           safeToSpendExplanation: null,
           safeToSpendExplanationParts: null,
           confidenceScore: "INDICATIVE" as const,
+          safeToSpendConfidenceScore: "INDICATIVE" as const,
           deltaReasonLabel: null,
           deltaReasonAmount: null,
         }));
@@ -241,13 +271,20 @@ export async function loadBudgetPlanForSurface(params: {
     projectedNetUntilNextIncome: safetyWindow.projectedNetUntilNextIncome,
     nextIncomeDateAnchor: safetyWindow.nextIncomeDateAnchor,
     nextIncomeLabelAnchor: safetyWindow.nextIncomeLabelAnchor,
+    nextIncomeAmountAnchor: safetyWindow.nextIncomeAmountAnchor,
+    nextIncomeAmountAnchorMeta: safetyWindow.nextIncomeAmountAnchorMeta,
     safeToSpendAnchorType: safetyWindow.anchorType,
     safeToSpendIsEstimatedAnchorDate: safetyWindow.isEstimatedAnchorDate,
     safeToSpendLabel: safeToSpendCopy.fullLabel,
     safeToSpendSubtitle: safeToSpendCopy.sheetSubtitle,
     bridgeCrossMonthCostsUntilIncome: safetyWindow.bridgeCrossMonthCostsUntilIncome,
+    knownUpcomingFixedCostsUntilAnchor:
+      safetyWindow.knownUpcomingFixedCostsUntilAnchor,
+    knownUpcomingSubscriptionsUntilAnchor:
+      safetyWindow.knownUpcomingSubscriptionsUntilAnchor,
     safeToSpendExplanation: safetyWindow.safeToSpendExplanation,
     safeToSpendExplanationParts: safetyWindow.safeToSpendExplanationParts,
+    safeToSpendConfidenceScore: safetyWindow.safeToSpendConfidenceScore,
     confidenceLayer,
     reserve: reserveBreakdown,
     balances,

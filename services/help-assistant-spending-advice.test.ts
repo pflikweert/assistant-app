@@ -1,0 +1,652 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  buildAssistantAdviceSignals,
+  buildSpendingAdviceContextPrompt,
+  buildSpendingAdvicePromptVariant,
+  classifySpendingQuestionType,
+  parseRequestedAmountFromQuestion,
+} from "./help-assistant-spending-advice";
+
+describe("help-assistant-spending-advice", () => {
+  it("classifies spending questions and parses amounts", () => {
+    expect(classifySpendingQuestionType("Heb ik nog ruimte voor boodschappen?")).toBe(
+      "space_summary",
+    );
+    expect(classifySpendingQuestionType("Kan ik een stoel kopen van 40 euro?")).toBe(
+      "spending_decision",
+    );
+    expect(parseRequestedAmountFromQuestion("Kan ik nog 40 euro uitgeven?")).toBe(40);
+  });
+
+  it("builds assistant signals from canonical budget and safety inputs", () => {
+    const signals = buildAssistantAdviceSignals({
+      monthBudgetStatus: "watch",
+      variableRemaining: 120,
+      variableBudgetTotal: 900,
+      extraSpaceUntilNextIncome: 140,
+      expectedEndBalance: 90,
+      lowestProjectedBalance: 35,
+      forecastReliabilityScore: "MEDIUM",
+      requestedAmount: 80,
+      categoryStatus: {
+        status: "watch",
+        remaining: 60,
+      },
+    });
+
+    expect(signals.budgetPressure).toBe("medium");
+    expect(signals.cashSafety).toBe("medium");
+    expect(signals.purchaseFlexibility).toBe("low");
+    expect(signals.recommendedTone).toBe("neutral");
+  });
+
+  it("uses canonieke termen in de spending prompt", () => {
+    const prompt = buildSpendingAdviceContextPrompt({
+      context: {
+        period: {
+          key: "2026-03",
+          label: "maart 2026",
+          startIso: "2026-03-01",
+          endIsoExclusive: "2026-04-01",
+          referenceDateIso: "2026-03-20T12:00:00.000Z",
+          usedFallbackPeriod: false,
+        },
+        currentBalance: {
+          balance: 1400,
+          date: "2026-03-20",
+        },
+        spending: {
+          currentMonthTotal: 820,
+          currentWeekTotal: 210,
+          currentMonthBreakdown: {
+            total: 820,
+            transactionCount: 12,
+            categories: [],
+          },
+          currentWeekBreakdown: {
+            total: 210,
+            transactionCount: 4,
+            categories: [],
+          },
+        },
+        budget: {
+          remainingVariableBudget: 200,
+          spentVariableBudget: 700,
+          totalVariableBudget: 900,
+          monthStatusLabel: "Let op",
+          monthRiskTone: "watch",
+          weekRemainingBudget: 55,
+          weekStatusLabel: "Op schema",
+          weekRiskTone: "good",
+          weekTempoDelta: 20,
+        },
+        trend: {
+          monthStatusLabel: "Let op",
+          monthRiskTone: "watch",
+          weekStatusLabel: "Op schema",
+          weekRiskTone: "good",
+          weekTempoDelta: 20,
+          monthProgress: 0.6,
+        },
+        budgetPlan: {
+          monthlyBudgetTotal: 2000,
+          weeklyBudgetTotal: 500,
+          fixedCostsBudget: 900,
+          subscriptionsBudget: 120,
+          variableBudget: 900,
+          variableSubcategoriesBudgetTotal: 900,
+          appliedSavingsTarget: 250,
+          currentWeekBudget: 200,
+          currentWeekActual: 145,
+          currentWeekRemaining: 55,
+          subtotalAfterFixed: 1100,
+          subtotalAfterSubscriptions: 980,
+          variableCategoryBudgets: [],
+        },
+        planning: {
+          upcomingCommittedExpenseTotal: 420,
+          upcomingCommittedIncomeTotal: 0,
+          expectedFixedCosts: 900,
+          expectedSubscriptions: 120,
+          remainingPlannedExpenseTotal: 500,
+          remainingVariableExpenseEstimate: 180,
+        },
+        forecastCurrentMonth: {
+          hasData: true,
+          expectedEndBalance: 300,
+          lowestExpectedBalance: 80,
+          riskFlag: "none",
+          cashRiskFlag: "none",
+          remainingMonthNetTotal: 240,
+          forecastReferenceDate: "2026-03-20",
+        },
+        forecastNextMonth: {
+          hasData: true,
+          monthKey: "2026-04",
+          monthLabel: "april 2026",
+          expectedEndBalance: 260,
+          riskFlag: "none",
+          cashRiskFlag: "none",
+          forecastReferenceDate: "2026-03-20",
+        },
+        surfaceSemantics: {
+          remainingMonthlyBudget: 200,
+          expectedEndOperationalBalance: 300,
+          freeToSpendNow: 1292.84,
+          safeToSpendUntilNextIncome: 1690.95,
+          nextIncomeDateAnchor: "2026-03-28",
+          nextIncomeAmountAnchor: 2400,
+          nextIncomeAmountAnchorMeta: {
+            isAvailable: true,
+            isCanonical: true,
+            isDerived: false,
+            isFallback: false,
+            source: "income_source",
+            dataGapReason: null,
+          },
+          knownUpcomingFixedCostsUntilAnchor: 320,
+          knownUpcomingSubscriptionsUntilAnchor: 45,
+          safeToSpendConfidenceScore: "MEDIUM",
+          safeToSpendLabel: "Extra ruimte tot salaris",
+          safeToSpendSubtitle: "Tot je salaris",
+          statusLabel: "Let op voor maart",
+          statusTone: "watch",
+        },
+        spendingAdvice: {
+          monthBudget: {
+            monthLabel: "maart 2026",
+            daysRemainingInMonth: 12,
+            variableBudgetTotal: 900,
+            variableSpent: 700,
+            variableRemaining: 200,
+            monthBudgetStatus: "watch",
+            monthBudgetStatusLabel: "Let op",
+            weekBudgetRemaining: 55,
+            weekBudgetStatus: "on_track",
+            weekTempoSignal: "under_tempo",
+          },
+          cashflowSafety: {
+            currentBalance: 1400,
+            extraSpaceUntilNextIncome: 1690.95,
+            extraSpaceLabel: "Extra ruimte tot salaris",
+            nextIncomeDate: "2026-03-28",
+            nextIncomeAmount: 2400,
+            nextIncomeAmountMeta: {
+              isAvailable: true,
+              isCanonical: true,
+              isDerived: false,
+              isFallback: false,
+              source: "income_source",
+              dataGapReason: null,
+            },
+            daysUntilNextIncome: 8,
+            expectedEndBalance: 300,
+            lowestProjectedBalance: 80,
+            knownUpcomingFixedCosts: 365,
+            expectedFixedAndSubscriptions: 1020,
+            forecastReliability: "medium",
+          },
+          categoryStatus: {
+            categoryKey: "groceries",
+            categoryLabel: "Boodschappen",
+            spentCurrentMonth: 240,
+            budgetCurrentMonth: 300,
+            remaining: 60,
+            status: "watch",
+            budgetAvailability: "canonical",
+            budgetSourceType: "plan_recommendation_category",
+            budgetMeta: {
+              isAvailable: true,
+              isCanonical: true,
+              isDerived: false,
+              isFallback: false,
+              source: "budget_plan_recommendation_category",
+              dataGapReason: null,
+            },
+            projectedEndOfMonth: null,
+            projectedEndOfMonthMeta: {
+              isAvailable: false,
+              isCanonical: false,
+              isDerived: false,
+              isFallback: false,
+              source: "category_projection",
+              dataGapReason: "projected_end_of_month_not_available",
+            },
+            avgLast3Months: null,
+            avgLast3MonthsMeta: {
+              isAvailable: false,
+              isCanonical: false,
+              isDerived: false,
+              isFallback: false,
+              source: "category_average",
+              dataGapReason: "avg_last_3_months_not_available",
+            },
+          },
+          assistantAdviceSignals: {
+            budgetPressure: "medium",
+            cashSafety: "medium",
+            purchaseFlexibility: "medium",
+            shortReason:
+              "Het kan waarschijnlijk wel, maar deze keuze maakt je maand krapper.",
+            recommendedTone: "neutral",
+          },
+        },
+        quality: {
+          cacheHit: false,
+          fetchedAtIso: "2026-03-20T12:00:00.000Z",
+          cacheTtlMs: 45000,
+          hasBudgetSignals: true,
+          hasPlanningSignals: true,
+          hasForecastSignals: true,
+          hasBalanceSignals: true,
+          hasSpendingSignals: true,
+          hasCategorySignals: true,
+          confidence: "high",
+          dataGaps: [],
+        },
+      },
+      requestedAmount: 40,
+    });
+
+    expect(buildSpendingAdvicePromptVariant("space_summary")).toContain(
+      "Vraagtype: ruimtevraag",
+    );
+    expect(prompt).toContain("Resterend budget maart 2026");
+    expect(prompt).toContain("Verwacht eindsaldo");
+    expect(prompt).toContain("Extra ruimte tot salaris");
+    expect(prompt).toContain("Aankoopimpact");
+    expect(prompt).toMatch(/Resterend budget maart 2026 na aankoop: .*160/);
+    expect(prompt).toMatch(/Extra ruimte tot salaris na aankoop: .*1\.650/);
+    expect(prompt).toMatch(/Verwacht eindsaldo na aankoop: .*260/);
+    expect(prompt).not.toContain("Veilig te besteden tot volgende inkomen");
+  });
+
+  it("keeps prompt truth-safe for missing category budget and unreliable next income amount", () => {
+    const prompt = buildSpendingAdviceContextPrompt({
+      context: {
+        period: {
+          key: "2026-03",
+          label: "maart 2026",
+          startIso: "2026-03-01",
+          endIsoExclusive: "2026-04-01",
+          referenceDateIso: "2026-03-20T12:00:00.000Z",
+          usedFallbackPeriod: false,
+        },
+        currentBalance: {
+          balance: 1400,
+          date: "2026-03-20",
+        },
+        spending: {
+          currentMonthTotal: 25,
+          currentWeekTotal: 25,
+          currentMonthBreakdown: {
+            total: 25,
+            transactionCount: 1,
+            categories: [],
+          },
+          currentWeekBreakdown: {
+            total: 25,
+            transactionCount: 1,
+            categories: [],
+          },
+        },
+        budget: {
+          remainingVariableBudget: 200,
+          spentVariableBudget: 700,
+          totalVariableBudget: 900,
+          monthStatusLabel: "Let op",
+          monthRiskTone: "watch",
+          weekRemainingBudget: 55,
+          weekStatusLabel: "Op schema",
+          weekRiskTone: "good",
+          weekTempoDelta: 20,
+        },
+        trend: {
+          monthStatusLabel: "Let op",
+          monthRiskTone: "watch",
+          weekStatusLabel: "Op schema",
+          weekRiskTone: "good",
+          weekTempoDelta: 20,
+          monthProgress: 0.6,
+        },
+        budgetPlan: {
+          monthlyBudgetTotal: 2000,
+          weeklyBudgetTotal: 500,
+          fixedCostsBudget: 900,
+          subscriptionsBudget: 120,
+          variableBudget: 900,
+          variableSubcategoriesBudgetTotal: 900,
+          appliedSavingsTarget: 250,
+          currentWeekBudget: 200,
+          currentWeekActual: 145,
+          currentWeekRemaining: 55,
+          subtotalAfterFixed: 1100,
+          subtotalAfterSubscriptions: 980,
+          variableCategoryBudgets: [],
+        },
+        planning: {
+          upcomingCommittedExpenseTotal: 420,
+          upcomingCommittedIncomeTotal: 0,
+          expectedFixedCosts: 900,
+          expectedSubscriptions: 120,
+          remainingPlannedExpenseTotal: 500,
+          remainingVariableExpenseEstimate: 180,
+        },
+        forecastCurrentMonth: {
+          hasData: true,
+          expectedEndBalance: 300,
+          lowestExpectedBalance: 80,
+          riskFlag: "none",
+          cashRiskFlag: "none",
+          remainingMonthNetTotal: 240,
+          forecastReferenceDate: "2026-03-20",
+        },
+        forecastNextMonth: {
+          hasData: true,
+          monthKey: "2026-04",
+          monthLabel: "april 2026",
+          expectedEndBalance: 260,
+          riskFlag: "none",
+          cashRiskFlag: "none",
+          forecastReferenceDate: "2026-03-20",
+        },
+        surfaceSemantics: {
+          remainingMonthlyBudget: 200,
+          expectedEndOperationalBalance: 300,
+          freeToSpendNow: 1292.84,
+          safeToSpendUntilNextIncome: 1690.95,
+          nextIncomeDateAnchor: "2026-03-28",
+          nextIncomeAmountAnchor: null,
+          nextIncomeAmountAnchorMeta: {
+            isAvailable: false,
+            isCanonical: false,
+            isDerived: true,
+            isFallback: true,
+            source: "forecast_summary_anchor",
+            dataGapReason: "anchor_has_no_reliable_amount",
+          },
+          knownUpcomingFixedCostsUntilAnchor: 320,
+          knownUpcomingSubscriptionsUntilAnchor: 45,
+          safeToSpendConfidenceScore: "MEDIUM",
+          safeToSpendLabel: "Extra ruimte tot volgende inkomsten",
+          safeToSpendSubtitle: "Tot je volgende inkomsten",
+          statusLabel: "Let op voor maart",
+          statusTone: "watch",
+        },
+        spendingAdvice: {
+          monthBudget: {
+            monthLabel: "maart 2026",
+            daysRemainingInMonth: 12,
+            variableBudgetTotal: 900,
+            variableSpent: 700,
+            variableRemaining: 200,
+            monthBudgetStatus: "watch",
+            monthBudgetStatusLabel: "Let op",
+            weekBudgetRemaining: 55,
+            weekBudgetStatus: "on_track",
+            weekTempoSignal: "under_tempo",
+          },
+          cashflowSafety: {
+            currentBalance: 1400,
+            extraSpaceUntilNextIncome: 1690.95,
+            extraSpaceLabel: "Extra ruimte tot volgende inkomsten",
+            nextIncomeDate: "2026-03-28",
+            nextIncomeAmount: null,
+            nextIncomeAmountMeta: {
+              isAvailable: false,
+              isCanonical: false,
+              isDerived: true,
+              isFallback: true,
+              source: "forecast_summary_anchor",
+              dataGapReason: "anchor_has_no_reliable_amount",
+            },
+            daysUntilNextIncome: 8,
+            expectedEndBalance: 300,
+            lowestProjectedBalance: 80,
+            knownUpcomingFixedCosts: 365,
+            expectedFixedAndSubscriptions: 1020,
+            forecastReliability: "medium",
+          },
+          categoryStatus: {
+            categoryKey: "shopping_clothing",
+            categoryLabel: "Kleding",
+            spentCurrentMonth: 25,
+            budgetCurrentMonth: null,
+            remaining: null,
+            status: "tracked_without_budget",
+            budgetAvailability: "unavailable",
+            budgetSourceType: "none",
+            budgetMeta: {
+              isAvailable: false,
+              isCanonical: false,
+              isDerived: false,
+              isFallback: false,
+              source: "budget_plan_recommendations",
+              dataGapReason: "category_budget_not_available",
+            },
+            projectedEndOfMonth: null,
+            projectedEndOfMonthMeta: {
+              isAvailable: false,
+              isCanonical: false,
+              isDerived: false,
+              isFallback: false,
+              source: "category_projection",
+              dataGapReason: "projected_end_of_month_not_available",
+            },
+            avgLast3Months: null,
+            avgLast3MonthsMeta: {
+              isAvailable: false,
+              isCanonical: false,
+              isDerived: false,
+              isFallback: false,
+              source: "category_average",
+              dataGapReason: "avg_last_3_months_not_available",
+            },
+          },
+          assistantAdviceSignals: {
+            budgetPressure: "medium",
+            cashSafety: "medium",
+            purchaseFlexibility: "medium",
+            shortReason:
+              "Het kan waarschijnlijk wel, maar deze keuze maakt je maand krapper.",
+            recommendedTone: "neutral",
+          },
+        },
+        quality: {
+          cacheHit: false,
+          fetchedAtIso: "2026-03-20T12:00:00.000Z",
+          cacheTtlMs: 45000,
+          hasBudgetSignals: true,
+          hasPlanningSignals: true,
+          hasForecastSignals: true,
+          hasBalanceSignals: true,
+          hasSpendingSignals: true,
+          hasCategorySignals: true,
+          confidence: "high",
+          dataGaps: ["categoriebudget_niet_beschikbaar"],
+        },
+      },
+      requestedAmount: 40,
+    });
+
+    expect(prompt).toContain("Voor deze categorie heb ik nu geen apart maandbudget");
+    expect(prompt).toContain("niet betrouwbaar beschikbaar");
+    expect(prompt).toContain("Fallbackvolgorde");
+  });
+
+  it("includes only requested spending context blocks when requiredBlocks are provided", () => {
+    const prompt = buildSpendingAdviceContextPrompt({
+      context: {
+        period: {
+          key: "2026-03",
+          label: "maart 2026",
+          startIso: "2026-03-01",
+          endIsoExclusive: "2026-04-01",
+          referenceDateIso: "2026-03-20T12:00:00.000Z",
+          usedFallbackPeriod: false,
+        },
+        currentBalance: { balance: 1000, date: "2026-03-20" },
+        spending: {
+          currentMonthTotal: 100,
+          currentWeekTotal: 30,
+          currentMonthBreakdown: { total: 100, transactionCount: 2, categories: [] },
+          currentWeekBreakdown: { total: 30, transactionCount: 1, categories: [] },
+        },
+        budget: {
+          remainingVariableBudget: 200,
+          spentVariableBudget: 300,
+          totalVariableBudget: 500,
+          monthStatusLabel: "Op schema",
+          monthRiskTone: "good",
+          weekRemainingBudget: 40,
+          weekStatusLabel: "Op schema",
+          weekRiskTone: "good",
+          weekTempoDelta: 5,
+        },
+        trend: {
+          monthStatusLabel: "Op schema",
+          monthRiskTone: "good",
+          weekStatusLabel: "Op schema",
+          weekRiskTone: "good",
+          weekTempoDelta: 5,
+          monthProgress: 0.5,
+        },
+        budgetPlan: {
+          monthlyBudgetTotal: 1200,
+          weeklyBudgetTotal: 300,
+          fixedCostsBudget: 500,
+          subscriptionsBudget: 80,
+          variableBudget: 500,
+          variableSubcategoriesBudgetTotal: 500,
+          appliedSavingsTarget: 100,
+          currentWeekBudget: 120,
+          currentWeekActual: 80,
+          currentWeekRemaining: 40,
+          subtotalAfterFixed: 700,
+          subtotalAfterSubscriptions: 620,
+          variableCategoryBudgets: [],
+        },
+        planning: {
+          upcomingCommittedExpenseTotal: 200,
+          upcomingCommittedIncomeTotal: 0,
+          expectedFixedCosts: 500,
+          expectedSubscriptions: 80,
+          remainingPlannedExpenseTotal: 250,
+          remainingVariableExpenseEstimate: 140,
+        },
+        forecastCurrentMonth: {
+          hasData: true,
+          expectedEndBalance: 220,
+          lowestExpectedBalance: 90,
+          riskFlag: "none",
+          cashRiskFlag: "none",
+          remainingMonthNetTotal: 90,
+          forecastReferenceDate: "2026-03-20",
+        },
+        forecastNextMonth: {
+          hasData: true,
+          monthKey: "2026-04",
+          monthLabel: "april 2026",
+          expectedEndBalance: 260,
+          riskFlag: "none",
+          cashRiskFlag: "none",
+          forecastReferenceDate: "2026-03-20",
+        },
+        surfaceSemantics: {
+          remainingMonthlyBudget: 200,
+          expectedEndOperationalBalance: 220,
+          freeToSpendNow: 850,
+          safeToSpendUntilNextIncome: 600,
+          nextIncomeDateAnchor: "2026-03-28",
+          nextIncomeAmountAnchor: 1800,
+          nextIncomeAmountAnchorMeta: {
+            isAvailable: true,
+            isCanonical: true,
+            isDerived: false,
+            isFallback: false,
+            source: "income_source",
+            dataGapReason: null,
+          },
+          knownUpcomingFixedCostsUntilAnchor: 120,
+          knownUpcomingSubscriptionsUntilAnchor: 25,
+          safeToSpendConfidenceScore: "MEDIUM",
+          safeToSpendLabel: "Extra ruimte tot salaris",
+          safeToSpendSubtitle: "Tot je salaris",
+          statusLabel: "Op schema",
+          statusTone: "good",
+        },
+        spendingAdvice: {
+          monthBudget: {
+            monthLabel: "maart 2026",
+            daysRemainingInMonth: 12,
+            variableBudgetTotal: 500,
+            variableSpent: 300,
+            variableRemaining: 200,
+            monthBudgetStatus: "on_track",
+            monthBudgetStatusLabel: "Op schema",
+            weekBudgetRemaining: 40,
+            weekBudgetStatus: "on_track",
+            weekTempoSignal: "on_tempo",
+          },
+          cashflowSafety: {
+            currentBalance: 1000,
+            extraSpaceUntilNextIncome: 600,
+            extraSpaceLabel: "Extra ruimte tot salaris",
+            nextIncomeDate: "2026-03-28",
+            nextIncomeAmount: 1800,
+            nextIncomeAmountMeta: {
+              isAvailable: true,
+              isCanonical: true,
+              isDerived: false,
+              isFallback: false,
+              source: "income_source",
+              dataGapReason: null,
+            },
+            daysUntilNextIncome: 8,
+            expectedEndBalance: 220,
+            lowestProjectedBalance: 90,
+            knownUpcomingFixedCosts: 145,
+            expectedFixedAndSubscriptions: 580,
+            forecastReliability: "medium",
+          },
+          categoryStatus: null,
+          assistantAdviceSignals: {
+            budgetPressure: "low",
+            cashSafety: "medium",
+            purchaseFlexibility: "high",
+            shortReason: "Je maandbeeld oogt op dit moment redelijk stabiel.",
+            recommendedTone: "reassuring",
+          },
+        },
+        quality: {
+          cacheHit: false,
+          fetchedAtIso: "2026-03-20T12:00:00.000Z",
+          cacheTtlMs: 45000,
+          hasBudgetSignals: true,
+          hasPlanningSignals: true,
+          hasForecastSignals: true,
+          hasBalanceSignals: true,
+          hasSpendingSignals: true,
+          hasCategorySignals: true,
+          confidence: "high",
+          dataGaps: [],
+        },
+      },
+      requestedAmount: 40,
+      requiredBlocks: {
+        monthBudget: true,
+        cashflowSafety: true,
+        expectedEndBalance: false,
+        categoryStatus: false,
+        weekContext: false,
+      },
+    });
+
+    expect(prompt).not.toContain("Categoriecontext:");
+    expect(prompt).not.toContain("Weekbudget resterend");
+    expect(prompt).not.toContain("Verwacht eindsaldo:");
+    expect(prompt).toContain("requiredBlocks");
+    expect(prompt).toContain('"expectedEndBalance":false');
+  });
+});

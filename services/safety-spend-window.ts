@@ -13,20 +13,35 @@ export type SafetyAnchorType =
   | "configured"
   | "recurring_semantic"
   | "significant_fallback"
+  | "summary_fallback"
   | "fallback_end_next_month"
   | "none";
+
+export type SafetyDataMeta = {
+  isAvailable: boolean;
+  isCanonical: boolean;
+  isDerived: boolean;
+  isFallback: boolean;
+  source: string;
+  dataGapReason: string | null;
+};
 
 export type SafetySpendWindowSummary = {
   safeToSpendUntilNextIncome: number | null;
   projectedNetUntilNextIncome: number | null;
   nextIncomeDateAnchor: string | null;
   nextIncomeLabelAnchor: string | null;
+  nextIncomeAmountAnchor: number | null;
+  nextIncomeAmountAnchorMeta: SafetyDataMeta;
   anchorType: SafetyAnchorType;
   isEstimatedAnchorDate: boolean;
   bridgeCrossMonthCostsUntilIncome: number | null;
+  knownUpcomingFixedCostsUntilAnchor: number | null;
+  knownUpcomingSubscriptionsUntilAnchor: number | null;
   safeToSpendExplanation: string | null;
   safeToSpendExplanationParts: SafeToSpendExplanationParts | null;
   confidenceScore: ConfidenceScore;
+  safeToSpendConfidenceScore: ConfidenceScore;
   deltaReasonLabel: string | null;
   deltaReasonAmount: number | null;
 };
@@ -224,7 +239,7 @@ async function resolveConfiguredIncomeSourceAnchor(input: {
     structuralOther?: boolean;
     variable?: boolean;
   } | null;
-}): Promise<{ date: string; label: string } | null> {
+}): Promise<{ date: string; label: string; amount: number | null } | null> {
   const { data, error } = await supabase
     .from("forecast_income_sources")
     .select(
@@ -287,6 +302,7 @@ async function resolveConfiguredIncomeSourceAnchor(input: {
     return {
       date: nextDate,
       label: row.source_label,
+      amount: row.expected_income > 0 ? round2(row.expected_income) : null,
     };
   }
 
@@ -381,6 +397,24 @@ function resolveProRataFixedUntilAnchor(params: {
   if (anchorMonthDays <= 0 || daysBeforeAnchor <= 0) return 0;
   const ratio = clamp01(daysBeforeAnchor / anchorMonthDays);
   return round2(ratio * fixed);
+}
+
+function createSafetyMeta(input: {
+  isAvailable: boolean;
+  isCanonical: boolean;
+  isDerived: boolean;
+  isFallback: boolean;
+  source: string;
+  dataGapReason?: string | null;
+}): SafetyDataMeta {
+  return {
+    isAvailable: input.isAvailable,
+    isCanonical: input.isCanonical,
+    isDerived: input.isDerived,
+    isFallback: input.isFallback,
+    source: input.source,
+    dataGapReason: input.dataGapReason ?? null,
+  };
 }
 
 export async function buildSafetySpendWindowSummary(input: {
@@ -494,7 +528,7 @@ export async function buildSafetySpendWindowSummary(input: {
           eventDate: configuredIncomeSourceAnchor.date,
           eventType: "income",
           label: configuredIncomeSourceAnchor.label,
-          amount: 0,
+          amount: configuredIncomeSourceAnchor.amount ?? 0,
           source: "income_source",
           confidence: "high",
           fingerprint: "configured-income-source-anchor",
@@ -503,7 +537,7 @@ export async function buildSafetySpendWindowSummary(input: {
     configuredIncomeSourceAnchor != null
       ? "configured"
       : shouldPreferSummaryAnchor
-        ? "configured"
+        ? "summary_fallback"
         : timelineAnchorType;
   let isEstimatedAnchorDate =
     anchorType === "recurring_semantic" || anchorType === "significant_fallback";
@@ -533,12 +567,24 @@ export async function buildSafetySpendWindowSummary(input: {
       projectedNetUntilNextIncome: null,
       nextIncomeDateAnchor: null,
       nextIncomeLabelAnchor: null,
+      nextIncomeAmountAnchor: null,
+      nextIncomeAmountAnchorMeta: createSafetyMeta({
+        isAvailable: false,
+        isCanonical: false,
+        isDerived: false,
+        isFallback: false,
+        source: "safety_anchor",
+        dataGapReason: "no_anchor_event",
+      }),
       anchorType: "none",
       isEstimatedAnchorDate: true,
       bridgeCrossMonthCostsUntilIncome: null,
+      knownUpcomingFixedCostsUntilAnchor: null,
+      knownUpcomingSubscriptionsUntilAnchor: null,
       safeToSpendExplanation: null,
       safeToSpendExplanationParts: null,
       confidenceScore: "INDICATIVE",
+      safeToSpendConfidenceScore: "INDICATIVE",
       deltaReasonLabel: null,
       deltaReasonAmount: null,
     };
@@ -646,6 +692,16 @@ export async function buildSafetySpendWindowSummary(input: {
       )
       .reduce((sum, event) => sum + Math.max(Math.abs(event.amount), 0), 0),
   );
+  const knownUpcomingFixedCostsUntilAnchor = round2(
+    eventsUntilNextIncome
+      .filter((event) => event.eventType === "fixed_cost")
+      .reduce((sum, event) => sum + Math.max(Math.abs(event.amount), 0), 0),
+  );
+  const knownUpcomingSubscriptionsUntilAnchor = round2(
+    eventsUntilNextIncome
+      .filter((event) => event.eventType === "subscription")
+      .reduce((sum, event) => sum + Math.max(Math.abs(event.amount), 0), 0),
+  );
 
   const confidence = anchorType === "fallback_end_next_month"
     ? "low"
@@ -672,18 +728,66 @@ export async function buildSafetySpendWindowSummary(input: {
     windowEnd: nextIncomeEvent.eventDate,
     confidence,
   };
+  const nextIncomeAmountCandidate =
+    nextIncomeEvent.eventType === "income" && Math.abs(nextIncomeEvent.amount) > 0
+      ? round2(Math.abs(nextIncomeEvent.amount))
+      : null;
+  const nextIncomeAmountIsReliable =
+    nextIncomeAmountCandidate != null &&
+    nextIncomeEvent.source === "income_source" &&
+    !isEstimatedAnchorDate &&
+    anchorType !== "summary_fallback" &&
+    anchorType !== "fallback_end_next_month";
+  const nextIncomeAmountAnchor = nextIncomeAmountIsReliable
+    ? nextIncomeAmountCandidate
+    : null;
+  const nextIncomeAmountAnchorMeta = createSafetyMeta({
+    isAvailable: nextIncomeAmountIsReliable,
+    isCanonical: nextIncomeAmountIsReliable,
+    isDerived:
+      !nextIncomeAmountIsReliable &&
+      (nextIncomeEvent.source === "derived" || anchorType === "summary_fallback"),
+    isFallback:
+      anchorType === "summary_fallback" || anchorType === "fallback_end_next_month",
+    source:
+      anchorType === "summary_fallback"
+        ? "forecast_summary_anchor"
+        : anchorType === "fallback_end_next_month"
+          ? "fallback_end_next_month"
+          : nextIncomeEvent.source === "income_source"
+            ? "income_source"
+            : "forecast_timeline_anchor",
+    dataGapReason: nextIncomeAmountIsReliable
+      ? null
+      : anchorType === "summary_fallback" ||
+          anchorType === "fallback_end_next_month"
+        ? "anchor_has_no_reliable_amount"
+        : nextIncomeAmountCandidate == null
+          ? "anchor_amount_missing"
+          : nextIncomeEvent.source !== "income_source"
+            ? "anchor_amount_not_from_reliable_income_source"
+            : isEstimatedAnchorDate
+              ? "anchor_date_estimated"
+              : "anchor_amount_unreliable",
+  });
+  const confidenceScore = mapSafeConfidenceToScore(confidence);
 
   return {
     safeToSpendUntilNextIncome,
     projectedNetUntilNextIncome,
     nextIncomeDateAnchor: nextIncomeEvent.eventDate,
     nextIncomeLabelAnchor: nextIncomeEvent.label || null,
+    nextIncomeAmountAnchor,
+    nextIncomeAmountAnchorMeta,
     anchorType,
     isEstimatedAnchorDate,
     bridgeCrossMonthCostsUntilIncome,
+    knownUpcomingFixedCostsUntilAnchor,
+    knownUpcomingSubscriptionsUntilAnchor,
     safeToSpendExplanation: buildSafeToSpendExplanation(parts),
     safeToSpendExplanationParts: parts,
-    confidenceScore: mapSafeConfidenceToScore(confidence),
+    confidenceScore,
+    safeToSpendConfidenceScore: confidenceScore,
     deltaReasonLabel: deltaReasonCandidate?.label || null,
     deltaReasonAmount:
       deltaReasonCandidate?.amount == null

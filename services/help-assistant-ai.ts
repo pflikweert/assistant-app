@@ -14,6 +14,13 @@ import {
   type UnifiedFinancialAdviceContext,
 } from "@/services/help-assistant-financial-context";
 import {
+  SPENDING_ADVICE_SYSTEM_PROMPT,
+  buildSpendingAdviceContextPrompt,
+  buildSpendingAdvicePromptVariant,
+  classifySpendingQuestionType,
+  parseRequestedAmountFromQuestion,
+} from "@/services/help-assistant-spending-advice";
+import {
   postHelpAssistantSpendingAdviceCompletion,
   postOpenAIChatCompletion,
   type SpendingAdviceProxyFallback,
@@ -27,10 +34,9 @@ const appEnv = ((Constants.expoConfig?.extra as Record<
 
 const DEFAULT_MODEL = appEnv.OPENAI_MODEL || "gpt-4.1-mini";
 const MAX_CONTEXT_MESSAGES = 12;
-const eur = new Intl.NumberFormat("nl-NL", {
-  style: "currency",
-  currency: "EUR",
-});
+const MAX_PLANNER_MESSAGES = 6;
+const HELP_ASSISTANT_DEBUG_ENABLED =
+  String(appEnv.EXPO_PUBLIC_HELP_ASSISTANT_DEBUG || "") === "1";
 const HELP_ASSISTANT_SYSTEM_PROMPT = [
   "Je bent de Budio Assistent in een Nederlandse consumenten-app voor budget en financiële sturing.",
   "Werk volgens de Budio-volgorde: eerst huidige stand, daarna ruimte, daarna risico, daarna advies.",
@@ -51,61 +57,34 @@ const HELP_ASSISTANT_SYSTEM_PROMPT = [
   "Laat technische interne termen niet rauw zien aan de gebruiker; vertaal ze naar gewone taal.",
   "Gebruik maximaal 3-6 zinnen tenzij de vraag expliciet om structuur vraagt.",
 ].join(" ");
-const SPENDING_ADVICE_SYSTEM_PROMPT = [
-  "Je bent de Budio AI Buddy voor bestedingsruimte-vragen.",
-  "Je taak is voorzichtig, compact en bruikbaar meedenken over uitgavenruimte.",
-  "Budgetruimte, planning en forecast zijn leidend; los saldo is nooit leidend.",
-  "Denk altijd in drie tijdslagen: nu, later deze maand en begin volgende maand.",
-  "Als de gebruiker vraagt hoeveel er aan een categorie is uitgegeven (bijvoorbeeld boodschappen, eten, vervoer of kleding), gebruik dan de uitgavenverdeling in de context en geef een concreet totaal in euro's voor de huidige maand en, als dat helpt, ook voor de huidige week.",
-  "Gebruik alleen data die expliciet in de huidige context staat.",
-  "Verzin nooit bedragen, datums, transacties, categorieën of risico's.",
-  "Als data ontbreekt of beperkt is, benoem onzekerheid expliciet.",
-  "Gebruik dan letterlijke veilige formulering: 'op basis van wat ik nu zie'.",
-  "Geef geen absolute zekerheid en geen professioneel financieel advies.",
-  "Vertaal technische signalen naar gewone taal; toon geen ruwe interne veldnamen.",
-  "Je antwoord blijft altijd compact, menselijk en in het Nederlands.",
-  "Geef in JSON ook een meta-blok terug met route='spending_advice', type='spending_advice' en context met screenId, screenTitle, routeName, platform en periodLabel.",
-  "De bestaande velden conclusion, why, risk en nextStep blijven gewoon op root-niveau aanwezig.",
-  "Output is exact JSON met verplichte velden: conclusion, why, risk, nextStep.",
-  "Optioneel: confidence (low|medium|high) en dataGaps (korte labels).",
-  'Geef uitsluitend JSON terug in dit formaat: {"conclusion":"...","why":"...","risk":"...","nextStep":"...","confidence":"low|medium|high","dataGaps":["..."]}',
-].join(" ");
-
-const SPENDING_SPACE_QUESTION_PROMPT = [
-  "Vraagtype: ruimtevraag (bijv. 'hoeveel ruimte heb ik nog?').",
-  "Start met een directe samenvatting van de beschikbare ruimte binnen budget en forecast voor de gekozen periode.",
-  "Gebruik geen normatief oordeel als hoofdboodschap, tenzij data duidelijk onvoldoende is.",
-  "why: noem kort de belangrijkste contextsignalen die de samenvatting dragen.",
-  "risk: benoem kort het risico voor later deze maand en begin volgende maand.",
-  "nextStep: geef optioneel een kleine vervolgstap die direct helpt.",
-  "Als ruimte niet betrouwbaar te bepalen is, kies in conclusion: 'onvoldoende data'.",
-].join(" ");
-
-const SPENDING_DECISION_QUESTION_PROMPT = [
-  "Vraagtype: uitgavebeslissing (bijv. 'kan ik nog 40 euro uit eten?').",
-  "Geef in conclusion expliciet één richting: veilig, haalbaar maar krap, technisch mogelijk maar onverstandig, of onvoldoende data.",
-  "why: onderbouw kort met budgetruimte + planning + forecastsignalen.",
-  "risk: benoem wat later deze maand of begin volgende maand kan knellen.",
-  "nextStep: geef een concrete kleine vervolgstap, zoals bedrag verlagen, wachten of eerst data controleren.",
-].join(" ");
-
-const HELP_ASSISTANT_TURN_ROUTER_PROMPT = [
-  "Je bent de router van de Budio Assistent.",
-  "Bepaal voor de laatste gebruikerszin en de context exact één route: issue_intake, spending_advice of general.",
-  "Gebruik issue_intake als de gebruiker vooral een idee, feedback, probleem of bug meldt, ook als er woorden als budget, grafiek of dashboard in staan.",
-  "Gebruik spending_advice alleen als de gebruiker echt vraagt naar bestedingsruimte, hoeveel er nog kan, of een uitgavebeslissing wil maken.",
-  "Gebruik general voor schermuitleg of andere hulp die geen idee, issue of budgetvraag is.",
-  "Je mag niet op basis van vaste woordregels beslissen; redeneer op intent en context.",
-  "Geef uitsluitend JSON terug met deze structuur:",
+const HELP_ASSISTANT_PLANNER_PROMPT = [
+  "Je bent de planner van de Budio Assistent.",
+  "Je schrijft nooit eindantwoord of advies, alleen een beslisobject voor de volgende modelcall.",
+  "Bepaal intent en contextbehoefte voor exact één route en exact één mode.",
+  "Route-opties: issue_intake, spending_advice, general.",
+  "Mode-opties: issue_intake, spending_decision, space_summary, general_help.",
+  "Gebruik spending_advice alleen voor echte bestedingsruimte- of uitgavebeslissingen.",
+  "Gebruik issue_intake voor ideeën, feedback, bugs of productproblemen.",
+  "Gebruik general_help voor uitleg en algemene hulpvragen.",
+  "Gebruik scherminformatie niet als financiële waarheid. Die is alleen relevant als screenExplanation nodig is.",
+  "Noem nooit bedragen, datums of advies in je output.",
+  "Geef exact JSON terug met dit schema:",
   "{",
   '  "route": "issue_intake|spending_advice|general",',
+  '  "mode": "general_help|issue_intake|space_summary|spending_decision",',
   '  "confidence": "low|medium|high",',
-  '  "type": "idea|issue|feedback|bug|spending_advice|general",',
-  '  "subtype": "idea|issue|feedback|bug|general",',
   '  "needsClarification": true,',
-  '  "meta": { "type": "idea|issue|feedback|bug|spending_advice|general", "subtype": "idea|issue|feedback|bug|general", "confidence": "low|medium|high", "context": { "screenId": "...", "screenTitle": "...", "routeName": "...", "platform": "...", "periodLabel": "..." } }',
+  '  "requires": {',
+  '    "monthBudget": true,',
+  '    "cashflowSafety": true,',
+  '    "expectedEndBalance": false,',
+  '    "categoryStatus": false,',
+  '    "weekContext": true,',
+  '    "screenExplanation": false',
+  "  },",
+  '  "categoryHint": "groceries|fuel|housing|none",',
+  '  "useScreenContext": false',
   "}",
-  "Zorg dat de meta-context altijd de huidige schermcontext bevat.",
 ].join(" ");
 
 const ISSUE_INTAKE_SYSTEM_PROMPT = [
@@ -137,9 +116,6 @@ const ISSUE_INTAKE_SYSTEM_PROMPT = [
 // Centrale prompt-library, zodat we later eenvoudig use-cases zoals bug triage of issue drafts kunnen toevoegen.
 const PROMPT_LIBRARY = {
   generalAssistant: HELP_ASSISTANT_SYSTEM_PROMPT,
-  spendingAdvice: SPENDING_ADVICE_SYSTEM_PROMPT,
-  spendingSpaceQuestion: SPENDING_SPACE_QUESTION_PROMPT,
-  spendingDecisionQuestion: SPENDING_DECISION_QUESTION_PROMPT,
   issueIntake: ISSUE_INTAKE_SYSTEM_PROMPT,
 } as const;
 
@@ -173,18 +149,35 @@ export type HelpAssistantAIResponse = {
 
 type HelpAssistantTurnRoute = "issue_intake" | "spending_advice" | "general";
 
-type HelpAssistantTurnRoutingResponse = {
+type HelpAssistantResponseMode =
+  | "general_help"
+  | "issue_intake"
+  | "space_summary"
+  | "spending_decision";
+
+type HelpAssistantPlannerRequires = {
+  monthBudget: boolean;
+  cashflowSafety: boolean;
+  expectedEndBalance: boolean;
+  categoryStatus: boolean;
+  weekContext: boolean;
+  screenExplanation: boolean;
+};
+
+type HelpAssistantPlannerCategoryHint =
+  | "groceries"
+  | "fuel"
+  | "housing"
+  | "none";
+
+type HelpAssistantPlannerDecision = {
   route: HelpAssistantTurnRoute;
+  mode: HelpAssistantResponseMode;
   confidence: "low" | "medium" | "high";
-  type: "idea" | "issue" | "feedback" | "bug" | "spending_advice" | "general";
-  subtype: "idea" | "issue" | "feedback" | "bug" | "general";
   needsClarification: boolean;
-  meta: {
-    type: "idea" | "issue" | "feedback" | "bug" | "spending_advice" | "general";
-    subtype: "idea" | "issue" | "feedback" | "bug" | "general";
-    confidence: "low" | "medium" | "high";
-    context: HelpAssistantStructuredResponseContext;
-  };
+  requires: HelpAssistantPlannerRequires;
+  categoryHint: HelpAssistantPlannerCategoryHint;
+  useScreenContext: boolean;
 };
 
 type SpendingAdviceSections = {
@@ -252,6 +245,19 @@ function pickThreadMessagesForModel(thread: HelpAssistantThreadState) {
   return candidates.slice(-MAX_CONTEXT_MESSAGES);
 }
 
+function pickPlannerMessagesForModel(thread: HelpAssistantThreadState) {
+  return pickThreadMessagesForModel(thread).slice(-MAX_PLANNER_MESSAGES);
+}
+
+function logHelpAssistantDebug(label: string, payload: Record<string, unknown>) {
+  if (!HELP_ASSISTANT_DEBUG_ENABLED) return;
+  try {
+    console.info(`[help-assistant][${label}] ${JSON.stringify(payload)}`);
+  } catch {
+    // ignore debug logging failures
+  }
+}
+
 function buildContextPrompt(context: HelpAssistantContext) {
   const period = context.selectedPeriod?.label || "niet geselecteerd";
   const baseLines = [
@@ -272,6 +278,74 @@ function buildContextPrompt(context: HelpAssistantContext) {
     "Schermspecifieke context:",
     ...screenSpecificLines.map((line) => `- ${line}`),
   ].join("\n");
+}
+
+function buildNeutralPlannerContextPrompt(input: {
+  context: HelpAssistantContext;
+  issueFlowActive: boolean;
+}) {
+  const { context, issueFlowActive } = input;
+  const period = context.selectedPeriod?.label || "niet geselecteerd";
+  return [
+    `Actieve meldkaart: ${issueFlowActive ? "ja" : "nee"}.`,
+    `Platform: ${context.platform}`,
+    `Periode: ${period}`,
+    "Let op: schermspecifieke regels zijn niet meegestuurd. Neem schermcontext alleen mee als de vraag expliciet om schermuitleg vraagt.",
+  ].join("\n");
+}
+
+function buildGeneralRouteContextPrompt(input: {
+  context: HelpAssistantContext;
+  includeScreenContext: boolean;
+}) {
+  const { context, includeScreenContext } = input;
+  const period = context.selectedPeriod?.label || "niet geselecteerd";
+  const lines = [
+    "Kanaal: general_help",
+    `Platform: ${context.platform}`,
+    `Periode: ${period}`,
+  ];
+  if (includeScreenContext) {
+    lines.push("", `Context:\n${buildContextPrompt(context)}`);
+  }
+  return lines.join("\n");
+}
+
+function buildSpendingRouteContextPrompt(input: {
+  context: HelpAssistantContext;
+  mode: "space_summary" | "spending_decision";
+}) {
+  const { context, mode } = input;
+  const period = context.selectedPeriod?.label || "niet geselecteerd";
+  return [
+    "Kanaal: spending_advice",
+    `Mode: ${mode}`,
+    `Periode: ${period}`,
+    "Gedragsregel: geef hetzelfde financiële oordeel ongeacht huidig scherm. Scherminformatie is alleen UI-context, niet je financiële waarheid.",
+    "Redeneervolgorde: 1) maandbudget, 2) verwacht eindsaldo (als beschikbaar), 3) cashflow safety, 4) weekcontext alleen aanvullend.",
+  ].join("\n");
+}
+
+function buildCompactSpendingContextBlock(input: {
+  context: HelpAssistantContext;
+  mode: "space_summary" | "spending_decision";
+  unifiedFinancialContext: UnifiedFinancialAdviceContext | null;
+  requestedAmount: number | null;
+  requiredBlocks: HelpAssistantPlannerRequires;
+}) {
+  const routeContext = `Spending-context:\n${buildSpendingRouteContextPrompt({
+    context: input.context,
+    mode: input.mode,
+  })}`;
+  if (!input.unifiedFinancialContext) {
+    return routeContext;
+  }
+  const truthSafeContext = buildSpendingAdviceContextPrompt({
+    context: input.unifiedFinancialContext,
+    requestedAmount: input.requestedAmount,
+    requiredBlocks: input.requiredBlocks,
+  });
+  return [routeContext, truthSafeContext].join("\n\n");
 }
 
 function parseJsonObject(content: string) {
@@ -295,209 +369,6 @@ function parseJsonObject(content: string) {
 
 function cleanInlineText(value: string) {
   return value.replace(/\s+/g, " ").trim();
-}
-
-function formatFinancialCategorySpendBreakdown(
-  title: string,
-  breakdown:
-    | {
-        total: number;
-        transactionCount: number;
-        categories: {
-          label: string;
-          amount: number;
-          transactionCount: number;
-          subcategories: {
-            label: string;
-            amount: number;
-            transactionCount: number;
-          }[];
-        }[];
-      }
-    | null
-    | undefined,
-) {
-  if (!breakdown) return `${title}: onbekend`;
-
-  const lines = [
-    `${title}: ${eur.format(breakdown.total)} (${breakdown.transactionCount} transacties)`,
-  ];
-
-  if (!breakdown.categories.length) {
-    lines.push("- nog geen categorieverdeling beschikbaar");
-    return lines.join("\n");
-  }
-
-  for (const category of breakdown.categories.slice(0, 5)) {
-    const subcategories = category.subcategories
-      .slice(0, 3)
-      .map((sub) => `${sub.label}: ${eur.format(sub.amount)}`)
-      .join(", ");
-
-    lines.push(
-      `- ${category.label}: ${eur.format(category.amount)}${
-        subcategories ? ` | ${subcategories}` : ""
-      }`,
-    );
-  }
-
-  return lines.join("\n");
-}
-
-function buildUnifiedFinancialContextPrompt(
-  context: UnifiedFinancialAdviceContext,
-) {
-  const currentMonthRiskLabel = toRiskSignalLabel({
-    riskFlag: context.forecastCurrentMonth.riskFlag,
-    cashRiskFlag: context.forecastCurrentMonth.cashRiskFlag,
-  });
-  const nextMonthRiskLabel = toRiskSignalLabel({
-    riskFlag: context.forecastNextMonth.riskFlag,
-    cashRiskFlag: context.forecastNextMonth.cashRiskFlag,
-  });
-  const readableDataGaps = context.quality.dataGaps
-    .map((gap) => toReadableDataGapLabel(gap))
-    .filter(Boolean);
-  const canonical = context.surfaceSemantics;
-
-  const lines = [
-    `Periode: ${context.period.label}`,
-    `Periode-key: ${context.period.key}`,
-    context.period.usedFallbackPeriod
-      ? "Periode-selectie: fallback gebruikt (huidige maand)."
-      : "Periode-selectie: expliciet gekozen periode.",
-    context.currentBalance.balance != null
-      ? `Actuele operationele stand: ${eur.format(context.currentBalance.balance)}${context.currentBalance.date ? ` (laatst bekend op ${context.currentBalance.date})` : ""}`
-      : "Actuele operationele stand: onbekend",
-    canonical
-      ? `Canoniek resterend maandbudget: ${canonical.remainingMonthlyBudget == null ? "onbekend" : eur.format(canonical.remainingMonthlyBudget)}`
-      : "",
-    canonical
-      ? `Canoniek verwacht eindsaldo maand: ${canonical.expectedEndOperationalBalance == null ? "onbekend" : eur.format(canonical.expectedEndOperationalBalance)}`
-      : "",
-    canonical
-      ? `Canonieke safety-term: ${canonical.safeToSpendLabel}`
-      : "",
-    canonical
-      ? `Canonieke ${canonical.safeToSpendLabel.toLowerCase()}: ${canonical.safeToSpendUntilNextIncome == null ? "onbekend" : eur.format(canonical.safeToSpendUntilNextIncome)}`
-      : "",
-    canonical
-      ? `Canonieke status: ${canonical.statusLabel} (${canonical.statusTone})`
-      : "",
-    canonical
-      ? `Vrij besteedbaar nu (canoniek): ${canonical.freeToSpendNow == null ? "onbekend" : eur.format(canonical.freeToSpendNow)}`
-      : "",
-    context.spending.currentMonthTotal != null
-      ? `Huidige maand uitgaven totaal: ${eur.format(context.spending.currentMonthTotal)}`
-      : "Huidige maand uitgaven totaal: onbekend",
-    context.spending.currentWeekTotal != null
-      ? `Huidige week uitgaven totaal: ${eur.format(context.spending.currentWeekTotal)}`
-      : "Huidige week uitgaven totaal: onbekend",
-    formatFinancialCategorySpendBreakdown(
-      "Maandverdeling uitgaven",
-      context.spending.currentMonthBreakdown,
-    ),
-    formatFinancialCategorySpendBreakdown(
-      "Weekverdeling uitgaven",
-      context.spending.currentWeekBreakdown,
-    ),
-    context.trend.monthStatusLabel || context.trend.weekStatusLabel
-      ? `Trend huidig tempo: maand ${context.trend.monthStatusLabel || "onbekend"} (${context.trend.monthRiskTone || "neutral"}), week ${context.trend.weekStatusLabel || "onbekend"} (${context.trend.weekRiskTone || "neutral"}${context.trend.weekTempoDelta != null ? `, tempo delta ${eur.format(context.trend.weekTempoDelta)}` : ""})`
-      : "Trend huidig tempo: onbekend",
-    context.trend.monthProgress != null
-      ? `Maandprogressie: ${Math.round(context.trend.monthProgress * 100)}%`
-      : "",
-    context.budgetPlan.monthlyBudgetTotal != null
-      ? `Budgetplan maand totaal: ${eur.format(context.budgetPlan.monthlyBudgetTotal)}`
-      : "Budgetplan maand totaal: onbekend",
-    context.budgetPlan.weeklyBudgetTotal != null
-      ? `Budgetplan week totaal: ${eur.format(context.budgetPlan.weeklyBudgetTotal)}`
-      : "Budgetplan week totaal: onbekend",
-    context.budgetPlan.fixedCostsBudget != null
-      ? `Budgetplan vaste lasten: ${eur.format(context.budgetPlan.fixedCostsBudget)}`
-      : "",
-    context.budgetPlan.subscriptionsBudget != null
-      ? `Budgetplan abonnementen: ${eur.format(context.budgetPlan.subscriptionsBudget)}`
-      : "",
-    context.budgetPlan.variableBudget != null
-      ? `Budgetplan variabel budget: ${eur.format(context.budgetPlan.variableBudget)}`
-      : "",
-    context.budgetPlan.variableSubcategoriesBudgetTotal != null
-      ? `Budgetplan variabele subcategorieën samen: ${eur.format(context.budgetPlan.variableSubcategoriesBudgetTotal)}`
-      : "",
-    context.budgetPlan.appliedSavingsTarget != null
-      ? `Budgetplan spaardoel: ${eur.format(context.budgetPlan.appliedSavingsTarget)}`
-      : "",
-    context.budgetPlan.currentWeekBudget != null
-      ? `Budgetplan huidige weekbudget: ${eur.format(context.budgetPlan.currentWeekBudget)}`
-      : "",
-    context.budgetPlan.currentWeekActual != null
-      ? `Budgetplan huidige week uitgegeven: ${eur.format(context.budgetPlan.currentWeekActual)}`
-      : "",
-    context.budgetPlan.currentWeekRemaining != null
-      ? `Budgetplan huidige week resterend: ${eur.format(context.budgetPlan.currentWeekRemaining)}`
-      : "",
-    context.budget.remainingVariableBudget != null
-      ? `Resterend variabel budget: ${eur.format(context.budget.remainingVariableBudget)}`
-      : "Resterend variabel budget: onbekend",
-    context.budget.totalVariableBudget != null
-      ? `Totaal variabel budget: ${eur.format(context.budget.totalVariableBudget)}`
-      : "",
-    context.budget.spentVariableBudget != null
-      ? `Al besteed variabel: ${eur.format(context.budget.spentVariableBudget)}`
-      : "",
-    context.budget.weekRemainingBudget != null
-      ? `Weekbudget resterend: ${eur.format(context.budget.weekRemainingBudget)}`
-      : "Weekbudget resterend: onbekend",
-    context.planning.upcomingCommittedIncomeTotal != null
-      ? `Komende inkomsten: ${eur.format(context.planning.upcomingCommittedIncomeTotal)}`
-      : "",
-    context.planning.upcomingCommittedExpenseTotal != null
-      ? `Komende vaste lasten: ${eur.format(
-          context.planning.upcomingCommittedExpenseTotal,
-        )}`
-      : "Komende vaste lasten: onbekend",
-    context.planning.remainingPlannedExpenseTotal != null
-      ? `Nog geplande maandlasten: ${eur.format(context.planning.remainingPlannedExpenseTotal)}`
-      : "Nog geplande maandlasten: onbekend",
-    context.planning.remainingVariableExpenseEstimate != null
-      ? `Nog variabele uitgaven (schatting): ${eur.format(
-          context.planning.remainingVariableExpenseEstimate,
-        )}`
-      : "",
-    context.forecastCurrentMonth.expectedEndBalance != null
-      ? `Forecast operationele stand maand (fallback): ${eur.format(
-          context.forecastCurrentMonth.expectedEndBalance,
-        )}`
-      : "",
-    context.forecastCurrentMonth.lowestExpectedBalance != null
-      ? `Laagste operationele punt: ${eur.format(
-          context.forecastCurrentMonth.lowestExpectedBalance,
-        )}`
-      : "",
-    context.forecastCurrentMonth.remainingMonthNetTotal != null
-      ? `Resterende maand netto beweging: ${eur.format(
-          context.forecastCurrentMonth.remainingMonthNetTotal,
-        )}`
-      : "",
-    context.forecastCurrentMonth.hasData
-      ? `Huidige maand risicosignaal: ${currentMonthRiskLabel}`
-      : "Huidige maand forecast status: beperkt",
-    context.forecastNextMonth.hasData
-      ? `Begin volgende maand (${context.forecastNextMonth.monthLabel}) verwachte operationele stand: ${eur.format(
-          context.forecastNextMonth.expectedEndBalance || 0,
-        )}`
-      : "",
-    context.forecastNextMonth.hasData
-      ? `Begin volgende maand risicosignaal: ${nextMonthRiskLabel}`
-      : "Volgende maand forecast: ontbreekt of beperkt",
-    `Context confidence: ${context.quality.confidence}`,
-    readableDataGaps.length
-      ? `Datakwaliteit: ${readableDataGaps.join(", ")}`
-      : "Interne datagaten: geen",
-  ];
-
-  return lines.filter(Boolean).join("\n");
 }
 
 function getLatestUserMessage(thread: HelpAssistantThreadState) {
@@ -526,75 +397,20 @@ function normalizeText(value: string) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function looksLikeBudgetSpaceQuestion(input: string) {
-  const text = normalizeText(input);
-  return (
-    text.includes("ruimte") ||
-    text.includes("uitgeven") ||
-    text.includes("uitgegeven") ||
-    text.includes("besteed") ||
-    text.includes("kan ik nog") ||
-    text.includes("bestedingsruimte") ||
-    text.includes("budget")
-  );
-}
-
-function looksLikeCategorySpendQuestion(input: string) {
-  const text = normalizeText(input);
-  return (
-    text.includes("hoeveel heb ik aan") ||
-    text.includes("hoeveel aan") ||
-    text.includes("uitgegeven aan") ||
-    text.includes("besteed aan") ||
-    text.includes("gaf ik aan") ||
-    text.includes("aan boodschappen") ||
-    text.includes("aan eten") ||
-    text.includes("aan supermarkt") ||
-    text.includes("aan vervoer")
-  );
-}
-
-function looksLikeProblemOrBugQuestion(input: string) {
-  const text = normalizeText(input);
-  return (
-    text.includes("waarom klopt") ||
-    text.includes("klopt dit niet") ||
-    text.includes("ik zie een fout") ||
-    text.includes("dit werkt niet") ||
-    text.includes("bug") ||
-    text.includes("error")
-  );
-}
-
-type SpendingQuestionType = "space_summary" | "spending_decision";
-
-function classifySpendingQuestionType(input: string): SpendingQuestionType | null {
-  const text = normalizeText(input);
-  if (looksLikeProblemOrBugQuestion(text)) return null;
-  if (looksLikeCategorySpendQuestion(text)) return "spending_decision";
-  if (!looksLikeBudgetSpaceQuestion(text)) return null;
-
-  const isSpaceSummaryQuestion =
-    text.includes("hoeveel ruimte") ||
-    text.includes("ruimte heb ik nog") ||
-    text.includes("ruimte over") ||
-    text.includes("hoeveel kan ik nog");
-
-  if (isSpaceSummaryQuestion) return "space_summary";
-  return "spending_decision";
-}
-
 export function isFinancialAdviceQuestion(input: string) {
   return classifySpendingQuestionType(input) !== null;
 }
 
-function buildTurnRouterPrompt(context: HelpAssistantContext, issueFlowActive: boolean) {
+function buildPlannerPrompt(input: {
+  context: HelpAssistantContext;
+  issueFlowActive: boolean;
+}) {
   return [
-    HELP_ASSISTANT_TURN_ROUTER_PROMPT,
+    HELP_ASSISTANT_PLANNER_PROMPT,
     "",
-    `Actieve meldkaart: ${issueFlowActive ? "ja" : "nee"}.`,
+    `Planner-context:\n${buildNeutralPlannerContextPrompt(input)}`,
     "",
-    `Context:\n${buildContextPrompt(context)}`,
+    "Geef exact één route en één mode die bij elkaar passen.",
   ].join("\n");
 }
 
@@ -665,6 +481,7 @@ function parseIssueIntakeResponse(
 
   return {
     meta: {
+      route: "issue_intake",
       type: type as HelpAssistantStructuredResponseType,
       subtype: subtype as "general" | "idea" | "issue" | "feedback" | "bug",
       confidence: confidence as "low" | "medium" | "high",
@@ -698,105 +515,91 @@ function parseIssueIntakeResponse(
   };
 }
 
-function parseHelpAssistantTurnRoutingResponse(
+function parsePlannerRequires(
+  value: unknown,
+): HelpAssistantPlannerRequires | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const typed = value as Record<string, unknown>;
+  const monthBudget = typed.monthBudget;
+  const cashflowSafety = typed.cashflowSafety;
+  const expectedEndBalance = typed.expectedEndBalance;
+  const categoryStatus = typed.categoryStatus;
+  const weekContext = typed.weekContext;
+  const screenExplanation = typed.screenExplanation;
+  if (
+    typeof monthBudget !== "boolean" ||
+    typeof cashflowSafety !== "boolean" ||
+    typeof expectedEndBalance !== "boolean" ||
+    typeof categoryStatus !== "boolean" ||
+    typeof weekContext !== "boolean" ||
+    typeof screenExplanation !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    monthBudget,
+    cashflowSafety,
+    expectedEndBalance,
+    categoryStatus,
+    weekContext,
+    screenExplanation,
+  };
+}
+
+function parseHelpAssistantPlannerDecision(
   content: string,
-): HelpAssistantTurnRoutingResponse | null {
+): HelpAssistantPlannerDecision | null {
   const parsed = parseJsonObject(content);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return null;
   }
 
   const route = String(parsed.route || "").trim();
+  const mode = String(parsed.mode || "").trim();
   const confidence = String(parsed.confidence || "").trim();
-  const type = String(parsed.type || "").trim();
-  const subtype = String(parsed.subtype || "").trim();
   const needsClarification = Boolean(parsed.needsClarification);
-  const meta = parsed.meta;
+  const requires = parsePlannerRequires(parsed.requires);
+  const categoryHint = String(parsed.categoryHint || "").trim();
+  const useScreenContext = parsed.useScreenContext;
 
-  if (!["issue_intake", "spending_advice", "general"].includes(route)) return null;
-  if (!["low", "medium", "high"].includes(confidence)) return null;
+  if (!["issue_intake", "spending_advice", "general"].includes(route)) {
+    return null;
+  }
   if (
     ![
-      "idea",
-      "issue",
-      "feedback",
-      "bug",
-      "spending_advice",
-      "general",
-    ].includes(type)
+      "general_help",
+      "issue_intake",
+      "space_summary",
+      "spending_decision",
+    ].includes(mode)
   ) {
     return null;
   }
-  if (!["idea", "issue", "feedback", "bug", "general"].includes(subtype)) {
-    return null;
-  }
-  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
-
-  const typedMeta = meta as Record<string, unknown>;
-  const metaType = String(typedMeta.type || "").trim();
-  const metaSubtype = String(typedMeta.subtype || "").trim();
-  const metaConfidence = String(typedMeta.confidence || "").trim();
-  const metaContext = typedMeta.context;
-
-  if (![
-    "idea",
-    "issue",
-    "feedback",
-    "bug",
-    "spending_advice",
-    "general",
-  ].includes(metaType)) {
-    return null;
-  }
-  if (!["idea", "issue", "feedback", "bug", "general"].includes(metaSubtype)) {
-    return null;
-  }
-  if (!["low", "medium", "high"].includes(metaConfidence)) return null;
+  if (!["low", "medium", "high"].includes(confidence)) return null;
+  if (!requires) return null;
   if (
-    !metaContext ||
-    typeof metaContext !== "object" ||
-    Array.isArray(metaContext)
+    !["groceries", "fuel", "housing", "none"].includes(
+      categoryHint || "none",
+    )
   ) {
     return null;
   }
-
-  const typedContext = metaContext as Record<string, unknown>;
-  const screenId = String(typedContext.screenId || "").trim();
-  const screenTitle = String(typedContext.screenTitle || "").trim();
-  const routeName = String(typedContext.routeName || "").trim();
-  const platform = String(typedContext.platform || "").trim();
-  const periodLabelRaw = typedContext.periodLabel;
-  const periodLabel =
-    typeof periodLabelRaw === "string"
-      ? periodLabelRaw.trim() || null
-      : periodLabelRaw == null
-        ? null
-        : String(periodLabelRaw || "").trim() || null;
-
-  if (!screenId || !screenTitle || !routeName || !platform) return null;
+  if (typeof useScreenContext !== "boolean") {
+    return null;
+  }
 
   return {
     route: route as HelpAssistantTurnRoute,
+    mode: mode as HelpAssistantResponseMode,
     confidence: confidence as "low" | "medium" | "high",
-    type: type as HelpAssistantTurnRoutingResponse["type"],
-    subtype: subtype as HelpAssistantTurnRoutingResponse["subtype"],
     needsClarification,
-    meta: {
-      type: metaType as HelpAssistantTurnRoutingResponse["meta"]["type"],
-      subtype: metaSubtype as HelpAssistantTurnRoutingResponse["meta"]["subtype"],
-      confidence: metaConfidence as "low" | "medium" | "high",
-      context: {
-        screenId,
-        screenTitle,
-        routeName,
-        platform,
-        periodLabel,
-      },
-    },
+    requires,
+    categoryHint: (categoryHint || "none") as HelpAssistantPlannerCategoryHint,
+    useScreenContext,
   };
 }
 
-async function classifyHelpAssistantTurnWithOpenAI(input: {
+async function classifyHelpAssistantPlanWithOpenAI(input: {
   context: HelpAssistantContext;
   thread: HelpAssistantThreadState;
   issueFlowActive: boolean;
@@ -809,9 +612,12 @@ async function classifyHelpAssistantTurnWithOpenAI(input: {
       messages: [
         {
           role: "system",
-          content: buildTurnRouterPrompt(input.context, input.issueFlowActive),
+          content: buildPlannerPrompt({
+            context: input.context,
+            issueFlowActive: input.issueFlowActive,
+          }),
         },
-        ...pickThreadMessagesForModel(input.thread).map((message) => ({
+        ...pickPlannerMessagesForModel(input.thread).map((message) => ({
           role: toOpenAIRole(message.role),
           content: message.text,
         })),
@@ -846,7 +652,268 @@ async function classifyHelpAssistantTurnWithOpenAI(input: {
   const payload = (parsed || {}) as ChatCompletionResponse;
   const content = String(payload.choices?.[0]?.message?.content || "").trim();
   if (!content) return null;
-  return parseHelpAssistantTurnRoutingResponse(content);
+  return parseHelpAssistantPlannerDecision(content);
+}
+
+function normalizeQuestionText(value: string | null | undefined) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function looksLikeScreenExplanationQuestion(text: string) {
+  const normalized = normalizeQuestionText(text);
+  return (
+    normalized.includes("leg dit scherm uit") ||
+    normalized.includes("leg dit uit") ||
+    normalized.includes("wat zie ik hier") ||
+    normalized.includes("wat betekent dit") ||
+    normalized.includes("hoe werkt dit scherm")
+  );
+}
+
+function looksLikeWeekScopedQuestion(text: string) {
+  const normalized = normalizeQuestionText(text);
+  return (
+    normalized.includes("deze week") ||
+    normalized.includes("dit weekend") ||
+    normalized.includes("weekbudget") ||
+    normalized.includes("tanken")
+  );
+}
+
+function resolvePlannerCategoryHint(
+  question: string | null | undefined,
+): HelpAssistantPlannerCategoryHint {
+  const normalized = normalizeQuestionText(question);
+  if (!normalized) return "none";
+  if (
+    normalized.includes("boodschap") ||
+    normalized.includes("supermarkt")
+  ) {
+    return "groceries";
+  }
+  if (
+    normalized.includes("benzine") ||
+    normalized.includes("brandstof") ||
+    normalized.includes("tank")
+  ) {
+    return "fuel";
+  }
+  if (
+    normalized.includes("huur") ||
+    normalized.includes("wonen") ||
+    normalized.includes("woonlast")
+  ) {
+    return "housing";
+  }
+  return "none";
+}
+
+function shouldRequireCategoryStatus(question: string | null | undefined) {
+  const normalized = normalizeQuestionText(question);
+  if (!normalized) return false;
+  return (
+    normalized.includes("boodschap") ||
+    normalized.includes("supermarkt") ||
+    normalized.includes("benzine") ||
+    normalized.includes("brandstof") ||
+    normalized.includes("tank") ||
+    normalized.includes("horeca") ||
+    normalized.includes("kleding") ||
+    normalized.includes("uitgegeven aan") ||
+    normalized.includes("te veel uit aan")
+  );
+}
+
+function pickThreadMessagesForSpendingFinalCall(input: {
+  thread: HelpAssistantThreadState;
+  latestUserMessage: HelpAssistantMessage | null;
+}) {
+  const candidates = pickThreadMessagesForModel(input.thread);
+  if (!input.latestUserMessage) return candidates;
+  const withoutLatestUser = candidates.filter(
+    (message) => message.id !== input.latestUserMessage?.id,
+  );
+  // Keep spending history compact; always end with the latest user question.
+  return [...withoutLatestUser.slice(-4), input.latestUserMessage];
+}
+
+function isIssueLikeIntent(
+  intent: ReturnType<typeof classifyHelpAssistantIntent> | null,
+) {
+  if (!intent) return false;
+  return (
+    intent.intent === "feature_request" ||
+    intent.intent === "feedback" ||
+    intent.intent === "mogelijke_bug"
+  );
+}
+
+function buildSafePlannerFallback(input: {
+  latestUserText: string | null;
+  issueFlowActive: boolean;
+  intentHint: ReturnType<typeof classifyHelpAssistantIntent> | null;
+}) {
+  if (input.issueFlowActive) {
+    return {
+      route: "issue_intake",
+      mode: "issue_intake",
+      confidence: "high",
+      needsClarification: true,
+      requires: {
+        monthBudget: false,
+        cashflowSafety: false,
+        expectedEndBalance: false,
+        categoryStatus: false,
+        weekContext: false,
+        screenExplanation: false,
+      },
+      categoryHint: "none",
+      useScreenContext: true,
+    } satisfies HelpAssistantPlannerDecision;
+  }
+
+  const screenExplanation = looksLikeScreenExplanationQuestion(
+    input.latestUserText || "",
+  );
+  if (isIssueLikeIntent(input.intentHint)) {
+    return {
+      route: "issue_intake",
+      mode: "issue_intake",
+      confidence: input.intentHint?.confidence || "medium",
+      needsClarification: true,
+      requires: {
+        monthBudget: false,
+        cashflowSafety: false,
+        expectedEndBalance: false,
+        categoryStatus: false,
+        weekContext: false,
+        screenExplanation: false,
+      },
+      categoryHint: "none",
+      useScreenContext: true,
+    } satisfies HelpAssistantPlannerDecision;
+  }
+
+  const spendingType = input.latestUserText
+    ? classifySpendingQuestionType(input.latestUserText)
+    : null;
+  if (spendingType) {
+    const categoryHint = resolvePlannerCategoryHint(input.latestUserText);
+    const requiresCategoryStatus =
+      categoryHint !== "none" || shouldRequireCategoryStatus(input.latestUserText);
+    return {
+      route: "spending_advice",
+      mode: spendingType,
+      confidence: "medium",
+      needsClarification: false,
+      requires: {
+        monthBudget: true,
+        cashflowSafety: true,
+        expectedEndBalance: spendingType === "spending_decision",
+        categoryStatus: requiresCategoryStatus,
+        weekContext: looksLikeWeekScopedQuestion(input.latestUserText || ""),
+        screenExplanation: false,
+      },
+      categoryHint,
+      useScreenContext: false,
+    } satisfies HelpAssistantPlannerDecision;
+  }
+
+  return {
+    route: "general",
+    mode: "general_help",
+    confidence: input.intentHint?.confidence || "low",
+    needsClarification: false,
+    requires: {
+      monthBudget: false,
+      cashflowSafety: false,
+      expectedEndBalance: false,
+      categoryStatus: false,
+      weekContext: false,
+      screenExplanation,
+    },
+    categoryHint: "none",
+    useScreenContext: screenExplanation,
+  } satisfies HelpAssistantPlannerDecision;
+}
+
+function normalizePlannerDecision(input: {
+  plannerDecision: HelpAssistantPlannerDecision | null;
+  fallbackDecision: HelpAssistantPlannerDecision;
+  issueFlowActive: boolean;
+}): HelpAssistantPlannerDecision {
+  const raw = input.plannerDecision || input.fallbackDecision;
+  const normalized: HelpAssistantPlannerDecision = {
+    ...raw,
+    requires: { ...raw.requires },
+  };
+
+  if (input.issueFlowActive) {
+    normalized.route = "issue_intake";
+    normalized.mode = "issue_intake";
+    normalized.requires.monthBudget = false;
+    normalized.requires.cashflowSafety = false;
+    normalized.requires.expectedEndBalance = false;
+    normalized.requires.categoryStatus = false;
+    normalized.requires.weekContext = false;
+    normalized.requires.screenExplanation = false;
+    normalized.useScreenContext = true;
+    return normalized;
+  }
+
+  if (normalized.route === "spending_advice") {
+    if (
+      normalized.mode !== "space_summary" &&
+      normalized.mode !== "spending_decision"
+    ) {
+      normalized.mode = "spending_decision";
+    }
+    normalized.requires.monthBudget = true;
+    normalized.requires.cashflowSafety =
+      normalized.requires.cashflowSafety || normalized.requires.expectedEndBalance;
+    if (normalized.mode === "spending_decision") {
+      normalized.requires.expectedEndBalance = true;
+    }
+    if (normalized.requires.expectedEndBalance) {
+      normalized.requires.cashflowSafety = true;
+      normalized.requires.monthBudget = true;
+    }
+    if (normalized.requires.weekContext && !normalized.requires.monthBudget) {
+      normalized.requires.weekContext = false;
+    }
+    if (
+      !normalized.requires.categoryStatus &&
+      normalized.categoryHint !== "none"
+    ) {
+      normalized.requires.categoryStatus = true;
+    }
+    normalized.requires.screenExplanation = false;
+    normalized.useScreenContext = false;
+  } else if (normalized.route === "issue_intake") {
+    normalized.mode = "issue_intake";
+    normalized.requires.monthBudget = false;
+    normalized.requires.cashflowSafety = false;
+    normalized.requires.expectedEndBalance = false;
+    normalized.requires.categoryStatus = false;
+    normalized.requires.weekContext = false;
+    normalized.requires.screenExplanation = false;
+    normalized.useScreenContext = true;
+  } else {
+    normalized.mode = "general_help";
+    normalized.requires.monthBudget = false;
+    normalized.requires.cashflowSafety = false;
+    normalized.requires.expectedEndBalance = false;
+    normalized.requires.categoryStatus = false;
+    normalized.requires.weekContext = false;
+    normalized.requires.screenExplanation =
+      normalized.requires.screenExplanation || normalized.useScreenContext;
+  }
+
+  return normalized;
 }
 
 function buildIssueIntakeAnswerText(input: {
@@ -890,60 +957,6 @@ function buildDeepeningQuestion(input: {
   }
 
   return "Kun je nog iets meer vertellen wat je precies in gedachten hebt?";
-}
-
-function selectSpendingPromptVariant(type: SpendingQuestionType) {
-  if (type === "space_summary") {
-    return PROMPT_LIBRARY.spendingSpaceQuestion;
-  }
-  return PROMPT_LIBRARY.spendingDecisionQuestion;
-}
-
-function toRiskSignalLabel(input: {
-  riskFlag: "none" | "deficit_warning";
-  cashRiskFlag: "none" | "cash_gap_warning";
-}) {
-  if (
-    input.riskFlag === "deficit_warning" &&
-    input.cashRiskFlag === "cash_gap_warning"
-  ) {
-    return "tekortsignaal en kans op tijdelijk kastekort";
-  }
-  if (input.riskFlag === "deficit_warning") {
-    return "tekortsignaal voor deze periode";
-  }
-  if (input.cashRiskFlag === "cash_gap_warning") {
-    return "kans op tijdelijk kastekort";
-  }
-  return "geen direct risicosignaal";
-}
-
-function toReadableDataGapLabel(label: string) {
-  const mapping: Record<string, string> = {
-    periode_niet_specifiek: "periode was niet expliciet gekozen",
-    budgetruimte_onvolledig: "budgetruimte is deels onvolledig",
-    planning_signalen_beperkt: "planning-signalen zijn beperkt",
-    forecast_signalen_beperkt: "forecast-signalen zijn beperkt",
-    volgende_maand_forecast_ontbreekt:
-      "begin volgende maand heeft nog beperkte forecastdata",
-  };
-  return mapping[label] || "";
-}
-
-function parseRequestedAmountFromQuestion(input: string) {
-  const normalized = normalizeText(input).replace(",", ".");
-  const euroMatch = /(?:€|\beuro\b)\s*(\d+(?:\.\d+)?)/.exec(normalized);
-  if (euroMatch) {
-    const parsed = Number(euroMatch[1]);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  const trailingMatch = /\b(\d+(?:\.\d+)?)\b/.exec(normalized);
-  if (!trailingMatch) return null;
-  const parsed = Number(trailingMatch[1]);
-  if (!Number.isFinite(parsed)) return null;
-  if (parsed <= 0 || parsed > 200000) return null;
-  return parsed;
 }
 
 function formatSpendingAdvicePattern(sections: SpendingAdviceSections) {
@@ -1002,20 +1015,15 @@ function buildSafeSpendingFallback(input: {
   context: HelpAssistantContext;
   unifiedFinancialContext: UnifiedFinancialAdviceContext;
 }): SpendingAdviceResponseSchema {
-  const { context, unifiedFinancialContext } = input;
+  const { unifiedFinancialContext } = input;
   const periodLabel = unifiedFinancialContext.period.label || "deze maand";
-  const fromCurrentScreen =
-    context.screenId === "budget" || context.screenId === "insights";
 
   return {
     conclusion: `Ik kan je bestedingsruimte voor ${periodLabel} nu niet betrouwbaar bevestigen.`,
-    why: fromCurrentScreen
-      ? "De AI-proxy kon deze vraag nu niet stabiel genoeg verwerken met je huidige budget- en forecastcontext."
-      : "Dit scherm heeft beperkte budgetcontext en de AI-proxy gaf nu geen stabiel antwoord.",
+    why: "De AI-proxy kon deze vraag nu niet stabiel genoeg verwerken met je huidige budget- en forecastcontext.",
     risk: "Op basis van wat ik nu zie wil ik geen schijnzekerheid geven over uitgavenruimte.",
-    nextStep: fromCurrentScreen
-      ? "Probeer je vraag opnieuw met bedrag en categorie, of controleer je Budget-overzicht voor de actuele ruimte."
-      : "Open Budget of Inzichten en stel dezelfde vraag daar opnieuw met bedrag en categorie.",
+    nextStep:
+      "Probeer je vraag opnieuw met bedrag en categorie. Ik beoordeel het dan op je maandruimte en extra ruimte tot je volgende inkomsten.",
     confidence: "laag",
     dataGaps: unifiedFinancialContext.quality.dataGaps,
   };
@@ -1159,42 +1167,81 @@ export async function requestHelpAssistantReply({
     ? classifyHelpAssistantIntent(latestUserMessage.text)
     : null;
   const isIssueFlowActive = Boolean(issueFlowActive);
-  const routeDecision = !isIssueFlowActive && latestUserMessage
-    ? await classifyHelpAssistantTurnWithOpenAI({
+  const fallbackDecision = buildSafePlannerFallback({
+    latestUserText: latestUserMessage?.text || null,
+    issueFlowActive: isIssueFlowActive,
+    intentHint: latestUserIntent,
+  });
+  const plannerDecision = latestUserMessage
+    ? await classifyHelpAssistantPlanWithOpenAI({
         context,
         thread,
         issueFlowActive: isIssueFlowActive,
       })
     : null;
-  const fallbackSpendingType =
-    latestUserMessage && !isIssueFlowActive
-      ? classifySpendingQuestionType(latestUserMessage.text)
-      : null;
-  const route: HelpAssistantTurnRoute =
-    isIssueFlowActive
-      ? "issue_intake"
-      : routeDecision?.route === "general" && fallbackSpendingType
-        ? "spending_advice"
-        : routeDecision?.route || "general";
-  const isIssueIntakeQuestion = route === "issue_intake";
-  const isSpendingAdviceQuestion = route === "spending_advice";
-  const spendingQuestionType =
-    latestUserMessage && isSpendingAdviceQuestion
-      ? fallbackSpendingType || "spending_decision"
-      : null;
+  let normalizedPlannerDecision = normalizePlannerDecision({
+    plannerDecision,
+    fallbackDecision,
+    issueFlowActive: isIssueFlowActive,
+  });
+  const fallbackSpendingType = latestUserMessage
+    ? classifySpendingQuestionType(latestUserMessage.text)
+    : null;
+  if (
+    !isIssueFlowActive &&
+    normalizedPlannerDecision.route === "general" &&
+    fallbackSpendingType &&
+    !isIssueLikeIntent(latestUserIntent)
+  ) {
+    normalizedPlannerDecision = normalizePlannerDecision({
+      plannerDecision: {
+        route: "spending_advice",
+        mode: fallbackSpendingType,
+        confidence: normalizedPlannerDecision.confidence,
+        needsClarification: false,
+        requires: {
+          monthBudget: true,
+          cashflowSafety: true,
+          expectedEndBalance: fallbackSpendingType === "spending_decision",
+          categoryStatus: resolvePlannerCategoryHint(
+            latestUserMessage?.text,
+          ) !== "none",
+          weekContext: looksLikeWeekScopedQuestion(latestUserMessage?.text || ""),
+          screenExplanation: false,
+        },
+        categoryHint: resolvePlannerCategoryHint(latestUserMessage?.text),
+        useScreenContext: false,
+      },
+      fallbackDecision,
+      issueFlowActive: false,
+    });
+  }
+  const route = normalizedPlannerDecision.route;
+  const mode = normalizedPlannerDecision.mode;
+  const isIssueIntakeQuestion = mode === "issue_intake";
+  const isSpendingAdviceQuestion =
+    mode === "space_summary" || mode === "spending_decision";
+  const spendingQuestionType = isSpendingAdviceQuestion ? mode : null;
   const spendingPromptVariant = spendingQuestionType
-    ? selectSpendingPromptVariant(spendingQuestionType)
+    ? buildSpendingAdvicePromptVariant(spendingQuestionType)
     : null;
 
   const requestedAmount =
     isSpendingAdviceQuestion && latestUserMessage
       ? parseRequestedAmountFromQuestion(latestUserMessage.text)
       : null;
+  const requiresFinancialContext =
+    normalizedPlannerDecision.requires.monthBudget ||
+    normalizedPlannerDecision.requires.cashflowSafety ||
+    normalizedPlannerDecision.requires.expectedEndBalance ||
+    normalizedPlannerDecision.requires.categoryStatus;
   const resolvedFinancialContext =
-    isSpendingAdviceQuestion && latestUserMessage
+    latestUserMessage && (isSpendingAdviceQuestion || requiresFinancialContext)
       ? unifiedFinancialContext ||
         (await resolveUnifiedFinancialAdviceContext({
           context,
+          question: latestUserMessage.text,
+          requestedAmount,
         }))
       : null;
   const spendingFallback =
@@ -1210,7 +1257,7 @@ export async function requestHelpAssistantReply({
         confidence:
           latestUserMessage.metadata.classification?.confidence ||
           latestUserIntent?.confidence,
-        route: routeDecision?.route || route,
+        route,
         repeatedQuestion,
         issueFlowIncomplete: Boolean(
           latestUserMessage.metadata.issueDraftCandidate &&
@@ -1219,54 +1266,127 @@ export async function requestHelpAssistantReply({
       }
     : { repeatedQuestion };
 
+  const plannerFallbackUsed = plannerDecision == null;
+  const plannerFallbackReason =
+    !latestUserMessage
+      ? "no_latest_user_message"
+      : plannerDecision == null
+        ? "planner_invalid_or_unavailable"
+        : null;
+  const fallbackOverrideToSpending =
+    !isIssueFlowActive &&
+    normalizedPlannerDecision.route === "spending_advice" &&
+    plannerDecision?.route === "general" &&
+    Boolean(fallbackSpendingType);
+
+  const systemPrompts: { label: string; content: string }[] = [];
+  if (isSpendingAdviceQuestion) {
+    systemPrompts.push({
+      label: "spending_primary",
+      content: SPENDING_ADVICE_SYSTEM_PROMPT,
+    });
+    if (spendingPromptVariant) {
+      systemPrompts.push({
+        label: `spending_variant_${spendingQuestionType}`,
+        content: spendingPromptVariant,
+      });
+    }
+    systemPrompts.push({
+      label: "spending_context_compact",
+      content: buildCompactSpendingContextBlock({
+        context,
+        mode: spendingQuestionType || "spending_decision",
+        unifiedFinancialContext: resolvedFinancialContext,
+        requestedAmount,
+        requiredBlocks: normalizedPlannerDecision.requires,
+      }),
+    });
+  } else if (isIssueIntakeQuestion) {
+    systemPrompts.push({
+      label: "issue_primary",
+      content: PROMPT_LIBRARY.issueIntake,
+    });
+    systemPrompts.push({
+      label: "issue_context",
+      content: buildIssueIntakePrompt(context),
+    });
+  } else {
+    const includeScreenContext =
+      normalizedPlannerDecision.useScreenContext ||
+      normalizedPlannerDecision.requires.screenExplanation;
+    systemPrompts.push({
+      label: "general_primary",
+      content: SYSTEM_PROMPT,
+    });
+    systemPrompts.push({
+      label: "general_channel_context",
+      content: buildGeneralRouteContextPrompt({
+        context,
+        includeScreenContext,
+      }),
+    });
+  }
+
+  const threadMessagesForFinalCall = isSpendingAdviceQuestion
+    ? pickThreadMessagesForSpendingFinalCall({
+        thread,
+        latestUserMessage,
+      })
+    : pickThreadMessagesForModel(thread);
+
   const openAIMessages = [
-    { role: "system", content: SYSTEM_PROMPT },
-    ...(isSpendingAdviceQuestion
-      ? [
-          { role: "system", content: SPENDING_ADVICE_SYSTEM_PROMPT },
-          ...(spendingPromptVariant
-            ? [{ role: "system", content: spendingPromptVariant }]
-            : []),
-        ]
-      : []),
-    ...(isIssueIntakeQuestion
-      ? [
-          { role: "system", content: PROMPT_LIBRARY.issueIntake },
-          {
-            role: "system",
-            content: buildIssueIntakePrompt(context),
-          },
-        ]
-      : []),
-    {
-      role: "system",
-      content: `Context:\n${buildContextPrompt(context)}`,
-    },
-    ...(resolvedFinancialContext
-      ? [
-          {
-            role: "system",
-            content: `Bestedingsadviescontext (centrale bron):\n${buildUnifiedFinancialContextPrompt(
-              resolvedFinancialContext,
-            )}`,
-          },
-          ...(requestedAmount != null
-            ? [
-                {
-                  role: "system",
-                  content: `Gevraagde uitgave: ${eur.format(
-                    requestedAmount,
-                  )}`,
-                },
-              ]
-            : []),
-        ]
-      : []),
-    ...pickThreadMessagesForModel(thread).map((message) => ({
+    ...systemPrompts.map((prompt) => ({
+      role: "system" as const,
+      content: prompt.content,
+    })),
+    ...threadMessagesForFinalCall.map((message) => ({
       role: toOpenAIRole(message.role),
       content: message.text,
     })),
   ];
+
+  const loadedContextBlocks = [
+    normalizedPlannerDecision.requires.monthBudget ? "monthBudget" : null,
+    normalizedPlannerDecision.requires.cashflowSafety ? "cashflowSafety" : null,
+    normalizedPlannerDecision.requires.expectedEndBalance
+      ? "expectedEndBalance"
+      : null,
+    normalizedPlannerDecision.requires.categoryStatus ? "categoryStatus" : null,
+    normalizedPlannerDecision.requires.weekContext ? "weekContext" : null,
+    normalizedPlannerDecision.requires.screenExplanation
+      ? "screenExplanation"
+      : null,
+  ].filter(Boolean) as string[];
+  const compactContextBlockPresent = systemPrompts.some(
+    (prompt) => prompt.label === "spending_context_compact",
+  );
+  const spendingPayloadPresent = systemPrompts.some((prompt) =>
+    prompt.content.includes("SpendingAdvice truth-safe payload JSON:"),
+  );
+
+  logHelpAssistantDebug("planner_result", {
+    raw: plannerDecision,
+    fallback: fallbackDecision,
+    normalized: normalizedPlannerDecision,
+    fallbackUsed: plannerFallbackUsed,
+    fallbackReason: plannerFallbackReason,
+    fallbackOverrideToSpending,
+  });
+  logHelpAssistantDebug("final_answer_setup", {
+    route,
+    mode,
+    requires: normalizedPlannerDecision.requires,
+    promptLabels: systemPrompts.map((prompt) => prompt.label),
+    loadedContextBlocks,
+    compactContextBlockPresent,
+    spendingPayloadPresent,
+    monthBudget: normalizedPlannerDecision.requires.monthBudget,
+    expectedEndBalance: normalizedPlannerDecision.requires.expectedEndBalance,
+    cashflowSafety: normalizedPlannerDecision.requires.cashflowSafety,
+    plannerFallbackUsed,
+    plannerFallbackReason,
+    fallbackOverrideToSpending,
+  });
 
   const openAIRequest = {
     model: DEFAULT_MODEL,
@@ -1307,9 +1427,7 @@ export async function requestHelpAssistantReply({
             periodLabel: context.selectedPeriod?.label || undefined,
             agentMode: "chat",
             responseMode:
-              isSpendingAdviceQuestion || isIssueIntakeQuestion
-                ? "json_object"
-                : "text",
+              isIssueIntakeQuestion ? "json_object" : "text",
             fallbackEnabled: true,
             signalHints,
           });

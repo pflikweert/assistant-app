@@ -92,6 +92,8 @@ const sampleForecastCurrent = {
   expectedFixedCosts: 900,
   expectedSubscriptions: 120,
   expectedVariableCosts: 500,
+  avgGroceries: 180,
+  avgFuel: 90,
 };
 
 const sampleForecastNext = {
@@ -127,7 +129,28 @@ const samplePlan = {
       overrunAmount: 0,
     },
   ],
-  recommendations: [],
+  recommendations: [
+    {
+      categoryKey: "groceries",
+      label: "Boodschappen",
+      monthlyBudget: 260,
+      weeklyBudget: 60,
+      monthlyActual: 55,
+      monthProgress: 0.6,
+      utilization: 0.15,
+      overrideSource: "trend",
+    },
+    {
+      categoryKey: "fuel",
+      label: "Brandstof",
+      monthlyBudget: 120,
+      weeklyBudget: 28,
+      monthlyActual: 0,
+      monthProgress: 0.6,
+      utilization: 0,
+      overrideSource: "trend",
+    },
+  ],
   warnings: [],
   planKey: "default",
   referenceDate: "2026-03-20",
@@ -201,6 +224,22 @@ const sampleCategories = [
     budget_group: "fixed",
     sort_order: 4,
   },
+  {
+    id: "cat-leisure-root",
+    key: "leisure",
+    name: "Vrije tijd",
+    parent_id: null,
+    budget_group: "variable",
+    sort_order: 5,
+  },
+  {
+    id: "cat-clothing-sub",
+    key: "shopping_clothing",
+    name: "Kleding",
+    parent_id: "cat-leisure-root",
+    budget_group: "variable",
+    sort_order: 6,
+  },
 ];
 
 const sampleMonthSpendRows = [
@@ -223,6 +262,17 @@ const sampleMonthSpendRows = [
     counterparty: "Woningstichting",
     bank_account_id: "bank-1",
     category_id_auto: "cat-home-sub",
+    category_id_user: null,
+    budget_excluded: false,
+  },
+  {
+    id: "tx-4",
+    date: "2026-03-18",
+    amount: -25,
+    details: "Kledingwinkel",
+    counterparty: "Kledingwinkel",
+    bank_account_id: "bank-1",
+    category_id_auto: "cat-clothing-sub",
     category_id_user: null,
     budget_excluded: false,
   },
@@ -336,6 +386,22 @@ describe("resolveUnifiedFinancialAdviceContext", () => {
     loadBudgetPlanForSurfaceMock.mockResolvedValue({
       plan: samplePlan,
       forecast: sampleForecastCurrent,
+      safeToSpendUntilNextIncome: 1690.95,
+      nextIncomeDateAnchor: "2026-03-27",
+      nextIncomeLabelAnchor: "Salaris",
+      nextIncomeAmountAnchor: 2400,
+      nextIncomeAmountAnchorMeta: {
+        isAvailable: true,
+        isCanonical: true,
+        isDerived: false,
+        isFallback: false,
+        source: "income_source",
+        dataGapReason: null,
+      },
+      safeToSpendIsEstimatedAnchorDate: false,
+      knownUpcomingFixedCostsUntilAnchor: 420,
+      knownUpcomingSubscriptionsUntilAnchor: 35,
+      safeToSpendConfidenceScore: "MEDIUM",
     });
     loadLatestKnownBalanceSnapshotMock.mockResolvedValue({
       balance: 1420,
@@ -364,7 +430,10 @@ describe("resolveUnifiedFinancialAdviceContext", () => {
       },
     });
 
-    const result = await resolveUnifiedFinancialAdviceContext({ context });
+    const result = await resolveUnifiedFinancialAdviceContext({
+      context,
+      question: "Heb ik nog ruimte voor boodschappen?",
+    });
 
     expect(result.period.key).toBe("2026-03");
     expect(result.forecastCurrentMonth.hasData).toBe(true);
@@ -373,7 +442,7 @@ describe("resolveUnifiedFinancialAdviceContext", () => {
     expect(result.quality.hasBudgetSignals).toBe(true);
     expect(result.quality.hasPlanningSignals).toBe(true);
     expect(result.currentBalance.balance).toBe(1420);
-    expect(result.spending.currentMonthTotal).toBe(60);
+    expect(result.spending.currentMonthTotal).toBe(85);
     expect(result.spending.currentMonthBreakdown.categories[0].label).toBe(
       "Boodschappen",
     );
@@ -385,6 +454,143 @@ describe("resolveUnifiedFinancialAdviceContext", () => {
     expect(result.quality.hasBalanceSignals).toBe(true);
     expect(result.quality.hasSpendingSignals).toBe(true);
     expect(result.quality.hasCategorySignals).toBe(true);
+    expect(result.spendingAdvice.monthBudget.monthLabel).toBe("maart 2026");
+    expect(result.spendingAdvice.cashflowSafety.nextIncomeAmount).toBe(2400);
+    expect(result.spendingAdvice.cashflowSafety.nextIncomeAmountMeta.source).toBe(
+      "income_source",
+    );
+    expect(result.spendingAdvice.cashflowSafety.expectedFixedAndSubscriptions).toBe(1020);
+    expect(result.spendingAdvice.categoryStatus?.categoryLabel).toBe("Boodschappen");
+    expect(result.spendingAdvice.categoryStatus?.budgetCurrentMonth).toBe(260);
+    expect(result.spendingAdvice.categoryStatus?.budgetAvailability).toBe(
+      "canonical",
+    );
+    expect(result.spendingAdvice.categoryStatus?.projectedEndOfMonthMeta.dataGapReason).toBe(
+      "projected_end_of_month_not_available",
+    );
+    expect(result.spendingAdvice.categoryStatus?.avgLast3Months).toBeNull();
+    expect(result.spendingAdvice.assistantAdviceSignals.shortReason).toBeTruthy();
+  });
+
+  it("prepares category status without canonical budget for clothing-like questions", async () => {
+    const context = buildHelpAssistantContext({
+      screenId: "insights",
+      selectedPeriod: {
+        key: "2026-03",
+        label: "maart 2026",
+        startIso: "2026-03-01",
+        endIsoExclusive: "2026-04-01",
+      },
+      screenContext: {
+        kind: "insights",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    const result = await resolveUnifiedFinancialAdviceContext({
+      context,
+      question: "Geef ik te veel uit aan kleding?",
+    });
+
+    expect(result.spendingAdvice.categoryStatus?.categoryLabel).toBe("Kleding");
+    expect(result.spendingAdvice.categoryStatus?.spentCurrentMonth).toBe(25);
+    expect(result.spendingAdvice.categoryStatus?.budgetCurrentMonth).toBeNull();
+    expect(result.spendingAdvice.categoryStatus?.budgetAvailability).toBe(
+      "unavailable",
+    );
+    expect(result.spendingAdvice.categoryStatus?.status).toBe(
+      "tracked_without_budget",
+    );
+    expect(result.spendingAdvice.categoryStatus?.avgLast3MonthsMeta.dataGapReason).toBe(
+      "avg_last_3_months_not_available",
+    );
+    expect(result.quality.dataGaps).toContain("categoriebudget_niet_beschikbaar");
+  });
+
+  it("uses bucket-only budget truth for supermarkt without pretending a canonical category budget", async () => {
+    const context = buildHelpAssistantContext({
+      screenId: "insights",
+      selectedPeriod: {
+        key: "2026-03",
+        label: "maart 2026",
+        startIso: "2026-03-01",
+        endIsoExclusive: "2026-04-01",
+      },
+      screenContext: {
+        kind: "insights",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    const result = await resolveUnifiedFinancialAdviceContext({
+      context,
+      question: "Heb ik nog ruimte voor supermarkt?",
+    });
+
+    expect(result.spendingAdvice.categoryStatus?.categoryLabel).toBe("Supermarkt");
+    expect(result.spendingAdvice.categoryStatus?.budgetAvailability).toBe(
+      "bucket_only",
+    );
+    expect(result.spendingAdvice.categoryStatus?.budgetSourceType).toBe(
+      "plan_recommendation_bucket",
+    );
+    expect(result.spendingAdvice.categoryStatus?.budgetMeta.isDerived).toBe(true);
+    expect(result.spendingAdvice.categoryStatus?.remaining).toBe(205);
+    expect(result.quality.dataGaps).toContain("categoriebudget_alleen_bucketniveau");
+  });
+
+  it("keeps next income amount null when anchor amount is not reliable", async () => {
+    loadBudgetPlanForSurfaceMock.mockResolvedValueOnce({
+      plan: samplePlan,
+      forecast: sampleForecastCurrent,
+      safeToSpendUntilNextIncome: 1690.95,
+      nextIncomeDateAnchor: "2026-03-27",
+      nextIncomeLabelAnchor: "Salaris",
+      nextIncomeAmountAnchor: 2400,
+      nextIncomeAmountAnchorMeta: {
+        isAvailable: false,
+        isCanonical: false,
+        isDerived: true,
+        isFallback: false,
+        source: "forecast_timeline_anchor",
+        dataGapReason: "anchor_amount_not_from_reliable_income_source",
+      },
+      safeToSpendIsEstimatedAnchorDate: false,
+      knownUpcomingFixedCostsUntilAnchor: 420,
+      knownUpcomingSubscriptionsUntilAnchor: 35,
+      safeToSpendConfidenceScore: "MEDIUM",
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "insights",
+      selectedPeriod: {
+        key: "2026-03",
+        label: "maart 2026",
+        startIso: "2026-03-01",
+        endIsoExclusive: "2026-04-01",
+      },
+      screenContext: {
+        kind: "insights",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    const result = await resolveUnifiedFinancialAdviceContext({
+      context,
+      question: "Kan ik deze maand nog ruimte houden?",
+    });
+
+    expect(result.surfaceSemantics?.nextIncomeAmountAnchor).toBe(2400);
+    expect(result.spendingAdvice.cashflowSafety.nextIncomeAmount).toBeNull();
+    expect(result.spendingAdvice.cashflowSafety.nextIncomeAmountMeta.isAvailable).toBe(
+      false,
+    );
+    expect(result.quality.dataGaps).toContain(
+      "volgende_inkomstenbedrag_onbetrouwbaar",
+    );
   });
 
   it("falls back to current month when period is missing", async () => {

@@ -99,6 +99,8 @@ describe("buildSafetySpendWindowSummary", () => {
     expect(result.safeToSpendUntilNextIncome).toBe(1698.11);
     expect(result.nextIncomeDateAnchor).toBe("2026-04-24");
     expect(result.anchorType).toBe("configured");
+    expect(result.nextIncomeAmountAnchor).toBe(2500);
+    expect(result.nextIncomeAmountAnchorMeta.isAvailable).toBe(true);
     expect(result.isEstimatedAnchorDate).toBe(false);
     expect(result.safeToSpendExplanation).toContain("salaris");
     expect(result.safeToSpendExplanation).toContain("24 april");
@@ -132,6 +134,8 @@ describe("buildSafetySpendWindowSummary", () => {
 
     expect(result.safeToSpendUntilNextIncome).toBeNull();
     expect(result.confidenceScore).toBe("MEDIUM");
+    expect(result.nextIncomeAmountAnchor).toBe(2500);
+    expect(result.nextIncomeAmountAnchorMeta.isAvailable).toBe(true);
   });
 
   it("gebruikt forecast-summary anker en resterende maandmutatie als timeline te zwak is", async () => {
@@ -182,8 +186,15 @@ describe("buildSafetySpendWindowSummary", () => {
 
     expect(result.nextIncomeDateAnchor).toBe("2026-04-24");
     expect(result.nextIncomeLabelAnchor).toBe("Salaris");
-    expect(result.anchorType).toBe("configured");
+    expect(result.anchorType).toBe("summary_fallback");
     expect(result.isEstimatedAnchorDate).toBe(false);
+    expect(result.nextIncomeAmountAnchor).toBeNull();
+    expect(result.nextIncomeAmountAnchorMeta.source).toBe(
+      "forecast_summary_anchor",
+    );
+    expect(result.nextIncomeAmountAnchorMeta.dataGapReason).toBe(
+      "anchor_has_no_reliable_amount",
+    );
     expect(result.projectedNetUntilNextIncome).toBe(-950.25);
     expect(result.safeToSpendUntilNextIncome).toBe(1698.11);
     expect(result.safeToSpendExplanation).toContain("salaris");
@@ -229,6 +240,8 @@ describe("buildSafetySpendWindowSummary", () => {
     expect(result.isEstimatedAnchorDate).toBe(true);
     expect(result.nextIncomeDateAnchor).toBe("2026-04-30");
     expect(result.confidenceScore).toBe("INDICATIVE");
+    expect(result.nextIncomeAmountAnchor).toBeNull();
+    expect(result.nextIncomeAmountAnchorMeta.isFallback).toBe(true);
   });
 
   it("kiest ingestelde hoofdinkomstenbron uit forecast_income_sources boven mini-inkomsten", async () => {
@@ -307,6 +320,9 @@ describe("buildSafetySpendWindowSummary", () => {
     expect(result.anchorType).toBe("configured");
     expect(result.nextIncomeDateAnchor).toBe("2026-04-24");
     expect(result.nextIncomeLabelAnchor?.toLowerCase()).toContain("salaris");
+    expect(result.nextIncomeAmountAnchor).toBe(2800);
+    expect(result.nextIncomeAmountAnchorMeta.isAvailable).toBe(true);
+    expect(result.nextIncomeAmountAnchorMeta.source).toBe("income_source");
   });
 
   it("kiest geen incidentele hoge bijschrijving als primary anchor wanneer een recurring hoofdinkomen bestaat", async () => {
@@ -399,5 +415,7 @@ describe("buildSafetySpendWindowSummary", () => {
     expect(result.nextIncomeDateAnchor).toBe("2026-04-20");
     expect(result.nextIncomeLabelAnchor?.toLowerCase()).toContain("uitkering");
     expect(result.anchorType).toBe("configured");
+    expect(result.nextIncomeAmountAnchor).toBe(1450);
+    expect(result.nextIncomeAmountAnchorMeta.isAvailable).toBe(true);
   });
 });

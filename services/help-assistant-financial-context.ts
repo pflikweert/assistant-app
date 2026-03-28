@@ -1,4 +1,6 @@
-import { loadBudgetPlanForSurface } from "@/services/budget-plan-surface";
+import {
+  loadBudgetPlanForSurface,
+} from "@/services/budget-plan-surface";
 import { buildCategoryRecordMap } from "@/services/category-display";
 import { createSupabaseCategorizationRepository } from "@/services/categorization-repository";
 import { isBankAccountIncludedInBudget, listBankAccountBudgetFlags } from "@/services/bank-accounts";
@@ -28,9 +30,13 @@ import {
   getWeekBudgetSnapshot,
 } from "@/services/budget-risk";
 import type { HelpAssistantContext } from "@/services/help-assistant-context";
+import { buildAssistantAdviceSignals } from "@/services/help-assistant-spending-advice";
 import { resolveIncomeSemantics } from "@/services/income-semantics";
 import { supabase } from "@/services/supabase";
-import type { CategoryRecord } from "@/types/categorization";
+import type {
+  BudgetRecommendationRow,
+  CategoryRecord,
+} from "@/types/categorization";
 
 export const UNIFIED_FINANCIAL_CONTEXT_CACHE_TTL_MS = 45_000;
 
@@ -39,6 +45,15 @@ const financialAdviceContextCache = new RequestCache();
 export function clearUnifiedFinancialAdviceContextCache() {
   financialAdviceContextCache.clear("help-assistant-financial-context");
 }
+
+export type AssistantContextDataMeta = {
+  isAvailable: boolean;
+  isCanonical: boolean;
+  isDerived: boolean;
+  isFallback: boolean;
+  source: string;
+  dataGapReason: string | null;
+};
 
 export type UnifiedFinancialAdviceContext = {
   period: {
@@ -91,6 +106,15 @@ export type UnifiedFinancialAdviceContext = {
     currentWeekRemaining: number | null;
     subtotalAfterFixed: number | null;
     subtotalAfterSubscriptions: number | null;
+    // Canonical source today only contains coarse variable buckets
+    // (groceries|fuel|smoking|other), not granular category budgets.
+    variableCategoryBudgets: {
+      categoryKey: string;
+      label: string;
+      monthlyBudget: number;
+      monthlyActual: number;
+      utilization: number;
+    }[];
   };
   planning: {
     upcomingCommittedExpenseTotal: number | null;
@@ -123,11 +147,18 @@ export type UnifiedFinancialAdviceContext = {
     expectedEndOperationalBalance: number | null;
     freeToSpendNow: number | null;
     safeToSpendUntilNextIncome: number | null;
+    nextIncomeDateAnchor: string | null;
+    nextIncomeAmountAnchor: number | null;
+    nextIncomeAmountAnchorMeta: AssistantContextDataMeta;
+    knownUpcomingFixedCostsUntilAnchor: number | null;
+    knownUpcomingSubscriptionsUntilAnchor: number | null;
+    safeToSpendConfidenceScore: "HIGH" | "MEDIUM" | "INDICATIVE" | null;
     safeToSpendLabel: string;
     safeToSpendSubtitle: string;
     statusLabel: string;
     statusTone: "good" | "watch" | "critical" | "neutral";
   };
+  spendingAdvice: SpendingAdviceAssistantContext;
   quality: {
     cacheHit: boolean;
     fetchedAtIso: string;
@@ -143,22 +174,85 @@ export type UnifiedFinancialAdviceContext = {
   };
 };
 
-type FinancialCategorySpendSubcategory = {
+export type SpendingAdviceAssistantContext = {
+  monthBudget: {
+    monthLabel: string;
+    daysRemainingInMonth: number;
+    variableBudgetTotal: number | null;
+    variableSpent: number | null;
+    variableRemaining: number | null;
+    monthBudgetStatus:
+      | "unknown"
+      | "no_budget"
+      | "on_track"
+      | "watch"
+      | "over_budget";
+    monthBudgetStatusLabel: string | null;
+    weekBudgetRemaining: number | null;
+    weekBudgetStatus: "unknown" | "on_track" | "over_budget";
+    weekTempoSignal: "unknown" | "under_tempo" | "on_tempo" | "over_tempo";
+  };
+  cashflowSafety: {
+    currentBalance: number | null;
+    extraSpaceUntilNextIncome: number | null;
+    extraSpaceLabel: string;
+    nextIncomeDate: string | null;
+    nextIncomeAmount: number | null;
+    nextIncomeAmountMeta: AssistantContextDataMeta;
+    daysUntilNextIncome: number | null;
+    expectedEndBalance: number | null;
+    lowestProjectedBalance: number | null;
+    knownUpcomingFixedCosts: number | null;
+    expectedFixedAndSubscriptions: number | null;
+    forecastReliability: "low" | "medium" | "high";
+  };
+  categoryStatus: SpendingAdviceCategoryStatus | null;
+  assistantAdviceSignals: ReturnType<typeof buildAssistantAdviceSignals>;
+};
+
+export type SpendingAdviceCategoryStatus = {
+  categoryKey: string;
+  categoryLabel: string;
+  spentCurrentMonth: number | null;
+  budgetCurrentMonth: number | null;
+  remaining: number | null;
+  status: "within_budget" | "watch" | "over_budget" | "tracked_without_budget";
+  budgetAvailability: "canonical" | "bucket_only" | "unavailable" | "fallback_only";
+  budgetSourceType:
+    | "plan_recommendation_category"
+    | "plan_recommendation_bucket"
+    | "legacy_fallback"
+    | "none";
+  budgetMeta: AssistantContextDataMeta;
+  // Prepared field, currently unresolved in services.
+  projectedEndOfMonth: number | null;
+  projectedEndOfMonthMeta: AssistantContextDataMeta;
+  // Prepared field, currently unresolved in services.
+  // Do not backfill from non-equivalent avg forecast fields.
+  avgLast3Months: number | null;
+  avgLast3MonthsMeta: AssistantContextDataMeta;
+};
+
+export type FinancialCategorySpendSubcategory = {
   key: string;
+  categoryId: string | null;
+  categoryKey: string | null;
   label: string;
   amount: number;
   transactionCount: number;
 };
 
-type FinancialCategorySpendItem = {
+export type FinancialCategorySpendItem = {
   key: string;
+  categoryId: string | null;
+  categoryKey: string | null;
   label: string;
   amount: number;
   transactionCount: number;
   subcategories: FinancialCategorySpendSubcategory[];
 };
 
-type FinancialCategorySpendBreakdown = {
+export type FinancialCategorySpendBreakdown = {
   total: number;
   transactionCount: number;
   categories: FinancialCategorySpendItem[];
@@ -259,6 +353,8 @@ function buildFinancialCategorySpendBreakdown(
     string,
     {
       key: string;
+      categoryId: string | null;
+      categoryKey: string | null;
       label: string;
       amount: number;
       transactionCount: number;
@@ -282,9 +378,17 @@ function buildFinancialCategorySpendBreakdown(
       .filter(Boolean);
     const mainLabel = trailLabels[0] || "Ongecategoriseerd";
     const mainKey = trail[0]?.id || categoryId || "uncategorized";
+    const mainCategoryId = trail[0]?.id || categoryId || null;
+    const mainCategoryKey = trail[0]?.key || category?.key || null;
     const subLabel =
       trailLabels.length > 1 ? trailLabels.slice(1).join(" › ") : mainLabel;
     const subKey = trail.length > 1 ? trail.map((item) => item.id).join("›") : mainKey;
+    const leafCategoryId = trail.length
+      ? trail[trail.length - 1]?.id || categoryId || null
+      : categoryId;
+    const leafCategoryKey = trail.length
+      ? trail[trail.length - 1]?.key || category?.key || null
+      : category?.key || null;
 
     let delta = 0;
     if (amount < 0) {
@@ -313,12 +417,16 @@ function buildFinancialCategorySpendBreakdown(
       const subcategories = new Map<string, FinancialCategorySpendSubcategory>();
       subcategories.set(subKey, {
         key: subKey,
+        categoryId: leafCategoryId,
+        categoryKey: leafCategoryKey,
         label: subLabel,
         amount: delta,
         transactionCount: 1,
       });
       mainBuckets.set(mainKey, {
         key: mainKey,
+        categoryId: mainCategoryId,
+        categoryKey: mainCategoryKey,
         label: mainLabel,
         amount: delta,
         transactionCount: 1,
@@ -336,6 +444,8 @@ function buildFinancialCategorySpendBreakdown(
     } else {
       existingMain.subcategories.set(subKey, {
         key: subKey,
+        categoryId: leafCategoryId,
+        categoryKey: leafCategoryKey,
         label: subLabel,
         amount: delta,
         transactionCount: 1,
@@ -346,6 +456,8 @@ function buildFinancialCategorySpendBreakdown(
   const categories = [...mainBuckets.values()]
     .map((entry) => ({
       key: entry.key,
+      categoryId: entry.categoryId,
+      categoryKey: entry.categoryKey,
       label: entry.label,
       amount: roundEuro(entry.amount),
       transactionCount: entry.transactionCount,
@@ -363,6 +475,523 @@ function buildFinancialCategorySpendBreakdown(
     total: roundEuro(total),
     transactionCount,
     categories,
+  };
+}
+
+function normalizeMatchText(value: string | null | undefined) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function daysBetweenUtc(start: Date, end: Date) {
+  return Math.max(
+    0,
+    Math.round((startOfUtcDay(end).getTime() - startOfUtcDay(start).getTime()) / 86400000),
+  );
+}
+
+function parseIsoDateToUtc(value: string) {
+  return new Date(`${value}T12:00:00.000Z`);
+}
+
+function createAssistantDataMeta(input: {
+  isAvailable: boolean;
+  isCanonical: boolean;
+  isDerived: boolean;
+  isFallback: boolean;
+  source: string;
+  dataGapReason?: string | null;
+}): AssistantContextDataMeta {
+  return {
+    isAvailable: input.isAvailable,
+    isCanonical: input.isCanonical,
+    isDerived: input.isDerived,
+    isFallback: input.isFallback,
+    source: input.source,
+    dataGapReason: input.dataGapReason ?? null,
+  };
+}
+
+function mapMonthBudgetStatus(input: {
+  totalVariableBudget: number | null;
+  variableRemaining: number | null;
+  monthRiskTone: "good" | "watch" | "critical" | "neutral" | null;
+}) {
+  if (input.totalVariableBudget == null) return "unknown" as const;
+  if (input.totalVariableBudget <= 0) return "no_budget" as const;
+  if ((input.variableRemaining ?? 0) < 0 || input.monthRiskTone === "critical") {
+    return "over_budget" as const;
+  }
+  if (input.monthRiskTone === "watch") return "watch" as const;
+  return "on_track" as const;
+}
+
+function mapWeekBudgetStatus(input: {
+  weekRemainingBudget: number | null;
+  weekRiskTone: "good" | "watch" | "critical" | "neutral" | null;
+}) {
+  if (input.weekRemainingBudget == null) return "unknown" as const;
+  if ((input.weekRemainingBudget ?? 0) < 0 || input.weekRiskTone === "critical") {
+    return "over_budget" as const;
+  }
+  return "on_track" as const;
+}
+
+function mapWeekTempoSignal(tempoDelta: number | null) {
+  if (tempoDelta == null) return "unknown" as const;
+  if (tempoDelta >= 15) return "under_tempo" as const;
+  if (tempoDelta <= -15) return "over_tempo" as const;
+  return "on_tempo" as const;
+}
+
+function mapForecastReliability(input: {
+  qualityConfidence: "low" | "medium" | "high";
+  safeToSpendConfidenceScore: "HIGH" | "MEDIUM" | "INDICATIVE" | null | undefined;
+}) {
+  const qualityRank =
+    input.qualityConfidence === "high"
+      ? 3
+      : input.qualityConfidence === "medium"
+        ? 2
+        : 1;
+  const safetyRank =
+    input.safeToSpendConfidenceScore === "HIGH"
+      ? 3
+      : input.safeToSpendConfidenceScore === "MEDIUM"
+        ? 2
+        : 1;
+  const rank = Math.min(qualityRank, safetyRank);
+  if (rank >= 3) return "high" as const;
+  if (rank === 2) return "medium" as const;
+  return "low" as const;
+}
+
+function buildVariableCategoryBudgetMap(
+  recommendations: BudgetRecommendationRow[],
+) {
+  return new Map(
+    recommendations
+      .filter((row) =>
+        row.categoryKey === "groceries" ||
+        row.categoryKey === "fuel" ||
+        row.categoryKey === "smoking" ||
+        row.categoryKey === "other",
+      )
+      .map((row) => [
+        row.categoryKey,
+        {
+          categoryKey: row.categoryKey,
+          label: row.label,
+          monthlyBudget: roundEuro(row.monthlyBudget),
+          monthlyActual: roundEuro(row.monthlyActual),
+          utilization: row.utilization,
+        },
+      ]),
+  );
+}
+
+type ResolvedSpendCandidate = {
+  categoryKey: string;
+  categoryLabel: string;
+  spentCurrentMonth: number;
+};
+
+function collectSpendCandidates(breakdown: FinancialCategorySpendBreakdown) {
+  const candidates: ResolvedSpendCandidate[] = [];
+
+  for (const category of breakdown.categories) {
+    candidates.push({
+      categoryKey: category.categoryKey || category.key,
+      categoryLabel: category.label,
+      spentCurrentMonth: category.amount,
+    });
+    for (const subcategory of category.subcategories) {
+      candidates.push({
+        categoryKey:
+          subcategory.categoryKey || category.categoryKey || subcategory.key,
+        categoryLabel: subcategory.label,
+        spentCurrentMonth: subcategory.amount,
+      });
+    }
+  }
+
+  return candidates;
+}
+
+function resolveHintTokens(question: string) {
+  const normalized = normalizeMatchText(question);
+  if (
+    normalized.includes("boodschap") ||
+    normalized.includes("supermarkt")
+  ) {
+    return ["groceries", "boodschappen", "supermarkt"];
+  }
+  if (
+    normalized.includes("benzine") ||
+    normalized.includes("tank") ||
+    normalized.includes("brandstof")
+  ) {
+    return ["fuel", "brandstof", "benzine"];
+  }
+  if (
+    normalized.includes("roken") ||
+    normalized.includes("sigaret") ||
+    normalized.includes("tabak") ||
+    normalized.includes("vape")
+  ) {
+    return ["smoking", "roken", "tabak"];
+  }
+  if (
+    normalized.includes("horeca") ||
+    normalized.includes("restaurant") ||
+    normalized.includes("uit eten")
+  ) {
+    return ["horeca", "restaurant", "uit eten"];
+  }
+  if (
+    normalized.includes("kleding") ||
+    normalized.includes("kleedgeld")
+  ) {
+    return ["kleding", "clothing", "shopping_clothing"];
+  }
+  return [] as string[];
+}
+
+function resolveCanonicalBudgetBucketHint(
+  question: string | null | undefined,
+): "groceries" | "fuel" | "smoking" | null {
+  const normalized = normalizeMatchText(question);
+  if (!normalized) return null;
+
+  if (normalized.includes("boodschap") || normalized.includes("supermarkt")) {
+    return "groceries";
+  }
+  if (
+    normalized.includes("benzine") ||
+    normalized.includes("tank") ||
+    normalized.includes("brandstof")
+  ) {
+    return "fuel";
+  }
+  if (
+    normalized.includes("roken") ||
+    normalized.includes("sigaret") ||
+    normalized.includes("tabak") ||
+    normalized.includes("vape")
+  ) {
+    return "smoking";
+  }
+
+  return null;
+}
+
+function findCategoryCandidate(params: {
+  question: string | null | undefined;
+  breakdown: FinancialCategorySpendBreakdown;
+}): ResolvedSpendCandidate | null {
+  const question = normalizeMatchText(params.question);
+  if (!question) return null;
+
+  const candidates = collectSpendCandidates(params.breakdown);
+  if (!candidates.length) return null;
+
+  const direct = candidates.find((candidate) => {
+    const label = normalizeMatchText(candidate.categoryLabel);
+    const key = normalizeMatchText(candidate.categoryKey);
+    return (
+      question.includes(label) ||
+      label.includes(question) ||
+      question.includes(key) ||
+      key.includes(question)
+    );
+  });
+
+  if (direct) return direct;
+
+  const hintTokens = resolveHintTokens(question);
+  if (hintTokens.length) {
+    const hinted = candidates.find((candidate) => {
+      const label = normalizeMatchText(candidate.categoryLabel);
+      const key = normalizeMatchText(candidate.categoryKey);
+      return hintTokens.some(
+        (token) => label.includes(token) || key.includes(token),
+      );
+    });
+    if (hinted) return hinted;
+  }
+
+  return null;
+}
+
+function buildCategoryStatus(params: {
+  question: string | null | undefined;
+  currentMonthBreakdown: FinancialCategorySpendBreakdown;
+  variableCategoryBudgets: Map<
+    string,
+    {
+      categoryKey: string;
+      label: string;
+      monthlyBudget: number;
+      monthlyActual: number;
+      utilization: number;
+    }
+  >;
+}): SpendingAdviceCategoryStatus | null {
+  const candidate = findCategoryCandidate({
+    question: params.question,
+    breakdown: params.currentMonthBreakdown,
+  });
+  if (!candidate) return null;
+
+  const directBudget =
+    params.variableCategoryBudgets.get(candidate.categoryKey) || null;
+  const hintedBudgetKey = resolveCanonicalBudgetBucketHint(params.question);
+  const hintedBucketBudget =
+    hintedBudgetKey == null
+      ? null
+      : params.variableCategoryBudgets.get(hintedBudgetKey) || null;
+  const budget = directBudget || hintedBucketBudget;
+  const budgetAvailability =
+    directBudget != null
+      ? ("canonical" as const)
+      : hintedBucketBudget != null
+        ? ("bucket_only" as const)
+        : ("unavailable" as const);
+  const budgetSourceType =
+    directBudget != null
+      ? ("plan_recommendation_category" as const)
+      : hintedBucketBudget != null
+        ? ("plan_recommendation_bucket" as const)
+        : ("none" as const);
+
+  if (!budget) {
+    return {
+      categoryKey: candidate.categoryKey,
+      categoryLabel: candidate.categoryLabel,
+      spentCurrentMonth: candidate.spentCurrentMonth,
+      budgetCurrentMonth: null,
+      remaining: null,
+      status: "tracked_without_budget",
+      budgetAvailability,
+      budgetSourceType,
+      budgetMeta: createAssistantDataMeta({
+        isAvailable: false,
+        isCanonical: false,
+        isDerived: false,
+        isFallback: false,
+        source: "budget_plan_recommendations",
+        dataGapReason: "category_budget_not_available",
+      }),
+      projectedEndOfMonth: null,
+      projectedEndOfMonthMeta: createAssistantDataMeta({
+        isAvailable: false,
+        isCanonical: false,
+        isDerived: false,
+        isFallback: false,
+        source: "category_projection",
+        dataGapReason: "projected_end_of_month_not_available",
+      }),
+      avgLast3Months: null,
+      avgLast3MonthsMeta: createAssistantDataMeta({
+        isAvailable: false,
+        isCanonical: false,
+        isDerived: false,
+        isFallback: false,
+        source: "category_average",
+        dataGapReason: "avg_last_3_months_not_available",
+      }),
+    };
+  }
+
+  // For bucket_only we compare against the canonical bucket actual from the plan,
+  // not against the granular category spend to avoid false category precision.
+  const spendForBudgetComparison =
+    budgetAvailability === "bucket_only"
+      ? budget.monthlyActual
+      : candidate.spentCurrentMonth;
+  const remaining = roundEuro(budget.monthlyBudget - spendForBudgetComparison);
+  const utilization =
+    budget.monthlyBudget > 0
+      ? spendForBudgetComparison / Math.max(budget.monthlyBudget, 1)
+      : null;
+
+  return {
+    categoryKey: candidate.categoryKey,
+    categoryLabel: candidate.categoryLabel,
+    spentCurrentMonth: candidate.spentCurrentMonth,
+    budgetCurrentMonth: budget.monthlyBudget,
+    remaining,
+    status:
+      remaining < 0
+        ? "over_budget"
+        : utilization != null && utilization >= 0.85
+          ? "watch"
+          : "within_budget",
+    budgetAvailability,
+    budgetSourceType,
+    budgetMeta: createAssistantDataMeta({
+      isAvailable: true,
+      isCanonical: true,
+      isDerived: budgetAvailability === "bucket_only",
+      isFallback: false,
+      source:
+        budgetAvailability === "bucket_only"
+          ? "budget_plan_recommendation_bucket"
+          : "budget_plan_recommendation_category",
+    }),
+    projectedEndOfMonth: null,
+    projectedEndOfMonthMeta: createAssistantDataMeta({
+      isAvailable: false,
+      isCanonical: false,
+      isDerived: false,
+      isFallback: false,
+      source: "category_projection",
+      dataGapReason: "projected_end_of_month_not_available",
+    }),
+    avgLast3Months: null,
+    avgLast3MonthsMeta: createAssistantDataMeta({
+      isAvailable: false,
+      isCanonical: false,
+      isDerived: false,
+      isFallback: false,
+      source: "category_average",
+      dataGapReason: "avg_last_3_months_not_available",
+    }),
+  };
+}
+
+type UnifiedFinancialAdviceContextBase = Omit<
+  UnifiedFinancialAdviceContext,
+  "spendingAdvice"
+>;
+
+function buildAssistantReadySpendingAdvice(params: {
+  baseContext: UnifiedFinancialAdviceContextBase;
+  question?: string | null;
+  requestedAmount?: number | null;
+}): SpendingAdviceAssistantContext {
+  const { baseContext } = params;
+  const referenceDate = new Date(baseContext.period.referenceDateIso);
+  const periodEnd = parseIsoDateToUtc(baseContext.period.endIsoExclusive);
+  const daysRemainingInMonth = daysBetweenUtc(referenceDate, periodEnd);
+  const variableCategoryBudgets = new Map(
+    baseContext.budgetPlan.variableCategoryBudgets.map((row) => [row.categoryKey, row]),
+  );
+  const categoryStatus = buildCategoryStatus({
+    question: params.question,
+    currentMonthBreakdown: baseContext.spending.currentMonthBreakdown,
+    variableCategoryBudgets,
+  });
+  const forecastReliability = mapForecastReliability({
+    qualityConfidence: baseContext.quality.confidence,
+    safeToSpendConfidenceScore:
+      baseContext.surfaceSemantics?.safeToSpendConfidenceScore || null,
+  });
+  const expectedFixedAndSubscriptions =
+    baseContext.planning.expectedFixedCosts == null &&
+    baseContext.planning.expectedSubscriptions == null
+      ? null
+      : roundEuro(
+          Number(baseContext.planning.expectedFixedCosts || 0) +
+            Number(baseContext.planning.expectedSubscriptions || 0),
+        );
+
+  const monthBudgetStatus = mapMonthBudgetStatus({
+    totalVariableBudget: baseContext.budget.totalVariableBudget,
+    variableRemaining: baseContext.budget.remainingVariableBudget,
+    monthRiskTone: baseContext.budget.monthRiskTone,
+  });
+  const nextIncomeAmountMeta =
+    baseContext.surfaceSemantics?.nextIncomeAmountAnchorMeta ||
+    createAssistantDataMeta({
+      isAvailable: false,
+      isCanonical: false,
+      isDerived: false,
+      isFallback: true,
+      source: "unified_financial_context_fallback",
+      dataGapReason: "next_income_amount_meta_missing",
+    });
+  const cashflowSafety = {
+    currentBalance: baseContext.currentBalance.balance,
+    extraSpaceUntilNextIncome:
+      baseContext.surfaceSemantics?.safeToSpendUntilNextIncome ?? null,
+    extraSpaceLabel:
+      baseContext.surfaceSemantics?.safeToSpendLabel ||
+      resolveSafetyContextCopy({}).fullLabel,
+    nextIncomeDate: baseContext.surfaceSemantics?.nextIncomeDateAnchor ?? null,
+    nextIncomeAmount: nextIncomeAmountMeta.isAvailable
+      ? (baseContext.surfaceSemantics?.nextIncomeAmountAnchor ?? null)
+      : null,
+    nextIncomeAmountMeta,
+    daysUntilNextIncome: baseContext.surfaceSemantics?.nextIncomeDateAnchor
+      ? daysBetweenUtc(
+          referenceDate,
+          parseIsoDateToUtc(baseContext.surfaceSemantics.nextIncomeDateAnchor),
+        )
+      : null,
+    expectedEndBalance:
+      baseContext.surfaceSemantics?.expectedEndOperationalBalance ??
+      baseContext.forecastCurrentMonth.expectedEndBalance,
+    lowestProjectedBalance:
+      baseContext.forecastCurrentMonth.lowestExpectedBalance,
+    knownUpcomingFixedCosts:
+      baseContext.surfaceSemantics == null
+        ? null
+        : roundEuro(
+            Number(
+              baseContext.surfaceSemantics.knownUpcomingFixedCostsUntilAnchor || 0,
+            ) +
+              Number(
+                baseContext.surfaceSemantics
+                  .knownUpcomingSubscriptionsUntilAnchor || 0,
+              ),
+          ),
+    expectedFixedAndSubscriptions,
+    forecastReliability,
+  } satisfies SpendingAdviceAssistantContext["cashflowSafety"];
+
+  const assistantAdviceSignals = buildAssistantAdviceSignals({
+    monthBudgetStatus,
+    variableRemaining: baseContext.budget.remainingVariableBudget,
+    variableBudgetTotal: baseContext.budget.totalVariableBudget,
+    extraSpaceUntilNextIncome: cashflowSafety.extraSpaceUntilNextIncome,
+    expectedEndBalance: cashflowSafety.expectedEndBalance,
+    lowestProjectedBalance: cashflowSafety.lowestProjectedBalance,
+    forecastReliabilityScore:
+      baseContext.surfaceSemantics?.safeToSpendConfidenceScore || null,
+    requestedAmount: params.requestedAmount,
+    categoryStatus: categoryStatus
+      ? {
+          status: categoryStatus.status,
+          remaining: categoryStatus.remaining,
+        }
+      : null,
+  });
+
+  return {
+    monthBudget: {
+      monthLabel: baseContext.period.label,
+      daysRemainingInMonth,
+      variableBudgetTotal: baseContext.budget.totalVariableBudget,
+      variableSpent: baseContext.budget.spentVariableBudget,
+      variableRemaining: baseContext.budget.remainingVariableBudget,
+      monthBudgetStatus,
+      monthBudgetStatusLabel: baseContext.budget.monthStatusLabel,
+      weekBudgetRemaining: baseContext.budget.weekRemainingBudget,
+      weekBudgetStatus: mapWeekBudgetStatus({
+        weekRemainingBudget: baseContext.budget.weekRemainingBudget,
+        weekRiskTone: baseContext.budget.weekRiskTone,
+      }),
+      weekTempoSignal: mapWeekTempoSignal(baseContext.budget.weekTempoDelta),
+    },
+    cashflowSafety,
+    categoryStatus,
+    assistantAdviceSignals,
   };
 }
 
@@ -444,6 +1073,8 @@ async function resolveFinancialCategorySpendBreakdown(params: {
 
 export async function resolveUnifiedFinancialAdviceContext(input: {
   context: HelpAssistantContext;
+  question?: string | null;
+  requestedAmount?: number | null;
 }): Promise<UnifiedFinancialAdviceContext> {
   const { context } = input;
   const { option: selectedMonth, usedFallback } = resolveSelectedMonthOption(context);
@@ -674,6 +1305,9 @@ export async function resolveUnifiedFinancialAdviceContext(input: {
           currentWeekRemaining,
           subtotalAfterFixed: plan.flowSummary.subtotalAfterFixed,
           subtotalAfterSubscriptions: plan.flowSummary.subtotalAfterSubscriptions,
+          variableCategoryBudgets: Array.from(
+            buildVariableCategoryBudgetMap(plan.recommendations).values(),
+          ),
         },
         planning: {
           upcomingCommittedExpenseTotal:
@@ -713,6 +1347,42 @@ export async function resolveUnifiedFinancialAdviceContext(input: {
             activeForecast?.freeToSpendNow ??
             null,
           safeToSpendUntilNextIncome: surface.safeToSpendUntilNextIncome ?? null,
+          nextIncomeDateAnchor: surface.nextIncomeDateAnchor ?? null,
+          nextIncomeAmountAnchor: surface.nextIncomeAmountAnchor ?? null,
+          nextIncomeAmountAnchorMeta: surface.nextIncomeAmountAnchorMeta
+            ? {
+                isAvailable: Boolean(
+                  surface.nextIncomeAmountAnchorMeta.isAvailable,
+                ),
+                isCanonical: Boolean(
+                  surface.nextIncomeAmountAnchorMeta.isCanonical,
+                ),
+                isDerived: Boolean(surface.nextIncomeAmountAnchorMeta.isDerived),
+                isFallback: Boolean(
+                  surface.nextIncomeAmountAnchorMeta.isFallback,
+                ),
+                source: String(
+                  surface.nextIncomeAmountAnchorMeta.source || "safety_anchor",
+                ),
+                dataGapReason:
+                  surface.nextIncomeAmountAnchorMeta.dataGapReason == null
+                    ? null
+                    : String(surface.nextIncomeAmountAnchorMeta.dataGapReason),
+              }
+            : createAssistantDataMeta({
+                isAvailable: false,
+                isCanonical: false,
+                isDerived: false,
+                isFallback: true,
+                source: "surface_semantics_fallback",
+                dataGapReason: "next_income_amount_meta_missing",
+              }),
+          knownUpcomingFixedCostsUntilAnchor:
+            surface.knownUpcomingFixedCostsUntilAnchor ?? null,
+          knownUpcomingSubscriptionsUntilAnchor:
+            surface.knownUpcomingSubscriptionsUntilAnchor ?? null,
+          safeToSpendConfidenceScore:
+            surface.safeToSpendConfidenceScore ?? null,
           safeToSpendLabel: safetyCopy.fullLabel,
           safeToSpendSubtitle: safetyCopy.sheetSubtitle,
           statusLabel: surfaceStatus.label,
@@ -731,15 +1401,60 @@ export async function resolveUnifiedFinancialAdviceContext(input: {
           confidence,
           dataGaps,
         },
-      } satisfies UnifiedFinancialAdviceContext;
+      } satisfies UnifiedFinancialAdviceContextBase;
     },
   );
 
-  return {
+  const baseContext: UnifiedFinancialAdviceContextBase = {
     ...cached.value,
     quality: {
       ...cached.value.quality,
       cacheHit: cached.cacheHit,
     },
+  };
+
+  // Source precedence for spending advice stays explicit:
+  // 1) canonical surface + budget + forecast signals
+  // 2) existing unified fallback fields
+  // 3) null with data gap, never invented data.
+  const spendingAdvice = buildAssistantReadySpendingAdvice({
+    baseContext,
+    question: input.question,
+    requestedAmount: input.requestedAmount,
+  });
+  const quality =
+    (() => {
+      const dataGaps = [...baseContext.quality.dataGaps];
+
+      if (spendingAdvice.categoryStatus?.status === "tracked_without_budget") {
+        if (!dataGaps.includes("categoriebudget_niet_beschikbaar")) {
+          dataGaps.push("categoriebudget_niet_beschikbaar");
+        }
+      }
+
+      if (
+        spendingAdvice.categoryStatus?.budgetAvailability === "bucket_only" &&
+        !dataGaps.includes("categoriebudget_alleen_bucketniveau")
+      ) {
+        dataGaps.push("categoriebudget_alleen_bucketniveau");
+      }
+
+      if (
+        !spendingAdvice.cashflowSafety.nextIncomeAmountMeta.isAvailable &&
+        !dataGaps.includes("volgende_inkomstenbedrag_onbetrouwbaar")
+      ) {
+        dataGaps.push("volgende_inkomstenbedrag_onbetrouwbaar");
+      }
+
+      return {
+        ...baseContext.quality,
+        dataGaps,
+      };
+    })();
+
+  return {
+    ...baseContext,
+    spendingAdvice,
+    quality,
   };
 }

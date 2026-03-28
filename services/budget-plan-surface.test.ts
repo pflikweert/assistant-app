@@ -222,9 +222,20 @@ describe("budget-plan-surface", () => {
       projectedNetUntilNextIncome: -957.41,
       nextIncomeDateAnchor: "2026-04-24",
       nextIncomeLabelAnchor: "Salaris",
+      nextIncomeAmountAnchor: 2400,
+      nextIncomeAmountAnchorMeta: {
+        isAvailable: true,
+        isCanonical: true,
+        isDerived: false,
+        isFallback: false,
+        source: "income_source",
+        dataGapReason: null,
+      },
       anchorType: "configured",
       isEstimatedAnchorDate: false,
       bridgeCrossMonthCostsUntilIncome: 120.5,
+      knownUpcomingFixedCostsUntilAnchor: 736.58,
+      knownUpcomingSubscriptionsUntilAnchor: 19.95,
       safeToSpendExplanation:
         "We rekenen tot je salaris op 24 april, rekening houdend met € 950,25 aan verwachte lasten.",
       safeToSpendExplanationParts: {
@@ -237,6 +248,7 @@ describe("budget-plan-surface", () => {
         confidence: "medium",
       },
       confidenceScore: "MEDIUM",
+      safeToSpendConfidenceScore: "MEDIUM",
       deltaReasonLabel: "Huur",
       deltaReasonAmount: 736.58,
     });
@@ -292,8 +304,13 @@ describe("budget-plan-surface", () => {
     expect(surface.explainability.budgetHint).toContain("Reservering");
     expect(surface.safeToSpendUntilNextIncome).toBe(1690.95);
     expect(surface.nextIncomeDateAnchor).toBe("2026-04-24");
+    expect(surface.nextIncomeAmountAnchor).toBe(2400);
+    expect(surface.nextIncomeAmountAnchorMeta.source).toBe("income_source");
     expect(surface.safeToSpendAnchorType).toBe("configured");
     expect(surface.safeToSpendIsEstimatedAnchorDate).toBe(false);
+    expect(surface.knownUpcomingFixedCostsUntilAnchor).toBe(736.58);
+    expect(surface.knownUpcomingSubscriptionsUntilAnchor).toBe(19.95);
+    expect(surface.safeToSpendConfidenceScore).toBe("MEDIUM");
     expect(surface.confidenceLayer.safeToSpendUntilNextIncome.score).toBe("MEDIUM");
   });
 });

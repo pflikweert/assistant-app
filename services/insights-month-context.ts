@@ -40,6 +40,13 @@ export type InsightsForecastSummary = {
   expectedFixedCosts: number | null;
   expectedSubscriptions: number | null;
   expectedVariableCosts: number | null;
+  // These are forecast helper fields and not equivalent to a true
+  // "avgLast3Months" category metric for assistant advice.
+  avgGroceries?: number | null;
+  avgFuel?: number | null;
+  avgSmoking?: number | null;
+  avgOtherVariable?: number | null;
+  topCostBuckets?: string[];
   carryoverIntoNextMonth?: number | null;
 };
 

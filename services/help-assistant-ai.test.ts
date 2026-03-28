@@ -77,6 +77,47 @@ function createJsonResponse(content: unknown, id: string) {
   };
 }
 
+function createPlannerDecisionResponse(
+  partial: Partial<{
+    route: "issue_intake" | "spending_advice" | "general";
+    mode: "general_help" | "issue_intake" | "space_summary" | "spending_decision";
+    confidence: "low" | "medium" | "high";
+    needsClarification: boolean;
+    requires: {
+      monthBudget: boolean;
+      cashflowSafety: boolean;
+      expectedEndBalance: boolean;
+      categoryStatus: boolean;
+      weekContext: boolean;
+      screenExplanation: boolean;
+    };
+    categoryHint: "groceries" | "fuel" | "housing" | "none";
+    useScreenContext: boolean;
+  }>,
+  id: string,
+) {
+  return createJsonResponse(
+    {
+      route: "general",
+      mode: "general_help",
+      confidence: "medium",
+      needsClarification: false,
+      requires: {
+        monthBudget: false,
+        cashflowSafety: false,
+        expectedEndBalance: false,
+        categoryStatus: false,
+        weekContext: false,
+        screenExplanation: false,
+      },
+      categoryHint: "none",
+      useScreenContext: false,
+      ...partial,
+    },
+    id,
+  );
+}
+
 describe("help-assistant-ai spending advice", () => {
   beforeEach(() => {
     postOpenAIChatCompletionMock.mockReset();
@@ -133,6 +174,19 @@ describe("help-assistant-ai spending advice", () => {
         expectedEndOperationalBalance: 300,
         freeToSpendNow: 1292.84,
         safeToSpendUntilNextIncome: 1690.95,
+        nextIncomeDateAnchor: "2026-03-28",
+        nextIncomeAmountAnchor: 2400,
+        nextIncomeAmountAnchorMeta: {
+          isAvailable: true,
+          isCanonical: true,
+          isDerived: false,
+          isFallback: false,
+          source: "income_source",
+          dataGapReason: null,
+        },
+        knownUpcomingFixedCostsUntilAnchor: 320,
+        knownUpcomingSubscriptionsUntilAnchor: 45,
+        safeToSpendConfidenceScore: "MEDIUM",
         safeToSpendLabel: "Extra ruimte tot salaris",
         safeToSpendSubtitle: "Tot je salaris",
         statusLabel: "Let op voor maart",
@@ -221,6 +275,101 @@ describe("help-assistant-ai spending advice", () => {
         currentWeekRemaining: 80,
         subtotalAfterFixed: 1100,
         subtotalAfterSubscriptions: 980,
+        variableCategoryBudgets: [
+          {
+            categoryKey: "groceries",
+            label: "Boodschappen",
+            monthlyBudget: 300,
+            monthlyActual: 240,
+            utilization: 0.8,
+          },
+          {
+            categoryKey: "fuel",
+            label: "Brandstof",
+            monthlyBudget: 140,
+            monthlyActual: 0,
+            utilization: 0,
+          },
+        ],
+      },
+      spendingAdvice: {
+        monthBudget: {
+          monthLabel: "maart 2026",
+          daysRemainingInMonth: 12,
+          variableBudgetTotal: 900,
+          variableSpent: 700,
+          variableRemaining: 200,
+          monthBudgetStatus: "watch",
+          monthBudgetStatusLabel: "LET OP",
+          weekBudgetRemaining: 55,
+          weekBudgetStatus: "on_track",
+          weekTempoSignal: "under_tempo",
+        },
+        cashflowSafety: {
+          currentBalance: 1400,
+          extraSpaceUntilNextIncome: 1690.95,
+          extraSpaceLabel: "Extra ruimte tot salaris",
+          nextIncomeDate: "2026-03-28",
+          nextIncomeAmount: 2400,
+          nextIncomeAmountMeta: {
+            isAvailable: true,
+            isCanonical: true,
+            isDerived: false,
+            isFallback: false,
+            source: "income_source",
+            dataGapReason: null,
+          },
+          daysUntilNextIncome: 8,
+          expectedEndBalance: 300,
+          lowestProjectedBalance: 80,
+          knownUpcomingFixedCosts: 365,
+          expectedFixedAndSubscriptions: 920,
+          forecastReliability: "medium",
+        },
+        categoryStatus: {
+          categoryKey: "groceries",
+          categoryLabel: "Boodschappen",
+          spentCurrentMonth: 240,
+          budgetCurrentMonth: 300,
+          remaining: 60,
+          status: "watch",
+          budgetAvailability: "canonical",
+          budgetSourceType: "plan_recommendation_category",
+          budgetMeta: {
+            isAvailable: true,
+            isCanonical: true,
+            isDerived: false,
+            isFallback: false,
+            source: "budget_plan_recommendation_category",
+            dataGapReason: null,
+          },
+          projectedEndOfMonth: null,
+          projectedEndOfMonthMeta: {
+            isAvailable: false,
+            isCanonical: false,
+            isDerived: false,
+            isFallback: false,
+            source: "category_projection",
+            dataGapReason: "projected_end_of_month_not_available",
+          },
+          avgLast3Months: null,
+          avgLast3MonthsMeta: {
+            isAvailable: false,
+            isCanonical: false,
+            isDerived: false,
+            isFallback: false,
+            source: "category_average",
+            dataGapReason: "avg_last_3_months_not_available",
+          },
+        },
+        assistantAdviceSignals: {
+          budgetPressure: "medium",
+          cashSafety: "medium",
+          purchaseFlexibility: "medium",
+          shortReason:
+            "Het kan waarschijnlijk wel, maar deze keuze maakt je maand krapper.",
+          recommendedTone: "neutral",
+        },
       },
       quality: {
         cacheHit: false,
@@ -316,14 +465,135 @@ describe("help-assistant-ai spending advice", () => {
       postHelpAssistantSpendingAdviceCompletionMock.mock.calls[0]?.[0]
         ?.openAIRequest;
     const promptText = JSON.stringify(openAIRequest?.messages || []);
-    expect(promptText).toContain("Actuele operationele stand");
-    expect(promptText).toContain("Canoniek resterend maandbudget");
-    expect(promptText).toContain("Canonieke safety-term: Extra ruimte tot salaris");
-    expect(promptText).toContain("Huidige maand uitgaven totaal");
-    expect(promptText).toContain("Maandverdeling uitgaven");
-    expect(promptText).toContain("Weekverdeling uitgaven");
-    expect(promptText).toContain("Budgetplan maand totaal");
-    expect(promptText).toContain("Forecast operationele stand maand (fallback)");
+    const systemPromptText = JSON.stringify(
+      (openAIRequest?.messages || [])
+        .filter((message: { role?: string }) => message.role === "system")
+        .map((message: { content?: string }) => String(message.content || "")),
+    );
+    expect(
+      (openAIRequest?.messages || []).filter(
+        (message: { role?: string }) => message.role === "system",
+      ),
+    ).toHaveLength(3);
+    expect(systemPromptText).toContain(
+      "Je bent de Budio AI Buddy voor bestedingsruimte-vragen.",
+    );
+    expect(systemPromptText).toContain(
+      "Begin je conclusie altijd vanuit maandruimte en verwacht eindsaldo",
+    );
+    expect(systemPromptText).toContain("Gedragsregel: geef hetzelfde financiële oordeel");
+    expect(systemPromptText).not.toContain("Schermspecifieke context");
+    expect(promptText).toContain("Assistant-ready bestedingscontext");
+    expect(promptText).toContain("SpendingAdvice truth-safe payload JSON");
+    expect(promptText).toContain("Resterend budget maart 2026");
+    expect(promptText).toContain("Verwacht eindsaldo");
+    expect(promptText).toContain("Extra ruimte tot salaris");
+    expect(promptText).toContain("Aankoopimpact");
+    expect(promptText).not.toContain("Categoriecontext");
+    expect(promptText).toContain("requiredBlocks");
+    expect(promptText).toContain("categoryStatus\\\":false");
+    expect(promptText.indexOf("Maandbudget:")).toBeGreaterThan(-1);
+    expect(promptText.indexOf("Cashflow safety:")).toBeGreaterThan(-1);
+    expect(promptText.indexOf("Maandbudget:")).toBeLessThan(
+      promptText.indexOf("Cashflow safety:"),
+    );
+    expect(promptText).not.toContain("Weekbudget resterend");
+    expect(promptText).not.toContain("Categoriebudget deze maand");
+    expect(promptText).not.toContain("Schermspecifieke context");
+    expect(promptText).not.toContain("Veilig te besteden tot volgende inkomen");
+  });
+
+  it("keeps spending fallback text screen-independent", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createJsonResponse(
+        {
+          route: "spending_advice",
+          confidence: "high",
+          type: "spending_advice",
+          subtype: "general",
+          needsClarification: false,
+          meta: {
+            type: "spending_advice",
+            subtype: "general",
+            confidence: "high",
+            context: {
+              screenId: "budget",
+              screenTitle: "Budget",
+              routeName: "/budget",
+              platform: "ios",
+              periodLabel: "maart 2026",
+            },
+          },
+        },
+        "router-screen-a",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createJsonResponse(
+        {
+          route: "spending_advice",
+          confidence: "high",
+          type: "spending_advice",
+          subtype: "general",
+          needsClarification: false,
+          meta: {
+            type: "spending_advice",
+            subtype: "general",
+            confidence: "high",
+            context: {
+              screenId: "transactions",
+              screenTitle: "Transactions",
+              routeName: "/transactions",
+              platform: "ios",
+              periodLabel: "maart 2026",
+            },
+          },
+        },
+        "router-screen-b",
+      ),
+    );
+    postHelpAssistantSpendingAdviceCompletionMock.mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-screen-indep",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Geen JSON schema output" } }],
+        }),
+    });
+
+    const budgetContext = buildHelpAssistantContext({
+      screenId: "budget",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        remainingVariableBudget: 200,
+        hasForecastData: true,
+      },
+    });
+    const transactionsContext = buildHelpAssistantContext({
+      screenId: "transactions",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "transactions",
+        activeFilterCount: 0,
+      },
+    });
+
+    const budgetResult = await requestHelpAssistantReply({
+      context: budgetContext,
+      thread: createThreadWithUserMessage("Kan ik nog 40 euro uitgeven?"),
+    });
+    const transactionsResult = await requestHelpAssistantReply({
+      context: transactionsContext,
+      thread: createThreadWithUserMessage("Kan ik nog 40 euro uitgeven?"),
+    });
+
+    expect(budgetResult.answerText).toBe(transactionsResult.answerText);
+    expect(budgetResult.answerText).not.toContain("Open Budget of Inzichten");
+    expect(budgetResult.answerText).toContain(
+      "maandruimte en extra ruimte tot je volgende inkomsten",
+    );
   });
 
   it("keeps non-spending questions on regular proxy path", async () => {
@@ -684,5 +954,253 @@ describe("help-assistant-ai spending advice", () => {
     expect(result.answerText).not.toContain(
       "Er ontbreken nog enkele signalen in de huidige context.",
     );
+  });
+
+  it("uses planner spending mode with truth-safe payload and without general prompt leakage", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "spending_advice",
+          mode: "space_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: true,
+            cashflowSafety: true,
+            expectedEndBalance: false,
+            categoryStatus: true,
+            weekContext: true,
+            screenExplanation: false,
+          },
+          categoryHint: "groceries",
+          useScreenContext: false,
+        },
+        "planner-spending-1",
+      ),
+    );
+    postHelpAssistantSpendingAdviceCompletionMock.mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-spending-mode",
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  conclusion: "Je hebt nog wat ruimte, maar houd het rustig.",
+                  why: "Maandruimte en cashflow zijn nu redelijk stabiel.",
+                  risk: "Bij dit tempo wordt de rest van de maand krapper.",
+                  nextStep: "Controleer je boodschappen aan het einde van de week.",
+                }),
+              },
+            },
+          ],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "transactions",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "transactions",
+        activeFilterCount: 0,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("Heb ik nog ruimte voor boodschappen?"),
+    });
+
+    const spendingRequest =
+      postHelpAssistantSpendingAdviceCompletionMock.mock.calls[0]?.[0]
+        ?.openAIRequest;
+    const systemMessages = (spendingRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""));
+    const joined = systemMessages.join("\n");
+
+    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(1);
+    expect(systemMessages).toHaveLength(3);
+    expect(joined).toContain("Je bent de Budio AI Buddy voor bestedingsruimte-vragen.");
+    expect(joined).toContain("Vraagtype: ruimtevraag");
+    expect(joined).toContain("SpendingAdvice truth-safe payload JSON");
+    expect(joined).toContain("Categoriecontext:");
+    expect(joined).toContain("Weekbudget resterend");
+    expect(joined.indexOf("Maandbudget:")).toBeLessThan(
+      joined.indexOf("Weekbudget resterend"),
+    );
+    expect(joined).not.toContain(
+      "Je bent de Budio Assistent in een Nederlandse consumenten-app",
+    );
+    expect(joined).not.toContain("Schermspecifieke context");
+  });
+
+  it("keeps tanken-vraag month-first with week as aanvullende context and no screen leakage", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "spending_advice",
+          mode: "spending_decision",
+          confidence: "high",
+          requires: {
+            monthBudget: true,
+            cashflowSafety: false,
+            expectedEndBalance: true,
+            categoryStatus: true,
+            weekContext: true,
+            screenExplanation: false,
+          },
+          categoryHint: "fuel",
+          useScreenContext: false,
+        },
+        "planner-fuel-1",
+      ),
+    );
+    postHelpAssistantSpendingAdviceCompletionMock.mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-fuel",
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  conclusion: "Tanken kan waarschijnlijk nog, maar houd je maandruimte in de gaten.",
+                  why: "Je maandruimte en cashflow geven nog beperkte speling.",
+                  risk: "Bij extra uitgaven later deze maand kan je ruimte snel krimpen.",
+                  nextStep: "Kies een lager bedrag of stel extra uitgaven uit.",
+                }),
+              },
+            },
+          ],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "budget",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        remainingVariableBudget: 200,
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("Kan ik nog tanken deze week?"),
+    });
+
+    const spendingRequest =
+      postHelpAssistantSpendingAdviceCompletionMock.mock.calls[
+        postHelpAssistantSpendingAdviceCompletionMock.mock.calls.length - 1
+      ]?.[0]?.openAIRequest;
+    const systemMessages = (spendingRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""));
+    const joined = systemMessages.join("\n");
+    const lastMessage = (spendingRequest?.messages || [])[
+      (spendingRequest?.messages || []).length - 1
+    ];
+
+    expect(systemMessages).toHaveLength(3);
+    expect(joined).toContain("Spending-context:");
+    expect(joined).toContain("SpendingAdvice truth-safe payload JSON");
+    expect(joined).toContain("Maandbudget:");
+    expect(joined).toContain("Weekbudget resterend");
+    expect(joined.indexOf("Maandbudget:")).toBeLessThan(
+      joined.indexOf("Weekbudget resterend"),
+    );
+    expect(joined).toContain('"expectedEndBalance":true');
+    expect(joined).toContain('"cashflowSafety":true');
+    expect(joined).not.toContain(
+      "Je bent de Budio Assistent in een Nederlandse consumenten-app",
+    );
+    expect(joined).not.toContain("Schermspecifieke context");
+    expect(lastMessage?.role).toBe("user");
+    expect(String(lastMessage?.content || "")).toContain(
+      "Kan ik nog tanken deze week?",
+    );
+  });
+
+  it("uses planner issue_intake mode and keeps spending prompts out of the final call", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "issue_intake",
+          mode: "issue_intake",
+          confidence: "high",
+          useScreenContext: true,
+        },
+        "planner-issue-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-issue-mode",
+          model: "gpt-4.1-mini",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  meta: {
+                    route: "issue_intake",
+                    type: "idea",
+                    subtype: "idea",
+                    confidence: "high",
+                    state: "ready_to_review",
+                    needsClarification: false,
+                    context: {
+                      screenId: "dashboard",
+                      screenTitle: "Dashboard",
+                      routeName: "/dashboard",
+                      platform: "web",
+                      periodLabel: "maart 2026",
+                    },
+                  },
+                  answerText:
+                    "Wat zou je graag willen toevoegen of veranderen op het dashboard?",
+                  summary: "Grafiek voor dashboard",
+                  featureArea: "Dashboard",
+                  userNeed: "Je wilt grafieken zien op het dashboard",
+                  proposedChange: "een grafiek laat de forecast zien",
+                  isReadyForSubmission: true,
+                }),
+              },
+            },
+          ],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage(
+        "ik zou mijn budget van de hele maand in een grafiek willen zien",
+      ),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = JSON.stringify(
+      (finalRequest?.messages || [])
+        .filter((message: { role?: string }) => message.role === "system")
+        .map((message: { content?: string }) => String(message.content || "")),
+    );
+    expect(postOpenAIChatCompletionMock).toHaveBeenCalledTimes(2);
+    expect(systemText).toContain("Je bent de Budio Assistent voor chat-first idee- en issue-intake.");
+    expect(systemText).not.toContain("Je bent de Budio AI Buddy voor bestedingsruimte-vragen.");
   });
 });

@@ -76,7 +76,7 @@ export async function loadMonthForecastSummary(params: {
       supabase
         .from("monthly_cashflow_forecasts")
         .select(
-          "month_start,scope_view,forecast_reference_date,current_balance_anchor,current_balance_anchor_date,cash_risk_flag,risk_flag,expected_end_of_month_balance,lowest_expected_balance,lowest_expected_balance_date,next_expected_event_date,next_expected_event_label,expected_income_total,remaining_expected_income_total,remaining_expected_expense_total,remaining_expected_savings_outflow_total,upcoming_committed_income_total,upcoming_committed_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs",
+          "month_start,scope_view,forecast_reference_date,current_balance_anchor,current_balance_anchor_date,cash_risk_flag,risk_flag,expected_end_of_month_balance,lowest_expected_balance,lowest_expected_balance_date,next_expected_event_date,next_expected_event_label,expected_income_total,remaining_expected_income_total,remaining_expected_expense_total,remaining_expected_savings_outflow_total,upcoming_committed_income_total,upcoming_committed_expense_total,expected_fixed_costs,expected_subscriptions,expected_variable_costs,avg_groceries,avg_fuel,avg_smoking,avg_other_variable,top_cost_bucket_1,top_cost_bucket_2,top_cost_bucket_3",
         )
         .eq("user_id", resolvedUserId)
         .eq("month_start", monthStartIso)
@@ -239,6 +239,25 @@ export async function loadMonthForecastSummary(params: {
         row.expected_variable_costs == null
           ? null
           : Number(row.expected_variable_costs),
+      // Exposed for surface compatibility only.
+      // Do not treat as a canonical replacement for avgLast3Months in assistant advice.
+      avgGroceries:
+        row.avg_groceries == null ? null : Number(row.avg_groceries),
+      avgFuel:
+        row.avg_fuel == null ? null : Number(row.avg_fuel),
+      avgSmoking:
+        row.avg_smoking == null ? null : Number(row.avg_smoking),
+      avgOtherVariable:
+        row.avg_other_variable == null
+          ? null
+          : Number(row.avg_other_variable),
+      topCostBuckets: [
+        row.top_cost_bucket_1,
+        row.top_cost_bucket_2,
+        row.top_cost_bucket_3,
+      ]
+        .map((entry) => (entry == null ? "" : String(entry).trim()))
+        .filter(Boolean),
     };
 
     const monthState = buildForecastMonthStateFromLegacySummary(
