@@ -28,6 +28,7 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 - Utility/detailschermen gebruiken: `FinanceDetailShell` (met ingebouwde `FinanceDetailTopBar`) + compacte contentopbouw.
 - Selectie/modals gebruiken: `FinanceBottomSheetShell` als vaste shell.
 - Signaalcallouts gebruiken: `FinanceInlineCallout` als standaard.
+- Admin design-governance gebruiken: `FinanceAdminShell` + compacte chip-navigatie + subroutes onder `/admin/design-system`.
 
 ## Dashboard/Home Cockpit Contract
 
@@ -39,6 +40,15 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 - `Reserves & buffer` is compact en ondersteunend; buffer blijft apart benoemd binnen dit blok.
 - Subscription-optimalisatie hoort niet standaard op Home-risiconiveau.
 - Gebruik Home om rust, veiligheid en focus te sturen, niet om zoveel mogelijk kaarten te tonen.
+
+## Admin Design Hub
+
+- De admin design-system hub is een utility/subroute-familie onder `FinanceAdminShell`.
+- Gebruik een compacte, scanbare chipnav boven de inhoud; geen nieuwe shell of nieuwe design language.
+- De pagina's zijn referentie- en governancepagina's, geen showcase of productschermen.
+- Quick links, overzicht, tokens, componenten, patronen, bronnen en changelog mogen apart leven, maar blijven visueel onderdeel van dezelfde adminfamilie.
+- Voeg motion als eigen design-system sectie toe (`/admin/design-system/motion`) met dezelfde componentcatalogus-opzet: titel, kopieerbare naam, ruime preview en usage-notes.
+- Motion blijft functioneel en spaarzaam: gebruik bestaande motioncomponenten/hooks, respecteer `reduce-motion`, en vermijd decoratieve animatie zonder besliswaarde.
 
 ## Dashboard/Home Shell (Cockpit-Head Canoniek)
 
@@ -671,6 +681,80 @@ Belangrijkste patronen:
 - tactische stat blocks onder de hero
 - kaarten voor overlapweken en categorie-inzichten
 - quick menu en topactie blijven visueel rustig, niet concurrerend met de hero
+- `Beheer` binnen Budget voelt als een utility-achtige instellaag binnen hetzelfde hoofdscherm, niet als een tweede budgetscherm
+- gebruik in `Beheer` een 3-blokken-structuur:
+  - `Aanpak`
+  - `Bronnen`
+  - `Reserves / jaarlijkse lasten`
+- `Maandverdeling` hoort binnen `Bronnen` als compacte uitlegsamenvatting en niet als losse dominante kaart
+- `Categoriebudgetten` horen binnen `Bronnen` als secundaire, standaard ingeklapte subsection met status, maandlabel en afwijkingsteller
+- detailbewerking via sheet blijft beperkt tot `Jaarlijkse lasten`; categoriebudgetten openen binnen hetzelfde scherm en behouden dezelfde save-flow
+- conditionele controls zoals het spaardoel bij `Aangepast` verschijnen alleen wanneer relevant en staan niet standaard open
+
+Preview IA voor segment `Beheer` (zonder logicawijziging):
+- doel: rustige instel- en onderhoudslaag voor hoe maandruimte wordt opgebouwd
+- segmentlabel:
+  - primaire aanbeveling: hernoem tablabel `Beheer` naar `Aanpak`
+  - fallback: behoud `Beheer` als label, maar toon intern duidelijk 3 blokken met `Aanpak` als eerste bloktitel
+- verticale opbouw (boven naar beneden):
+  - `Aanpak`
+  - `Bronnen`
+  - `Reserves / jaarlijkse lasten`
+  - afsluitende primaire actie `Opslaan`
+- `Aanpak` bevat:
+  - budgetmoduskeuze
+  - spaardoel-control alleen bij `Aangepast`
+  - korte effect-preview in compacte samenvattingsrij of kleine previewkaart
+- `Bronnen` bevat:
+  - inkomstenbasis met compacte keuzechips of choice rows
+  - preview inkomend budget als primaire rechterwaarde
+  - maandverdeling compacter als samenvatting binnen `Bronnen`, niet als aparte dominante kaart
+  - forecastbron-info subtiel als helperregel (kleine meta-copy), niet als los nadrukblok
+- `Maandbudget per categorie` standaard minder prominent:
+  - ingeklapt als secundaire subsection met status + tellingen
+  - openklappen alleen op expliciete actie
+  - alleen bij detailbewerking tonen van volledige editor
+- `Reserves / jaarlijkse lasten` bevat:
+  - compacte samenvatting met maandbedrag + aantal actieve regels
+  - maximaal 2-3 previewregels inline
+  - beheer via bestaande sheet als secundaire actie
+- informatie die naar secundair niveau gaat:
+  - uitgebreide forecastbron-uitleg
+  - uitgebreide categorie-editor
+  - jaarlijkse-lasten detailbewerking
+- visuele hiërarchie:
+  - 1 duidelijk focuspunt per blok
+  - minder grote volwaardige cards onder elkaar
+  - meer utility-achtige rows binnen groepscards
+  - korte copy, minder dubbele explanatory tekst
+
+Budget instellen / begeleide flow:
+- `Budget instellen` is een utility/subflow binnen Budget, geen tweede home en geen klassiek formulier
+- de entry begint als compacte hero-kaart of startscherm binnen Budgetbeheer met `Slim instellen` als primaire CTA en `Zelf instellen` als secundaire CTA
+- instap, analyse, voorstel en verfijning blijven binnen dezelfde utility-shell; alleen lokale blokbewerkingen mogen naar compacte sheets of detailflows uitwijken
+- de flow start altijd met analyse, daarna voorstel, daarna pas verfijning
+- primaire CTA op de entry is `Slim instellen`; secundaire CTA is `Zelf instellen`
+- de analysefase gebruikt progress en korte statusregels, zonder open chat als eerste stap
+- de voorstelpagina toont 4 tot 5 variabele budgetcategorieën, verwacht vrij te verdelen bedrag en een korte redeneerregel
+- de verfijnfase mag AI-uitleg tonen, maar blijft voorstel-gedreven en niet chat-first
+- lokale blokbewerkingen (`Aanpak`, `Inkomstenbasis`, `Vaste lasten & reserveringen`, `Variabele budgetverdeling`) lopen via compacte sheet- of detailflows en vervangen de hoofdflow niet
+- standaardstrategie is contextueel voorgesteld door AI, maar de gebruiker kan altijd wisselen tussen `Standaard`, `Balans`, `Bespaarfocus` en `Aangepast`
+- visueel hergebruiken we bestaande budgetprogress, settings-rows, inline callouts en bottom-sheet shell; geen nieuwe design language
+- empty states moeten altijd een duidelijke fallback geven naar zelf instellen of terug naar Budget
+- success betekent: voorstel toegepast of opgeslagen en terug naar de budgettab met een zichtbare samenvatting van de gekozen strategie
+
+Pattern-hergebruik voor dit segment:
+- `FinanceSettingsGroup` voor blokniveau (`Aanpak`, `Bronnen`, `Reserves / jaarlijkse lasten`)
+- `FinanceSettingsRow` voor compacte samenvattingen en disclosure
+- `FinanceBottomSheetShell` voor jaarlijkse-lastenbeheer
+- `FinanceInlineCallout` alleen voor echte uitzonderingen (bijv. overallocatie), niet als standaardtekstdrager
+
+Eventueel nieuw maar Budio-conform patroon:
+- `BudgetManageDisclosureRow` (voorstel): een compacte rij met label, statuschip, tellingen en expand-actie
+- randvoorwaarden:
+  - bouw als gedeelde utility-rijvariant bovenop bestaande settings-row/pressable-surface patronen
+  - geen nieuwe kleurtaal, geen afwijkende shell, geen extra route
+  - alleen inzetten voor secundaire open/dicht beheerstukken binnen een hoofdscherm
 
 Wanneer hergebruiken:
 - bij schermen waar dagsturing, maandsturing en signalering samenkomen

@@ -1,6 +1,6 @@
 import React from "react";
 import renderer, { act } from "react-test-renderer";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import BankrekeningenScreen from "@/app/bankrekeningen";
@@ -177,8 +177,8 @@ describe("bankrekeningen-overzicht", () => {
       await Promise.resolve();
     });
 
-    const actionButtons = tree.root.findAll(
-      (node) => node.type === Pressable && Boolean(node.props.accessibilityLabel),
+    const actionButtons = tree.root.findAll((node) =>
+      typeof node.props?.accessibilityLabel === "string",
     );
     const editButton = actionButtons.find(
       (node) => node.props.accessibilityLabel === "Rekening bewerken",

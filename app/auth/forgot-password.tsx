@@ -3,9 +3,11 @@ import {
   AuthScreenShell,
   authScreenStyles,
 } from "@/components/auth/auth-screen-shell";
+import { FinanceButton } from "@/components/ui/finance-button";
+import { FinanceInputField } from "@/components/ui/finance-input-field";
 import type { Href } from "expo-router";
 import React from "react";
-import { ActivityIndicator, Pressable, Text, TextInput } from "react-native";
+import { Text } from "react-native";
 import { getAuthRedirectUrl } from "@/services/auth-url";
 import { getEmailFeedback } from "@/services/auth-email-validation";
 
@@ -62,10 +64,9 @@ export default function ForgotPasswordScreen() {
         },
       ]}
     >
-      <TextInput
-        style={authScreenStyles.input}
+      <FinanceInputField
+        label="E-mail"
         placeholder="E-mail"
-        placeholderTextColor="#7E8A9A"
         autoCapitalize="none"
         autoComplete="email"
         keyboardType="email-address"
@@ -76,28 +77,19 @@ export default function ForgotPasswordScreen() {
           if (success) setSuccess(null);
         }}
         editable={!submitting}
+        hint={emailHint}
       />
-      {emailHint ? (
-        <Text style={authScreenStyles.inlineHint}>{emailHint}</Text>
-      ) : null}
       {error ? <Text style={authScreenStyles.errorText}>{error}</Text> : null}
       {success ? (
         <Text style={authScreenStyles.successText}>{success}</Text>
       ) : null}
-      <Pressable
-        style={[
-          authScreenStyles.button,
-          disabled && authScreenStyles.buttonDisabled,
-        ]}
+      <FinanceButton
+        label="Resetlink versturen"
+        fullWidth
         onPress={handleRequestReset}
         disabled={disabled}
-      >
-        {submitting ? (
-          <ActivityIndicator color="#07130D" />
-        ) : (
-          <Text style={authScreenStyles.buttonText}>Resetlink versturen</Text>
-        )}
-      </Pressable>
+        loading={submitting}
+      />
     </AuthScreenShell>
   );
 }

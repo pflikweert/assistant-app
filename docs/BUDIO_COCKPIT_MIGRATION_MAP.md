@@ -18,6 +18,7 @@ De Home-truth en beslisvolgorde worden aanvullend vastgelegd in `docs/BUDIO_HOME
 | --- | --- | --- | --- | --- | --- |
 | `app/(tabs)/index.tsx` | Dashboard/overzicht | Primair cockpit-home | `aanpassen` | latest-known-balance, forecast, budget surface, risk/selectors, explainability | home blijft te veel doorverwijzen in plaats van antwoorden |
 | `app/(tabs)/budget.tsx` | Budgetsturing | Onderliggende stuurmotor voor veilige ruimte en tempo | `aanpassen` | budget-plan, budget-risk, week guardrails, reserve rules | Budget blijft productidentiteit i.p.v. motorlaag |
+| `app/budget/setup.tsx` | Begeleide budget-instelflow | Utility/subflow voor voorstel, analyse en verfijning | `toevoegen` | budget-plan, budget-coach, reserve rules, income preview, setup sheets | flow wordt alsnog een tweede budgethome |
 | `app/(tabs)/insights.tsx` | Uitleg en analyse | Verdiepende uitleglaag achter home | `samenvouwen` | insights selectors, forecast timeline, explainability | parallel productgevoel naast home |
 | `app/(tabs)/transactions.tsx` | Transactielijst en correctie | Begrip- en correctielaag die home voedt | `behouden` | categorization, rules, filters, detailflow | te veel primaire aandacht voor browsegedrag |
 | `app/subscriptions.tsx` | Abonnementenbeheer | `Subscription Assassin` utilitylaag | `aanpassen` | subscriptions, rare-subscriptions, reserve rules | blijft passief beheer in plaats van actiegerichte bespaarlaag |

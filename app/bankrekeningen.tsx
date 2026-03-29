@@ -1,9 +1,5 @@
 import { BankAccountFormSheet } from "@/components/bank-accounts/bank-account-form-sheet";
-import {
-  formatAccountMaskedNumber,
-  formatAccountOverviewSummary,
-  formatAccountOwnerContext,
-} from "@/components/bank-accounts/account-overview-summary";
+import { BankAccountOverviewRow } from "@/components/bank-accounts/bank-account-overview-row";
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceButton } from "@/components/ui/finance-button";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
@@ -21,22 +17,10 @@ import { useRouter } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-
-const ACCOUNT_TYPE_LABELS: Record<BankAccount["account_type"], string> = {
-  checking: "Betaalrekening",
-  savings: "Spaarrekening",
-  business: "Zakelijke rekening",
-  credit: "Creditcard",
-  loan: "Lening",
-  investment: "Beleggingsrekening",
-  cash: "Contant",
-  other: "Overig",
-};
 
 function formatDeleteCountLabel(count: number | null) {
   if (count == null) return "We controleren hoeveel transacties gekoppeld zijn.";
@@ -80,31 +64,18 @@ function DeleteConfirmSheet({
       footerStyle={styles.deleteSheetFooter}
       footer={
         <View style={styles.deleteSheetActions}>
-          <Pressable
-            accessibilityRole="button"
+          <FinanceButton
+            label="Annuleren"
+            variant="secondary"
             onPress={onClose}
-            style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.cancelButtonText}>Annuleren</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
+          />
+          <FinanceButton
+            label="Verwijderen"
+            variant="danger"
             onPress={onConfirm}
-            disabled={deleting}
-            style={({ pressed }) => [
-              styles.confirmDeleteButton,
-              (deleting || pressed) && styles.confirmDeleteButtonPressed,
-            ]}
-          >
-            {deleting ? (
-              <ActivityIndicator color={FinColors.bgBase} />
-            ) : (
-              <>
-                <AppIcon name="delete-outline" size={18} color={FinColors.bgBase} variant="outlined" />
-                <Text style={styles.confirmDeleteButtonText}>Verwijderen</Text>
-              </>
-            )}
-          </Pressable>
+            loading={deleting}
+            leftIcon={<AppIcon name="delete-outline" size={18} color={FinColors.red} variant="outlined" />}
+          />
         </View>
       }
     >
@@ -128,18 +99,6 @@ function DeleteConfirmSheet({
       </View>
     </FinanceBottomSheetShell>
   );
-}
-
-function getCardTone(account: BankAccount): "good" | "watch" | "muted" {
-  if (!account.is_active) return "muted";
-  if (account.include_in_budget === false) return "watch";
-  return "good";
-}
-
-function formatAccountStatusLabel(account: BankAccount): string {
-  if (!account.is_active) return "Verborgen";
-  if (account.include_in_budget === false) return "Alleen overzicht";
-  return "In budget";
 }
 
 export default function BankrekeningenScreen() {
@@ -318,94 +277,14 @@ export default function BankrekeningenScreen() {
       {!loading && !screenError && sortedAccounts.length ? (
         <View style={styles.listWrap}>
           {sortedAccounts.map((account, index) => {
-            const cardTone = getCardTone(account);
-            const ownerContext =
-              account.forecast_role === "excluded"
-                ? null
-                : formatAccountOwnerContext(account.owner_scope);
-            const summary = formatAccountOverviewSummary(account);
-            const statusLabel = formatAccountStatusLabel(account);
             return (
-              <View
+              <BankAccountOverviewRow
                 key={account.id}
-                style={[styles.accountRow, index === sortedAccounts.length - 1 ? styles.rowLast : null]}
-              >
-                <View style={styles.accountRowTop}>
-                  <View style={styles.accountMain}>
-                    <View style={styles.accountLogoBubble}>
-                      <AppIcon name="account-balance" size={FinTokens.icon.sm} color={FinColors.textSecondary} variant="outlined" />
-                    </View>
-                    <View style={styles.accountTitleWrap}>
-                      <View style={styles.accountTitleLine}>
-                        <Text style={styles.accountName}>{account.name}</Text>
-                        <View
-                          style={[
-                            styles.statusChip,
-                            cardTone === "good"
-                              ? styles.statusChipGood
-                              : cardTone === "watch"
-                                ? styles.statusChipWatch
-                                : styles.statusChipMuted,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.statusChipText,
-                              cardTone === "good"
-                                ? styles.statusChipTextGood
-                                : cardTone === "watch"
-                                  ? styles.statusChipTextWatch
-                                  : styles.statusChipTextMuted,
-                            ]}
-                          >
-                            {statusLabel}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={styles.accountTypeLabel}>
-                        {ACCOUNT_TYPE_LABELS[account.account_type]}
-                      </Text>
-                      <Text style={styles.providerLine}>
-                        {account.provider || "Onbekende aanbieder"} · {formatAccountMaskedNumber(account.account_masked)}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.accountHeaderActions}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Rekening bewerken"
-                      onPress={() => setEditingAccount(account)}
-                      style={({ pressed }) => [
-                        styles.iconActionButton,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <AppIcon name="edit" size={FinTokens.icon.sm} color={FinColors.textSecondary} variant="outlined" />
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Rekening verwijderen"
-                      onPress={() => setDeletingAccount(account)}
-                      style={({ pressed }) => [
-                        styles.iconActionButton,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <AppIcon name="delete-outline" size={FinTokens.icon.sm} color={FinColors.red} variant="outlined" />
-                    </Pressable>
-                  </View>
-                </View>
-                <View style={styles.accountFooter}>
-                  <Text style={styles.accountSummary}>{summary}</Text>
-                  <View style={styles.accountFooterLeft}>
-                    {ownerContext ? (
-                      <View style={styles.contextChip}>
-                        <Text style={styles.contextChipText}>{ownerContext}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              </View>
+                account={account}
+                isLast={index === sortedAccounts.length - 1}
+                onEdit={setEditingAccount}
+                onDelete={setDeletingAccount}
+              />
             );
           })}
         </View>
@@ -578,34 +457,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: FinSpacing.xs,
   },
-  statusChip: {
-    borderRadius: FinRadius.pill,
-    paddingVertical: FinSpacing.x1,
-    paddingHorizontal: FinSpacing.xs,
-  },
-  statusChipGood: {
-    backgroundColor: FinColors.statusGoodBg,
-  },
-  statusChipWatch: {
-    backgroundColor: FinColors.bgElevated,
-  },
-  statusChipMuted: {
-    backgroundColor: FinColors.surfaceSoft,
-  },
-  statusChipText: {
-    ...FinTypography.caption,
-    fontWeight: FinFontWeight.bold,
-    textTransform: "uppercase",
-  },
-  statusChipTextGood: {
-    color: FinColors.statusGoodText,
-  },
-  statusChipTextWatch: {
-    color: FinColors.textSecondary,
-  },
-  statusChipTextMuted: {
-    color: FinColors.textMuted,
-  },
   accountHeaderActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -761,39 +612,5 @@ const styles = StyleSheet.create({
     ...FinTypography.caption,
     color: FinColors.red,
     fontWeight: FinFontWeight.semibold,
-  },
-  cancelButton: {
-    borderRadius: FinRadius.pill,
-    backgroundColor: FinColors.bgElevated,
-    paddingVertical: FinSpacing.s,
-    paddingHorizontal: FinSpacing.m,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cancelButtonText: {
-    ...FinTypography["body-sm"],
-    color: FinColors.textPrimary,
-    fontWeight: FinFontWeight.bold,
-  },
-  confirmDeleteButton: {
-    borderRadius: FinRadius.pill,
-    backgroundColor: FinColors.red,
-    paddingVertical: FinSpacing.s,
-    paddingHorizontal: FinSpacing.m,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: FinSpacing.x2,
-  },
-  confirmDeleteButtonPressed: {
-    opacity: 0.88,
-  },
-  confirmDeleteButtonText: {
-    ...FinTypography["body-sm"],
-    color: FinColors.bgBase,
-    fontWeight: FinFontWeight.extrabold,
-  },
-  pressed: {
-    opacity: 0.86,
   },
 });

@@ -4,6 +4,7 @@ import {
   type FinanceInsightCardType,
 } from "@/components/ui/finance-insight-card";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
+import { FinanceButton } from "@/components/ui/finance-button";
 import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
 import { FinanceForecastSummaryCard } from "@/components/ui/finance-forecast-summary-card";
 import { FinanceCategorySummaryCard } from "@/components/ui/finance-category-summary-card";
@@ -83,7 +84,7 @@ import type { BudgetPlanComputation } from "@/types/categorization";
 import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 type InsightSignals = {
   all: InsightsSignalTransaction[];
@@ -811,18 +812,14 @@ export default function InsightsScreen() {
               <FinanceSectionHeader
                 title="Komende momenten"
                 rightSlot={
-                  <Pressable
-                    accessibilityRole="button"
+                  <FinanceButton
+                    label="Resterende maand"
+                    variant="ghost"
+                    size="sm"
                     onPress={() => setRemainingMonthOpen(true)}
-                    style={({ pressed }) => [
-                      styles.remainingMonthButton,
-                      pressed ? styles.remainingMonthButtonPressed : null,
-                    ]}
-                  >
-                    <Text style={styles.remainingMonthButtonText}>
-                      Resterende maand
-                    </Text>
-                  </Pressable>
+                    style={styles.remainingMonthButton}
+                    labelStyle={styles.remainingMonthButtonText}
+                  />
                 }
               />
               <FinanceUpcomingMomentsCard items={upcomingMoments} />
@@ -833,18 +830,14 @@ export default function InsightsScreen() {
             <FinanceSectionHeader title="Waar gaat het meeste geld naartoe?" />
             <FinanceCategorySummaryCard model={categorySummary} />
             {categorySummary.rows.length > 0 ? (
-              <Pressable
-                accessibilityRole="button"
+              <FinanceButton
+                label="Toon alle hoofdcategorieën"
+                variant="secondary"
+                size="sm"
                 onPress={() => setAllCategoriesOpen(true)}
-                style={({ pressed }) => [
-                  styles.showAllButton,
-                  pressed ? styles.showAllButtonPressed : null,
-                ]}
-              >
-                <Text style={styles.showAllButtonText}>
-                  Toon alle hoofdcategorieën
-                </Text>
-              </Pressable>
+                style={styles.showAllButton}
+                labelStyle={styles.showAllButtonText}
+              />
             ) : null}
           </View>
         </View>
@@ -1162,9 +1155,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: "center",
   },
-  showAllButtonPressed: {
-    opacity: 0.88,
-  },
   showAllButtonText: {
     fontSize: 14,
     lineHeight: 18,
@@ -1179,9 +1169,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     alignItems: "center",
     justifyContent: "center",
-  },
-  remainingMonthButtonPressed: {
-    opacity: 0.88,
   },
   remainingMonthButtonText: {
     fontSize: 12,

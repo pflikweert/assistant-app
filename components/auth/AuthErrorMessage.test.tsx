@@ -1,7 +1,6 @@
 import React from "react";
 import renderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
-import { Pressable } from "react-native";
 
 import AuthErrorMessage, { getAuthErrorMessage } from "./AuthErrorMessage";
 
@@ -26,6 +25,12 @@ vi.mock("./auth-screen-shell", () => ({
   },
 }));
 
+vi.mock("@/components/ui/finance-button", () => ({
+  FinanceButton: ({ onPress }: { onPress?: () => void }) => (
+    React.createElement("mock-finance-button", { onPress })
+  ),
+}));
+
 describe("AuthErrorMessage", () => {
   it("toont juiste foutmelding voor verlopen link", () => {
     expect(getAuthErrorMessage("otp_expired")).toMatch(/verlopen/i);
@@ -47,7 +52,7 @@ describe("AuthErrorMessage", () => {
       );
     });
 
-    const button = tree!.root.findByType(Pressable);
+    const button = tree!.root.findByType("mock-finance-button");
     act(() => {
       button.props.onPress();
     });

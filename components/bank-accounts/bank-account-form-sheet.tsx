@@ -1,5 +1,7 @@
 import { AppIcon } from "@/components/ui/app-icon";
+import { FinanceButton } from "@/components/ui/finance-button";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
+import { FinanceInputField } from "@/components/ui/finance-input-field";
 import { FinColors } from "@/constants/theme";
 import {
   createBankAccount,
@@ -18,13 +20,11 @@ import {
 } from "@/services/bank-account-simple-settings";
 import React from "react";
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
@@ -314,41 +314,36 @@ export function BankAccountFormSheet({
       footer={
         <View style={styles.footerActions}>
           {onDelete ? (
-            <Pressable
-              accessibilityRole="button"
+            <FinanceButton
+              label="Rekening verwijderen"
+              variant="danger"
               onPress={onDelete}
-              style={({ pressed }) => [
-                styles.deleteButton,
-                pressed && styles.deleteButtonPressed,
-              ]}
-            >
-              <AppIcon name="delete-outline" size={18} color={FinColors.red} variant="outlined" />
-              <Text style={styles.deleteButtonText}>Rekening verwijderen</Text>
-            </Pressable>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.saveButton,
-              (saving || pressed) && styles.saveButtonPressed,
-            ]}
-            onPress={() => void handleSave()}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator color={FinColors.bgBase} />
-            ) : (
-              <>
-                <Text style={styles.saveButtonText}>{resolvedSubmitLabel}</Text>
+              leftIcon={
                 <AppIcon
-                  name="arrow-forward"
+                  name="delete-outline"
                   size={18}
-                  color={FinColors.bgBase}
+                  color={FinColors.red}
                   variant="outlined"
                 />
-              </>
-            )}
-          </Pressable>
+              }
+            />
+          ) : null}
+          <FinanceButton
+            label={resolvedSubmitLabel}
+            fullWidth
+            variant="primary"
+            onPress={() => void handleSave()}
+            disabled={saving}
+            loading={saving}
+            rightIcon={
+              <AppIcon
+                name="arrow-forward"
+                size={18}
+                color={FinColors.textPrimary}
+                variant="outlined"
+              />
+            }
+          />
         </View>
       }
     >
@@ -372,63 +367,49 @@ export function BankAccountFormSheet({
         </View>
 
         <View style={styles.fieldBlock}>
-            <Text style={styles.fieldLabel}>Geef je rekening een naam</Text>
-          <TextInput
+          <FinanceInputField
+            label="Geef je rekening een naam"
             value={name}
             onChangeText={(value) => {
               setName(value);
               setFieldErrors((current) => ({ ...current, name: undefined }));
             }}
             placeholder="Bijv. Gezamenlijke boodschappen"
-            placeholderTextColor={FinColors.textMuted}
-            style={styles.textInput}
             autoCapitalize="words"
             autoCorrect={false}
+            error={fieldErrors.name || null}
           />
-          {fieldErrors.name ? (
-            <Text style={styles.fieldErrorText}>{fieldErrors.name}</Text>
-          ) : null}
         </View>
 
         <View style={styles.fieldBlock}>
-          <Text style={styles.fieldLabel}>Bank of aanbieder</Text>
-          <TextInput
+          <FinanceInputField
+            label="Bank of aanbieder"
             value={provider}
             onChangeText={(value) => {
               setProvider(value);
               setFieldErrors((current) => ({ ...current, provider: undefined }));
             }}
             placeholder={providerLabel || "Bijv. ING"}
-            placeholderTextColor={FinColors.textMuted}
-            style={styles.textInput}
             autoCapitalize="words"
             autoCorrect={false}
+            error={fieldErrors.provider || null}
           />
-          {fieldErrors.provider ? (
-            <Text style={styles.fieldErrorText}>{fieldErrors.provider}</Text>
-          ) : null}
         </View>
 
         <View style={styles.fieldBlock}>
-          <Text style={styles.fieldLabel}>Rekeningnummer</Text>
-          <TextInput
+          <FinanceInputField
+            label="Rekeningnummer"
             value={accountNumber}
             onChangeText={(value) => {
               setAccountNumber(value);
               setFieldErrors((current) => ({ ...current, accountNumber: undefined }));
             }}
             placeholder={accountPlaceholder}
-            placeholderTextColor={FinColors.textMuted}
-            style={styles.textInput}
             autoCapitalize="characters"
             autoCorrect={false}
+            hint={accountHelperText}
+            error={fieldErrors.accountNumber || null}
           />
-          {accountHelperText ? (
-            <Text style={styles.fieldHint}>{accountHelperText}</Text>
-          ) : null}
-          {fieldErrors.accountNumber ? (
-            <Text style={styles.fieldErrorText}>{fieldErrors.accountNumber}</Text>
-          ) : null}
         </View>
 
         <View style={styles.fieldBlock}>
@@ -714,17 +695,6 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
     fontWeight: "800",
   },
-  fieldHint: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: FinColors.textMuted,
-  },
-  fieldErrorText: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: FinColors.red,
-    fontWeight: "600",
-  },
   toggleCard: {
     backgroundColor: FinColors.bgCard,
     borderRadius: 20,
@@ -800,15 +770,6 @@ const styles = StyleSheet.create({
     color: FinColors.warningText,
     fontWeight: "600",
   },
-  textInput: {
-    borderRadius: 18,
-    backgroundColor: FinColors.bgCard,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
-    lineHeight: 20,
-    color: FinColors.textPrimary,
-  },
   dropdownWrap: {
     gap: 8,
   },
@@ -869,45 +830,5 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: FinColors.red,
     fontWeight: "600",
-  },
-  saveButton: {
-    borderRadius: 999,
-    backgroundColor: FinColors.textPrimary,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  saveButtonPressed: {
-    opacity: 0.88,
-  },
-  saveButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
-    color: FinColors.bgBase,
-    fontWeight: "800",
-  },
-  deleteButton: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: FinColors.redBg,
-    backgroundColor: FinColors.bgCard,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  deleteButtonPressed: {
-    opacity: 0.86,
-  },
-  deleteButtonText: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: FinColors.red,
-    fontWeight: "700",
   },
 });

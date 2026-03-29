@@ -4,10 +4,8 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import {
   ActivityIndicator,
   Alert,
-  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
   Platform,
 } from "react-native";
@@ -17,6 +15,8 @@ import {
   authScreenStyles,
 } from "@/components/auth/auth-screen-shell";
 import AuthErrorMessage from "@/components/auth/AuthErrorMessage";
+import { FinanceButton } from "@/components/ui/finance-button";
+import { FinanceInputField } from "@/components/ui/finance-input-field";
 import { getApiBaseUrl } from "@/services/api-base";
 import { getPasswordUpdateErrorMessage } from "@/services/auth-password-errors";
 import {
@@ -230,11 +230,9 @@ export default function ResetPasswordScreen() {
         },
       ]}
     >
-      <Text style={authScreenStyles.fieldLabel}>Nieuw wachtwoord</Text>
-      <TextInput
-        style={authScreenStyles.input}
+      <FinanceInputField
+        label="Nieuw wachtwoord"
         placeholder="Kies een nieuw wachtwoord"
-        placeholderTextColor="#8F8A83"
         secureTextEntry
         value={password}
         onChangeText={(value) => {
@@ -242,15 +240,11 @@ export default function ResetPasswordScreen() {
           if (error) setError(null);
         }}
         editable={!loading}
+        hint={passwordHint}
       />
-      {passwordHint ? (
-        <Text style={authScreenStyles.inlineHint}>{passwordHint}</Text>
-      ) : null}
-      <Text style={authScreenStyles.fieldLabel}>Bevestig wachtwoord</Text>
-      <TextInput
-        style={authScreenStyles.input}
+      <FinanceInputField
+        label="Bevestig wachtwoord"
         placeholder="Herhaal het wachtwoord"
-        placeholderTextColor="#8F8A83"
         secureTextEntry
         value={confirm}
         onChangeText={(value) => {
@@ -258,28 +252,19 @@ export default function ResetPasswordScreen() {
           if (error) setError(null);
         }}
         editable={!loading}
+        hint={confirmHint}
       />
-      {confirmHint ? (
-        <Text style={authScreenStyles.inlineHint}>{confirmHint}</Text>
-      ) : null}
       <Text style={authScreenStyles.helperText}>
         {getPasswordRequirementsText()} Je huidige wachtwoord is hier niet nodig.
       </Text>
       {error ? <Text style={authScreenStyles.errorText}>{error}</Text> : null}
-      <Pressable
-        style={[
-          authScreenStyles.button,
-          disabled && authScreenStyles.buttonDisabled,
-        ]}
+      <FinanceButton
+        label="Wachtwoord instellen"
+        fullWidth
         onPress={handleSubmit}
         disabled={disabled}
-      >
-        {loading ? (
-          <ActivityIndicator color="#111111" />
-        ) : (
-          <Text style={authScreenStyles.buttonText}>Wachtwoord instellen</Text>
-        )}
-      </Pressable>
+        loading={loading}
+      />
     </AuthScreenShell>
   );
 }

@@ -122,6 +122,21 @@ Niet bedoeld voor:
   - categorie-opbouw en budgetbeheer
   - transactie-inclusie of -exclusie in budget
   - forecastbron in samenhang met budgetlogica
+  - startpunt voor de begeleide budget-instelflow met `Slim met Budio` (primair) en `Handmatig` (secundair)
+  - analyse → voorstel → verfijning als leidende instelvolgorde
+  - strategiekeuze tussen `Standaard`, `Balans`, `Bespaarmodus` en `Handmatig`
+  - lokale blokbewerkingen voor `Aanpak`, `Inkomstenbasis`, `Vaste lasten & reserveringen` en `Variabele budgetverdeling`
+
+### Budget instellen
+
+De budget-instelflow is ontworpen als begeleide voorstelroute binnen de bestaande budgetmotor.
+
+- Budio berekent eerst inkomen, vaste lasten, reserveringen en variabele ruimte
+- de gebruiker ziet daarna een voorstel en hoeft vooral te bevestigen of bij te sturen
+- AI helpt met uitleg, advies en verfijning, maar niet als chat-first startpunt
+- de start blijft rustig en voorstelgestuurd met `Slim met Budio` als primaire route en `Handmatig` als fallback
+- lokale bewerkingsflows zijn secundair en vervangen de hoofdflow niet
+- de v1-engine en toolgrenzen staan uitgewerkt in `docs/design/budget-setup-engine-v1.md`
 
 ### Route: `app/(tabs)/insights.tsx`
 
@@ -151,6 +166,19 @@ Niet bedoeld voor:
   - review inbox voor assistentfrictie
   - AI-verbruik, kosten en OpenAI-totalen
   - per use-case model- en route-instellingen
+
+### Routefamilie: `app/admin/design-system/*`
+
+- Status: `Actief`
+- Doel: interne design-system hub voor overzicht, tokens, componenten, patronen, bronnen en wijzigingshistorie
+- Voor wie: alleen admingebruikers
+- Kernfunctionaliteiten:
+  - overzicht van de canonieke referenties en governance-afspraken
+  - tokenpagina met kleuren, typografie, spacing, radius, borders en shadows
+  - componentpagina met live previews en praktische usage-notes
+  - patroonpagina met shellkeuzes en opbouwregels
+  - bronnen- en syncpagina met Stitch project, canonical asset en leidende docs
+  - compact changelog-overzicht voor interne referentie
 
 ### Route: `app/(tabs)/_layout.tsx`
 

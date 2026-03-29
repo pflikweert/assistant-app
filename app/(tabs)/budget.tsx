@@ -14,15 +14,31 @@ import {
 } from "@/components/budget-pressure-list";
 import { BudgetMonthSummaryCard } from "@/components/budget-month-summary-card";
 import { BudgetWeekRhythmCard } from "@/components/budget-week-rhythm-card";
+import { BudgetMonthActionCard } from "@/components/budget/budget-month-action-card";
+import { BudgetManageIncomeSourcesGroup } from "@/components/budget/budget-manage-income-sources-group";
+import { BudgetManageObligationsGroup } from "@/components/budget/budget-manage-obligations-group";
+import { BudgetManageDistributionGroup } from "@/components/budget/budget-manage-distribution-group";
+import { SmartBudgetSetupEntryCard } from "@/components/budget/smart-budget-setup-entry-card";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
-import { FinColors, FinSurfaces } from "@/constants/theme";
+import {
+  FinColors,
+  FinSpacing,
+  FinSurfaces,
+  FinTypography,
+} from "@/constants/theme";
 import { FinanceHeaderActions } from "@/components/ui/finance-header-actions";
+import { FinanceInlineCallout } from "@/components/ui/finance-inline-callout";
+import { FinanceButton } from "@/components/ui/finance-button";
 import { FinanceScreenBackdrop } from "@/components/ui/finance-screen-backdrop";
+import { FinanceSettingsGroup } from "@/components/ui/finance-settings-group";
+import { FinanceSettingsRow } from "@/components/ui/finance-settings-row";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceMonthSelector } from "@/components/ui/finance-month-selector";
 import { FinanceMonthSelectorModal } from "@/components/ui/finance-month-selector-modal";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
+import { FinanceBudgetProgressBar } from "@/components/ui/finance-budget-progress-bar";
+import { FinanceStatusChip } from "@/components/ui/finance-status-chip";
 import { MainPageSpacing } from "@/components/ui/main-page-spacing";
 import { FinanceScopeSwitch } from "@/components/ui/finance-scope-switch";
 import { FinanceTopBar } from "@/components/ui/finance-top-bar";
@@ -108,7 +124,7 @@ import type {
   BudgetWeekPlanRow,
   CategoryRecord,
 } from "@/types/categorization";
-import { AppIcon } from "@/components/ui/app-icon";
+import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
 import { useIsFocused } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
@@ -422,10 +438,8 @@ function isVariableBreakdownKey(categoryKey: BudgetCategoryKey) {
   return VARIABLE_BUDGET_BREAKDOWN_KEYS.includes(categoryKey);
 }
 
-function formatBudgetModeLabel(mode: BudgetPlanMode) {
-  if (mode === "active_savings") return "Actief sparen";
-  if (mode === "balanced") return "Gebalanceerd";
-  return "Aangepast";
+function formatCountLabel(count: number, singular: string, plural: string) {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function getBudgetModeDescription(mode: BudgetPlanMode) {
@@ -451,11 +465,6 @@ function getAutomaticModePreviewMeta(
   return mode === "active_savings"
     ? "Na opslaan wordt een ambitieuzer automatisch doel voor deze maand gebruikt."
     : "Na opslaan wordt een rustiger automatisch doel voor deze maand gebruikt.";
-}
-
-function formatSavingsTargetDraftMetaLabel(mode: BudgetPlanMode) {
-  if (mode === "custom") return "Handmatig via eigen spaardoel";
-  return "Automatisch via budgetmodus";
 }
 
 function formatBudgetSourceLabel(
@@ -501,6 +510,15 @@ function getRiskStyle(tone: BudgetRiskTone) {
     chip: tone === "critical" ? styles.statusChipCritical : null,
     text: tone === "critical" ? styles.statusChipTextCritical : null,
   };
+}
+
+function getRiskStatusTone(
+  tone: BudgetRiskTone,
+): "good" | "watch" | "critical" | "neutral" {
+  if (tone === "good") return "good";
+  if (tone === "watch") return "watch";
+  if (tone === "critical") return "critical";
+  return "neutral";
 }
 
 function getVariableCategoryIconName(categoryKey: string) {
@@ -796,6 +814,16 @@ function getBudgetPressureIconName(categoryKey: BudgetCategoryKey) {
   return getVariableCategoryIconName(categoryKey);
 }
 
+function getBudgetCategoryIconName(categoryKey: BudgetCategoryKey) {
+  if (categoryKey === "fixed_costs") return "home" as const;
+  if (categoryKey === "subscriptions") return "subscriptions" as const;
+  if (categoryKey === "savings_target") return "savings" as const;
+  if (categoryKey === "groceries") return "shopping-basket" as const;
+  if (categoryKey === "fuel") return "local-gas-station" as const;
+  if (categoryKey === "smoking") return "smoking-rooms" as const;
+  return "sell" as const;
+}
+
 function buildBudgetPressureItems(
   plan: BudgetPlanComputation | null,
 ): BudgetPressureItem[] {
@@ -953,9 +981,15 @@ export default function BudgetScreen() {
     AnnualObligationReserveRule[]
   >([]);
   const [reserveRulesSheetOpen, setReserveRulesSheetOpen] = React.useState(false);
+  const [incomeSourcesSheetOpen, setIncomeSourcesSheetOpen] =
+    React.useState(false);
+  const [budgetDistributionSheetOpen, setBudgetDistributionSheetOpen] =
+    React.useState(false);
   const [reserveRuleAmountDrafts, setReserveRuleAmountDrafts] = React.useState<
     Record<string, string>
   >({});
+  const [manageCategoryBudgetsOpen, setManageCategoryBudgetsOpen] =
+    React.useState(false);
   const [expandedMonthSummaryCategories, setExpandedMonthSummaryCategories] =
     React.useState<string[]>([]);
   const [detailSection, setDetailSection] = React.useState<
@@ -990,7 +1024,14 @@ export default function BudgetScreen() {
     const raw = Array.isArray(routeParams.segment)
       ? routeParams.segment[0]
       : routeParams.segment;
-    if (raw === "new" || raw === "month" || raw === "manage") {
+    if (raw === "manage_new") {
+      return "manage" as SegmentKey;
+    }
+    if (
+      raw === "new" ||
+      raw === "month" ||
+      raw === "manage"
+    ) {
       return raw as SegmentKey;
     }
     return null;
@@ -1870,6 +1911,169 @@ export default function BudgetScreen() {
       meta: getAutomaticModePreviewMeta(budgetModeDraft, isCurrentMode),
     };
   }, [budgetModeDraft, budgetPlan]);
+
+  const manageBudgetPreview = React.useMemo(() => {
+    if (budgetModeDraft === "custom") {
+      return {
+        label: "Eigen spaardoel",
+        amount: savingsTargetMonthlyDraft,
+        meta: "Stel in hoeveel je deze maand wilt overhouden.",
+      };
+    }
+
+    if (!selectedModeTargetPreview) {
+      return {
+        label: "Spaardoel deze maand",
+        amount: 0,
+        meta: getBudgetModeDescription(budgetModeDraft),
+      };
+    }
+
+    return {
+      label: selectedModeTargetPreview.isCurrentMode
+        ? "Spaardoel deze maand"
+        : "Verwacht spaardoel",
+      amount: selectedModeTargetPreview.amount,
+      meta: selectedModeTargetPreview.meta,
+    };
+  }, [
+    budgetModeDraft,
+    savingsTargetMonthlyDraft,
+    selectedModeTargetPreview,
+  ]);
+
+  const manualCategoryBudgetCount = React.useMemo(() => {
+    return editableBudgetRows.reduce((count, row) => {
+      if (
+        row.categoryKey === "variable_costs" ||
+        row.categoryKey === "savings_target"
+      ) {
+        return count;
+      }
+
+      const draftValue = parseDraftBudgetValue(row.categoryKey);
+      const baselineValue = normalizeBudgetAmount(row.baselineMonthly);
+      return draftValue !== baselineValue ? count + 1 : count;
+    }, 0);
+  }, [editableBudgetRows, parseDraftBudgetValue]);
+
+  const manageCategoryBudgetStatusLabel = React.useMemo(() => {
+    if (variableAllocationFeedback.tone === "good") return "Klopt";
+    if (variableAllocationFeedback.tone === "watch") return "Open";
+    return "Let op";
+  }, [variableAllocationFeedback.tone]);
+
+  const categoryBudgetSummarySubtitle = React.useMemo(() => {
+    const parts = [selectedMonth.label];
+    if (manualCategoryBudgetCount > 0) {
+      parts.push(`${manualCategoryBudgetCount} bijgestuurd`);
+    } else {
+      parts.push("volgt trend");
+    }
+
+    if (lockedVariableCategorySet.size > 0) {
+      parts.push(`${lockedVariableCategorySet.size} vastgezet`);
+    }
+
+    return parts.join(" · ");
+  }, [
+    lockedVariableCategorySet,
+    manualCategoryBudgetCount,
+    selectedMonth.label,
+  ]);
+
+  const activeAnnualReserveRules = React.useMemo(
+    () => annualReserveRules.filter((rule) => rule.status === "active"),
+    [annualReserveRules],
+  );
+
+  const annualReservePreviewRules = React.useMemo(() => {
+    const source = activeAnnualReserveRules.length
+      ? activeAnnualReserveRules
+      : annualReserveRules;
+    return source.slice(0, 3);
+  }, [activeAnnualReserveRules, annualReserveRules]);
+
+  const annualReserveSheetSummary = buildAnnualReserveSheetSummary({
+    reserveBreakdown: assistantForecastSurface?.reserveBreakdown || null,
+    currentReservedBalanceAmount:
+      assistantForecastSurface?.balances.currentReservedBalance.amount ?? null,
+    annualRules: annualReserveRules,
+  });
+
+  const annualReserveInlineAmount = React.useMemo(
+    () =>
+      Math.max(
+        Math.round(
+          assistantForecastSurface?.reserve?.plannedReserveAllocationThisMonth ||
+            annualReserveSheetSummary.annualActive ||
+            0,
+        ),
+        0,
+      ),
+    [
+      annualReserveSheetSummary.annualActive,
+      assistantForecastSurface?.reserve?.plannedReserveAllocationThisMonth,
+    ],
+  );
+
+  const manageIncomingSourcesSummaryRows = React.useMemo(
+    () =>
+      INCOME_SOURCE_OPTIONS.map((option) => ({
+        key: option.key,
+        label: option.label,
+        enabled: budgetIncomeDraft[option.key],
+      })),
+    [budgetIncomeDraft],
+  );
+
+  const manageObligationRows = React.useMemo(
+    () => [
+      {
+        key: "fixed_costs",
+        label: "Vaste lasten",
+        amount: parseDraftBudgetValue("fixed_costs"),
+      },
+      {
+        key: "subscriptions",
+        label: "Abonnementen",
+        amount: parseDraftBudgetValue("subscriptions"),
+      },
+      {
+        key: "annual",
+        label: "Jaarlijkse lasten",
+        amount: annualReserveInlineAmount,
+      },
+      {
+        key: "savings",
+        label: "Reserves",
+        amount: getRelevantSavingsTargetForDraftMode(
+          budgetModeDraft,
+          savingsTargetMonthlyDraft,
+        ),
+      },
+    ],
+    [
+      annualReserveInlineAmount,
+      budgetModeDraft,
+      getRelevantSavingsTargetForDraftMode,
+      parseDraftBudgetValue,
+      savingsTargetMonthlyDraft,
+    ],
+  );
+
+  const manageBudgetDistributionRows = React.useMemo(
+    () =>
+      editableBudgetRows
+        .filter((row) => row.categoryKey !== "variable_costs")
+        .map((row) => ({
+          key: row.categoryKey,
+          label: getBudgetCategoryDisplayLabel(row.categoryKey),
+          amount: parseDraftBudgetValue(row.categoryKey),
+          iconName: getBudgetCategoryIconName(row.categoryKey) as AppIconName,
+        })),
+    [editableBudgetRows, parseDraftBudgetValue],
+  );
 
   const budgetHeroCopy = React.useMemo(
     () => ({
@@ -2865,13 +3069,6 @@ export default function BudgetScreen() {
     setCategoryDetailErrors({});
   }, [selectedMonth.startIso]);
 
-  const annualReserveSheetSummary = buildAnnualReserveSheetSummary({
-    reserveBreakdown: assistantForecastSurface?.reserveBreakdown || null,
-    currentReservedBalanceAmount:
-      assistantForecastSurface?.balances.currentReservedBalance.amount ?? null,
-    annualRules: annualReserveRules,
-  });
-
   return (
     <View style={styles.root}>
       <FinanceScreenBackdrop tone="warm" />
@@ -3025,6 +3222,22 @@ export default function BudgetScreen() {
                 ) : null}
               </View>
             ) : null}
+            {segment === "new" ? (
+              <SmartBudgetSetupEntryCard
+                onStartSmart={() =>
+                  router.push({
+                    pathname: "/budget/setup",
+                    params: { month: selectedMonth.key },
+                  })
+                }
+                onStartManual={() =>
+                  router.push({
+                    pathname: "/budget/setup",
+                    params: { month: selectedMonth.key, stage: "refine" },
+                  })
+                }
+              />
+            ) : null}
             <View style={styles.mainStack}>
               {segment === "new" ? (
                 <>
@@ -3077,24 +3290,16 @@ export default function BudgetScreen() {
                     ? "Nog geen data"
                     : fmt.format(Math.max(monthlyRemaining, 0))}
                 </Text>
-                <View
-                  style={[styles.statusChip, getRiskStyle(monthRiskTone).chip]}
-                >
-                  <Text
-                    style={[
-                      styles.statusChipText,
-                      getRiskStyle(monthRiskTone).text,
-                    ]}
-                  >
-                    {monthBudgetSnapshot.label}
-                  </Text>
-                </View>
+                <FinanceStatusChip
+                  label={monthBudgetSnapshot.label}
+                  tone={getRiskStatusTone(monthRiskTone)}
+                />
                 <Text style={styles.heroSupport}>
                   {monthSpent == null || !budgetPlan
                     ? "Maandsturing verschijnt zodra budgetdata beschikbaar is."
                     : getMonthVariableBudgetUsageText(monthBudgetSnapshot, fmt)}
                 </Text>
-                <RiskProgressBar
+                <FinanceBudgetProgressBar
                   progress={monthProgress}
                   tone={monthRiskTone}
                   style={styles.progressTrack}
@@ -3113,26 +3318,13 @@ export default function BudgetScreen() {
                 ) : null}
                   </View>
 
-                  <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Actie voor nu</Text>
-                <Text style={styles.recommendationText}>
-                  {actionRecommendation || "Je ligt goed op schema. Houd dit ritme vast."}
-                </Text>
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    style={styles.primaryButton}
-                    onPress={() => router.push("/insights")}
-                  >
-                    <Text style={styles.primaryButtonText}>Open insights</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.secondaryButton}
-                    onPress={() => setSegment("manage")}
-                  >
-                    <Text style={styles.secondaryButtonText}>Budget beheren</Text>
-                  </TouchableOpacity>
-                </View>
-                  </View>
+                  <BudgetMonthActionCard
+                    recommendation={
+                      actionRecommendation || "Je ligt goed op schema. Houd dit ritme vast."
+                    }
+                    onOpenInsights={() => router.push("/insights")}
+                    onOpenManage={() => setSegment("manage")}
+                  />
 
                   {positiveLine ? (
                     <View style={styles.positiveCard}>
@@ -3362,401 +3554,580 @@ export default function BudgetScreen() {
 
               {segment === "manage" ? (
                 <>
-                  <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Budgetmodus</Text>
-                <View style={styles.modeRow}>
-                  {BUDGET_MODE_OPTIONS.map((option) => {
-                    const selected = budgetModeDraft === option.value;
-                    return (
-                      <Pressable
-                        key={option.value}
-                        style={[
-                          styles.modeButton,
-                          selected && styles.modeButtonActive,
-                        ]}
-                        onPress={() => handleBudgetModeDraftChange(option.value)}
-                      >
-                        <Text
-                          style={[
-                            styles.modeButtonText,
-                            selected && styles.modeButtonTextActive,
-                          ]}
-                        >
-                          {option.label}
+                  {segment === "manage" ? (
+                    <>
+                  <FinanceSettingsGroup title="Kies je route">
+                    <View style={styles.manageGroupContent}>
+                      <View style={styles.manageSection}>
+                        <Text style={styles.manageSectionTitle}>
+                          Slim met Budio of Handmatig
                         </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <View style={styles.modeDescriptionCard}>
-                  <Text style={styles.modeDescriptionTitle}>
-                    {formatBudgetModeLabel(budgetModeDraft)}
-                  </Text>
-                  <Text style={styles.modeDescriptionText}>
-                    {getBudgetModeDescription(budgetModeDraft)}
-                  </Text>
-                  {budgetModeDraft === "custom" ? (
-                    <View style={styles.modePreviewCard}>
-                      <Text style={styles.modePreviewLabel}>Eigen spaardoel</Text>
-                      <Text style={styles.modePreviewValue}>
-                        {fmt.format(savingsTargetMonthlyDraft)}
-                      </Text>
-                      <Text style={styles.modePreviewMeta}>
-                        Stel in hoeveel je deze maand wilt overhouden.
-                      </Text>
-                      <View style={styles.modeSliderWrap}>
-                        <BudgetAmountSlider
-                          value={savingsTargetMonthlyDraft}
-                          min={0}
-                          max={savingsSliderMax}
-                          step={SAVINGS_SLIDER_STEP}
-                          onChange={handleSavingsTargetMonthlyDraftChange}
-                        />
-                      </View>
-                    </View>
-                  ) : selectedModeTargetPreview ? (
-                    <View style={styles.modePreviewCard}>
-                      <Text style={styles.modePreviewLabel}>
-                        {selectedModeTargetPreview.isCurrentMode
-                          ? "Spaardoel deze maand"
-                          : "Verwacht spaardoel"}
-                      </Text>
-                      <Text style={styles.modePreviewValue}>
-                        {fmt.format(selectedModeTargetPreview.amount)}
-                      </Text>
-                      <Text style={styles.modePreviewMeta}>
-                        {selectedModeTargetPreview.meta}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-                  </View>
-
-                  <View style={styles.card}>
-                    <View style={styles.cardHeaderRow}>
-                      <Text style={styles.sectionTitle}>Jaarlijkse lasten</Text>
-                      <Pressable
-                        style={styles.sectionActionButton}
-                        onPress={() => setReserveRulesSheetOpen(true)}
-                      >
-                        <AppIcon name="edit" size={14} color={FinColors.textPrimary} />
-                        <Text style={styles.sectionActionButtonText}>Beheer</Text>
-                      </Pressable>
-                    </View>
-                    <Text style={styles.supportText}>
-                      Deze regels zetten maandelijks geld opzij voor piekmomenten.
-                    </Text>
-                    {annualReserveRules.length ? (
-                      annualReserveRules.slice(0, 3).map((rule) => (
-                        <View key={rule.id} style={styles.reserveRuleRow}>
-                          <Text style={styles.reserveRuleLabel}>{rule.label}</Text>
-                          <Text style={styles.reserveRuleAmount}>
-                            {fmt.format(rule.monthlyAmount)}
-                          </Text>
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={styles.supportText}>
-                        Nog geen actieve jaarlijkse reserveringen gevonden.
-                      </Text>
-                    )}
-                  </View>
-
-                  <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Inkomstenbasis</Text>
-                <Text style={styles.supportText}>
-                  Kies welke inkomsten je meeneemt in je maandplan en forecast.
-                </Text>
-                <Text style={styles.supportText}>
-                  Eenmalige belastingmeevallers en kostencompensaties tellen
-                  bewust niet mee als vaste inkomensbasis.
-                </Text>
-                <View style={styles.incomePreviewRow}>
-                  <Text style={styles.incomePreviewLabel}>Preview inkomend budget</Text>
-                  <Text style={styles.incomePreviewValue}>
-                    {fmt.format(includedIncomePreview)}
-                  </Text>
-                </View>
-                <View style={styles.choiceWrap}>
-                  {INCOME_SOURCE_OPTIONS.map((option) => {
-                    const selected = budgetIncomeDraft[option.key];
-                    return (
-                      <Pressable
-                        key={option.key}
-                        style={[
-                          styles.choiceChip,
-                          selected && styles.choiceChipActive,
-                        ]}
-                        onPress={() => handleIncomeDraftToggle(option.key)}
-                      >
-                        <View style={styles.choiceChipInner}>
-                          <AppIcon
-                            name={selected ? "check-circle" : "radio-button-unchecked"}
-                            size={16}
-                            color={
-                              selected
-                                ? FinColors.textPrimary
-                                : FinColors.textMuted
+                        <Text style={styles.manageSectionDescription}>
+                          Gebruik slim instellen voor een voorstel-eerst flow. Handmatig blijft beschikbaar als secundaire route.
+                        </Text>
+                        <View style={styles.manageRouteActions}>
+                          <FinanceButton
+                            label="Slim met Budio"
+                            variant="secondary"
+                            onPress={() =>
+                              router.push({
+                                pathname: "/budget/setup",
+                                params: { month: selectedMonth.key },
+                              })
                             }
+                            style={styles.manageRouteButton}
                           />
-                          <Text
-                            style={[
-                              styles.choiceChipText,
-                              selected && styles.choiceChipTextActive,
-                            ]}
-                          >
-                            {option.label}
-                          </Text>
+                          <FinanceButton
+                            label="Handmatig"
+                            onPress={() => null}
+                            style={styles.manageRouteButton}
+                          />
                         </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                  </View>
-
-                  <View style={styles.card}>
-                <Text style={styles.sectionTitle}>Maandverdeling</Text>
-                <Text style={styles.supportText}>
-                  Zo verdeel je je inkomende ruimte over vaste lasten, variabele uitgaven en sparen.
-                </Text>
-                <View style={styles.summaryList}>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Inkomend budget</Text>
-                    <Text style={styles.summaryValue}>
-                      {fmt.format(draftBudgetAllocationSummary.incomingBudget)}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Ingepland</Text>
-                    <Text style={styles.summaryValueNegative}>
-                      -{fmt.format(draftBudgetAllocationSummary.allocatedTotal)}
-                    </Text>
-                  </View>
-                  <View style={styles.summaryDivider} />
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabelStrong}>Resterende ruimte</Text>
-                    <Text
-                      style={[
-                        styles.summaryValueStrong,
-                        draftBudgetAllocationSummary.isOverAllocated
-                          ? styles.summaryValueCritical
-                          : styles.summaryValuePositive,
-                      ]}
-                    >
-                      {fmt.format(draftBudgetAllocationSummary.remaining)}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={styles.compactBreakdownText}>
-                  Vaste lasten {fmt.format(draftBudgetAllocationSummary.fixedCosts)} ·
-                  Abonnementen {fmt.format(draftBudgetAllocationSummary.subscriptions)} ·
-                  Variabele ruimte {fmt.format(draftBudgetAllocationSummary.variable)} ·
-                  Sparen {fmt.format(draftBudgetAllocationSummary.savingsTarget)}
-                </Text>
-                {draftBudgetAllocationSummary.isOverAllocated ? (
-                  <Text style={styles.warningInlineText}>
-                    Je planning ligt nu boven je inkomend budget. Verlaag een categoriebedrag of je spaardoel.
-                  </Text>
-                ) : null}
-                  </View>
-
-                  <View style={styles.card}>
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.sectionTitle}>Maandbudget per categorie</Text>
-                  <Text style={styles.sectionHelper}>{selectedMonth.label}</Text>
-                </View>
-                {completedMonthBaselineHelper ? (
-                  <Text style={styles.supportText}>
-                    {completedMonthBaselineHelper}
-                  </Text>
-                ) : null}
-                <Text style={styles.supportText}>
-                  Deze maandbudgetten gebruik je ook in Voorspelling als je daar Budgetplan kiest.
-                </Text>
-                <Text style={styles.compactBreakdownText}>
-                  Forecast volgt nu: {formatForecastExpenseSourceLabel(forecastExpenseSourceDraft)}.{" "}
-                  {getForecastExpenseSourceDescription(forecastExpenseSourceDraft)}
-                </Text>
-                <Text style={styles.supportText}>
-                  Trend volgt je recente maandritme. Vast laat jouw bedrag staan als de rest wordt herverdeeld.
-                </Text>
-                <Pressable
-                  style={styles.sectionActionButton}
-                  onPress={() => void applyLatestTrendBudgets()}
-                  disabled={recalculatingBudget || savingManage}
-                >
-                  <AppIcon
-                    name="autorenew"
-                    size={14}
-                    color={FinColors.textPrimary}
-                  />
-                  <Text style={styles.sectionActionButtonText}>
-                    {recalculatingBudget
-                      ? "Trendbedragen verversen..."
-                      : "Herstel trendbedragen"}
-                  </Text>
-                </Pressable>
-
-                {editableBudgetRows.map((row) => {
-                  const rowLocked = lockedVariableCategorySet.has(row.categoryKey);
-                  const rowIsVariableBreakdown = isVariableBreakdownKey(row.categoryKey);
-                  const rowIsVariableTotal = row.categoryKey === "variable_costs";
-                  const rowControlsDisabled = savingManage || recalculatingBudget;
-                  const inputDisabled = rowIsVariableTotal || rowControlsDisabled;
-                  const rowVisualDisabled = rowIsVariableTotal || rowControlsDisabled;
-
-                  if (rowIsVariableTotal) {
-                    return (
-                      <View key={row.categoryKey} style={styles.variableBudgetSummaryCard}>
-                        <View style={styles.variableBudgetSummaryHeader}>
-                          <View style={styles.variableBudgetSummaryMain}>
-                            <Text style={styles.editLabel}>Variabele uitgaven</Text>
-                            <Text style={styles.editMeta}>
-                              Beschikbaar {fmt.format(variableBudgetDraftSummary.available)}
-                            </Text>
-                          </View>
-                          <View style={styles.variableBudgetSummaryRight}>
-                            <Text style={styles.variableBudgetSummaryValueLabel}>
-                              Verdeeld nu
-                            </Text>
-                            <Text style={styles.variableBudgetSummaryValue}>
-                              {fmt.format(variableBudgetDraftSummary.breakdownTotal)}
-                            </Text>
-                          </View>
-                        </View>
-                        <Text
-                          style={[
-                            styles.variableBudgetSummaryStatus,
-                            variableAllocationFeedback.tone === "good" &&
-                              styles.variableBudgetSummaryStatusGood,
-                            variableAllocationFeedback.tone === "watch" &&
-                              styles.variableBudgetSummaryStatusWatch,
-                            variableAllocationFeedback.tone === "critical" &&
-                              styles.variableBudgetSummaryStatusCritical,
-                          ]}
-                        >
-                          {variableAllocationFeedback.label}
-                        </Text>
                       </View>
-                    );
-                  }
-
-                  return (
-                    <View
-                      key={row.categoryKey}
-                      style={[
-                        styles.editRow,
-                        rowIsVariableBreakdown && styles.editRowChild,
-                        rowVisualDisabled && styles.editRowDisabled,
-                      ]}
-                    >
-                      <View style={styles.editMain}>
-                        <Text
-                          style={[
-                            styles.editLabel,
-                            rowIsVariableBreakdown && styles.editLabelChild,
-                          ]}
-                        >
-                          {rowIsVariableBreakdown
-                            ? `└ ${getBudgetCategoryDisplayLabel(row.categoryKey)}`
-                            : getBudgetCategoryDisplayLabel(row.categoryKey)}
+                    </View>
+                  </FinanceSettingsGroup>
+                  <FinanceSettingsGroup title="Aanpak">
+                    <View style={styles.manageGroupContent}>
+                      <View style={styles.manageSection}>
+                        <Text style={styles.manageSectionTitle}>Budgetmodus</Text>
+                        <Text style={styles.manageSectionDescription}>
+                          Kies hoe Budio je maandruimte en spaardoel voor deze maand opbouwt.
                         </Text>
-                        <Text style={styles.editMeta}>
-                          Trend {fmt.format(Math.round(row.baselineMonthly))} · Uitgegeven{" "}
-                          {fmt.format(row.monthlyActual)} · Nu {formatBudgetSourceLabel(
-                            row.overrideSource,
-                          )}
-                        </Text>
-                      </View>
-                      <View style={styles.editControls}>
-                        {rowIsVariableBreakdown ? (
-                          <>
-                            <Pressable
-                              style={styles.editActionButton}
-                              onPress={() => resetVariableCategoryToTrend(row.categoryKey)}
-                              disabled={rowControlsDisabled}
-                            >
-                              <Text style={styles.editActionButtonText}>Trend</Text>
-                            </Pressable>
-                            <Pressable
-                              style={[
-                                styles.editActionButton,
-                                rowLocked && styles.editActionButtonActive,
-                              ]}
-                              onPress={() => toggleVariableCategoryLock(row.categoryKey)}
-                              disabled={rowControlsDisabled}
-                            >
-                              <AppIcon
-                                name={rowLocked ? "lock" : "lock-open"}
-                                size={12}
-                                color={
-                                  rowLocked
-                                    ? FinColors.green
-                                    : FinColors.textSecondary
-                                }
-                              />
-                              <Text
+                        <View style={styles.modeRow}>
+                          {BUDGET_MODE_OPTIONS.map((option) => {
+                            const selected = budgetModeDraft === option.value;
+                            return (
+                              <Pressable
+                                key={option.value}
                                 style={[
-                                  styles.editActionButtonText,
-                                  rowLocked &&
-                                    styles.editActionButtonTextActive,
+                                  styles.modeButton,
+                                  selected && styles.modeButtonActive,
+                                ]}
+                                onPress={() =>
+                                  handleBudgetModeDraftChange(option.value)
+                                }
+                              >
+                                <Text
+                                  style={[
+                                    styles.modeButtonText,
+                                    selected && styles.modeButtonTextActive,
+                                  ]}
+                                >
+                                  {option.label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        <Text style={styles.manageCompactSupport}>
+                          {getBudgetModeDescription(budgetModeDraft)}
+                        </Text>
+                        <View style={styles.managePreviewSurface}>
+                          <View style={styles.managePreviewHeader}>
+                            <View style={styles.managePreviewMain}>
+                              <Text style={styles.managePreviewLabel}>
+                                {manageBudgetPreview.label}
+                              </Text>
+                              <Text style={styles.managePreviewMeta}>
+                                {manageBudgetPreview.meta}
+                              </Text>
+                            </View>
+                            <Text style={styles.managePreviewValue}>
+                              {fmt.format(manageBudgetPreview.amount)}
+                            </Text>
+                          </View>
+                          {budgetModeDraft === "custom" ? (
+                            <View style={styles.modeSliderWrap}>
+                              <BudgetAmountSlider
+                                value={savingsTargetMonthlyDraft}
+                                min={0}
+                                max={savingsSliderMax}
+                                step={SAVINGS_SLIDER_STEP}
+                                onChange={handleSavingsTargetMonthlyDraftChange}
+                              />
+                            </View>
+                          ) : null}
+                        </View>
+                      </View>
+                    </View>
+                  </FinanceSettingsGroup>
+
+                  <FinanceSettingsGroup title="Bronnen">
+                    <View style={styles.manageGroupContent}>
+                      <View style={styles.manageSection}>
+                        <View style={styles.manageSectionHeaderRow}>
+                          <View style={styles.manageSectionHeaderMain}>
+                            <Text style={styles.manageSectionTitle}>
+                              Inkomstenbasis
+                            </Text>
+                            <Text style={styles.manageSectionDescription}>
+                              Kies welke vaste inkomsten Budio meeneemt in je maandplan.
+                            </Text>
+                          </View>
+                          <View style={styles.manageMetricPill}>
+                            <Text style={styles.manageMetricPillLabel}>
+                              Meegeteld
+                            </Text>
+                            <Text style={styles.manageMetricPillValue}>
+                              {fmt.format(includedIncomePreview)}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.choiceWrap}>
+                          {INCOME_SOURCE_OPTIONS.map((option) => {
+                            const selected = budgetIncomeDraft[option.key];
+                            return (
+                              <Pressable
+                                key={option.key}
+                                style={[
+                                  styles.choiceChip,
+                                  selected && styles.choiceChipActive,
+                                ]}
+                                onPress={() => handleIncomeDraftToggle(option.key)}
+                              >
+                                <View style={styles.choiceChipInner}>
+                                  <AppIcon
+                                    name={
+                                      selected
+                                        ? "check-circle"
+                                        : "radio-button-unchecked"
+                                    }
+                                    size={16}
+                                    color={
+                                      selected
+                                        ? FinColors.textPrimary
+                                        : FinColors.textMuted
+                                    }
+                                  />
+                                  <Text
+                                    style={[
+                                      styles.choiceChipText,
+                                      selected &&
+                                        styles.choiceChipTextActive,
+                                    ]}
+                                  >
+                                    {option.label}
+                                  </Text>
+                                </View>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </View>
+
+                      <View style={styles.manageDivider} />
+
+                      <View style={styles.manageSection}>
+                        <Text style={styles.manageSectionTitle}>
+                          Zo bouwt Budio je maandruimte op
+                        </Text>
+                        <Text style={styles.manageSectionDescription}>
+                          Een compacte verdeling van wat binnenkomt, wat vastligt en wat overblijft.
+                        </Text>
+                        <View style={styles.summaryList}>
+                          <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Inkomend budget</Text>
+                            <Text style={styles.summaryValue}>
+                              {fmt.format(
+                                draftBudgetAllocationSummary.incomingBudget,
+                              )}
+                            </Text>
+                          </View>
+                          <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Vaste lasten</Text>
+                            <Text style={styles.summaryValueNegative}>
+                              -{fmt.format(draftBudgetAllocationSummary.fixedCosts)}
+                            </Text>
+                          </View>
+                          <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Abonnementen</Text>
+                            <Text style={styles.summaryValueNegative}>
+                              -{fmt.format(
+                                draftBudgetAllocationSummary.subscriptions,
+                              )}
+                            </Text>
+                          </View>
+                          <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>
+                              Variabele ruimte
+                            </Text>
+                            <Text style={styles.summaryValueNegative}>
+                              -{fmt.format(draftBudgetAllocationSummary.variable)}
+                            </Text>
+                          </View>
+                          <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Sparen</Text>
+                            <Text style={styles.summaryValueNegative}>
+                              -{fmt.format(
+                                draftBudgetAllocationSummary.savingsTarget,
+                              )}
+                            </Text>
+                          </View>
+                          <View style={styles.summaryDivider} />
+                          <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabelStrong}>
+                              Resterende ruimte
+                            </Text>
+                            <Text
+                              style={[
+                                styles.summaryValueStrong,
+                                draftBudgetAllocationSummary.isOverAllocated
+                                  ? styles.summaryValueCritical
+                                  : styles.summaryValuePositive,
+                              ]}
+                            >
+                              {fmt.format(draftBudgetAllocationSummary.remaining)}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={styles.compactBreakdownText}>
+                          Voorspelling volgt nu{" "}
+                          {formatForecastExpenseSourceLabel(
+                            forecastExpenseSourceDraft,
+                          ).toLowerCase()}
+                          . {getForecastExpenseSourceDescription(forecastExpenseSourceDraft)}
+                        </Text>
+                        {draftBudgetAllocationSummary.isOverAllocated ? (
+                          <FinanceInlineCallout
+                            iconName="warning-amber"
+                            tone="highlight"
+                            text="Je planning ligt boven je inkomend budget. Verlaag een categoriebedrag of je spaardoel."
+                          />
+                        ) : null}
+                      </View>
+
+                      <View style={styles.manageDivider} />
+
+                      <View style={styles.manageSection}>
+                        <FinanceSettingsRow
+                          iconName="tune"
+                          label="Categoriebudgetten"
+                          subtitle={categoryBudgetSummarySubtitle}
+                          onPress={() =>
+                            setManageCategoryBudgetsOpen((current) => !current)
+                          }
+                          rightElement={
+                            <View style={styles.manageDisclosureRight}>
+                              <View
+                                style={[
+                                  styles.statusChip,
+                                  getRiskStyle(variableAllocationFeedback.tone).chip,
                                 ]}
                               >
-                                Vast
-                              </Text>
-                            </Pressable>
-                          </>
+                                <Text
+                                  style={[
+                                    styles.statusChipText,
+                                    getRiskStyle(variableAllocationFeedback.tone)
+                                      .text,
+                                  ]}
+                                >
+                                  {manageCategoryBudgetStatusLabel}
+                                </Text>
+                              </View>
+                              <AppIcon
+                                name={
+                                  manageCategoryBudgetsOpen
+                                    ? "expand-more"
+                                    : "chevron-right"
+                                }
+                                size={18}
+                                color={FinColors.textSecondary}
+                              />
+                            </View>
+                          }
+                        />
+
+                        {manageCategoryBudgetsOpen ? (
+                          <View style={styles.manageExpandableContent}>
+                            <View style={styles.manageExpandableHeader}>
+                              <View style={styles.manageExpandableHeaderMain}>
+                                <Text style={styles.sectionHelper}>
+                                  {selectedMonth.label}
+                                </Text>
+                                {completedMonthBaselineHelper ? (
+                                  <Text style={styles.compactBreakdownText}>
+                                    {completedMonthBaselineHelper}
+                                  </Text>
+                                ) : null}
+                                <Text style={styles.compactBreakdownText}>
+                                  Deze bedragen gebruik je ook in Voorspelling
+                                  als je daar Budgetplan kiest. Trend volgt je
+                                  recente maandritme; Vast laat jouw bedrag
+                                  staan bij herverdeling.
+                                </Text>
+                              </View>
+                              <Pressable
+                                style={styles.manageTertiaryAction}
+                                onPress={() => void applyLatestTrendBudgets()}
+                                disabled={recalculatingBudget || savingManage}
+                              >
+                                <Text style={styles.manageTertiaryActionText}>
+                                  {recalculatingBudget
+                                    ? "Trendbedragen verversen..."
+                                    : "Herstel trendbedragen"}
+                                </Text>
+                              </Pressable>
+                            </View>
+
+                            {editableBudgetRows.map((row) => {
+                              const rowLocked = lockedVariableCategorySet.has(
+                                row.categoryKey,
+                              );
+                              const rowIsVariableBreakdown =
+                                isVariableBreakdownKey(row.categoryKey);
+                              const rowIsVariableTotal =
+                                row.categoryKey === "variable_costs";
+                              const rowIsSavingsTarget =
+                                row.categoryKey === "savings_target";
+                              const rowControlsDisabled =
+                                savingManage || recalculatingBudget;
+                              const inputDisabled =
+                                rowIsVariableTotal || rowControlsDisabled;
+                              const rowVisualDisabled =
+                                rowIsVariableTotal || rowControlsDisabled;
+
+                              if (rowIsSavingsTarget) {
+                                return null;
+                              }
+
+                              if (rowIsVariableTotal) {
+                                return (
+                                  <View
+                                    key={row.categoryKey}
+                                    style={styles.variableBudgetSummaryCard}
+                                  >
+                                    <View
+                                      style={styles.variableBudgetSummaryHeader}
+                                    >
+                                      <View
+                                        style={
+                                          styles.variableBudgetSummaryMain
+                                        }
+                                      >
+                                        <Text style={styles.editLabel}>
+                                          Variabele uitgaven
+                                        </Text>
+                                        <Text style={styles.editMeta}>
+                                          Beschikbaar{" "}
+                                          {fmt.format(
+                                            variableBudgetDraftSummary.available,
+                                          )}
+                                        </Text>
+                                      </View>
+                                      <View
+                                        style={styles.variableBudgetSummaryRight}
+                                      >
+                                        <Text
+                                          style={
+                                            styles.variableBudgetSummaryValueLabel
+                                          }
+                                        >
+                                          Verdeeld nu
+                                        </Text>
+                                        <Text
+                                          style={styles.variableBudgetSummaryValue}
+                                        >
+                                          {fmt.format(
+                                            variableBudgetDraftSummary.breakdownTotal,
+                                          )}
+                                        </Text>
+                                      </View>
+                                    </View>
+                                    <Text
+                                      style={[
+                                        styles.variableBudgetSummaryStatus,
+                                        variableAllocationFeedback.tone ===
+                                          "good" &&
+                                          styles.variableBudgetSummaryStatusGood,
+                                        variableAllocationFeedback.tone ===
+                                          "watch" &&
+                                          styles.variableBudgetSummaryStatusWatch,
+                                        variableAllocationFeedback.tone ===
+                                          "critical" &&
+                                          styles.variableBudgetSummaryStatusCritical,
+                                      ]}
+                                    >
+                                      {variableAllocationFeedback.label}
+                                    </Text>
+                                  </View>
+                                );
+                              }
+
+                              return (
+                                <View
+                                  key={row.categoryKey}
+                                  style={[
+                                    styles.editRow,
+                                    rowIsVariableBreakdown &&
+                                      styles.editRowChild,
+                                    rowVisualDisabled &&
+                                      styles.editRowDisabled,
+                                  ]}
+                                >
+                                  <View style={styles.editMain}>
+                                    <Text
+                                      style={[
+                                        styles.editLabel,
+                                        rowIsVariableBreakdown &&
+                                          styles.editLabelChild,
+                                      ]}
+                                    >
+                                      {rowIsVariableBreakdown
+                                        ? `└ ${getBudgetCategoryDisplayLabel(
+                                            row.categoryKey,
+                                          )}`
+                                        : getBudgetCategoryDisplayLabel(
+                                            row.categoryKey,
+                                          )}
+                                    </Text>
+                                    <Text style={styles.editMeta}>
+                                      Trend{" "}
+                                      {fmt.format(
+                                        Math.round(row.baselineMonthly),
+                                      )}{" "}
+                                      · Uitgegeven {fmt.format(row.monthlyActual)}{" "}
+                                      · Nu{" "}
+                                      {formatBudgetSourceLabel(
+                                        row.overrideSource,
+                                      )}
+                                    </Text>
+                                  </View>
+                                  <View style={styles.editControls}>
+                                    {rowIsVariableBreakdown ? (
+                                      <>
+                                        <Pressable
+                                          style={styles.editActionButton}
+                                          onPress={() =>
+                                            resetVariableCategoryToTrend(
+                                              row.categoryKey,
+                                            )
+                                          }
+                                          disabled={rowControlsDisabled}
+                                        >
+                                          <Text
+                                            style={styles.editActionButtonText}
+                                          >
+                                            Trend
+                                          </Text>
+                                        </Pressable>
+                                        <Pressable
+                                          style={[
+                                            styles.editActionButton,
+                                            rowLocked &&
+                                              styles.editActionButtonActive,
+                                          ]}
+                                          onPress={() =>
+                                            toggleVariableCategoryLock(
+                                              row.categoryKey,
+                                            )
+                                          }
+                                          disabled={rowControlsDisabled}
+                                        >
+                                          <AppIcon
+                                            name={
+                                              rowLocked ? "lock" : "lock-open"
+                                            }
+                                            size={12}
+                                            color={
+                                              rowLocked
+                                                ? FinColors.green
+                                                : FinColors.textSecondary
+                                            }
+                                          />
+                                          <Text
+                                            style={[
+                                              styles.editActionButtonText,
+                                              rowLocked &&
+                                                styles.editActionButtonTextActive,
+                                            ]}
+                                          >
+                                            Vast
+                                          </Text>
+                                        </Pressable>
+                                      </>
+                                    ) : null}
+                                    <TextInput
+                                      value={
+                                        budgetDraftValues[row.categoryKey] ??
+                                        formatBudgetAmountDraft(
+                                          row.monthlyBudget,
+                                        )
+                                      }
+                                      onChangeText={(text) => {
+                                        if (inputDisabled) return;
+                                        handleBudgetDraftValueChange(
+                                          row.categoryKey,
+                                          text,
+                                        );
+                                      }}
+                                      onBlur={() => {
+                                        if (inputDisabled) return;
+                                        handleBudgetDraftValueBlur(
+                                          row.categoryKey,
+                                        );
+                                      }}
+                                      editable={!inputDisabled}
+                                      style={[
+                                        styles.editInput,
+                                        inputDisabled &&
+                                          styles.editInputDisabled,
+                                      ]}
+                                      keyboardType="number-pad"
+                                    />
+                                  </View>
+                                </View>
+                              );
+                            })}
+                          </View>
                         ) : null}
-                        {row.categoryKey === "savings_target" ? null : (
-                          <TextInput
-                            value={
-                              row.categoryKey === "variable_costs"
-                                ? formatBudgetAmountDraft(
-                                    draftBudgetAllocationSummary.variable,
-                                  )
-                                : (budgetDraftValues[row.categoryKey] ??
-                                  formatBudgetAmountDraft(row.monthlyBudget))
-                            }
-                            onChangeText={(text) => {
-                              if (inputDisabled) return;
-                              handleBudgetDraftValueChange(row.categoryKey, text);
-                            }}
-                            onBlur={() => {
-                              if (inputDisabled) return;
-                              handleBudgetDraftValueBlur(row.categoryKey);
-                            }}
-                            editable={!inputDisabled}
-                            style={[
-                              styles.editInput,
-                              inputDisabled && styles.editInputDisabled,
-                            ]}
-                            keyboardType="number-pad"
-                          />
+                      </View>
+                    </View>
+                  </FinanceSettingsGroup>
+
+                  <FinanceSettingsGroup title="Reserves / jaarlijkse lasten">
+                    <View style={styles.manageGroupContent}>
+                      <View style={styles.manageSection}>
+                        <FinanceSettingsRow
+                          iconName="savings"
+                          label="Wat Budio deze maand apart zet"
+                          subtitle={
+                            activeAnnualReserveRules.length
+                              ? `${formatCountLabel(
+                                  activeAnnualReserveRules.length,
+                                  "actieve regel",
+                                  "actieve regels",
+                                )} voor piekmomenten`
+                              : "Nog geen actieve jaarlijkse lasten gevonden"
+                          }
+                          value={fmt.format(annualReserveInlineAmount)}
+                          onPress={() => setReserveRulesSheetOpen(true)}
+                        />
+                        <Text style={styles.manageCompactSupport}>
+                          Jaarlijkse lasten zetten maandelijks geld opzij voor
+                          terugkerende piekmomenten. Buffer kan daarnaast apart
+                          gereserveerd blijven.
+                        </Text>
+                        {annualReservePreviewRules.length ? (
+                          <View style={styles.managePreviewList}>
+                            {annualReservePreviewRules.map((rule) => (
+                              <View key={rule.id} style={styles.reserveRuleRow}>
+                                <Text style={styles.reserveRuleLabel}>
+                                  {rule.label}
+                                </Text>
+                                <Text style={styles.reserveRuleAmount}>
+                                  {fmt.format(rule.monthlyAmount)}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : (
+                          <Text style={styles.supportText}>
+                            Nog geen jaarlijkse reserveringen gevonden.
+                          </Text>
                         )}
                       </View>
                     </View>
-                  );
-                })}
-
-                <View style={[styles.editRow, styles.editRowDisabled]}>
-                  <View style={styles.editMain}>
-                    <Text style={styles.editLabel}>Spaardoel</Text>
-                    <Text style={styles.editMeta}>
-                      {formatSavingsTargetDraftMetaLabel(budgetModeDraft)}
-                    </Text>
-                  </View>
-                  <View style={styles.editControls}>
-                    <View style={styles.readOnlyValue}>
-                      <Text style={styles.readOnlyValueText}>
-                        {formatBudgetAmountDraft(
-                          draftBudgetAllocationSummary.savingsTarget,
-                        )}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-                  </View>
+                  </FinanceSettingsGroup>
 
                   <View style={styles.actionCard}>
                 <TouchableOpacity
@@ -3769,6 +4140,43 @@ export default function BudgetScreen() {
                   </Text>
                 </TouchableOpacity>
                   </View>
+                    </>
+                  ) : null}
+                            </View>
+                          </View>
+                        </View>
+                      </FinanceSettingsGroup>
+
+                      <BudgetManageIncomeSourcesGroup
+                        includedIncomeLabel={fmt.format(includedIncomePreview)}
+                        rows={manageIncomingSourcesSummaryRows}
+                        monthBreakdownText="Maandopbouw: 4 weken, € 425 p.w. na aftrek van vaste lasten en reserveringen."
+                        onEdit={() => setIncomeSourcesSheetOpen(true)}
+                      />
+
+                      <BudgetManageObligationsGroup
+                        totalLabel={fmt.format(
+                          manageObligationRows.reduce((sum, item) => sum + item.amount, 0),
+                        )}
+                        rows={manageObligationRows.map((row) => ({
+                          key: row.key,
+                          label: row.label,
+                          amountLabel: fmt.format(row.amount),
+                        }))}
+                        onEdit={() => setReserveRulesSheetOpen(true)}
+                      />
+
+                      <BudgetManageDistributionGroup
+                        rows={manageBudgetDistributionRows.map((row) => ({
+                          key: row.key,
+                          label: row.label,
+                          amountLabel: fmt.format(row.amount),
+                          iconName: row.iconName,
+                        }))}
+                        onEdit={() => setBudgetDistributionSheetOpen(true)}
+                      />
+                    </>
+                  ) : null}
                 </>
               ) : null}
             </View>
@@ -3783,6 +4191,227 @@ export default function BudgetScreen() {
         onConfirm={setSelectedMonthKey}
         monthOptions={monthOptions}
       />
+
+      <FinanceBottomSheetShell
+        visible={incomeSourcesSheetOpen}
+        title="Inkomend budget"
+        subtitle="Kies welke inkomsten Budio meeneemt voor je maandruimte."
+        onClose={() => setIncomeSourcesSheetOpen(false)}
+      >
+        <View style={styles.manageSheetContent}>
+          <View style={styles.choiceWrap}>
+            {INCOME_SOURCE_OPTIONS.map((option) => {
+              const selected = budgetIncomeDraft[option.key];
+              return (
+                <Pressable
+                  key={option.key}
+                  style={[
+                    styles.choiceChip,
+                    selected && styles.choiceChipActive,
+                  ]}
+                  onPress={() => handleIncomeDraftToggle(option.key)}
+                >
+                  <View style={styles.choiceChipInner}>
+                    <AppIcon
+                      name={selected ? "check-circle" : "radio-button-unchecked"}
+                      size={16}
+                      color={selected ? FinColors.textPrimary : FinColors.textMuted}
+                    />
+                    <Text
+                      style={[
+                        styles.choiceChipText,
+                        selected && styles.choiceChipTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </FinanceBottomSheetShell>
+
+      <FinanceBottomSheetShell
+        visible={budgetDistributionSheetOpen}
+        title="Budget verdeling"
+        subtitle="Pas categoriebedragen aan voor deze maand."
+        onClose={() => setBudgetDistributionSheetOpen(false)}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.manageSheetContent}
+        >
+          <View style={styles.manageExpandableHeader}>
+            <View style={styles.manageExpandableHeaderMain}>
+              <Text style={styles.sectionHelper}>{selectedMonth.label}</Text>
+              {completedMonthBaselineHelper ? (
+                <Text style={styles.compactBreakdownText}>
+                  {completedMonthBaselineHelper}
+                </Text>
+              ) : null}
+              <Text style={styles.compactBreakdownText}>
+                Deze bedragen gebruik je ook in Voorspelling als je daar
+                Budgetplan kiest.
+              </Text>
+            </View>
+            <FinanceButton
+              label={
+                recalculatingBudget
+                  ? "Trendbedragen verversen..."
+                  : "Herstel trendbedragen"
+              }
+              variant="ghost"
+              size="sm"
+              style={styles.manageTertiaryAction}
+              labelStyle={styles.manageTertiaryActionText}
+              onPress={() => void applyLatestTrendBudgets()}
+              disabled={recalculatingBudget || savingManage}
+            />
+          </View>
+
+          {editableBudgetRows.map((row) => {
+            const rowLocked = lockedVariableCategorySet.has(row.categoryKey);
+            const rowIsVariableBreakdown = isVariableBreakdownKey(row.categoryKey);
+            const rowIsVariableTotal = row.categoryKey === "variable_costs";
+            const rowIsSavingsTarget = row.categoryKey === "savings_target";
+            const rowControlsDisabled = savingManage || recalculatingBudget;
+            const inputDisabled = rowIsVariableTotal || rowControlsDisabled;
+            const rowVisualDisabled = rowIsVariableTotal || rowControlsDisabled;
+
+            if (rowIsSavingsTarget) {
+              return null;
+            }
+
+            if (rowIsVariableTotal) {
+              return (
+                <View
+                  key={row.categoryKey}
+                  style={styles.variableBudgetSummaryCard}
+                >
+                  <View style={styles.variableBudgetSummaryHeader}>
+                    <View style={styles.variableBudgetSummaryMain}>
+                      <Text style={styles.editLabel}>Variabele uitgaven</Text>
+                      <Text style={styles.editMeta}>
+                        Beschikbaar{" "}
+                        {fmt.format(variableBudgetDraftSummary.available)}
+                      </Text>
+                    </View>
+                    <View style={styles.variableBudgetSummaryRight}>
+                      <Text style={styles.variableBudgetSummaryValueLabel}>
+                        Verdeeld nu
+                      </Text>
+                      <Text style={styles.variableBudgetSummaryValue}>
+                        {fmt.format(variableBudgetDraftSummary.breakdownTotal)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text
+                    style={[
+                      styles.variableBudgetSummaryStatus,
+                      variableAllocationFeedback.tone === "good" &&
+                        styles.variableBudgetSummaryStatusGood,
+                      variableAllocationFeedback.tone === "watch" &&
+                        styles.variableBudgetSummaryStatusWatch,
+                      variableAllocationFeedback.tone === "critical" &&
+                        styles.variableBudgetSummaryStatusCritical,
+                    ]}
+                  >
+                    {variableAllocationFeedback.label}
+                  </Text>
+                </View>
+              );
+            }
+
+            return (
+              <View
+                key={row.categoryKey}
+                style={[
+                  styles.editRow,
+                  rowIsVariableBreakdown && styles.editRowChild,
+                  rowVisualDisabled && styles.editRowDisabled,
+                ]}
+              >
+                <View style={styles.editMain}>
+                  <Text
+                    style={[
+                      styles.editLabel,
+                      rowIsVariableBreakdown && styles.editLabelChild,
+                    ]}
+                  >
+                    {rowIsVariableBreakdown
+                      ? `└ ${getBudgetCategoryDisplayLabel(row.categoryKey)}`
+                      : getBudgetCategoryDisplayLabel(row.categoryKey)}
+                  </Text>
+                  <Text style={styles.editMeta}>
+                    Trend {fmt.format(Math.round(row.baselineMonthly))} ·
+                    Uitgegeven {fmt.format(row.monthlyActual)} · Nu{" "}
+                    {formatBudgetSourceLabel(row.overrideSource)}
+                  </Text>
+                </View>
+                <View style={styles.editControls}>
+                  {rowIsVariableBreakdown ? (
+                    <>
+                      <Pressable
+                        style={styles.editActionButton}
+                        onPress={() => resetVariableCategoryToTrend(row.categoryKey)}
+                        disabled={rowControlsDisabled}
+                      >
+                        <Text style={styles.editActionButtonText}>Trend</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[
+                          styles.editActionButton,
+                          rowLocked && styles.editActionButtonActive,
+                        ]}
+                        onPress={() => toggleVariableCategoryLock(row.categoryKey)}
+                        disabled={rowControlsDisabled}
+                      >
+                        <AppIcon
+                          name={rowLocked ? "lock" : "lock-open"}
+                          size={12}
+                          color={
+                            rowLocked ? FinColors.green : FinColors.textSecondary
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.editActionButtonText,
+                            rowLocked && styles.editActionButtonTextActive,
+                          ]}
+                        >
+                          Vast
+                        </Text>
+                      </Pressable>
+                    </>
+                  ) : null}
+                  <TextInput
+                    value={
+                      budgetDraftValues[row.categoryKey] ??
+                      formatBudgetAmountDraft(row.monthlyBudget)
+                    }
+                    onChangeText={(text) => {
+                      if (inputDisabled) return;
+                      handleBudgetDraftValueChange(row.categoryKey, text);
+                    }}
+                    onBlur={() => {
+                      if (inputDisabled) return;
+                      handleBudgetDraftValueBlur(row.categoryKey);
+                    }}
+                    editable={!inputDisabled}
+                    style={[
+                      styles.editInput,
+                      inputDisabled && styles.editInputDisabled,
+                    ]}
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </FinanceBottomSheetShell>
 
       <FinanceBottomSheetShell
         visible={reserveRulesSheetOpen}
@@ -4763,6 +5392,30 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 16,
   },
+  manageVariantRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  manageVariantChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+  },
+  manageVariantChipActive: {
+    backgroundColor: FinColors.yellowSoft,
+    borderColor: FinColors.yellow,
+  },
+  manageVariantChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+  },
+  manageVariantChipTextActive: {
+    color: FinColors.textPrimary,
+  },
   scopeBlock: {
     gap: 8,
     marginTop: 10,
@@ -4879,6 +5532,212 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 18,
     gap: 14,
+  },
+  manageGroupContent: {
+    paddingHorizontal: FinSpacing.x4,
+    paddingVertical: FinSpacing.x4,
+    gap: FinSpacing.x4,
+  },
+  manageSection: {
+    gap: 12,
+  },
+  manageRouteActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  manageRouteButton: {
+    flex: 1,
+  },
+  manageDivider: {
+    height: 1,
+    backgroundColor: FinColors.borderSubtle,
+  },
+  manageSectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  manageSectionHeaderMain: {
+    flex: 1,
+    gap: 6,
+  },
+  manageSectionTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  manageSectionDescription: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: FinColors.textSecondary,
+  },
+  manageCompactSupport: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: FinColors.textSecondary,
+  },
+  manageMetricPill: {
+    minWidth: 124,
+    borderRadius: 18,
+    backgroundColor: FinColors.bgInput,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  manageMetricPillLabel: {
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    fontWeight: "700",
+    color: FinColors.textMuted,
+  },
+  manageMetricPillValue: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  manageMetricPillValueSubtle: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+    color: FinColors.textSecondary,
+  },
+  managePreviewSurface: {
+    borderRadius: 18,
+    backgroundColor: FinColors.bgInput,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: 14,
+    gap: 10,
+  },
+  managePreviewHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  managePreviewMain: {
+    flex: 1,
+    gap: 4,
+  },
+  managePreviewLabel: {
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  managePreviewMeta: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: FinColors.textSecondary,
+  },
+  managePreviewValue: {
+    fontSize: 20,
+    lineHeight: FinTypography["title-sm"].lineHeight,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  manageDisclosureRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  manageExpandableContent: {
+    marginTop: FinSpacing.x3,
+    gap: 12,
+  },
+  manageExpandableHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  manageExpandableHeaderMain: {
+    flex: 1,
+    gap: 6,
+  },
+  manageTertiaryAction: {
+    minHeight: 36,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: FinColors.bgElevated,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  manageTertiaryActionText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  managePreviewList: {
+    gap: 2,
+  },
+  manageInfoList: {
+    gap: 8,
+  },
+  manageInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    minHeight: 34,
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+    paddingBottom: 8,
+  },
+  manageInfoMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  manageInfoLabel: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "600",
+  },
+  manageInfoValue: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  manageInfoValueMuted: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: FinColors.textSecondary,
+    fontWeight: "600",
+  },
+  manageSecondaryAction: {
+    marginTop: 4,
+    minHeight: 38,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  manageSecondaryActionText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: FinColors.textPrimary,
+  },
+  manageSheetContent: {
+    gap: 12,
+    paddingBottom: 12,
   },
   actionCard: {
     gap: 10,

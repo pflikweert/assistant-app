@@ -481,6 +481,12 @@ function RootNavigator() {
             headerShown: false,
           }}
         />
+        <Stack.Screen
+          name="admin/design-system"
+          options={{
+            headerShown: false,
+          }}
+        />
       </Stack>
     </AuthGate>
   );
