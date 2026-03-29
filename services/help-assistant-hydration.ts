@@ -53,13 +53,20 @@ export function shouldPrimeFinancialCatalog(question: string | null | undefined)
 
 export function buildAvailableCategoryScopes(
   context: UnifiedFinancialAdviceContext | null | undefined,
+  additionalScopes: HelpAssistantAvailableCategoryScope[] = [],
 ): HelpAssistantAvailableCategoryScope[] {
-  if (!context) return [];
   const entries = new Map<string, HelpAssistantAvailableCategoryScope>();
+  const sourcePriority: Record<HelpAssistantAvailableCategoryScope["source"], number> = {
+    catalog: 0,
+    budget: 1,
+    spending: 2,
+    subcategory: 3,
+  };
   const register = (input: {
     slugRaw: string | null | undefined;
     labelRaw: string | null | undefined;
     source: HelpAssistantAvailableCategoryScope["source"];
+    kind?: HelpAssistantAvailableCategoryScope["kind"];
   }) => {
     const slug = sanitizeScopeSlug(input.slugRaw, "none");
     const label = String(input.labelRaw || "").trim();
@@ -67,34 +74,56 @@ export function buildAvailableCategoryScopes(
     if (!label) return;
     const existing = entries.get(slug);
     if (!existing) {
-      entries.set(slug, { slug, label, source: input.source });
+      entries.set(slug, {
+        slug,
+        label,
+        source: input.source,
+        kind: input.kind,
+      });
       return;
     }
-    if (existing.source === "budget" && input.source !== "budget") {
-      entries.set(slug, { slug, label, source: input.source });
+    if (sourcePriority[input.source] > sourcePriority[existing.source]) {
+      entries.set(slug, {
+        slug,
+        label,
+        source: input.source,
+        kind: input.kind,
+      });
     }
   };
 
-  for (const category of context.spending.currentMonthBreakdown.categories || []) {
+  for (const scope of additionalScopes) {
+    register({
+      slugRaw: scope.slug,
+      labelRaw: scope.label,
+      source: scope.source,
+      kind: scope.kind,
+    });
+  }
+
+  for (const category of context?.spending.currentMonthBreakdown.categories || []) {
     register({
       slugRaw: category.categoryKey || category.key,
       labelRaw: category.label,
       source: "spending",
+      kind: "expense",
     });
     for (const subcategory of category.subcategories || []) {
       register({
         slugRaw: subcategory.categoryKey || subcategory.key,
-        labelRaw: subcategory.label,
+        labelRaw: `${category.label} > ${subcategory.label}`,
         source: "subcategory",
+        kind: "expense",
       });
     }
   }
 
-  for (const budgetCategory of context.budgetPlan.variableCategoryBudgets || []) {
+  for (const budgetCategory of context?.budgetPlan.variableCategoryBudgets || []) {
     register({
       slugRaw: budgetCategory.categoryKey,
       labelRaw: budgetCategory.label,
       source: "budget",
+      kind: "expense",
     });
   }
 
@@ -156,31 +185,68 @@ function inferCategoryScope(input: {
   availableCategoryScopes: HelpAssistantAvailableCategoryScope[];
   requestedScope: string;
 }) {
+  const sourcePriority: Record<
+    HelpAssistantAvailableCategoryScope["source"],
+    number
+  > = {
+    catalog: 0,
+    budget: 1,
+    spending: 2,
+    subcategory: 3,
+  };
   const inferredScope =
     input.latestUserText && input.availableCategoryScopes.length
       ? input.availableCategoryScopes
           .map((scope) => ({
             slug: scope.slug,
             label: scope.label,
+            source: scope.source,
             score: (() => {
               const normalizedQuestion = normalizeQuestionText(input.latestUserText);
               if (!normalizedQuestion) return 0;
+              const collapsedQuestion = normalizedQuestion.replace(/\s+/g, "");
               let score = 0;
               const slugText = scope.slug.replace(/_/g, " ");
               const labelText = normalizeQuestionText(scope.label);
+              const leafLabelText = normalizeQuestionText(
+                scope.label.split(">").pop()?.trim() || scope.label,
+              );
+              const collapsedLabelText = labelText.replace(/\s+/g, "");
+              const collapsedLeafLabelText = leafLabelText.replace(/\s+/g, "");
               const entryTokens = new Set([
                 ...tokenizeScopeText(scope.slug),
                 ...tokenizeScopeText(scope.label),
               ]);
               if (normalizedQuestion.includes(slugText)) score += 3;
               if (labelText && normalizedQuestion.includes(labelText)) score += 4;
+              if (leafLabelText && normalizedQuestion.includes(leafLabelText)) score += 5;
+              if (
+                collapsedQuestion &&
+                collapsedLabelText &&
+                (collapsedQuestion.includes(collapsedLabelText) ||
+                  collapsedLabelText.includes(collapsedQuestion))
+              ) {
+                score += 6;
+              }
+              if (
+                collapsedQuestion &&
+                collapsedLeafLabelText &&
+                (collapsedQuestion.includes(collapsedLeafLabelText) ||
+                  collapsedLeafLabelText.includes(collapsedQuestion))
+              ) {
+                score += 7;
+              }
               for (const token of tokenizeScopeText(normalizedQuestion)) {
                 if (entryTokens.has(token)) score += 1;
               }
               return score;
             })(),
           }))
-          .sort((a, b) => b.score - a.score)[0]
+          .sort(
+            (a, b) =>
+              b.score - a.score ||
+              sourcePriority[b.source] - sourcePriority[a.source],
+          )[0]
       : null;
 
   if (
@@ -236,7 +302,18 @@ function categoryMatchesScope(input: {
   );
 }
 
-function mapScopedCategories(input: {
+type ScopedSpendEntry = {
+  category: string;
+  label: string;
+  total: string;
+  rawTotal: number;
+  transactionCount: number;
+  granularity: "category" | "subcategory";
+  parentCategory?: string;
+  parentLabel?: string;
+};
+
+function buildScopeCandidates(input: {
   breakdown: FinancialCategorySpendBreakdown;
   scope: string;
   availableCategoryScopes: HelpAssistantAvailableCategoryScope[];
@@ -244,33 +321,140 @@ function mapScopedCategories(input: {
   const scopeReference = input.availableCategoryScopes.find(
     (scope) => scope.slug === input.scope,
   );
-  const scopedCategories =
-    input.scope === "none" || input.scope === "unknown"
-      ? input.breakdown.categories.slice(0, 5)
-      : input.breakdown.categories.filter((category) =>
-          categoryMatchesScope({
-            category,
-            scope: input.scope,
-            scopeReferenceLabel: scopeReference?.label || null,
-          }),
-        );
+  const scopeTokens = tokenizeScopeText(
+    [input.scope.replace(/_/g, " "), scopeReference?.label || ""].join(" "),
+  );
 
-  const mapped = scopedCategories.map((category) => ({
+  const categoryEntries: ScopedSpendEntry[] = input.breakdown.categories.map((category) => ({
     category: sanitizeScopeSlug(category.categoryKey || category.key, "unknown"),
     label: category.label,
     total: formatAmount(category.amount) || "onbekend",
     rawTotal: category.amount,
     transactionCount: category.transactionCount,
+    granularity: "category",
   }));
+
+  const subcategoryEntries: ScopedSpendEntry[] = input.breakdown.categories.flatMap(
+    (category) =>
+      (category.subcategories || []).map((subcategory) => ({
+        category: sanitizeScopeSlug(
+          subcategory.categoryKey || subcategory.key,
+          "unknown",
+        ),
+        label: subcategory.label,
+        total: formatAmount(subcategory.amount) || "onbekend",
+        rawTotal: subcategory.amount,
+        transactionCount: subcategory.transactionCount,
+        granularity: "subcategory" as const,
+        parentCategory: sanitizeScopeSlug(
+          category.categoryKey || category.key,
+          "unknown",
+        ),
+        parentLabel: category.label,
+      })),
+  );
+
+  if (input.scope === "none" || input.scope === "unknown") {
+    return {
+      categoryEntries,
+      subcategoryEntries,
+      exactCategoryMatches: [] as ScopedSpendEntry[],
+      exactSubcategoryMatches: [] as ScopedSpendEntry[],
+      fuzzyCategoryMatches: [] as ScopedSpendEntry[],
+      fuzzySubcategoryMatches: [] as ScopedSpendEntry[],
+    };
+  }
+
+  const exactCategoryMatches = categoryEntries.filter(
+    (entry) => entry.category === input.scope,
+  );
+  const exactSubcategoryMatches = subcategoryEntries.filter(
+    (entry) => entry.category === input.scope,
+  );
+  const fuzzyCategoryMatches = input.breakdown.categories
+    .filter((category) =>
+      categoryMatchesScope({
+        category,
+        scope: input.scope,
+        scopeReferenceLabel: scopeReference?.label || null,
+      }),
+    )
+    .map((category) => ({
+      category: sanitizeScopeSlug(category.categoryKey || category.key, "unknown"),
+      label: category.label,
+      total: formatAmount(category.amount) || "onbekend",
+      rawTotal: category.amount,
+      transactionCount: category.transactionCount,
+      granularity: "category" as const,
+    }));
+  const fuzzySubcategoryMatches = subcategoryEntries.filter((entry) => {
+    const candidates = [
+      normalizeMatchText(entry.category),
+      normalizeMatchText(entry.label),
+      normalizeMatchText(entry.parentCategory || ""),
+      normalizeMatchText(entry.parentLabel || ""),
+    ];
+    return scopeTokens.some((token) =>
+      candidates.some((candidate) => candidate.includes(token)),
+    );
+  });
+
+  return {
+    categoryEntries,
+    subcategoryEntries,
+    exactCategoryMatches,
+    exactSubcategoryMatches,
+    fuzzyCategoryMatches,
+    fuzzySubcategoryMatches,
+  };
+}
+
+function mapScopedCategories(input: {
+  breakdown: FinancialCategorySpendBreakdown;
+  scope: string;
+  availableCategoryScopes: HelpAssistantAvailableCategoryScope[];
+}) {
+  const candidates = buildScopeCandidates(input);
+  const mapped =
+    input.scope === "none" || input.scope === "unknown"
+      ? candidates.categoryEntries.slice(0, 5)
+      : candidates.exactSubcategoryMatches.length
+        ? candidates.exactSubcategoryMatches
+        : candidates.exactCategoryMatches.length
+          ? candidates.exactCategoryMatches
+          : candidates.fuzzyCategoryMatches.length
+            ? candidates.fuzzyCategoryMatches
+            : candidates.fuzzySubcategoryMatches;
 
   const scopedCategory =
     input.scope !== "none" && input.scope !== "unknown" && mapped.length === 1
       ? mapped[0]
       : null;
+  const scopedParentCategory =
+    scopedCategory?.granularity === "category"
+      ? input.breakdown.categories.find(
+          (category) =>
+            sanitizeScopeSlug(category.categoryKey || category.key, "unknown") ===
+            scopedCategory.category,
+        ) || null
+      : null;
+  const scopedSubcategoryBreakdown =
+    scopedParentCategory && scopedParentCategory.subcategories?.length
+      ? scopedParentCategory.subcategories.map((subcategory) => ({
+          category: sanitizeScopeSlug(
+            subcategory.categoryKey || subcategory.key,
+            "unknown",
+          ),
+          label: subcategory.label,
+          total: formatAmount(subcategory.amount) || "onbekend",
+          transactionCount: subcategory.transactionCount,
+        }))
+      : [];
 
   return {
     mapped,
     scopedCategory,
+    scopedSubcategoryBreakdown,
   };
 }
 
@@ -308,6 +492,59 @@ function buildYearToDateRange(monthKey: string | null) {
   };
 }
 
+function buildSameMonthLastYearRange(monthKey: string | null) {
+  if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey)) return null;
+  const shifted = shiftMonthKey(monthKey, -12);
+  if (!shifted) return null;
+  return {
+    startIso: shifted.startIso,
+    endIsoExclusive: shifted.endIso,
+    label: shifted.label,
+  };
+}
+
+function countMonthsInYearToDate(monthKey: string | null) {
+  if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey)) return null;
+  const [, monthValue] = monthKey.split("-");
+  const month = Number.parseInt(monthValue || "", 10);
+  return Number.isFinite(month) && month >= 1 && month <= 12 ? month : null;
+}
+
+function asksForBreakdown(text: string | null | undefined) {
+  const normalized = normalizeQuestionText(text);
+  if (!normalized) return false;
+  return (
+    normalized.includes("onderverdeling") ||
+    normalized.includes("subcategorie") ||
+    normalized.includes("sub categorie") ||
+    normalized.includes("binnen ") ||
+    normalized.includes("welke posten") ||
+    normalized.includes("waar bestaat")
+  );
+}
+
+function asksForAverage(text: string | null | undefined) {
+  const normalized = normalizeQuestionText(text);
+  if (!normalized) return false;
+  return (
+    normalized.includes("gemiddelde") ||
+    normalized.includes("gemiddeld") ||
+    normalized.includes("per maand")
+  );
+}
+
+function asksForLastYearComparison(text: string | null | undefined) {
+  const normalized = normalizeQuestionText(text);
+  if (!normalized) return false;
+  return (
+    normalized.includes("vorig jaar") ||
+    normalized.includes("duurder geworden") ||
+    normalized.includes("gestegen") ||
+    normalized.includes("meer dan vorig jaar") ||
+    normalized.includes("minder dan vorig jaar")
+  );
+}
+
 function findMerchantAggregate(input: {
   merchantScope: string;
   aggregates: SafeMerchantAggregate[];
@@ -331,6 +568,7 @@ export async function buildHydrationResult(input: {
   requestedPeriodKey: string | null;
   latestUserText?: string | null;
   context: HelpAssistantContext;
+  availableCategoryScopes?: HelpAssistantAvailableCategoryScope[];
 }): Promise<HelpAssistantHydrationResult> {
   const loadedBlocks: string[] = [];
   const limitations: string[] = [];
@@ -397,24 +635,55 @@ export async function buildHydrationResult(input: {
     loadedBlocks.push("categorySummary");
     const availableCategoryScopes = buildAvailableCategoryScopes(
       input.unifiedFinancialContext,
+      input.availableCategoryScopes || [],
     );
     const requestedScope = sanitizeScopeSlug(
       input.routingDecision.dataRequests.categoryScope,
       "none",
+    );
+    const averageRequested = asksForAverage(input.latestUserText);
+    const lastYearComparisonRequested = asksForLastYearComparison(
+      input.latestUserText,
     );
     const effectiveScope = inferCategoryScope({
       latestUserText: input.latestUserText || null,
       availableCategoryScopes,
       requestedScope,
     });
+    const scopeReference = availableCategoryScopes.find(
+      (scope) => scope.slug === effectiveScope,
+    );
+    const categoryDirection = scopeReference?.kind === "income" ? "income" : "expense";
+    const requestedRange = buildMonthRange(input.requestedPeriodKey);
+    const currentBreakdown =
+      categoryDirection === "expense"
+        ? input.unifiedFinancialContext.spending.currentMonthBreakdown
+        : requestedRange
+          ? await resolveSafeCategoryBreakdownInRange({
+              context: input.context,
+              startIso: requestedRange.startIso,
+              endIsoExclusive: requestedRange.endIsoExclusive,
+              direction: "income",
+            }).catch(() => ({
+              total: 0,
+              transactionCount: 0,
+              categories: [],
+            }))
+          : {
+              total: 0,
+              transactionCount: 0,
+              categories: [],
+            };
     const currentScoped = mapScopedCategories({
-      breakdown: input.unifiedFinancialContext.spending.currentMonthBreakdown,
+      breakdown: currentBreakdown,
       scope: effectiveScope,
       availableCategoryScopes,
     });
 
     let trendComparisonBlock: string[] = [];
     let yearSummaryBlock: string[] = [];
+    let comparisonBlock: string[] = [];
+    let averageBlock: string[] = [];
 
     if (!currentScoped.mapped.length && effectiveScope !== "none" && effectiveScope !== "unknown") {
       limitations.push("categorie_scope_niet_gevonden_in_geaggregeerde_data");
@@ -429,7 +698,8 @@ export async function buildHydrationResult(input: {
     if (
       input.routingDecision.dataRequests.transactionQuestionType === "category_total" &&
       !currentScoped.scopedCategory &&
-      requestedTimeScope.unsupported !== "year"
+      requestedTimeScope.unsupported !== "year" &&
+      !asksForBreakdown(input.latestUserText)
     ) {
       answerability = mergeAnswerability(answerability, "blocked");
     }
@@ -445,6 +715,7 @@ export async function buildHydrationResult(input: {
           context: input.context,
           startIso: previousRange.startIso,
           endIsoExclusive: previousRange.endIsoExclusive,
+          direction: categoryDirection,
         }).catch(() => null);
         if (previousBreakdown) {
           const previousScoped = mapScopedCategories({
@@ -474,13 +745,18 @@ export async function buildHydrationResult(input: {
       }
     }
 
-    if (requestedTimeScope.unsupported === "year" && input.requestedPeriodKey) {
+    if (
+      (requestedTimeScope.unsupported === "year" || averageRequested) &&
+      !lastYearComparisonRequested &&
+      input.requestedPeriodKey
+    ) {
       const yearRange = buildYearToDateRange(input.requestedPeriodKey);
       if (yearRange) {
         const yearBreakdown = await resolveSafeCategoryBreakdownInRange({
           context: input.context,
           startIso: yearRange.startIso,
           endIsoExclusive: yearRange.endIsoExclusive,
+          direction: categoryDirection,
         }).catch(() => null);
         if (yearBreakdown) {
           const yearScoped = mapScopedCategories({
@@ -489,11 +765,21 @@ export async function buildHydrationResult(input: {
             availableCategoryScopes,
           });
           if (yearScoped.scopedCategory) {
+            const monthCount = countMonthsInYearToDate(input.requestedPeriodKey);
             yearSummaryBlock = [
               `- yearSummaryRange: ${yearRange.label}`,
               `- yearToDateCategoryTotal: ${yearScoped.scopedCategory.total}`,
               `- yearToDateCategoryTransactionCount: ${yearScoped.scopedCategory.transactionCount}`,
             ];
+            if (monthCount && monthCount > 0) {
+              averageBlock = [
+                `- averagePerMonthRange: ${yearRange.label}`,
+                `- averagePerMonthTotal: ${formatAmount(
+                  yearScoped.scopedCategory.rawTotal / monthCount,
+                ) || "onbekend"}`,
+                `- averagePerMonthMonthCount: ${monthCount}`,
+              ];
+            }
             limitations.push("jaar_scope_beperkt_tot_jaartotaal_tot_geselecteerde_maand");
             answerability = mergeAnswerability(answerability, "answerable");
           } else {
@@ -507,11 +793,51 @@ export async function buildHydrationResult(input: {
       }
     }
 
+    if (lastYearComparisonRequested && input.requestedPeriodKey) {
+      const lastYearRange = buildSameMonthLastYearRange(input.requestedPeriodKey);
+      if (lastYearRange) {
+        const lastYearBreakdown = await resolveSafeCategoryBreakdownInRange({
+          context: input.context,
+          startIso: lastYearRange.startIso,
+          endIsoExclusive: lastYearRange.endIsoExclusive,
+          direction: categoryDirection,
+        }).catch(() => null);
+        if (lastYearBreakdown) {
+          const lastYearScoped = mapScopedCategories({
+            breakdown: lastYearBreakdown,
+            scope: effectiveScope,
+            availableCategoryScopes,
+          });
+          if (currentScoped.scopedCategory && lastYearScoped.scopedCategory) {
+            const delta =
+              currentScoped.scopedCategory.rawTotal - lastYearScoped.scopedCategory.rawTotal;
+            comparisonBlock = [
+              `- comparisonReferencePeriod: ${lastYearRange.label}`,
+              `- comparisonReferenceTotal: ${lastYearScoped.scopedCategory.total}`,
+              `- comparisonDelta: ${formatAmount(delta) || "onbekend"}`,
+              `- comparisonDirection: ${delta > 0 ? "up" : delta < 0 ? "down" : "flat"}`,
+            ];
+            answerability = mergeAnswerability(
+              answerability,
+              periodMatch === "mismatch" ? "blocked" : "answerable",
+            );
+          } else {
+            limitations.push("vergelijking_vorig_jaar_niet_volledig_beschikbaar");
+            answerability = mergeAnswerability(answerability, "partial");
+          }
+        } else {
+          limitations.push("vergelijking_vorig_jaar_niet_volledig_beschikbaar");
+          answerability = mergeAnswerability(answerability, "partial");
+        }
+      }
+    }
+
     categorySummaryBlock = [
       "Truth-safe categorySummary:",
       `- monthScope: ${input.routingDecision.dataRequests.monthScope}`,
       `- dataPeriod: ${input.unifiedFinancialContext.period.label || "onbekend"}`,
       `- periodMatch: ${periodMatch}`,
+      `- categoryDirection: ${categoryDirection}`,
       `- categoryScope: ${effectiveScope}`,
       `- availableCategoryScopes: ${JSON.stringify(
         availableCategoryScopes.slice(0, 20),
@@ -525,8 +851,20 @@ export async function buildHydrationResult(input: {
       currentScoped.scopedCategory
         ? `- scopedCategoryTransactionCount: ${currentScoped.scopedCategory.transactionCount}`
         : "- scopedCategoryTransactionCount: onbekend",
+      currentScoped.scopedSubcategoryBreakdown.length
+        ? `- subcategoryBreakdown: ${JSON.stringify(
+            currentScoped.scopedSubcategoryBreakdown,
+          )}`
+        : "- subcategoryBreakdown: []",
+      currentScoped.scopedSubcategoryBreakdown.length
+        ? `- subcategoryBreakdownSummary: ${currentScoped.scopedSubcategoryBreakdown
+            .map((item) => `${item.label} ${item.total}`)
+            .join(", ")}`
+        : "- subcategoryBreakdownSummary: geen",
       ...trendComparisonBlock,
+      ...comparisonBlock,
       ...yearSummaryBlock,
+      ...averageBlock,
       `- categories: ${JSON.stringify(currentScoped.mapped.map(({ rawTotal, ...rest }) => rest))}`,
     ].join("\n");
   }

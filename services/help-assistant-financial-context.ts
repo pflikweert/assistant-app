@@ -31,6 +31,7 @@ import {
   getWeekBudgetSnapshot,
 } from "@/services/budget-risk";
 import type { HelpAssistantContext } from "@/services/help-assistant-context";
+import type { HelpAssistantAvailableCategoryScope } from "@/services/help-assistant-orchestration-shared";
 import { buildAssistantAdviceSignals } from "@/services/help-assistant-spending-advice";
 import { resolveIncomeSemantics } from "@/services/income-semantics";
 import { supabase } from "@/services/supabase";
@@ -259,6 +260,8 @@ export type FinancialCategorySpendBreakdown = {
   categories: FinancialCategorySpendItem[];
 };
 
+type FinancialCategoryAmountDirection = "expense" | "income";
+
 export type SafeMerchantAggregate = {
   merchantKey: string;
   merchantLabel: string;
@@ -345,6 +348,21 @@ function buildCategoryTrail(
   return trail;
 }
 
+function buildCategoryScopeLabel(trail: CategoryRecord[], fallbackLabel: string) {
+  const labels = trail
+    .map((item) => String(item.name || "").trim())
+    .filter(Boolean);
+  if (!labels.length) return fallbackLabel;
+  return labels.join(" > ");
+}
+
+function inferCategoryScopeKind(trail: CategoryRecord[]) {
+  const keys = trail.map((item) => normalizePattern(item.key || ""));
+  return keys.some((key) => key === "income" || key.startsWith("income_"))
+    ? ("income" as const)
+    : ("expense" as const);
+}
+
 function emptyFinancialCategorySpendBreakdown(): FinancialCategorySpendBreakdown {
   return {
     total: 0,
@@ -353,9 +371,24 @@ function emptyFinancialCategorySpendBreakdown(): FinancialCategorySpendBreakdown
   };
 }
 
-function buildFinancialCategorySpendBreakdown(
+function resolveCategoryAmountDelta(input: {
+  row: SpendRow;
+  category: CategoryRecord | null;
+  direction: FinancialCategoryAmountDirection;
+}) {
+  if (input.direction === "income") {
+    const amount = Number(input.row.amount || 0);
+    if (amount <= 0) return null;
+    return amount;
+  }
+
+  return resolveSpendDelta(input.row, input.category);
+}
+
+function buildFinancialCategoryAmountBreakdown(
   rows: SpendRow[],
   categoryById: Map<string, CategoryRecord>,
+  direction: FinancialCategoryAmountDirection,
 ): FinancialCategorySpendBreakdown {
   const mainBuckets = new Map<
     string,
@@ -395,7 +428,11 @@ function buildFinancialCategorySpendBreakdown(
       ? trail[trail.length - 1]?.key || category?.key || null
       : category?.key || null;
 
-    const delta = resolveSpendDelta(row, category);
+    const delta = resolveCategoryAmountDelta({
+      row,
+      category,
+      direction,
+    });
     if (delta == null) continue;
 
     total += delta;
@@ -465,6 +502,13 @@ function buildFinancialCategorySpendBreakdown(
     transactionCount,
     categories,
   };
+}
+
+function buildFinancialCategorySpendBreakdown(
+  rows: SpendRow[],
+  categoryById: Map<string, CategoryRecord>,
+): FinancialCategorySpendBreakdown {
+  return buildFinancialCategoryAmountBreakdown(rows, categoryById, "expense");
 }
 
 function resolveSpendDelta(row: SpendRow, category: CategoryRecord | null) {
@@ -1071,6 +1115,34 @@ async function loadFinancialCategoryMap() {
   return buildCategoryRecordMap(categories);
 }
 
+export async function resolveSafeCategoryCatalogScopes(): Promise<
+  HelpAssistantAvailableCategoryScope[]
+> {
+  const categoryById = await loadFinancialCategoryMap().catch(() => null);
+  if (!categoryById) return [];
+
+  const entries = new Map<string, HelpAssistantAvailableCategoryScope>();
+  for (const category of categoryById.values()) {
+    const trail = buildCategoryTrail(category.id, categoryById);
+    const leaf = trail[trail.length - 1] || category;
+    const slug = normalizePattern(leaf.key || "");
+    const label = String(leaf.name || "").trim();
+    if (!slug || !label) continue;
+    if (!entries.has(slug)) {
+      entries.set(slug, {
+        slug,
+        label: buildCategoryScopeLabel(trail, label),
+        source: "catalog",
+        kind: inferCategoryScopeKind(trail),
+      });
+    }
+  }
+
+  return [...entries.values()].sort((left, right) =>
+    left.label.localeCompare(right.label, "nl"),
+  );
+}
+
 async function resolveFinancialCategorySpendBreakdown(params: {
   userId: string;
   startIso: string;
@@ -1158,6 +1230,7 @@ export async function resolveSafeCategoryBreakdownInRange(input: {
   context: HelpAssistantContext;
   startIso: string;
   endIsoExclusive: string;
+  direction?: FinancialCategoryAmountDirection;
 }): Promise<FinancialCategorySpendBreakdown> {
   const userId = await requireCurrentUserId();
   const scopePreference = await loadMoneyViewScopePreference(userId).catch(() => ({
@@ -1171,13 +1244,20 @@ export async function resolveSafeCategoryBreakdownInRange(input: {
 
   if (!categoryById) return emptyFinancialCategorySpendBreakdown();
 
-  return resolveFinancialCategorySpendBreakdown({
+  return fetchSpendRowsInRange({
     userId,
     startIso: input.startIso,
     endIsoExclusive: input.endIsoExclusive,
     budgetFlags,
-    categoryById,
-  }).catch(() => emptyFinancialCategorySpendBreakdown());
+  })
+    .then((rows) =>
+      buildFinancialCategoryAmountBreakdown(
+        rows,
+        categoryById,
+        input.direction || "expense",
+      ),
+    )
+    .catch(() => emptyFinancialCategorySpendBreakdown());
 }
 
 export async function resolveSafeMerchantAggregatesInRange(input: {

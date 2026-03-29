@@ -34,8 +34,10 @@ function isTruthy(value: unknown) {
 }
 
 const isDevRuntime = typeof __DEV__ === "boolean" ? __DEV__ : true;
+const isNodeRuntime =
+  typeof process !== "undefined" && process.release?.name === "node";
 const devBypassFlag = getEnv("DEV_AUTH_BYPASS") ?? getEnv("DEV_BYPASS_LOGIN_ENABLED");
-const devAuthEnabled = isDevRuntime && isTruthy(devBypassFlag);
+const devAuthEnabled = isTruthy(devBypassFlag) && (isDevRuntime || isNodeRuntime);
 
 type DevAuthConfig = {
   userId: string;
@@ -241,7 +243,11 @@ export async function logout() {
 export async function getSession(): Promise<Session | null> {
   return runAuthRead(async () => {
     const { data } = await supabase.auth.getSession();
-    return data.session ?? null;
+    if (data.session) return data.session;
+    if (devAuthConfig) {
+      return createDevSession();
+    }
+    return null;
   });
 }
 

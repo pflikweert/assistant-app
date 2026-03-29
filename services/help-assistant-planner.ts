@@ -110,7 +110,9 @@ function buildPlannerPrompt(input: {
 }) {
   const availableCategoryScopes = (input.availableCategoryScopes || [])
     .slice(0, 20)
-    .map((scope) => `${scope.slug} (${scope.label})`)
+    .map((scope) =>
+      `${scope.slug} (${scope.label}${scope.kind ? `; kind=${scope.kind}` : ""})`,
+    )
     .join(", ");
   return [
     HELP_ASSISTANT_PLANNER_PROMPT,

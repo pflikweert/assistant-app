@@ -183,6 +183,12 @@ function buildInsightRouteContextPrompt(input: {
     lines.push(
       "Gedrag: noem een scoped categoriebedrag alleen als dat expliciet als totaal in de payload staat.",
     );
+    lines.push(
+      "Als `subcategoryBreakdown` beschikbaar is en de gebruiker vraagt naar onderverdeling, subcategorieën of posten binnen een categorie, noem die onderverdeling expliciet.",
+    );
+    lines.push(
+      "Als `subcategoryBreakdownSummary` of vergelijking-/gemiddelde-velden beschikbaar zijn, gebruik die direct en zeg niet dat die informatie ontbreekt.",
+    );
     if (
       input.routingDecision.dataRequests.transactionQuestionType === "category_total"
     ) {

@@ -5,6 +5,7 @@ import type {
 import { classifyHelpAssistantIntent } from "./help-assistant-intent";
 import type { HelpAssistantContext } from "./help-assistant-context";
 import {
+  resolveSafeCategoryCatalogScopes,
   resolveUnifiedFinancialAdviceContext,
   type UnifiedFinancialAdviceContext,
 } from "./help-assistant-financial-context";
@@ -75,7 +76,23 @@ export type HelpAssistantAIResponse = {
   responseId: string | null;
   unifiedFinancialContext?: UnifiedFinancialAdviceContext | null;
   issueIntake?: HelpAssistantIssueDraftResponse | null;
+  activeFlow?: HelpAssistantActiveFlowDescriptor | null;
 };
+
+function buildResponseActiveFlow(input: {
+  route: HelpAssistantPlannerDecision["route"];
+  mode: HelpAssistantPlannerDecision["mode"];
+  latestUserMessageId: string | null;
+}) {
+  if (input.route === "general") return null;
+  return {
+    route: input.route,
+    mode: input.mode,
+    status: "active",
+    anchorMessageId: input.latestUserMessageId,
+    reason: "assistant_last_routed_turn",
+  } satisfies HelpAssistantActiveFlowDescriptor;
+}
 
 function shouldUseFallbackPlannerSource(input: {
   plannerResult: HelpAssistantPlannerDecision | null;
@@ -163,6 +180,9 @@ export async function requestHelpAssistantReply({
 
   let plannerFinancialContext: UnifiedFinancialAdviceContext | null =
     unifiedFinancialContext || null;
+  const plannerCategoryCatalogScopes = latestUserMessage
+    ? await resolveSafeCategoryCatalogScopes().catch(() => [])
+    : [];
   if (
     !plannerFinancialContext &&
     latestUserMessage &&
@@ -181,6 +201,7 @@ export async function requestHelpAssistantReply({
 
   const plannerAvailableCategoryScopes = buildAvailableCategoryScopes(
     plannerFinancialContext,
+    plannerCategoryCatalogScopes,
   );
   const fallbackPlannerResult = buildSafePlannerFallback({
     latestUserText: latestUserMessage?.text || null,
@@ -216,6 +237,11 @@ export async function requestHelpAssistantReply({
   });
 
   const route = normalizedRoutingDecision.route;
+  const responseActiveFlow = buildResponseActiveFlow({
+    route: normalizedRoutingDecision.route,
+    mode: normalizedRoutingDecision.mode,
+    latestUserMessageId: latestUserMessage?.id || null,
+  });
   const isIssueIntakeQuestion = route === "issue_intake";
   const isSpendingAdviceQuestion = route === "spending_advice";
   const requestedAmount = isSpendingAdviceQuestion ? preRequestedAmount : null;
@@ -254,6 +280,7 @@ export async function requestHelpAssistantReply({
     requestedPeriodKey,
     latestUserText: latestUserMessage?.text || null,
     context,
+    availableCategoryScopes: plannerAvailableCategoryScopes,
   });
   const spendingFallback =
     isSpendingAdviceQuestion && resolvedFinancialContext
@@ -448,6 +475,7 @@ export async function requestHelpAssistantReply({
       responseId: payload.id || null,
       unifiedFinancialContext: resolvedFinancialContext,
       issueIntake: issueIntakeResponse,
+      activeFlow: responseActiveFlow,
     };
   } catch {
     if (isSpendingAdviceQuestion && spendingFallback) {
@@ -457,6 +485,7 @@ export async function requestHelpAssistantReply({
         responseId: null,
         unifiedFinancialContext: resolvedFinancialContext,
         issueIntake: null,
+        activeFlow: responseActiveFlow,
       };
     }
 

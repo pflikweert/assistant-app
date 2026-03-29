@@ -20,6 +20,7 @@ import {
 import {
   isFinancialAdviceQuestion,
   requestHelpAssistantReply,
+  type HelpAssistantActiveFlowDescriptor,
 } from "@/services/help-assistant-ai";
 import type { UnifiedFinancialAdviceContext } from "@/services/help-assistant-financial-context";
 import {
@@ -60,6 +61,8 @@ export function HelpAssistantSheet({
   const [thread, setThread] = React.useState(createInitialHelpAssistantThreadState);
   const [sessionFinancialContext, setSessionFinancialContext] =
     React.useState<UnifiedFinancialAdviceContext | null>(null);
+  const [sessionActiveFlow, setSessionActiveFlow] =
+    React.useState<HelpAssistantActiveFlowDescriptor | null>(null);
   const [typedCompletedByMessageId, setTypedCompletedByMessageId] =
     React.useState<Record<string, boolean>>({});
   const [liveTypingMessageId, setLiveTypingMessageId] = React.useState<string | null>(null);
@@ -288,6 +291,7 @@ export function HelpAssistantSheet({
   React.useEffect(() => {
     if (visible) return;
     setSessionFinancialContext(null);
+    setSessionActiveFlow(null);
     setTypedCompletedByMessageId({});
     setLiveTypingMessageId(null);
     setStickyMessageAnchorId(null);
@@ -370,7 +374,7 @@ export function HelpAssistantSheet({
             anchorMessageId: issueFlowStateRef.current.anchorMessageId,
             reason: "issue_review_banner_active",
           }
-        : null;
+        : sessionActiveFlow;
       const shouldUseFinancialSessionContext = Boolean(
         latestUserMessage && isFinancialAdviceQuestion(latestUserMessage.text),
       );
@@ -391,6 +395,7 @@ export function HelpAssistantSheet({
         ) {
           setSessionFinancialContext(reply.unifiedFinancialContext);
         }
+        setSessionActiveFlow(reply.activeFlow || null);
         if (
           reply.issueIntake &&
           requestAnchorMessageId &&
@@ -424,7 +429,7 @@ export function HelpAssistantSheet({
         );
       }
     },
-    [context, sessionFinancialContext],
+    [context, sessionActiveFlow, sessionFinancialContext],
   );
 
   const handleQuickActionPress = React.useCallback(

@@ -87,7 +87,8 @@ export type HelpAssistantPlannerDataRequests = {
 export type HelpAssistantAvailableCategoryScope = {
   slug: string;
   label: string;
-  source: "spending" | "subcategory" | "budget";
+  source: "spending" | "subcategory" | "budget" | "catalog";
+  kind?: "expense" | "income" | "other";
 };
 
 export type HelpAssistantPlannerDecision = {

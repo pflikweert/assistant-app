@@ -7,12 +7,14 @@ const {
   resolveUnifiedFinancialAdviceContextMock,
   resolveSafeCategoryBreakdownInRangeMock,
   resolveSafeMerchantAggregatesInRangeMock,
+  resolveSafeCategoryCatalogScopesMock,
 } = vi.hoisted(() => ({
   postOpenAIChatCompletionMock: vi.fn(),
   postHelpAssistantSpendingAdviceCompletionMock: vi.fn(),
   resolveUnifiedFinancialAdviceContextMock: vi.fn(),
   resolveSafeCategoryBreakdownInRangeMock: vi.fn(),
   resolveSafeMerchantAggregatesInRangeMock: vi.fn(),
+  resolveSafeCategoryCatalogScopesMock: vi.fn(),
 }));
 
 vi.mock("./openai-proxy", () => ({
@@ -25,6 +27,7 @@ vi.mock("./help-assistant-financial-context", () => ({
   resolveUnifiedFinancialAdviceContext: resolveUnifiedFinancialAdviceContextMock,
   resolveSafeCategoryBreakdownInRange: resolveSafeCategoryBreakdownInRangeMock,
   resolveSafeMerchantAggregatesInRange: resolveSafeMerchantAggregatesInRangeMock,
+  resolveSafeCategoryCatalogScopes: resolveSafeCategoryCatalogScopesMock,
 }));
 
 vi.mock("expo-constants", () => ({
@@ -172,6 +175,7 @@ describe("help-assistant-ai spending advice", () => {
     resolveUnifiedFinancialAdviceContextMock.mockReset();
     resolveSafeCategoryBreakdownInRangeMock.mockReset();
     resolveSafeMerchantAggregatesInRangeMock.mockReset();
+    resolveSafeCategoryCatalogScopesMock.mockReset();
     resolveUnifiedFinancialAdviceContextMock.mockResolvedValue({
       period: {
         key: "2026-03",
@@ -440,6 +444,13 @@ describe("help-assistant-ai spending advice", () => {
       categories: [],
     });
     resolveSafeMerchantAggregatesInRangeMock.mockResolvedValue([]);
+    resolveSafeCategoryCatalogScopesMock.mockResolvedValue([
+      { slug: "groceries", label: "Boodschappen", source: "catalog" },
+      { slug: "fuel", label: "Brandstof", source: "catalog" },
+      { slug: "auto_transport", label: "Auto & Transport", source: "catalog" },
+      { slug: "car_insurance", label: "Autoverzekering", source: "catalog" },
+      { slug: "car_wash", label: "Autowassen", source: "catalog" },
+    ]);
   });
 
   it("parses spending schema from direct JSON and fenced JSON", () => {
@@ -1831,7 +1842,7 @@ describe("help-assistant-ai spending advice", () => {
     );
   });
 
-  it("geeft bij onduidelijke autoscope de beschikbare categorieen mee voor verduidelijking", async () => {
+  it("leidt autoscope via de globale categoriecatalogus af naar auto_transport", async () => {
     postOpenAIChatCompletionMock.mockResolvedValueOnce(
       createPlannerDecisionResponse(
         {
@@ -1890,9 +1901,9 @@ describe("help-assistant-ai spending advice", () => {
       .filter((message: { role?: string }) => message.role === "system")
       .map((message: { content?: string }) => String(message.content || ""))
       .join("\n");
-    expect(systemText).toContain("categoryScope=unknown");
-    expect(systemText).toContain("Planner vraagt verduidelijking");
+    expect(systemText).toContain("categoryScope=auto_transport");
     expect(systemText).toContain("availableCategoryScopes");
+    expect(systemText).toContain('"slug":"auto_transport"');
     expect(systemText).toContain('"slug":"fuel"');
   });
 
@@ -2145,7 +2156,7 @@ describe("help-assistant-ai spending advice", () => {
     expect(systemText).toContain("month_scope_niet_volledig_gehydrateerd");
   });
 
-  it("zet jaar/trend vragen op clarification als scope nog niet volledig ondersteund is", async () => {
+  it("houdt jaar/trend vragen truth-safe beperkt zonder verplichte verduidelijkingsprompt", async () => {
     postOpenAIChatCompletionMock.mockResolvedValueOnce(
       createPlannerDecisionResponse(
         {
@@ -2202,7 +2213,6 @@ describe("help-assistant-ai spending advice", () => {
       .filter((message: { role?: string }) => message.role === "system")
       .map((message: { content?: string }) => String(message.content || ""))
       .join("\n");
-    expect(systemText).toContain("Planner vraagt verduidelijking");
     expect(systemText).toContain("jaar_scope_nog_niet_volledig_gehydrateerd");
     expect(
       systemText.includes("jaar_scope_nog_niet_volledig_gehydrateerd") ||
@@ -2639,6 +2649,828 @@ describe("help-assistant-ai spending advice", () => {
     expect(systemText).toContain(
       "jaar_scope_beperkt_tot_jaartotaal_tot_geselecteerde_maand",
     );
+  });
+
+  it("geeft generieke activeFlow terug voor vervolgturns buiten issue-intake", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "auto_transport",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-active-flow-category-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-active-flow-category-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Je hebt € 444 uitgegeven." } }],
+        }),
+    });
+
+    const result = await requestHelpAssistantReply({
+      context: buildHelpAssistantContext({
+        screenId: "dashboard",
+        selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      }),
+      thread: createThreadWithUserMessage(
+        "hoeveel heb ik aan mijn auto uitgegeven deze maand?",
+      ),
+    });
+
+    expect(result.activeFlow).toEqual({
+      route: "category_insight",
+      mode: "category_summary",
+      status: "active",
+      anchorMessageId: "user-1",
+      reason: "assistant_last_routed_turn",
+    });
+  });
+
+  it("geeft voor subcategorie-scope het subcategoriebedrag door en niet het parent-totaal", async () => {
+    const baseContext = await resolveUnifiedFinancialAdviceContextMock();
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      ...baseContext,
+      spending: {
+        ...baseContext.spending,
+        currentMonthBreakdown: {
+          total: 1264,
+          transactionCount: 18,
+          categories: [
+            ...baseContext.spending.currentMonthBreakdown.categories,
+            {
+              key: "auto_transport",
+              categoryKey: "auto_transport",
+              label: "Auto & Transport",
+              amount: 444,
+              transactionCount: 5,
+              subcategories: [
+                {
+                  key: "fuel",
+                  categoryKey: "fuel",
+                  label: "Brandstof",
+                  amount: 120,
+                  transactionCount: 2,
+                },
+                {
+                  key: "car_insurance",
+                  categoryKey: "car_insurance",
+                  label: "Autoverzekering",
+                  amount: 210,
+                  transactionCount: 1,
+                },
+                {
+                  key: "car_wash",
+                  categoryKey: "car_wash",
+                  label: "Autowassen",
+                  amount: 30,
+                  transactionCount: 2,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      budgetPlan: {
+        ...baseContext.budgetPlan,
+        variableCategoryBudgets: [
+          ...baseContext.budgetPlan.variableCategoryBudgets,
+          {
+            categoryKey: "auto_transport",
+            label: "Auto & Transport",
+            monthlyBudget: 450,
+            monthlyActual: 444,
+            utilization: 0.99,
+          },
+        ],
+      },
+    });
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "fuel",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-subcategory-fuel-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-subcategory-fuel-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Brandstofsamenvatting." } }],
+        }),
+    });
+
+    await requestHelpAssistantReply({
+      context: buildHelpAssistantContext({
+        screenId: "dashboard",
+        selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      }),
+      thread: createThreadWithUserMessage("brandstof?"),
+      activeFlow: {
+        route: "category_insight",
+        mode: "category_summary",
+        status: "active",
+      },
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain("- scopedCategoryLabel: Brandstof");
+    expect(systemText).toContain("- scopedCategoryTotal: € 120");
+    expect(systemText).not.toContain("- scopedCategoryTotal: € 444");
+  });
+
+  it("leidt subcategorie-labels zoals Autoverzekering naar een eigen scoped totaal", async () => {
+    const baseContext = await resolveUnifiedFinancialAdviceContextMock();
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      ...baseContext,
+      spending: {
+        ...baseContext.spending,
+        currentMonthBreakdown: {
+          total: 1264,
+          transactionCount: 18,
+          categories: [
+            ...baseContext.spending.currentMonthBreakdown.categories,
+            {
+              key: "auto_transport",
+              categoryKey: "auto_transport",
+              label: "Auto & Transport",
+              amount: 444,
+              transactionCount: 5,
+              subcategories: [
+                {
+                  key: "fuel",
+                  categoryKey: "fuel",
+                  label: "Brandstof",
+                  amount: 120,
+                  transactionCount: 2,
+                },
+                {
+                  key: "car_insurance",
+                  categoryKey: "car_insurance",
+                  label: "Autoverzekering",
+                  amount: 210,
+                  transactionCount: 1,
+                },
+                {
+                  key: "car_wash",
+                  categoryKey: "car_wash",
+                  label: "Autowassen",
+                  amount: 30,
+                  transactionCount: 2,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      budgetPlan: {
+        ...baseContext.budgetPlan,
+        variableCategoryBudgets: [
+          ...baseContext.budgetPlan.variableCategoryBudgets,
+          {
+            categoryKey: "auto_transport",
+            label: "Auto & Transport",
+            monthlyBudget: 450,
+            monthlyActual: 444,
+            utilization: 0.99,
+          },
+        ],
+      },
+    });
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-subcategory-insurance-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-subcategory-insurance-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Autoverzekering samenvatting." } }],
+        }),
+    });
+
+    await requestHelpAssistantReply({
+      context: buildHelpAssistantContext({
+        screenId: "dashboard",
+        selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      }),
+      thread: createThreadWithUserMessage("wat heb ik uitgegeven aan Autoverzekering"),
+      activeFlow: {
+        route: "category_insight",
+        mode: "category_summary",
+        status: "active",
+      },
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain("- categoryScope: car_insurance");
+    expect(systemText).toContain("- scopedCategoryLabel: Autoverzekering");
+    expect(systemText).toContain("- scopedCategoryTotal: € 210");
+  });
+
+  it("houdt categorieen uit de globale catalogus beschikbaar ook zonder huidige maandboekingen", async () => {
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-catalog-category-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-catalog-category-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Beperkte samenvatting." } }],
+        }),
+    });
+
+    await requestHelpAssistantReply({
+      context: buildHelpAssistantContext({
+        screenId: "dashboard",
+        selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      }),
+      thread: createThreadWithUserMessage("wat heb ik uitgegeven aan Autoverzekering"),
+      activeFlow: {
+        route: "category_insight",
+        mode: "category_summary",
+        status: "active",
+      },
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain("- categoryScope: car_insurance");
+    expect(systemText).toContain("categorie_scope_niet_gevonden_in_geaggregeerde_data");
+    expect(systemText).toContain('"label":"Autoverzekering"');
+  });
+
+  it("geeft bij onderverdeling binnen een hoofdcategorie expliciet de subcategorie-breakdown door", async () => {
+    const baseContext = await resolveUnifiedFinancialAdviceContextMock();
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      ...baseContext,
+      spending: {
+        ...baseContext.spending,
+        currentMonthBreakdown: {
+          total: 1264,
+          transactionCount: 18,
+          categories: [
+            ...baseContext.spending.currentMonthBreakdown.categories,
+            {
+              key: "auto_transport",
+              categoryKey: "auto_transport",
+              label: "Auto & Transport",
+              amount: 444,
+              transactionCount: 5,
+              subcategories: [
+                {
+                  key: "fuel",
+                  categoryKey: "fuel",
+                  label: "Brandstof",
+                  amount: 231,
+                  transactionCount: 2,
+                },
+                {
+                  key: "car_insurance",
+                  categoryKey: "car_insurance",
+                  label: "Autoverzekering",
+                  amount: 183,
+                  transactionCount: 1,
+                },
+                {
+                  key: "car_wash",
+                  categoryKey: "car_wash",
+                  label: "Autowassen",
+                  amount: 30,
+                  transactionCount: 2,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      budgetPlan: {
+        ...baseContext.budgetPlan,
+        variableCategoryBudgets: [
+          ...baseContext.budgetPlan.variableCategoryBudgets,
+          {
+            categoryKey: "auto_transport",
+            label: "Auto & Transport",
+            monthlyBudget: 450,
+            monthlyActual: 444,
+            utilization: 0.99,
+          },
+        ],
+      },
+    });
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "auto_transport",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-auto-breakdown-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-auto-breakdown-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Onderverdeling." } }],
+        }),
+    });
+
+    await requestHelpAssistantReply({
+      context: buildHelpAssistantContext({
+        screenId: "dashboard",
+        selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      }),
+      thread: createThreadWithUserMessage(
+        "wat is de onderverdeling van de uitgaven binnen auto?",
+      ),
+      activeFlow: {
+        route: "category_insight",
+        mode: "category_summary",
+        status: "active",
+      },
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain("- scopedCategoryLabel: Auto & Transport");
+    expect(systemText).toContain("- scopedCategoryTotal: € 444");
+    expect(systemText).toContain("subcategoryBreakdown");
+    expect(systemText).toContain('"label":"Brandstof"');
+    expect(systemText).toContain('"label":"Autoverzekering"');
+    expect(systemText).toContain('"label":"Autowassen"');
+  });
+
+  it("kiest bij dubbele autoverzekering-labels de subcategorie uit de actuele auto-flow", async () => {
+    const baseContext = await resolveUnifiedFinancialAdviceContextMock();
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      ...baseContext,
+      spending: {
+        ...baseContext.spending,
+        currentMonthBreakdown: {
+          total: 444,
+          transactionCount: 5,
+          categories: [
+            {
+              key: "auto_transport",
+              categoryKey: "auto_transport",
+              label: "Auto & Transport",
+              amount: 444,
+              transactionCount: 5,
+              subcategories: [
+                {
+                  key: "auto_transport_fuel",
+                  categoryKey: "auto_transport_fuel",
+                  label: "Brandstof",
+                  amount: 231,
+                  transactionCount: 2,
+                },
+                {
+                  key: "auto_transport_car_insurance",
+                  categoryKey: "auto_transport_car_insurance",
+                  label: "Autoverzekering",
+                  amount: 201,
+                  transactionCount: 1,
+                },
+                {
+                  key: "auto_transport_car_wash",
+                  categoryKey: "auto_transport_car_wash",
+                  label: "Autowassen",
+                  amount: 12,
+                  transactionCount: 2,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    resolveSafeCategoryCatalogScopesMock.mockResolvedValueOnce([
+      {
+        slug: "insurance_auto",
+        label: "Verzekeringen > Autoverzekering",
+        source: "catalog",
+        kind: "expense",
+      },
+      {
+        slug: "auto_transport_car_insurance",
+        label: "Auto & Transport > Autoverzekering",
+        source: "catalog",
+        kind: "expense",
+      },
+      {
+        slug: "auto_transport",
+        label: "Auto & Transport",
+        source: "catalog",
+        kind: "expense",
+      },
+    ]);
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-duplicate-insurance-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-duplicate-insurance-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Autoverzekering detail." } }],
+        }),
+    });
+
+    await requestHelpAssistantReply({
+      context: buildHelpAssistantContext({
+        screenId: "dashboard",
+        selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      }),
+      thread: createThreadWithUserMessage("wat heb ik uitgegeven aan Autoverzekering"),
+      activeFlow: {
+        route: "category_insight",
+        mode: "category_summary",
+        status: "active",
+      },
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain("- categoryScope: auto_transport_car_insurance");
+    expect(systemText).toContain("- scopedCategoryLabel: Autoverzekering");
+    expect(systemText).toContain("- scopedCategoryTotal: € 201");
+  });
+
+  it("hydrateert income-categorieen truth-safe voor jaar- en gemiddelde-vragen", async () => {
+    resolveSafeCategoryCatalogScopesMock.mockResolvedValueOnce([
+      {
+        slug: "income_child_budget",
+        label: "Toeslagen > Kindgebonden budget",
+        source: "catalog",
+        kind: "income",
+      },
+    ]);
+    resolveSafeCategoryBreakdownInRangeMock
+      .mockResolvedValueOnce({
+        total: 868,
+        transactionCount: 1,
+        categories: [
+          {
+            key: "income_benefits",
+            categoryKey: "income_benefits",
+            label: "Toeslagen",
+            amount: 868,
+            transactionCount: 1,
+            subcategories: [
+              {
+                key: "income_child_budget",
+                categoryKey: "income_child_budget",
+                label: "Kindgebonden budget",
+                amount: 868,
+                transactionCount: 1,
+              },
+            ],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        total: 2604,
+        transactionCount: 3,
+        categories: [
+          {
+            key: "income_benefits",
+            categoryKey: "income_benefits",
+            label: "Toeslagen",
+            amount: 2604,
+            transactionCount: 3,
+            subcategories: [
+              {
+                key: "income_child_budget",
+                categoryKey: "income_child_budget",
+                label: "Kindgebonden budget",
+                amount: 2604,
+                transactionCount: 3,
+              },
+            ],
+          },
+        ],
+      });
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-income-child-budget-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-income-child-budget-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Kindgebonden budget detail." } }],
+        }),
+    });
+
+    await requestHelpAssistantReply({
+      context: buildHelpAssistantContext({
+        screenId: "dashboard",
+        selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      }),
+      thread: createThreadWithUserMessage(
+        "wat is mijn gemiddelde kindgebonden budget dit jaar, of per maand?",
+      ),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain("- categoryDirection: income");
+    expect(systemText).toContain("- categoryScope: income_child_budget");
+    expect(systemText).toContain("- scopedCategoryTotal: € 868");
+    expect(systemText).toContain("- yearToDateCategoryTotal: € 2.604");
+    expect(systemText).toContain("- averagePerMonthTotal: € 868");
+  });
+
+  it("geeft een vergelijking met dezelfde maand vorig jaar door als die beschikbaar is", async () => {
+    const baseContext = await resolveUnifiedFinancialAdviceContextMock();
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      ...baseContext,
+      spending: {
+        ...baseContext.spending,
+        currentMonthBreakdown: {
+          total: 444,
+          transactionCount: 5,
+          categories: [
+            {
+              key: "auto_transport",
+              categoryKey: "auto_transport",
+              label: "Auto & Transport",
+              amount: 444,
+              transactionCount: 5,
+              subcategories: [
+                {
+                  key: "auto_transport_car_insurance",
+                  categoryKey: "auto_transport_car_insurance",
+                  label: "Autoverzekering",
+                  amount: 201,
+                  transactionCount: 1,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    resolveSafeCategoryCatalogScopesMock.mockResolvedValueOnce([
+      {
+        slug: "auto_transport_car_insurance",
+        label: "Auto & Transport > Autoverzekering",
+        source: "catalog",
+        kind: "expense",
+      },
+    ]);
+    resolveSafeCategoryBreakdownInRangeMock.mockResolvedValueOnce({
+      total: 182,
+      transactionCount: 1,
+      categories: [
+        {
+          key: "auto_transport",
+          categoryKey: "auto_transport",
+          label: "Auto & Transport",
+          amount: 182,
+          transactionCount: 1,
+          subcategories: [
+            {
+              key: "auto_transport_car_insurance",
+              categoryKey: "auto_transport_car_insurance",
+              label: "Autoverzekering",
+              amount: 182,
+              transactionCount: 1,
+            },
+          ],
+        },
+      ],
+    });
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-last-year-comparison-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-last-year-comparison-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Vergelijking." } }],
+        }),
+    });
+
+    await requestHelpAssistantReply({
+      context: buildHelpAssistantContext({
+        screenId: "dashboard",
+        selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      }),
+      thread: createThreadWithUserMessage(
+        "is mijn autoverzekering duurder geworden dan vorig jaar?",
+      ),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain("- scopedCategoryTotal: € 201");
+    expect(systemText).toContain("- comparisonReferenceTotal: € 182");
+    expect(systemText).toContain("- comparisonDirection: up");
   });
 
   it("laat insightsFlow niet als tweede router werken", async () => {

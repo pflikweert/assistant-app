@@ -69,6 +69,10 @@ export function buildAvailableCategoryScopeMatcherText(input: {
   return [input.slug.replace(/_/g, " "), input.label].join(" ");
 }
 
+function collapseMatchText(value: string | null | undefined) {
+  return normalizeQuestionText(value).replace(/\s+/g, "");
+}
+
 export function inferCategoryScopeFromCatalog(input: {
   question: string | null | undefined;
   catalog: HelpAssistantAvailableCategoryScope[];
@@ -78,11 +82,26 @@ export function inferCategoryScopeFromCatalog(input: {
   if (!input.catalog.length) return "none";
 
   const questionTokens = tokenizeScopeText(normalizedQuestion);
-  let best: { slug: string; score: number } | null = null;
+  const collapsedQuestion = collapseMatchText(normalizedQuestion);
+  const sourcePriority: Record<
+    HelpAssistantAvailableCategoryScope["source"],
+    number
+  > = {
+    catalog: 0,
+    budget: 1,
+    spending: 2,
+    subcategory: 3,
+  };
+  let best: { slug: string; score: number; sourcePriority: number } | null = null;
 
   for (const entry of input.catalog) {
     const slugText = entry.slug.replace(/_/g, " ");
     const labelText = normalizeQuestionText(entry.label);
+    const leafLabel = normalizeQuestionText(
+      entry.label.split(">").pop()?.trim() || entry.label,
+    );
+    const collapsedLabel = collapseMatchText(entry.label);
+    const collapsedLeafLabel = collapseMatchText(leafLabel);
     const entryTokens = new Set([
       ...tokenizeScopeText(entry.slug),
       ...tokenizeScopeText(entry.label),
@@ -91,13 +110,35 @@ export function inferCategoryScopeFromCatalog(input: {
     let score = 0;
     if (normalizedQuestion.includes(slugText)) score += 3;
     if (labelText && normalizedQuestion.includes(labelText)) score += 4;
+    if (leafLabel && normalizedQuestion.includes(leafLabel)) score += 5;
+    if (
+      collapsedQuestion &&
+      collapsedLabel &&
+      (collapsedQuestion.includes(collapsedLabel) ||
+        collapsedLabel.includes(collapsedQuestion))
+    ) {
+      score += 6;
+    }
+    if (
+      collapsedQuestion &&
+      collapsedLeafLabel &&
+      (collapsedQuestion.includes(collapsedLeafLabel) ||
+        collapsedLeafLabel.includes(collapsedQuestion))
+    ) {
+      score += 7;
+    }
     for (const token of questionTokens) {
       if (entryTokens.has(token)) score += 1;
     }
 
     if (score <= 0) continue;
-    if (!best || score > best.score) {
-      best = { slug: entry.slug, score };
+    const entrySourcePriority = sourcePriority[entry.source];
+    if (
+      !best ||
+      score > best.score ||
+      (score === best.score && entrySourcePriority > best.sourcePriority)
+    ) {
+      best = { slug: entry.slug, score, sourcePriority: entrySourcePriority };
     }
   }
 
@@ -484,13 +525,6 @@ export function normalizePlannerDataRequests(input: {
   if (normalized.monthScope === "none" && requestedTimeScope.monthScopeHint) {
     normalized.monthScope = requestedTimeScope.monthScopeHint;
     fallbackReasons.push("inferred_month_scope_from_turn");
-  }
-
-  if (requestedTimeScope.unsupported === "year") {
-    shouldClarify = true;
-  }
-  if (requestedTimeScope.unsupported === "trend") {
-    shouldClarify = true;
   }
 
   if (
