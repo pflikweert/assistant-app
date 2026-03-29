@@ -4,6 +4,7 @@ type QueryLogEntry = {
   table: string;
   selects: string[];
   inserts: Record<string, unknown>[];
+  updates: Record<string, unknown>[];
   filters: { method: string; args: unknown[] }[];
 };
 
@@ -26,6 +27,7 @@ const {
       table,
       selects: [],
       inserts: [],
+      updates: [],
       filters: [],
     };
     queryLog.push(entry);
@@ -53,6 +55,10 @@ const {
       }),
       upsert: vi.fn((payload: Record<string, unknown> | Record<string, unknown>[]) => {
         entry.inserts.push(...(Array.isArray(payload) ? payload : [payload]));
+        return query;
+      }),
+      update: vi.fn((payload: Record<string, unknown>) => {
+        entry.updates.push(payload);
         return query;
       }),
       then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) =>
@@ -347,5 +353,136 @@ describe("import-runner", () => {
     expect(result.categorizationQueued).toBe(false);
     expect(queryLog).toHaveLength(1);
     expect(runCategorizationInBackgroundMock).not.toHaveBeenCalled();
+  });
+
+  it("werkt bestaande transacties bij als nieuwe import rijkere details aanlevert", async () => {
+    const draft = buildImportDraft("pdf", "import.pdf", [makeRow(1, -10)]);
+    setCurrentImportDraft(draft);
+    const linkedDraft = linkImportGroupToBankAccount({
+      groupKey: draft.groups[0].key,
+      bankAccount: {
+        id: "bank-1",
+        name: "Privérekening",
+        account_type: "checking",
+        provider: "Rabobank",
+        currency: "EUR",
+        account_masked: "********9805",
+        is_active: true,
+      },
+      linkedBy: "manual",
+    });
+
+    linkedDraft!.groups[0]!.transactions[0]!.counterparty = "Unive Dichtbij Advies B.V.";
+    linkedDraft!.groups[0]!.transactions[0]!.details =
+      "NL46ZZZ321186890000 | Unive Premie 01-03-2026 / 31-03-2026";
+    linkedDraft!.groups[0]!.transactions[0]!.metadata = {
+      "Transactiereferentie": "5000000064329465",
+      "Kenmerk machtiging / incassant ID": "32805-13022404",
+    };
+
+    responseQueue.push({
+      data: [
+        {
+          id: "existing-1",
+          date: "2026-03-01",
+          amount: -10,
+          details: "Unive Dichtbij Advies B.V.",
+          counterparty: "Unive Dichtbij Advies B.V.",
+          metadata: {},
+        },
+      ],
+      error: null,
+    });
+    responseQueue.push({
+      data: [],
+      error: null,
+    });
+
+    beginImportRun();
+    const result = await executeImportDraft(linkedDraft!);
+
+    expect(result.importedTransactions).toBe(1);
+    expect(result.skippedTransactions).toBe(0);
+    expect(result.categorizationQueued).toBe(true);
+    expect(queryLog).toHaveLength(2);
+    expect(queryLog[1]?.updates).toHaveLength(1);
+    expect(queryLog[1]?.updates[0]).toMatchObject({
+      details: "NL46ZZZ321186890000 | Unive Premie 01-03-2026 / 31-03-2026",
+      metadata: {
+        "Transactiereferentie": "5000000064329465",
+        "Kenmerk machtiging / incassant ID": "32805-13022404",
+      },
+    });
+    expect(runCategorizationInBackgroundMock).toHaveBeenCalledWith(
+      ["existing-1"],
+      "user-123",
+    );
+  });
+
+  it("behoudt bestaande rijkere omschrijving als PDF een armere variant aanlevert", async () => {
+    const draft = buildImportDraft("pdf", "import.pdf", [makeRow(1, -10)]);
+    setCurrentImportDraft(draft);
+    const linkedDraft = linkImportGroupToBankAccount({
+      groupKey: draft.groups[0].key,
+      bankAccount: {
+        id: "bank-1",
+        name: "Privérekening",
+        account_type: "checking",
+        provider: "Rabobank",
+        currency: "EUR",
+        account_masked: "********9805",
+        is_active: true,
+      },
+      linkedBy: "manual",
+    });
+
+    linkedDraft!.groups[0]!.transactions[0]!.counterparty = "BELASTINGDIENST";
+    linkedDraft!.groups[0]!.transactions[0]!.details = "MEER INFO WWW.BELASTINGDIENST.NL";
+    linkedDraft!.groups[0]!.transactions[0]!.metadata = {
+      Transactiereferentie: "IOAXX54a1910d705d441fb8262cc8a01f86",
+      "Kenmerk machtiging / incassant ID": "3065082",
+    };
+
+    responseQueue.push({
+      data: [
+        {
+          id: "existing-2",
+          date: "2026-03-01",
+          amount: -10,
+          details:
+            "86-STD-4 LET OP, NIEUW TARIEF 28-02-2026 t/m 27-03-2026 MEER INFO WWW.BELASTINGDIENST.NL",
+          counterparty: "BELASTINGDIENST",
+          metadata: {
+            source: "csv",
+            Transactiereferentie: "IOAXX54a1910d705d441fb8262cc8a01f86",
+          },
+        },
+      ],
+      error: null,
+    });
+    responseQueue.push({
+      data: [],
+      error: null,
+    });
+
+    beginImportRun();
+    const result = await executeImportDraft(linkedDraft!);
+
+    expect(result.importedTransactions).toBe(1);
+    expect(result.skippedTransactions).toBe(0);
+    expect(result.categorizationQueued).toBe(true);
+    expect(queryLog[1]?.updates).toHaveLength(1);
+    expect(queryLog[1]?.updates[0]).not.toHaveProperty("details");
+    expect(queryLog[1]?.updates[0]).toMatchObject({
+      metadata: {
+        source: "csv",
+        Transactiereferentie: "IOAXX54a1910d705d441fb8262cc8a01f86",
+        "Kenmerk machtiging / incassant ID": "3065082",
+      },
+    });
+    expect(runCategorizationInBackgroundMock).toHaveBeenCalledWith(
+      ["existing-2"],
+      "user-123",
+    );
   });
 });

@@ -117,6 +117,110 @@ describe("parseTransactionImport (pdf)", () => {
     });
   });
 
+  it("behoudt detailregels na metadata-labels in Rabobank PDF transacties", () => {
+    const pdfContent =
+      "BT\n" +
+      "/F0 8.5 Tf\n" +
+      "36.850394 704.60663 Td\n" +
+      "(IBAN / Rekeningnummer)Tj\n" +
+      "36.850394 692.35467 Td\n" +
+      "(NL32 RABO 0386 5598 05 EUR)Tj\n" +
+      "405.11669 704.60663 Td\n" +
+      "(Datum vanaf)Tj\n" +
+      "395.45669 692.35467 Td\n" +
+      "(01-03-2026)Tj\n" +
+      "36.850394 551.2172 Td\n" +
+      "(02-03)Tj\n" +
+      "68.88189 551.2172 Td\n" +
+      "(ei)Tj\n" +
+      "88.724409 551.2172 Td\n" +
+      "(NL49 RABO 0347 8026 64)Tj\n" +
+      "443.64 551.2172 Td\n" +
+      "(201,19)Tj\n" +
+      "205.51181 550.88718 Td\n" +
+      "(Unive Dichtbij Advies B.V.)Tj\n" +
+      "205.51181 541.23118 Td\n" +
+      "(Kenmerk machtiging / incassant ID:)Tj\n" +
+      "205.51181 531.57518 Td\n" +
+      "(32805-13022404)Tj\n" +
+      "205.51181 521.91918 Td\n" +
+      "(NL46ZZZ321186890000)Tj\n" +
+      "205.51181 512.26318 Td\n" +
+      "(Unive Premie 01-03-2026 / 31-03-2026)Tj\n" +
+      "205.51181 502.60718 Td\n" +
+      "(Op mijnunive.nl vindt u meer informatie.)Tj\n" +
+      "205.51181 492.95118 Td\n" +
+      "(Transactiereferentie:)Tj\n" +
+      "205.51181 483.29518 Td\n" +
+      "(5000000064329465)Tj\n" +
+      "205.51181 473.63918 Td\n" +
+      "(Verwerkingsdatum: 02-03-2026)Tj\n" +
+      "ET\n";
+
+    const base64 = createCompressedRabobankPdfContent(pdfContent);
+    const rows = parseTransactionImport("pdf", base64);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      date: "2026-03-02",
+      amount: -201.19,
+      counterparty: "Unive Dichtbij Advies B.V.",
+      type: "ei",
+    });
+    expect(rows[0].details).toContain("Unive Premie 01-03-2026 / 31-03-2026");
+    expect(rows[0].details).not.toContain("NL46ZZZ321186890000");
+    expect(rows[0].details).not.toBe("Unive Dichtbij Advies B.V.");
+    expect(rows[0].metadata).toMatchObject({
+      "Kenmerk machtiging / incassant ID": "32805-13022404",
+      "Transactiereferentie": "5000000064329465",
+    });
+  });
+
+  it("combineert afgebroken regels, negeert paginakop-ruis en houdt db-details bruikbaar", () => {
+    const pdfContent =
+      "BT\n" +
+      "/F0 8.5 Tf\n" +
+      "36.850394 704.60663 Td\n" +
+      "(IBAN / Rekeningnummer)Tj\n" +
+      "36.850394 692.35467 Td\n" +
+      "(NL32 RABO 0386 5598 05 EUR)Tj\n" +
+      "405.11669 704.60663 Td\n" +
+      "(Datum vanaf)Tj\n" +
+      "395.45669 692.35467 Td\n" +
+      "(01-03-2026)Tj\n" +
+      "36.850394 551.2172 Td\n" +
+      "(14-03)Tj\n" +
+      "68.88189 551.2172 Td\n" +
+      "(db)Tj\n" +
+      "205.51181 550.88718 Td\n" +
+      "(Eff.nota Tarieven en services 117-)Tj\n" +
+      "448.73622 551.2172 Td\n" +
+      "(5,20)Tj\n" +
+      "205.51181 541.23118 Td\n" +
+      "(22860979-23126957)Tj\n" +
+      "205.51181 531.57518 Td\n" +
+      "(3 van 15)Tj\n" +
+      "205.51181 521.91918 Td\n" +
+      "(Naam/omschrijving)Tj\n" +
+      "205.51181 512.26318 Td\n" +
+      "(Bedrag af (debet))Tj\n" +
+      "205.51181 502.60718 Td\n" +
+      "(Verwerkingsdatum: 14-03-2026)Tj\n" +
+      "ET\n";
+
+    const base64 = createCompressedRabobankPdfContent(pdfContent);
+    const rows = parseTransactionImport("pdf", base64);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      date: "2026-03-14",
+      amount: -5.2,
+      type: "db",
+      counterparty: "",
+      details: "Eff.nota Tarieven en services 117-22860979-23126957",
+    });
+  });
+
   const fixturePath = process.env.RABOBANK_PDF_FIXTURE
     ? path.resolve(process.cwd(), process.env.RABOBANK_PDF_FIXTURE)
     : path.resolve(process.cwd(), "tmp/import-fixtures/rabobank-transactions.pdf");
