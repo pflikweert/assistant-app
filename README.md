@@ -1,6 +1,18 @@
 # Budio
 
-Budio is een mobiele finance-app voor overzicht, sturing en voorspelling van persoonlijke geldstromen.
+Budio is de dagelijkse financiële cockpit die huishoudens zonder vaktaal laat zien waar ze staan, wat eraan komt, wat veilig kan en wat nu de slimste volgende stap is.
+
+## Productrichting
+
+De actuele productrichting staat in:
+
+- [docs/BUDIO_PRODUCTVISIE_ROADMAP.md](./docs/BUDIO_PRODUCTVISIE_ROADMAP.md)
+- [docs/BUDIO_PRODUCT_CONTRACT.md](./docs/BUDIO_PRODUCT_CONTRACT.md)
+- [docs/BUDIO_COCKPIT_MIGRATION_MAP.md](./docs/BUDIO_COCKPIT_MIGRATION_MAP.md)
+- [AGENTS.md](./AGENTS.md)
+- [docs/BUDIO_FUNCTIONALITEITEN.md](./docs/BUDIO_FUNCTIONALITEITEN.md)
+
+De kernverschuiving is home-first: forecast, budget, insights, transacties en AI zijn onderliggende motoren voor één dominante cockpit-ervaring.
 
 ## Get started
 

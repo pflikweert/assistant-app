@@ -2,8 +2,7 @@
 
 ## Doel
 
-Een lokale chatstate die nu al bruikbaar is zonder backend, maar klaar is voor
-latere AI-antwoorden, issue-intake en spending advice.
+Een lokale chatstate die direct bruikbaar is in de UI, maar ook stabiel genoeg is voor planner-routing, issue-intake en spending advice.
 
 ## Bronbestand
 
@@ -21,40 +20,36 @@ latere AI-antwoorden, issue-intake en spending advice.
 
 ## Metadata voor vervolgflows
 
-Per message slaan we o.a. op:
+Per bericht slaan we onder meer op:
 
 - `source`: `composer`, `quick_action`, `local_placeholder`, `ai_proxy`
-- `intent`: o.a. uitleg, foutmelding, idee, spending-vraag
-- `target`: o.a. `issue_draft` of `spending_advice`
-- `issueDraftCandidate` en `spendingAdviceCandidate`
+- `intent`
+- `target`
+- `issueDraftCandidate`
+- `spendingAdviceCandidate`
 - contextsnapshot (`routeName`, `screenId`, `screenTitle`, `periodLabel`, `platform`)
 
-Belangrijk leerpunt:
+Belangrijke leerpunten:
 
-- `issueDraftCandidate` is geen bron van waarheid meer voor de uiteindelijke
-  routing
+- `issueDraftCandidate` is geen bron van waarheid meer voor de uiteindelijke routing
 - de AI-router in `services/help-assistant-ai.ts` bepaalt per turn opnieuw de route
-- de AI-router classificeert nu ook generieke `dataRequests` (databehoeftehints),
-  terwijl hydration/privacy volledig in de app-code blijft
-- de orchestration kan beschikbare category-scopes (slug + label) als veilige
-  catalogus meesturen voor scopekeuze en verduidelijkingsvragen
-- de issueflow-reducer gebruikt daarna de gestructureerde AI-response en een
-  vaste anchor om de kaart in sync te houden
-- een actieve flow wordt als `activeFlow` descriptor meegestuurd (soft prior),
-  niet als harde route-lock
+- de AI-router classificeert ook `dataRequests`, terwijl hydration en privacy volledig in app-code blijven
+- de orchestration kan category-scopes als veilige catalogus meesturen
+- de thread bewaart genoeg context om `activeFlow` per antwoord opnieuw op te bouwen als soft prior
 
 ## Lokale acties
 
 - `createInitialHelpAssistantThreadState()`
 - `submitComposerMessageLocally(...)`
 - `applyQuickActionLocally(...)`
+- `resolveAssistantMessageSuccess(...)`
+- `resolveAssistantMessageError(...)`
 
-Deze functies voegen user/assistant placeholders toe zonder netwerkverkeer.
+Deze functies voegen user- en assistant-placeholders toe en zetten pending berichten later om naar `ready` of `error`.
 
 ## Help Assistant issueflow
 
-De issue-/idee-flow heeft nu een aparte state machine in
-`services/help-assistant-issue-flow.ts` met deze statussen:
+De issue-/idee-flow heeft een aparte state machine in `services/help-assistant-issue-flow.ts` met deze statussen:
 
 - `idle`
 - `collecting`
@@ -73,13 +68,8 @@ Gedrag:
 
 ## Toekomstige API-koppeling
 
-1. Houd dezelfde `HelpAssistantMessage` vorm aan als client contract.
+1. Houd dezelfde `HelpAssistantMessage` vorm aan als clientcontract.
 2. Vervang `local_placeholder` assistant-berichten door server-responses.
-3. Gebruik `issueDraftCandidate` en `spendingAdviceCandidate` alleen nog als
-   transport-/fallbacksignalen.
+3. Gebruik `issueDraftCandidate` en `spendingAdviceCandidate` alleen nog als transport- of fallbacksignalen.
 4. Laat nieuwe issue/idee-standaarden altijd via de AI-router lopen.
-5. Houd flowcontinuatie generiek (`continueActiveFlow` / intent-shift), niet
-   issue-specifiek.
-
-Zo blijft de overgang van lokaal naar API incrementeel, zonder UI-refactor,
-maar wel met een duidelijke bron van waarheid voor issue-routing.
+5. Houd flowcontinuatie generiek via `activeFlow`, niet issue-specifiek.

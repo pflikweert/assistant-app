@@ -1,5 +1,11 @@
 # Budget Screen Variant A
 
+## Stitch Preview
+
+- project: `12076228720239525233`
+- screen: `e36b880daa374365a2cbbd86c1f0f9ce`
+- preview: https://lh3.googleusercontent.com/aida/ADBb0ujQPhyqEcVFTIdwscNTh2dUSlD7Epktj7s-96wpDMxc3v9a_xSoVpOO_aM_Lpznx9kl16flREYH3miegnJ-r1qUXUiaeZRmHpgx3riIYChclmLTv0X2Ahd84TcIjBWIRJEbMlIeXkUNJE2AlaKogwdw9YjUR5i_1oXI7O-mZ_IwQ6rVzfobb52fdH7cN8GDf6eac2_Ka5KhybCnXJ027vzbiawhTKrkm4iqwAp7D_Lsn-RX4vYOPkDkYpyS
+
 ## Concept
 
 Minimal / rust / overzicht.

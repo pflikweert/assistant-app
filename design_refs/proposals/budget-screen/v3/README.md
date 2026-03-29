@@ -1,5 +1,11 @@
 # Budget Screen Variant C
 
+## Stitch Preview
+
+- project: `12076228720239525233`
+- screen: `02d28c79f4a54c3d9d7033cfdc9b5179`
+- preview: https://lh3.googleusercontent.com/aida/ADBb0ujtkU6b_MK1Jo9GkbGXucEuRKKDko-HmP3wtHptcKurzyMvbQwhXsPyj9F4xSSx_tc51a8iT_BbmlGQfKdxr5tuqplX3hQtUzHdvp6n_F9a8LGtOYx70-2b8MwC2Vf_GFQ3o2W60NT7I59DHYUvZnDOnSwqlMarNXYXKGG3toKVibYhtjl2S3axAHZ_1YL8qKGirN3saf9wRxNRxWK-bDg49ZGbq0QqNIp2VoAmcCD3hr1s486azUipAcE
+
 ## Concept
 
 Coachend / insights + guidance.

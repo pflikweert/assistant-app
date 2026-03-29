@@ -2,17 +2,19 @@
 
 ## App In 1 Zin
 
-Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van persoonlijke geldstromen.
+Dit is de dagelijkse financiële cockpit die huishoudens zonder vaktaal laat zien waar ze staan, wat eraan komt, wat veilig kan en wat nu de slimste volgende stap is.
 
 ## Wat De App Doet
 
-- toont actuele rekeningstand en variabel budget
-- helpt week- en maandsturing begrijpen
+- toont actuele rekeningstand, `Nu vrij` en `Veilig tot volgende inkomen`
+- helpt gebruikers direct begrijpen wat veilig kan en wat aandacht vraagt
+- vertaalt week- en maandsturing naar concrete beslissingen
 - analyseert transacties en categoriseert uitgaven
 - herkent abonnementen en vaste lasten
-- maakt forecasts met cashflow- en risicosignalen
-- geeft rustige, duidelijke feedback die gebruikers helpt betere keuzes te maken
-- Hierbij de voledege functionaliteiten uitgwerkt `docs/BUDIO_FUNCTIONALITEITEN.md`. Werk deze bij als we nieuwe functionalieten toevoegen of bestaande wijzigen.
+- maakt forecasts met cashflow-, reserve- en risicosignalen
+- geeft rustige, duidelijke feedback en de beste volgende actie
+- gebruikt AI als contextuele `Money Copilot`, niet als los chatproduct
+- De volledige actuele featurekaart staat in `docs/BUDIO_FUNCTIONALITEITEN.md`. Werk die bij als we nieuwe functionaliteiten toevoegen of bestaande wijzigen.
 
 ## Doelgroep
 
@@ -22,10 +24,55 @@ Dit is een mobiele finance-app voor overzicht, sturing en voorspelling van perso
 ## Productprincipes
 
 - Toon eerst de huidige stand, daarna de beschikbare ruimte, daarna trend of risico, daarna advies
+- Maak van home het dominante productmoment; andere schermen zijn ondersteunend tenzij expliciet anders onderbouwd
+- Zet beslissingen boven categorieën, beheeropties of interne mechaniek
+- `safe to spend` en `veilig tot volgende inkomen` zijn kernvragen van het product
+- Gebruik AI context-first op het juiste moment; maak van chat geen primaire productidentiteit
+- Kies productcompressie boven productexplosie: liever één absurd sterk antwoord dan vijf losse oppervlakken
 - Laat geen dubbele of niet-relevante data op hetzelfde niveau zien
 - Maak altijd duidelijk wat klikbaar is en wat een detailniveau is
 - Houd taal en copy begrijpelijk voor niet-technische gebruikers
 - Als iets geen beslissing helpt, hoort het waarschijnlijk niet op het hoofdniveau
+
+## Nieuwe Productkoers
+
+Vanaf 29 maart 2026 is de repo-richting expliciet:
+
+- van budgetapp naar dagelijkse financiële cockpit
+- van schermdenken naar één dominante home-ervaring
+- van observeren naar veilige ruimte, komende risico's en beste volgende actie
+- van losse AI-feature naar contextuele `Money Copilot`
+
+Gebruik `docs/BUDIO_PRODUCTVISIE_ROADMAP.md` als expliciete productbron voor deze koers.
+
+## Productcontract
+
+Voor harde productbetekenis en truth hierarchy gelden aanvullend:
+
+- `docs/BUDIO_PRODUCT_CONTRACT.md`
+- `docs/BUDIO_COCKPIT_MIGRATION_MAP.md`
+
+Bij conflict tussen producttaal en bestaande schermstructuur:
+
+1. behoud eerst bestaande financiële waarheid
+2. volg daarna het productcontract
+3. gebruik de migration map om te bepalen wat behouden, aanpassen, samenvouwen of afbouwen is
+
+## Anti-Bloat Regels
+
+- home is het primaire beslisscherm
+- elk ander scherm voedt of verdiept home
+- AI introduceert geen nieuwe waarheid, maar legt bestaande financiële waarheid uit
+- voeg geen nieuw scherm toe zonder sterke reden en expliciete cockpitwaarde
+- productcompressie gaat boven featuregroei
+- voeg geen nieuw primair home-signaal toe als het niet helpt bij stand, veilige ruimte, risico of volgende actie
+
+## Migratieregel
+
+- verander nog geen interne route- of servicenames puur om producttaal te laten aansluiten
+- leg eerst productcontract en beslisarchitectuur vast
+- doe daarna pas selectieve code-refactors waar de cockpitarchitectuur dat echt vraagt
+- verwijder bestaande waardevolle richtlijnen niet zonder expliciete conflictmapping
 
 ## Design Richting
 
@@ -90,8 +137,12 @@ Beslisregel:
 
 ## Kernbegrippen
 
+- `dagelijkse financiële cockpit`: de dominante home-ervaring die in één oogopslag rust, veilige ruimte, risico en volgende actie toont
 - `actuele rekeningstand`: huidige bekende saldo of stand op basis van beschikbare rekeningdata
 - `variabel budget`: ruimte voor niet-vaste uitgaven binnen de relevante periode
+- `veilig te besteden`: bedrag dat nu verantwoord kan worden uitgegeven binnen de actuele context
+- `veilig tot volgende inkomen`: ruimte die overblijft tot het volgende verwachte inkomensmoment
+- `beste volgende actie`: de meest logische concrete stap die nu helpt om rust, ruimte of herstel te vergroten
 - `forecast`: verwachte ontwikkeling van saldo of beschikbare ruimte op basis van bekende inkomsten, vaste lasten en patronen
 - `vaste lasten`: terugkerende, min of meer voorspelbare verplichtingen
 - `abonnement`: herkende terugkerende betaling met relatie tussen transacties
@@ -108,10 +159,11 @@ Bij elke taak:
 
 1. analyseer eerst het bestaande patroon in de code
 2. hergebruik bestaande componenten, services en terminologie waar logisch
-3. maak de kleinst mogelijke wijziging die het probleem oplost
-4. benoem risico's als geldlogica, forecast, import, dedupe of categorisatie geraakt wordt
-5. noem welke bestanden aangepast moeten worden
-6. geef kort aan hoe de wijziging handmatig geverifieerd kan worden
+3. toets eerst of de wijziging home, veilige ruimte, risico-uitleg of beste volgende actie sterker maakt
+4. maak de kleinst mogelijke wijziging die het probleem oplost
+5. benoem risico's als geldlogica, forecast, import, dedupe of categorisatie geraakt wordt
+6. noem welke bestanden aangepast moeten worden
+7. geef kort aan hoe de wijziging handmatig geverifieerd kan worden
 
 ## Verplichte Output Per Taak
 
@@ -149,9 +201,13 @@ Gebruik deze volgorde bij twijfel:
 
 1. bestaande werkende businesslogica in services en dataflows
 2. dit playbook
-3. `docs/UI_PATTERNS.md` voor UI-patronen, kleuren en designbeslissingen
-4. schermspecifieke bestaande patronen in de codebase
-5. open taken in `OPEN_TAKEN_FINANCE_APP.md`
+3. `docs/BUDIO_PRODUCT_CONTRACT.md` voor begrippen, truth hierarchy en beslisregels
+4. `docs/BUDIO_COCKPIT_MIGRATION_MAP.md` voor product- en domeinmigratie
+5. `docs/BUDIO_PRODUCTVISIE_ROADMAP.md` voor productrichting, prioritering en cockpit-keuzes
+6. `docs/BUDIO_FUNCTIONALITEITEN.md` voor de actuele functionele kaart en producttaal
+7. `docs/UI_PATTERNS.md` voor UI-patronen, kleuren en designbeslissingen
+8. schermspecifieke bestaande patronen in de codebase
+9. open taken in `OPEN_TAKEN_FINANCE_APP.md`
 
 Als iets in code en playbook lijkt te botsen, analyseer eerst of de code legacygedrag bevat of een bewuste productkeuze is. Verander dit niet zomaar zonder dit expliciet te benoemen.
 
@@ -179,11 +235,20 @@ Bij twijfel in geldlogica:
 Een wijziging is pas klaar als:
 
 - de oplossing past binnen bestaande producttaal en designrichting
+- de oplossing past binnen het cockpit-productcontract
 - relevante geldlogica consistent blijft tussen Dashboard, Budget en Insights
 - bestaande patronen niet onnodig zijn doorbroken
 - lint en relevante tests logisch zouden slagen
 - regressierisico's benoemd zijn als financiële logica geraakt wordt
 - de UI duidelijker of bruikbaarder is geworden voor de eindgebruiker
+
+## Acceptance Checklist Voor Nieuwe Taken
+
+- helpt dit de gebruiker weten waar hij nu staat?
+- helpt dit veilige ruimte bepalen?
+- helpt dit komende risico's begrijpen?
+- helpt dit de beste volgende actie kiezen?
+- zo niet, waarom hoort het dan in Budio?
 
 ## Verificatie
 
@@ -214,9 +279,16 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 
 ### Dashboard
 
-- laat saldo en vrij te besteden ruimte direct zien
+- Dashboard is het primaire cockpit-scherm van Budio
+- laat direct zien:
+  - `Nu vrij`
+  - `Veilig tot volgende inkomen`
+  - `Komende risico's`
+  - `Beste actie vandaag`
+  - `Verwacht eindsaldo`
 - houd positieve feedback kort en motiverend
-- vermijd analyseblokken die beter thuis horen in `Insights`
+- vermijd doorverwijzingsdenken; home moet eerst zelf antwoord geven
+- laat analyseblokken alleen door als ze de beslissing van vandaag scherper maken
 
 ### Transactions
 
@@ -227,13 +299,14 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 
 ### Budget
 
+- gebruik `Budget` als ondersteunende motor voor veilige ruimte en sturing, niet als primaire productidentiteit
 - scheid dagsturing, maandsturing en beheer
 - maak overlapweken en maandgrenzen expliciet
 - houd toekomstige maanden logisch en voorspelbaar
 
 ### Insights
 
-- gebruik dit scherm voor trends, forecast, risico en uitleg
+- gebruik dit scherm voor trends, forecast, risico en uitleg achter de cockpit
 - maak cashflow, budgetbasis en verwachting uit elkaar houdbaar
 - toon duidelijke routes naar details en correcties
 - houd `Insights` als rustige scrollpagina zonder extra subnavigatie bovenaan
@@ -382,3 +455,4 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 - Gebruik `OPEN_TAKEN_FINANCE_APP.md` als centrale backlog voor open product- en implementatietaken
 - Nieuwe openstaande vervolgpunten of bewust uitgestelde verbeteringen moeten daar direct aan toegevoegd worden
 - Houd die lijst bijgewerkt als een fase afgerond is of als de prioriteit wijzigt
+- Houd de fasering uit `docs/BUDIO_PRODUCTVISIE_ROADMAP.md` leidend; redesign- of polishwerk is alleen prioriteit als het de cockpitkoers direct ondersteunt

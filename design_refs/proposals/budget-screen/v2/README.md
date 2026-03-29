@@ -1,5 +1,11 @@
 # Budget Screen Variant B
 
+## Stitch Preview
+
+- project: `12076228720239525233`
+- screen: `8b46a90dc18d4839be7dc8561558afce`
+- preview: https://lh3.googleusercontent.com/aida/ADBb0uiF-nzcWUkIiRBPB37OZLJByCjU403yNqI9xRg6u6S2QsNUe_G766za9Na3QupcqUFQc-lLup_AEL_g72W6CfSa6hcyPRGVKTvagsEV08JzHeBzveJDLGRXGwYAw8ab8DCDg4W-nCC3bDxie37_xHPhAhqEsheS0XXB84fvCCLQ8imZh61kcjar-4DTSaOR0HbAjadSOWMUM71RgqVt_fHUtA15yhouFFav0mx4NP4Zvy8BmGM2aL31t3Q
+
 ## Concept
 
 Data-first / cashflow focus.
