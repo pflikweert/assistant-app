@@ -15,6 +15,25 @@ Volg deze hiërarchie op schermen:
 
 Vermijd visuele drukte, dubbele info en onduidelijke klikbaarheid.
 
+## 1a. Home-Cockpit Contract
+
+Voor Home geldt een expliciet strengere designhiërarchie dan voor andere schermen:
+
+1. `Veilig tot volgende inkomen` is de primaire Home-hero of hoofdstat
+2. `Nu vrij` is een secundaire stat binnen dezelfde cockpit-head
+3. `Komende risico's` is een compact dominant decision block
+4. `Beste actie vandaag` is een compact dominant decision block
+5. `Reserves & buffer` is compact en ondersteunend
+
+Contract:
+
+- Home is geen klassiek dashboard met gelijkwaardige kaarten
+- Home moet visueel sturen op rust, veiligheid en focus, niet op hoeveelheid informatie
+- `Komende risico's` en `Beste actie vandaag` krijgen duidelijke prioriteit boven ondersteunende context
+- `Reserves & buffer` mag niet even luid zijn als het hoofdgetal of de dominante decision blocks
+- Home toont maximaal 1 dominante risicokaart en exact 1 dominante actiekaart
+- subscription-optimalisatie hoort niet standaard in Home-risico's; alleen bij nabije aantoonbare cash-impact of tijdsgevoelig financieel risico
+
 ## 2. Taal en copy
 
 - Alle zichtbare UI-teksten zijn standaard Nederlands.

@@ -8,7 +8,7 @@ Deze map is de **doelstructuur** voor consolidatie. Huidige routes blijven tijde
 
 | domein | parent route | doel-subroutes | huidige route(s) die hier naartoe migreren |
 | --- | --- | --- | --- |
-| Dashboard | `/` | n.v.t. | `/` |
+| Dashboard/Home | `/` | n.v.t. | `/` |
 | Transactions | `/transactions` | `/transactions/:id`, `/transactions/:id/edit`, `/transactions/import`, `/transactions/import/review` | `/transactions`, `/transaction-detail`, `/csv-import`, `/import-control`, `/import-afronden` |
 | Budget | `/budget` | `/budget/categories`, `/budget/categories/groups` | `/budget`, `/category-budget-groups` |
 | Insights | `/insights` | `/insights/:analysisId`, `/insights/upcoming` | `/insights`, `/analysis-detail`, `/insights-legacy` |
@@ -22,7 +22,7 @@ Deze map is de **doelstructuur** voor consolidatie. Huidige routes blijven tijde
 
 | route | shell | screen family | opmerking |
 | --- | --- | --- | --- |
-| `/` | `FinanceHeroShell` (via `FinanceDashboardHeader` hero-less variant) | Dashboard | Canoniek hoofdscherm zonder hero-offset. |
+| `/` | `FinanceHeroShell` (via `FinanceDashboardHeader` cockpit-home variant) | Dashboard | Canoniek cockpit-home met primaire hoofdstat; geen generieke dashboardgrid. |
 | `/transactions` | `FinanceHeroShell` | Dashboard | Hoofdtab met hero-context. |
 | `/transactions/[id]` | `FinanceDetailShell` | Detail | Compatibele detailroute naast `/transaction-detail` tijdens migratie. |
 | `/budget` | `FinanceHeroShell` | Dashboard | Hoofdtab met budget-overzicht. |
@@ -60,7 +60,7 @@ Deze map is de **doelstructuur** voor consolidatie. Huidige routes blijven tijde
 
 | route | status | doel | primaire gebruikers-taak | wat absoluut moet blijven | welke data het scherm gebruikt | states |
 | --- | --- | --- | --- | --- | --- | --- |
-| `/` | active | Startpunt van de app met overzicht van geld en richting. | In één oogopslag actuele stand, vrije ruimte en signalen zien. | Vrij besteedbaar eerst, daarna forecast/budget-context en snelle drill-downs. | transacties, latest-known balance, budget plan, money view scope, categorieën, abonnementen, rekeningen | loading: hero/card skeletons; empty: shell blijft zichtbaar zonder data; partial: brondata of forecast mist; error: retry + fallback cards |
+| `/` | active | Primair beslisscherm van de app: de dagelijkse financiële cockpit. | In een paar seconden zien hoeveel veilig is tot volgende inkomen, wat nu vrij is, welk risico dichtbij is en wat nu de beste actie is. | `Veilig tot volgende inkomen` als dominant hoofdsignaal, `Nu vrij` als secundaire context, compact `Reserves & buffer`, maximaal 1 dominante risicokaart en exact 1 dominante actiekaart; geen generiek overzichtsscherm. | latest-known balance, money view scope, safety-spend-window, forecast summary, budget plan, reserve surface, risk selectors, explainability, rekeningen, abonnementen alleen als conditionele risico- of actie-input | loading: cockpit-head en decision-block skeletons; empty: shell blijft zichtbaar zonder data; partial: brondata of forecast mist maar Home geeft nog steeds een veilig hoofdantwoord; error: retry + fallback cards |
 | `/transactions` | active | Transactieoverzicht en snelle correctie. | Zoeken, filteren en transacties openen of bijsturen. | Scanbare lijst, maand/filtercontext, detailnavigatie en snelle correctie-acties. | transacties, filters, categorieën, bankrekeningfilters, abonnementskoppelingen | loading: lijst skeleton; empty: geen transacties in de gekozen periode; partial: filters/data incompleet; error: retry + foutmelding |
 | `/insights` | active | Trends, forecast, risico en uitleg. | Begrijpen wat er komende weken en maanden gebeurt. | Maandcontext, forecastalignement, `Wat valt op`, `Komende momenten`, rustige scroll-opbouw. | budget plan, forecast summary, latest-known balance, reserve surface, timeline events, categorieën, scope preference, maandopties, rekeningen, abonnementen | loading: insights skeleton; empty: geen bruikbare data maar duidelijke fallback; partial: forecast of timeline deels beschikbaar; error: retry + fallback cards |
 | `/budget` | active | Maand- en weeksturing plus budgetbeheer. | Zien waar ruimte zit en budgetinstellingen aanpassen. | Scheiding tussen dag/week/maand, beheersegment, budgetrekenregels en overzichtelijke voortgang. | budget plan, budgetsettings, reserve rules, maandopties, categorieën, rekeningen, transacties, scope preference | loading: budget skeleton; empty: nog geen budgetplan; partial: settings of forecast deels beschikbaar; error: retry + fallback summary |

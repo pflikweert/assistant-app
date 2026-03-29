@@ -23,20 +23,38 @@ Deze gids legt de herbruikbare UI-patronen vast die zijn afgeleid uit `design_re
 
 ## Pattern Map (Korte Referentie)
 
-- Dashboard gebruikt canoniek: `FinanceDashboardHeader` + gecentreerde contentkolom (hero-less).
+- Dashboard/Home gebruikt canoniek: `FinanceDashboardHeader` + primaire cockpit-head met dominante hoofdstat + gecentreerde contentkolom.
 - Overige hoofdschermen gebruiken: `FinanceTopBar` + `FinanceHeroShell` + gecentreerde contentkolom.
 - Utility/detailschermen gebruiken: `FinanceDetailShell` (met ingebouwde `FinanceDetailTopBar`) + compacte contentopbouw.
 - Selectie/modals gebruiken: `FinanceBottomSheetShell` als vaste shell.
 - Signaalcallouts gebruiken: `FinanceInlineCallout` als standaard.
 
-## Dashboard Shell (Hero-less Canoniek)
+## Dashboard/Home Cockpit Contract
+
+- Home is geen klassiek dashboard met gelijkwaardige kaarten.
+- De cockpit-head toont `Veilig tot volgende inkomen` als dominante hoofdstat.
+- `Nu vrij` / `Vrij besteedbaar` blijft zichtbaar als secundaire stat.
+- `Komende risico's` en `Beste actie vandaag` zijn compacte dominante decision blocks.
+- Home toont maximaal 1 dominante risicokaart en exact 1 dominante actiekaart.
+- `Reserves & buffer` is compact en ondersteunend; buffer blijft apart benoemd binnen dit blok.
+- Subscription-optimalisatie hoort niet standaard op Home-risiconiveau.
+- Gebruik Home om rust, veiligheid en focus te sturen, niet om zoveel mogelijk kaarten te tonen.
+
+## Dashboard/Home Shell (Cockpit-Head Canoniek)
 
 - Gebruik `FinanceDashboardHeader` als vaste dashboard-header.
-- Deze pattern heeft geen hero-offset en voorkomt overlap met topbar/content.
+- Gebruik daarbinnen een duidelijke cockpit-head met primaire hoofdstat; vermijd een hero-less grid van gelijke kaarten.
 - Header-ritme:
   - `FinanceTopBar` binnen `FinanceDashboardHeader`
   - content start onder een vaste, token-gedreven top padding
-- Gebruik voor dashboardacties en callouts dezelfde contentkolom als de overige hoofdschermen.
+- Gebruik voor de cockpit-head, decision blocks en ondersteunende callouts dezelfde contentkolom als de overige hoofdschermen.
+- Visuele volgorde op Home:
+  - 1. `Veilig tot volgende inkomen`
+  - 2. `Nu vrij` plus actuele rekeningstand als context
+  - 3. 1 dominante kaart `Komende risico's`
+  - 4. 1 dominante kaart `Beste actie vandaag`
+  - 5. compact blok `Reserves & buffer`
+  - 6. pas daarna secundaire context zoals `Verwacht eindsaldo`
 
 ## Component-First Werkafspraken
 
@@ -663,16 +681,18 @@ Referentie:
 - Stitch: `design_refs/stitch_v1/dashboard_verbeterde_hero`
 
 Belangrijkste patronen:
-- full-bleed hero met totaalstand en secundair budgetblok
+- cockpit-head met `Veilig tot volgende inkomen` als dominante hoofdstat
+- `Nu vrij` en actuele stand als secundaire context binnen dezelfde head
+- maximaal 1 dominante risicokaart en exact 1 dominante actiekaart
+- compact blok `Reserves & buffer` met buffer apart benoemd
+- `Verwacht eindsaldo` of `Komende momenten` alleen secundair en alleen als de data concreet genoeg is
 - compacte topbar met appcontext en secundaire actie
-- compacte status cards
-- korte snapshot-lijsten in plaats van zware dashboards
 - bottom quick menu blijft docked en licht
-- gedeelde budgetprogressbalk voor zowel maand- als weekvoortgang
-- weekbudgetkaart gebruikt `surfaceSoftCool` (`#f1f4f6`) met lichte schaduw via de gedeelde main-page surface
+- Home vermijdt een grid van gelijkwaardige dashboardkaarten
+- subscription-optimalisatie hoort niet standaard in `Komende risico's`
 
 Wanneer hergebruiken:
-- bij schermen die overzicht eerst en details pas daarna tonen
+- bij schermen die in een paar seconden een dominant financieel antwoord moeten geven, niet bij generieke overzichtsschermen
 
 ### Insights
 

@@ -4,6 +4,8 @@
 
 Deze map vertaalt de bestaande repo-opbouw naar de nieuwe cockpitarchitectuur. Het doel is niet om meteen te hernoemen of breed te refactoren, maar om expliciet vast te leggen wat behouden, aangepast, samengevouwen of afgebouwd wordt.
 
+De Home-truth en beslisvolgorde worden aanvullend vastgelegd in `docs/BUDIO_HOME_CONTRACT.md`.
+
 ## Migratieregel
 
 - verander nog geen interne route- of servicenames puur om producttaal te laten aansluiten
@@ -44,6 +46,87 @@ Deze map vertaalt de bestaande repo-opbouw naar de nieuwe cockpitarchitectuur. H
 | Import en acquisitie | `services/import/*` | Datatoevoerlaag | `behouden` | CSV/PDF parsing, matching, account linking | importbeslissingen bepalen onnodig de cockpitstructuur |
 | Admin en observability | `admin-*`, `ai-usage`, `ai-review-inbox`, `ai-route-settings` | Interne besturingslaag | `behouden` | admin auth, usage logging | mengt zich met eindgebruikersproduct |
 
+## Doorwerking Van Het Home-Contract
+
+### Dashboard / Home
+
+Home wordt gevoed door:
+
+- balans- en scopewaarheid
+- safety-spend-window en forecastsamenvatting
+- budgettempo en reserve-oppervlak
+- risicoselectoren en explainability
+
+Home is primair bedoeld voor:
+
+- `Veilig tot volgende inkomen` als leidend antwoord
+- `Nu vrij` als secundaire context
+- maximaal 1 dominante risicokaart
+- exact 1 dominante actiekaart
+- compact blok `Reserves & buffer`
+
+Niet meer bedoeld als primaire Home-content:
+
+- gelijkwaardige dashboardgrids
+- losse budget- of trendkaarten zonder directe besliswaarde
+- standaard subscription-optimalisatiekaarten
+- browseblokken die vooral doorverwijzen
+
+### Budget
+
+Budget voedt Home met:
+
+- tempo-, guardrail- en budgetdruksignalen
+- input voor veilige ruimte
+- reserve- en beschermlogica
+
+Niet bedoeld als primaire Home-content:
+
+- budgetbeheer en categorie-inrichting
+- week- en maandmechaniek in detail
+- instellingen, overrides en beheerflows
+
+### Insights
+
+Insights voedt Home met:
+
+- forecastuitleg en trendcontext
+- verklaringen achter `Komende risico's`
+- concrete `Komende momenten` als die aantoonbaar besliswaarde hebben
+
+Niet bedoeld als primaire Home-content:
+
+- meerdere analysekaarten tegelijk
+- uitgebreide timelines en maandvergelijkingen
+- parallelle productnarratieven naast Home
+
+### Subscriptions
+
+Subscriptions voedt Home met:
+
+- signalen voor subscription optimization als lagere prioriteitsactie
+- uitzonderlijk een Home-risico als er nabije, aantoonbare cash-impact of tijdsgevoelig financieel risico is
+
+Niet bedoeld als primaire Home-content:
+
+- profiel- of regelbeheer
+- lijsten met gekoppelde betalingen
+- algemene bespaar- of optimalisatieverhalen zonder nabij financieel risico
+
+### Help Assistant / Money Copilot
+
+Help Assistant / Money Copilot voedt Home met:
+
+- uitleg van bestaande Home-waarheid
+- context bij het dominante risico of de dominante actie
+- detailuitleg over de split tussen buffer en concrete reserveringen
+
+Niet bedoeld als primaire Home-content:
+
+- een los chat-first hoofdmoment
+- speculatieve nieuwe waarheid
+- parallelle prioritering buiten de vaste Home-volgorde
+
 ## Samenvouwrichtingen
 
 Deze oppervlakken horen productmatig dichter naar home te bewegen, zonder nu al een rename- of route-sweep te doen:
@@ -58,6 +141,7 @@ Dat betekent:
 - eerst selectors, termen en prioriteitsregels harmoniseren
 - daarna home verrijken
 - pas daarna schermen versmallen of visueel afbouwen
+- subscription-optimalisatie blijft daarbij standaard buiten `Komende risico's`, tenzij een nabij cash- of tijdsrisico aantoonbaar is
 
 ## Afbouwrichtingen
 
@@ -69,13 +153,14 @@ Dat betekent:
 Voor een veilige migratie moeten deze volgordes bewaakt worden:
 
 1. productcontract vastleggen
-2. cockpitrol per scherm en servicefamilie vastleggen
-3. kernbegrippen harmoniseren op home, budget, insights en AI
-4. pas daarna selectief UI, selectors en flows herschikken
+2. home-contract vastleggen
+3. cockpitrol per scherm en servicefamilie vastleggen
+4. kernbegrippen harmoniseren op home, budget, insights en AI
+5. pas daarna selectief UI, selectors en flows herschikken
 
 ## Open Migratievragen
 
-- Welke bestaande informatieblokken moeten letterlijk naar home verhuizen, en welke blijven alleen als verdiepingslaag bestaan?
+- Welke secundaire Home-blokken krijgen later nog een compacte plek op Home, en welke blijven definitief alleen verdiepingslaag?
 - Wanneer is `Budget` nog een apart hoofdscherm, en wanneer wordt het vooral een beheerlaag achter home?
 - Moet `Insights` uiteindelijk blijven als verdiepend scherm, of grotendeels samenvallen met cockpituitleg?
 - Welke utilityschermen mogen zichtbare primaire navigatie behouden, en welke horen alleen via acties of settings bereikbaar te zijn?

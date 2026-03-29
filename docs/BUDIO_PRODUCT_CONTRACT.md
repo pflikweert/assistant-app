@@ -6,6 +6,7 @@ Dit document legt de harde productcontracten vast voor Budio als dagelijkse fina
 
 Gebruik dit document samen met:
 
+- `docs/BUDIO_HOME_CONTRACT.md`
 - `docs/BUDIO_PRODUCTVISIE_ROADMAP.md`
 - `docs/BUDIO_COCKPIT_MIGRATION_MAP.md`
 - `AGENTS.md`
@@ -21,6 +22,7 @@ Budio moet een gebruiker in het dagelijkse hoofdmoment zonder vaktaal helpen beg
 - wat nu de beste volgende actie is
 
 Home is daarom niet slechts een overzicht, maar het primaire beslisscherm.
+De exacte Home-opbouw staat vast in `docs/BUDIO_HOME_CONTRACT.md`.
 
 ## Truth Hierarchy
 
@@ -116,6 +118,10 @@ Huidige semantische anker:
 
 - `freeToSpendNow`
 
+Home-rol:
+
+- secundair contextsignaal op Home
+
 Niet hetzelfde als:
 
 - resterend maandbudget
@@ -134,6 +140,10 @@ Bronlaag:
 Huidige semantische anker:
 
 - `safeToSpendUntilNextIncome`
+
+Home-rol:
+
+- dominant primair Home-signaal
 
 Niet hetzelfde als:
 
@@ -156,6 +166,10 @@ Huidige semantische ankers:
 - `reservedInAccountsNow`
 - `reservedProtectedInOperationalNow`
 
+Home-presentatie:
+
+- compact blok `Reserves & buffer`
+
 ### Buffer
 
 Definitie:
@@ -171,6 +185,12 @@ Huidige praktische representatie:
 - minimaal via `savingsTargetMonthly`
 - kan onderdeel zijn van de beschermde operationele reserve
 
+User-facing contract:
+
+- `buffer` blijft een apart zichtbaar begrip voor eindgebruikers
+- op Home wordt buffer compact gepresenteerd binnen `Reserves & buffer`
+- in detail moet de splitsing helder blijven tussen buffer en concrete reserveringen of verplichtingen
+
 ### Komende risico’s
 
 Definitie:
@@ -185,6 +205,9 @@ Contract:
 
 - geen generieke onrustkaarten zonder besliswaarde
 - liever geen kaart dan een vaag risico zonder handelingsperspectief
+- Home toont maximaal 1 dominante risicokaart
+- subscription-optimalisatie hoort hier standaard niet thuis
+- subscriptions mogen alleen in `komende risico's` komen bij nabije, aantoonbare cash-impact of tijdsgevoelig financieel risico
 
 ### Beste Volgende Actie
 
@@ -201,6 +224,22 @@ Contract:
 - moet terug te leiden zijn naar bestaande signalen
 - mag geen nieuwe waarheid of fictieve urgentie introduceren
 - is primair een prioriteringslaag, geen nieuwe databron
+- Home toont exact 1 dominante hoofdactie
+- vaste prioriteitsvolgorde:
+  1. cash survival risk
+  2. harde nabije verplichting
+  3. buffer / reserve protection
+  4. gedragstempo / overspending
+  5. subscription optimization
+
+## Vastgelegde Home-Keuzes
+
+- `Veilig tot volgende inkomen` is het dominante primaire Home-signaal.
+- `Nu vrij` / `Vrij besteedbaar` blijft zichtbaar als secundair contextsignaal.
+- `Buffer` blijft een apart user-facing concept, maar verschijnt op Home compact binnen `Reserves & buffer`.
+- `Komende risico's` en `Beste volgende actie` volgen dezelfde vaste prioriteitsvolgorde.
+- Home toont maximaal 1 dominante risicokaart en exact 1 dominante actiekaart.
+- subscription-optimalisatie hoort standaard niet op Home-risiconiveau en verschuift normaal naar optimalisatie-, detail- of `Money Copilot`-lagen.
 
 ## Anti-Goals
 
@@ -238,10 +277,3 @@ Als een voorstel op deze vragen zwak scoort, hoort het waarschijnlijk niet in Bu
 - helpt dit komende risico's begrijpen?
 - helpt dit de beste volgende actie kiezen?
 - zo niet, waarom hoort het dan in Budio?
-
-## Open Productpunten Die Nog Beslissing Vragen
-
-- Moet `vrij besteedbaar` in de cockpit een zelfstandig hoofdsignaal blijven naast `veilig tot volgende inkomen`, of wordt één van de twee dominant?
-- Hoe expliciet moet `buffer` voor eindgebruikers zichtbaar zijn ten opzichte van bredere `reserveringen`?
-- Welke prioriteitsvolgorde bepaalt exact de `beste volgende actie` als meerdere signalen tegelijk kritisch zijn?
-- Wanneer mag `komende risico's` ook subscription-optimalisatie of structurele prijsdruk tonen, en wanneer blijft het strikt bij cash- en reserve-risico?

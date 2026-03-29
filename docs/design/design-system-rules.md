@@ -71,8 +71,8 @@ Dit document is de compacte ontwerp- en werkafspraak voor alle UI-wijzigingen in
 
 ## Pattern Map (Canoniek)
 
-- Dashboard (hero-less):
-  - `FinanceDashboardHeader` + gecentreerde contentkolom
+- Dashboard/Home (cockpit-head):
+  - `FinanceDashboardHeader` + primaire cockpit-head met dominante hoofdstat + gecentreerde contentkolom
 - Hoofdscherm:
   - `FinanceTopBar` + `FinanceHeroShell` + gecentreerde contentkolom
 - Utility/detail:
