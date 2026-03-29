@@ -1,6 +1,6 @@
 import { fetchAdminBootstrap, fetchAdminJson } from "@/services/admin-api";
 import {
-  getDefaultAiModel,
+  buildDefaultAiRouteSettings,
   listAiUseCases,
   type AiRouteSetting,
   type AiUseCase,
@@ -20,16 +20,7 @@ export type UpdateAiRouteSettingInput = Partial<
 };
 
 function buildFallbackRouteSettings(): AiRouteSetting[] {
-  const model = getDefaultAiModel();
-  return listAiUseCases().map((definition) => ({
-    use_case: definition.key,
-    model,
-    agent_mode: definition.defaultAgentMode,
-    temperature: definition.defaultTemperature,
-    max_tokens: definition.defaultMaxTokens,
-    fallback_enabled: definition.fallbackEnabled,
-    response_mode: definition.defaultResponseMode,
-  }));
+  return buildDefaultAiRouteSettings();
 }
 
 export async function listAiRouteSettings() {

@@ -2,18 +2,15 @@ import type {
   HelpAssistantMessage,
   HelpAssistantThreadState,
 } from "./help-assistant-chat";
-import Constants from "expo-constants";
+import { getAiAppEnv, getDefaultAiModel } from "./ai-model-catalog.ts";
 
-const appEnv = ((Constants.expoConfig?.extra as Record<
-  string,
-  string | undefined
->) || process.env) as Record<string, string | undefined>;
-
-export const DEFAULT_MODEL = appEnv.OPENAI_MODEL || "gpt-4.1-mini";
+const appEnv = getAiAppEnv();
+export const DEFAULT_MODEL = getDefaultAiModel();
 export const MAX_CONTEXT_MESSAGES = 12;
 export const MAX_PLANNER_MESSAGES = 6;
-export const HELP_ASSISTANT_DEBUG_ENABLED =
-  String(appEnv.EXPO_PUBLIC_HELP_ASSISTANT_DEBUG || "") === "1";
+export const HELP_ASSISTANT_DEBUG_ENABLED = String(
+  appEnv.EXPO_PUBLIC_HELP_ASSISTANT_DEBUG || "",
+) === "1";
 
 export type ChatCompletionResponse = {
   choices?: {

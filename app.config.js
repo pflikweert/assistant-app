@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 const appJson = require("./app.json");
+const DEFAULT_OPENAI_MODEL = "gpt-5.4-nano";
 
 export default {
   expo: {
@@ -9,7 +10,7 @@ export default {
     extra: {
       SUPABASE_URL: process.env.SUPABASE_URL,
       SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
-      OPENAI_MODEL: process.env.OPENAI_MODEL,
+      OPENAI_MODEL: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
       APP_BASE_URL:
         process.env.APP_BASE_URL ||
         process.env.EXPO_PUBLIC_SITE_URL ||

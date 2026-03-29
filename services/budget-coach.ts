@@ -3,13 +3,10 @@ import type {
     BudgetPlanComputation,
     BudgetPlanMode,
 } from "@/types/categorization";
-import Constants from "expo-constants";
 import { postOpenAIChatCompletion } from "./openai-proxy";
-const appEnv = ((Constants.expoConfig?.extra as Record<
-  string,
-  string | undefined
->) || process.env) as Record<string, string | undefined>;
-const DEFAULT_MODEL = appEnv.OPENAI_MODEL || "gpt-4.1-mini";
+import { getDefaultAiModel } from "./ai-model-catalog.ts";
+
+const DEFAULT_MODEL = getDefaultAiModel();
 const OPENAI_RETRY_ATTEMPTS = 4;
 const OPENAI_RETRY_DELAY_MS = 2_000;
 const OPENAI_MAX_RETRY_DELAY_MS = 60_000;

@@ -1,8 +1,15 @@
+import {
+  getConfiguredAiModelOverride,
+  getDefaultAiModel as getConfiguredAiModel,
+  type AiModelId,
+} from "./ai-model-catalog.ts";
+
 export const AI_USE_CASES = [
   {
     key: "help_general",
     label: "Algemene hulp",
     description: "Schermuitleg, probleemhulp en algemene assistentvragen.",
+    defaultModel: "gpt-5.4-nano",
     defaultAgentMode: "chat",
     defaultResponseMode: "text",
     defaultTemperature: 0.2,
@@ -13,6 +20,7 @@ export const AI_USE_CASES = [
     key: "help_spending_advice",
     label: "Bestedingsadvies",
     description: "Ruimtevraag en uitgavebeslissingen in de hulpassistent.",
+    defaultModel: "gpt-5.4-mini",
     defaultAgentMode: "chat",
     defaultResponseMode: "json_object",
     defaultTemperature: 0.2,
@@ -23,6 +31,7 @@ export const AI_USE_CASES = [
     key: "help_transactions_insight",
     label: "Transactie-inzichten",
     description: "Feitelijke lookupvragen over transacties en merchants.",
+    defaultModel: "gpt-5.4-nano",
     defaultAgentMode: "chat",
     defaultResponseMode: "text",
     defaultTemperature: 0.2,
@@ -33,6 +42,7 @@ export const AI_USE_CASES = [
     key: "help_category_insight",
     label: "Categorie-inzichten",
     description: "Feitelijke categorie-overzichten en categorie-totalen.",
+    defaultModel: "gpt-5.4-nano",
     defaultAgentMode: "chat",
     defaultResponseMode: "text",
     defaultTemperature: 0.2,
@@ -43,6 +53,7 @@ export const AI_USE_CASES = [
     key: "budget_coach",
     label: "Budgetcoach",
     description: "Samenvatting en advies op basis van budget- en forecastdata.",
+    defaultModel: "gpt-5.4-mini",
     defaultAgentMode: "analysis",
     defaultResponseMode: "json_schema",
     defaultTemperature: 0.2,
@@ -53,6 +64,7 @@ export const AI_USE_CASES = [
     key: "transaction_categorization",
     label: "Transactiecategorisatie",
     description: "AI-classificatie van transacties en tegenpartijen.",
+    defaultModel: "gpt-5.4-nano",
     defaultAgentMode: "classification",
     defaultResponseMode: "json_schema",
     defaultTemperature: 0,
@@ -63,6 +75,7 @@ export const AI_USE_CASES = [
     key: "import_pdf_mapping",
     label: "PDF importmapping",
     description: "Mapping van bank-PDF-transacties naar canonieke regels.",
+    defaultModel: "gpt-5.4-mini",
     defaultAgentMode: "extraction",
     defaultResponseMode: "json_object",
     defaultTemperature: 0,
@@ -182,7 +195,7 @@ export type AiReviewRow = {
 };
 
 export function getDefaultAiModel() {
-  return process.env.OPENAI_MODEL || "gpt-4.1-mini";
+  return getConfiguredAiModel();
 }
 
 export function listAiUseCases(): AiUseCaseDefinition[] {
@@ -207,15 +220,25 @@ export function getAiUseCaseDefinition(useCase: AiUseCase | string) {
   );
 }
 
-export function buildDefaultAiRouteSettings(): AiRouteSetting[] {
-  const model = getDefaultAiModel();
-  return AI_USE_CASES.map((definition) => ({
+export function buildDefaultAiRouteSetting(useCase: AiUseCase): AiRouteSetting {
+  const definition = getAiUseCaseDefinition(useCase);
+  const configuredOverride = getConfiguredAiModelOverride();
+
+  return {
     use_case: definition.key,
-    model,
+    model: configuredOverride || definition.defaultModel,
     agent_mode: definition.defaultAgentMode,
     temperature: definition.defaultTemperature,
     max_tokens: definition.defaultMaxTokens,
     fallback_enabled: definition.fallbackEnabled,
     response_mode: definition.defaultResponseMode,
-  }));
+  };
+}
+
+export function getDefaultAiModelForUseCase(useCase: AiUseCase) {
+  return buildDefaultAiRouteSetting(useCase).model as AiModelId | string;
+}
+
+export function buildDefaultAiRouteSettings(): AiRouteSetting[] {
+  return AI_USE_CASES.map((definition) => buildDefaultAiRouteSetting(definition.key));
 }

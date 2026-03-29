@@ -34,7 +34,7 @@ vi.mock("expo-constants", () => ({
   default: {
     expoConfig: {
       extra: {
-        OPENAI_MODEL: "gpt-4.1-mini",
+        OPENAI_MODEL: "gpt-5.4-nano",
       },
     },
   },
@@ -80,7 +80,7 @@ function createJsonResponse(content: unknown, id: string) {
     text: async () =>
       JSON.stringify({
         id,
-        model: "gpt-4.1-mini",
+        model: "gpt-5.4-nano",
         choices: [{ message: { content: JSON.stringify(content) } }],
       }),
   };

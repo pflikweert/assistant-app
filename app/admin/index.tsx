@@ -23,8 +23,10 @@ import {
 import {
   getAiUseCaseDefinition,
   listAiUseCases,
+  type AiUseCase,
   type AiRouteSetting,
 } from "@/services/ai-use-cases";
+import { listAiModelOptions } from "@/services/ai-model-catalog";
 import type { Href } from "expo-router";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -70,6 +72,19 @@ const ROUTE_MODE_LABELS: Record<string, string> = {
   json_object: "JSON",
   json_schema: "Schema",
 };
+const AI_MODEL_OPTIONS = listAiModelOptions();
+
+function getModelOptionLabel(modelId: string) {
+  return AI_MODEL_OPTIONS.find((option) => option.id === modelId)?.label || modelId;
+}
+
+function getRecommendedModelForUseCase(useCase: AiUseCase) {
+  return (
+    AI_MODEL_OPTIONS.find(
+      (option) => option.id === getAiUseCaseDefinition(useCase).defaultModel,
+    ) || AI_MODEL_OPTIONS[0]
+  );
+}
 
 function formatShortDateTime(value: string | null | undefined) {
   if (!value) return "Onbekend";
@@ -175,6 +190,7 @@ export default function AdminScreen() {
   const [editMaxTokens, setEditMaxTokens] = React.useState("");
   const [editFallbackEnabled, setEditFallbackEnabled] = React.useState(true);
   const [editResponseMode, setEditResponseMode] = React.useState("text");
+  const [showModelDropdown, setShowModelDropdown] = React.useState(false);
 
   const loadBootstrap = React.useCallback(async () => {
     setLoading(true);
@@ -231,6 +247,7 @@ export default function AdminScreen() {
     setEditMaxTokens(String(setting.max_tokens ?? ""));
     setEditFallbackEnabled(Boolean(setting.fallback_enabled));
     setEditResponseMode(setting.response_mode || "text");
+    setShowModelDropdown(false);
   };
 
   const handleReviewStatusChange = async (id: string, status: "nieuw" | "bekeken" | "opgelost") => {
@@ -287,6 +304,7 @@ export default function AdminScreen() {
       };
       await updateAiRouteSetting(payload);
       setSelectedRouteSetting(null);
+      setShowModelDropdown(false);
       await loadBootstrap();
     } catch (error) {
       console.warn("[admin] route setting save failed", error);
@@ -562,7 +580,7 @@ export default function AdminScreen() {
                     <View style={styles.rowMain}>
                       <Text style={styles.rowTitle}>{definition.label}</Text>
                       <Text style={styles.rowMeta}>
-                        {setting.model} · {setting.agent_mode} · {ROUTE_MODE_LABELS[setting.response_mode] || setting.response_mode}
+                        {getModelOptionLabel(setting.model)} · {setting.agent_mode} · {ROUTE_MODE_LABELS[setting.response_mode] || setting.response_mode}
                       </Text>
                       <Text style={styles.rowMeta}>
                         Temp {String(setting.temperature)} · Max tokens {String(setting.max_tokens)}
@@ -650,7 +668,10 @@ export default function AdminScreen() {
         visible={Boolean(selectedRouteSetting)}
         title={selectedRouteSetting ? getAiUseCaseDefinition(selectedRouteSetting.use_case).label : "AI-instelling"}
         subtitle="Pas de route-instelling voor deze use case aan."
-        onClose={() => setSelectedRouteSetting(null)}
+        onClose={() => {
+          setSelectedRouteSetting(null);
+          setShowModelDropdown(false);
+        }}
         footer={
           <View style={styles.sheetFooterRow}>
             <Pressable
@@ -676,13 +697,75 @@ export default function AdminScreen() {
         {selectedRouteSetting ? (
           <View style={styles.sheetBody}>
             <Text style={styles.fieldLabel}>Model</Text>
-            <TextInput
-              value={editModel}
-              onChangeText={setEditModel}
-              style={styles.input}
-              placeholder="gpt-4.1-mini"
-              placeholderTextColor={FinColors.textMuted}
-            />
+            <View style={styles.dropdownWrap}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setShowModelDropdown((current) => !current)}
+                style={({ pressed }) => [
+                  styles.dropdownTrigger,
+                  showModelDropdown && styles.dropdownTriggerOpen,
+                  pressed && styles.dropdownTriggerPressed,
+                ]}
+              >
+                <View style={styles.dropdownTriggerCopy}>
+                  <Text style={styles.dropdownTriggerText}>
+                    {getModelOptionLabel(editModel || selectedRouteSetting.model)}
+                  </Text>
+                  <Text style={styles.dropdownTriggerHint}>
+                    Aanbevolen voor deze route:{" "}
+                    {getRecommendedModelForUseCase(selectedRouteSetting.use_case).label}
+                  </Text>
+                </View>
+                <AppIcon
+                  name={showModelDropdown ? "expand-less" : "expand-more"}
+                  size={20}
+                  color={FinColors.textSecondary}
+                  variant="outlined"
+                />
+              </Pressable>
+              {showModelDropdown ? (
+                <View style={styles.dropdownMenu}>
+                  {AI_MODEL_OPTIONS.map((option) => {
+                    const selected = (editModel || selectedRouteSetting.model) === option.id;
+                    return (
+                      <Pressable
+                        key={option.id}
+                        accessibilityRole="button"
+                        onPress={() => {
+                          setEditModel(option.id);
+                          setShowModelDropdown(false);
+                        }}
+                        style={({ pressed }) => [
+                          styles.dropdownOption,
+                          selected && styles.dropdownOptionSelected,
+                          pressed && styles.dropdownOptionPressed,
+                        ]}
+                      >
+                        <View style={styles.dropdownOptionCopy}>
+                          <Text
+                            style={[
+                              styles.dropdownOptionText,
+                              selected && styles.dropdownOptionTextSelected,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                          <Text style={styles.dropdownOptionHint}>{option.description}</Text>
+                        </View>
+                        {selected ? (
+                          <AppIcon
+                            name="check"
+                            size={18}
+                            color={FinColors.warningText}
+                            variant="outlined"
+                          />
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
 
             <Text style={styles.fieldLabel}>Agent mode</Text>
             <TextInput
@@ -1154,6 +1237,82 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 14,
     color: FinColors.textPrimary,
+  },
+  dropdownWrap: {
+    gap: 8,
+  },
+  dropdownTrigger: {
+    borderRadius: 14,
+    backgroundColor: "#f7f8f9",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  dropdownTriggerOpen: {
+    backgroundColor: "rgba(242,201,76,0.16)",
+    borderColor: FinColors.warningBorder,
+  },
+  dropdownTriggerPressed: {
+    opacity: 0.86,
+  },
+  dropdownTriggerCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  dropdownTriggerText: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  dropdownTriggerHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
+  },
+  dropdownMenu: {
+    borderRadius: 14,
+    backgroundColor: "#f7f8f9",
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    overflow: "hidden",
+  },
+  dropdownOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  dropdownOptionSelected: {
+    backgroundColor: "rgba(242,201,76,0.18)",
+  },
+  dropdownOptionPressed: {
+    opacity: 0.86,
+  },
+  dropdownOptionCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  dropdownOptionText: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: FinColors.textPrimary,
+    fontWeight: "700",
+  },
+  dropdownOptionTextSelected: {
+    color: FinColors.warningText,
+  },
+  dropdownOptionHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: FinColors.textSecondary,
   },
   inputRow: {
     flexDirection: "row",

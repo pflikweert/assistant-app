@@ -7,6 +7,7 @@ import {
   type AiRouteSetting,
   type AiUseCase,
 } from "../../services/ai-use-cases.ts";
+import { getDefaultAiModel } from "../../services/ai-model-catalog.ts";
 import {
   buildAiReviewCandidates,
   buildAiUsageLogRow,
@@ -14,11 +15,15 @@ import {
   type AiProxyResponsePayload,
   type AiProxyLogContext,
 } from "../../services/ai-telemetry.ts";
+import {
+  normalizeLegacyChatRequestToResponses,
+  normalizeResponsesPayloadToLegacyChat,
+} from "../../services/openai-responses-adapter.ts";
 import { debugLog, isRuntimeDebugEnabled } from "../../services/runtime-debug.ts";
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_URL = "https://api.openai.com/v1/responses";
 const OPENAI_TIMEOUT_MS = 25_000;
-const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
+const DEFAULT_OPENAI_MODEL = getDefaultAiModel();
 const FORWARDED_HEADERS = [
   "x-ratelimit-limit-requests",
   "x-ratelimit-remaining-requests",
@@ -203,17 +208,6 @@ function respondWithSpendingFallback(
       ),
     ),
   );
-}
-
-function parseOpenAIMessageContent(payload: unknown) {
-  if (!isRecord(payload)) return "";
-  const choices = payload.choices;
-  if (!Array.isArray(choices) || !choices.length) return "";
-  const first = choices[0];
-  if (!isRecord(first)) return "";
-  const message = first.message;
-  if (!isRecord(message)) return "";
-  return String(message.content || "").trim();
 }
 
 function pickForwardedHeaders(headers: Headers) {
@@ -544,7 +538,8 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    const estimatedTokens = estimateRequestTokens(JSON.stringify(openAIRequest));
+    const responsesRequest = normalizeLegacyChatRequestToResponses(openAIRequest);
+    const estimatedTokens = estimateRequestTokens(JSON.stringify(responsesRequest));
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
     let response: Response;
@@ -556,7 +551,7 @@ export default async function handler(req: any, res: any) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${getOpenAIKey()}`,
         },
-        body: JSON.stringify(openAIRequest),
+        body: JSON.stringify(responsesRequest),
         signal: controller.signal,
       });
     } finally {
@@ -564,15 +559,13 @@ export default async function handler(req: any, res: any) {
     }
 
     const responseBody = await response.text();
-    const parsedResponse = parseJsonSafely(responseBody) as
-      | AiProxyResponsePayload
-      | null;
-
-    const responsePayload =
-      parsedResponse && typeof parsedResponse === "object"
-        ? parsedResponse
-        : null;
-    const responseMessage = parseOpenAIMessageContent(responsePayload);
+    const rawParsedResponse = parseJsonSafely(responseBody);
+    const responsePayload = normalizeResponsesPayloadToLegacyChat(
+      rawParsedResponse,
+    ) as AiProxyResponsePayload | null;
+    const responseMessage = String(
+      responsePayload?.choices?.[0]?.message?.content || "",
+    ).trim();
     const spendingAdviceQuestion = useCase === "help_spending_advice";
     const fallbackEnabled = routeSetting.fallback_enabled ?? true;
     if (isRuntimeDebugEnabled()) {
@@ -610,7 +603,7 @@ export default async function handler(req: any, res: any) {
           fallbackUsed: fallbackEnabled,
           fallbackReason,
           estimatedTokens,
-          requestPayload: openAIRequest,
+          requestPayload: responsesRequest,
         });
 
         try {
@@ -661,7 +654,7 @@ export default async function handler(req: any, res: any) {
         responsePayload: finalPayload,
         fallbackUsed: false,
         estimatedTokens,
-        requestPayload: openAIRequest,
+        requestPayload: responsesRequest,
       });
 
       try {
@@ -699,7 +692,7 @@ export default async function handler(req: any, res: any) {
       responsePayload,
       fallbackUsed: false,
       estimatedTokens,
-      requestPayload: openAIRequest,
+      requestPayload: responsesRequest,
     });
 
     try {
@@ -722,7 +715,7 @@ export default async function handler(req: any, res: any) {
     headers.forEach((value, key) => {
       res.setHeader(key, value);
     });
-    res.status(response.status).send(responseBody);
+    res.status(response.status).send(JSON.stringify(responsePayload || {}));
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "OpenAI proxy onverwachte fout";

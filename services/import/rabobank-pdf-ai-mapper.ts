@@ -1,9 +1,7 @@
-import Constants from "expo-constants";
+import { getDefaultAiModel } from "../ai-model-catalog.ts";
 import { postOpenAIChatCompletion } from "../openai-proxy";
 
-const appEnv = ((Constants.expoConfig?.extra as Record<string, string | undefined>) ||
-  process.env) as Record<string, string | undefined>;
-const DEFAULT_MODEL = appEnv.OPENAI_MODEL || "gpt-4.1-mini";
+const DEFAULT_MODEL = getDefaultAiModel();
 const OPENAI_RETRY_ATTEMPTS = 4;
 const OPENAI_RETRY_BASE_DELAY_MS = 1_500;
 const OPENAI_RETRY_MAX_DELAY_MS = 20_000;

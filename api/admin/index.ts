@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 import {
+  buildDefaultAiRouteSetting,
   buildDefaultAiRouteSettings,
   getAiUseCaseDefinition,
   listAiUseCases,
@@ -10,6 +11,7 @@ import {
   type AiReviewRow,
   type AiUsageRow,
 } from "../../services/ai-use-cases.ts";
+import { isKnownAiModelId } from "../../services/ai-model-catalog.ts";
 import {
   clearOpenAiOrgUsageSnapshotCache,
   loadOpenAiOrgUsageSnapshot,
@@ -191,7 +193,7 @@ async function loadAiUsageOverview(forceRefresh = false) {
 
   for (const definition of listAiUseCases()) {
     useCaseMap.set(definition.key, {
-      model: "gpt-4.1-mini",
+      model: buildDefaultAiRouteSetting(definition.key).model,
       calls: 0,
       total_tokens: 0,
       prompt_tokens: 0,
@@ -203,8 +205,9 @@ async function loadAiUsageOverview(forceRefresh = false) {
   }
 
   for (const row of monthRows) {
-    const current = useCaseMap.get(normalizeAiUseCase(row.use_case, "help_general")) || {
-      model: row.model || "gpt-4.1-mini",
+    const useCase = normalizeAiUseCase(row.use_case, "help_general");
+    const current = useCaseMap.get(useCase) || {
+      model: row.model || buildDefaultAiRouteSetting(useCase).model,
       calls: 0,
       total_tokens: 0,
       prompt_tokens: 0,
@@ -224,7 +227,7 @@ async function loadAiUsageOverview(forceRefresh = false) {
     current.estimated_cost_eur = roundValue(
       current.estimated_cost_eur + Number(row.estimated_cost_eur || 0),
     );
-    useCaseMap.set(normalizeAiUseCase(row.use_case, "help_general"), current);
+    useCaseMap.set(useCase, current);
   }
 
   const overviewRows = Array.from(useCaseMap.entries()).map(([use_case, row]) => ({
@@ -311,7 +314,11 @@ async function updateRouteSetting(body: Record<string, unknown>) {
   const allowedModes = new Set(["text", "json_object", "json_schema"]);
   const payload = {
     use_case: useCase,
-    model: String(body.model || defaultRouteSetting?.model || "").trim() || "gpt-4.1-mini",
+    model: (() => {
+      const requestedModel = String(body.model || defaultRouteSetting?.model || "").trim();
+      if (isKnownAiModelId(requestedModel)) return requestedModel;
+      return buildDefaultAiRouteSetting(useCase).model;
+    })(),
     agent_mode:
       String(body.agent_mode || body.agentMode || definition.defaultAgentMode).trim() ||
       definition.defaultAgentMode,

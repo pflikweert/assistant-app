@@ -51,7 +51,7 @@ vi.mock("expo-constants", () => ({
         APP_BASE_URL: API_BASE_URL,
         SUPABASE_URL: process.env.SUPABASE_URL,
         SUPABASE_ANON_KEY: String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim(),
-        OPENAI_MODEL: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+        OPENAI_MODEL: process.env.OPENAI_MODEL || "gpt-5.4-nano",
       },
     },
   },
