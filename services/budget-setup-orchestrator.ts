@@ -63,7 +63,10 @@ function buildBudgetSetupUserPrompt(input: {
   return [
     `Gevraagde strategie: ${requestedMode}.`,
     "Maak eerst een voorstel op basis van context, daarna pas nuances.",
-    "Toon beschermde bedragen, variabele pool en categorieverdeling.",
+    "Toon beschermde bedragen, variabele pool, safety-impact en categorieverdeling.",
+    "Geef expliciet aan: maandgevoel, strengheid, grootste aandachtspunt en beste volgende stap.",
+    "Lever coachActions als compacte acties voor bijsturen zonder chat-flow.",
+    "suggestedCategoriesV2 moet minimaal 5 hoofd/sub focusposten bevatten op basis van trend en forecastcontext.",
     userPrompt ? `Extra gebruikerscontext: ${userPrompt}` : null,
     "Werk met compacte context en maak geen nieuwe financiële waarheid.",
   ]
@@ -76,6 +79,7 @@ function buildFinalProposalPrompt() {
     "Lever nu uitsluitend het voorstelobject in strict JSON.",
     "Het object moet volledig voldoen aan het schema budget_setup_proposal_v1.",
     "Zorg dat monthlyVariableBudgets optelt tot variableBudgetPool.",
+    "applyPayload blijft leidend voor persist; extra categorieën zijn uitleg/coaching.",
     "Gebruik korte rationale en korte userSummary in het Nederlands.",
   ].join(" ");
 }

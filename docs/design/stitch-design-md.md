@@ -175,6 +175,21 @@ Voor de nieuwe begeleide budget-instelflow geldt:
 - primaire CTA: `Terug naar Budget`
 - secundaire CTA: `Verder finetunen`
 
+### Budget Setup V2 (betekenis eerst)
+
+Vanaf fase-2 herziening geldt voor het voorstel- en reviewmoment:
+
+- voorstel start met besluitlaag, niet met categorieverdeling
+- vaste bovenvolgorde op `proposal`:
+  - `Strategie en maandgevoel`
+  - `Veiligheid en impact`
+  - `Beste volgende stap` (exact 1 dominante actie)
+  - daarna `Verdeling over variabele categorieën`
+- coach-interactie is quick-actions in-context, zonder aparte chatflow
+- de uitleglaag gebruikt alleen truth-safe bestaande budget/forecast-context
+- categorieverdeling blijft zichtbaar, maar is secundair aan veiligheid en besluitondersteuning
+- `review` start met `Wat dit plan betekent voor je maand` en maakt administratie ondergeschikt aan betekenis
+
 ### Strategie-semantiek
 
 - `Standaard`: volgt grotendeels bestaand patroon, met zo weinig mogelijk sturing

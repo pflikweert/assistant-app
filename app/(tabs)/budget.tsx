@@ -15,9 +15,6 @@ import {
 import { BudgetMonthSummaryCard } from "@/components/budget-month-summary-card";
 import { BudgetWeekRhythmCard } from "@/components/budget-week-rhythm-card";
 import { BudgetMonthActionCard } from "@/components/budget/budget-month-action-card";
-import { BudgetManageIncomeSourcesGroup } from "@/components/budget/budget-manage-income-sources-group";
-import { BudgetManageObligationsGroup } from "@/components/budget/budget-manage-obligations-group";
-import { BudgetManageDistributionGroup } from "@/components/budget/budget-manage-distribution-group";
 import { SmartBudgetSetupEntryCard } from "@/components/budget/smart-budget-setup-entry-card";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
@@ -124,7 +121,7 @@ import type {
   BudgetWeekPlanRow,
   CategoryRecord,
 } from "@/types/categorization";
-import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
+import { AppIcon } from "@/components/ui/app-icon";
 import { useIsFocused } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
@@ -812,16 +809,6 @@ function getBudgetPressureIconName(categoryKey: BudgetCategoryKey) {
   if (categoryKey === "subscriptions") return "subscriptions" as const;
   if (categoryKey === "savings_target") return "savings" as const;
   return getVariableCategoryIconName(categoryKey);
-}
-
-function getBudgetCategoryIconName(categoryKey: BudgetCategoryKey) {
-  if (categoryKey === "fixed_costs") return "home" as const;
-  if (categoryKey === "subscriptions") return "subscriptions" as const;
-  if (categoryKey === "savings_target") return "savings" as const;
-  if (categoryKey === "groceries") return "shopping-basket" as const;
-  if (categoryKey === "fuel") return "local-gas-station" as const;
-  if (categoryKey === "smoking") return "smoking-rooms" as const;
-  return "sell" as const;
 }
 
 function buildBudgetPressureItems(
@@ -2015,64 +2002,6 @@ export default function BudgetScreen() {
       annualReserveSheetSummary.annualActive,
       assistantForecastSurface?.reserve?.plannedReserveAllocationThisMonth,
     ],
-  );
-
-  const manageIncomingSourcesSummaryRows = React.useMemo(
-    () =>
-      INCOME_SOURCE_OPTIONS.map((option) => ({
-        key: option.key,
-        label: option.label,
-        enabled: budgetIncomeDraft[option.key],
-      })),
-    [budgetIncomeDraft],
-  );
-
-  const manageObligationRows = React.useMemo(
-    () => [
-      {
-        key: "fixed_costs",
-        label: "Vaste lasten",
-        amount: parseDraftBudgetValue("fixed_costs"),
-      },
-      {
-        key: "subscriptions",
-        label: "Abonnementen",
-        amount: parseDraftBudgetValue("subscriptions"),
-      },
-      {
-        key: "annual",
-        label: "Jaarlijkse lasten",
-        amount: annualReserveInlineAmount,
-      },
-      {
-        key: "savings",
-        label: "Reserves",
-        amount: getRelevantSavingsTargetForDraftMode(
-          budgetModeDraft,
-          savingsTargetMonthlyDraft,
-        ),
-      },
-    ],
-    [
-      annualReserveInlineAmount,
-      budgetModeDraft,
-      getRelevantSavingsTargetForDraftMode,
-      parseDraftBudgetValue,
-      savingsTargetMonthlyDraft,
-    ],
-  );
-
-  const manageBudgetDistributionRows = React.useMemo(
-    () =>
-      editableBudgetRows
-        .filter((row) => row.categoryKey !== "variable_costs")
-        .map((row) => ({
-          key: row.categoryKey,
-          label: getBudgetCategoryDisplayLabel(row.categoryKey),
-          amount: parseDraftBudgetValue(row.categoryKey),
-          iconName: getBudgetCategoryIconName(row.categoryKey) as AppIconName,
-        })),
-    [editableBudgetRows, parseDraftBudgetValue],
   );
 
   const budgetHeroCopy = React.useMemo(
@@ -3554,21 +3483,18 @@ export default function BudgetScreen() {
 
               {segment === "manage" ? (
                 <>
-                  {segment === "manage" ? (
-                    <>
-                  <FinanceSettingsGroup title="Kies je route">
+                  <FinanceSettingsGroup title="Route kiezen">
                     <View style={styles.manageGroupContent}>
                       <View style={styles.manageSection}>
                         <Text style={styles.manageSectionTitle}>
-                          Slim met Budio of Handmatig
+                          Slim met Budio staat voorop
                         </Text>
                         <Text style={styles.manageSectionDescription}>
-                          Gebruik slim instellen voor een voorstel-eerst flow. Handmatig blijft beschikbaar als secundaire route.
+                          Start met een voorstel van Budio. Handmatig instellen blijft beschikbaar als tweede route.
                         </Text>
                         <View style={styles.manageRouteActions}>
                           <FinanceButton
                             label="Slim met Budio"
-                            variant="secondary"
                             onPress={() =>
                               router.push({
                                 pathname: "/budget/setup",
@@ -3579,7 +3505,8 @@ export default function BudgetScreen() {
                           />
                           <FinanceButton
                             label="Handmatig"
-                            onPress={() => null}
+                            variant="secondary"
+                            onPress={() => setSegment("manage")}
                             style={styles.manageRouteButton}
                           />
                         </View>
@@ -4140,43 +4067,6 @@ export default function BudgetScreen() {
                   </Text>
                 </TouchableOpacity>
                   </View>
-                    </>
-                  ) : null}
-                            </View>
-                          </View>
-                        </View>
-                      </FinanceSettingsGroup>
-
-                      <BudgetManageIncomeSourcesGroup
-                        includedIncomeLabel={fmt.format(includedIncomePreview)}
-                        rows={manageIncomingSourcesSummaryRows}
-                        monthBreakdownText="Maandopbouw: 4 weken, € 425 p.w. na aftrek van vaste lasten en reserveringen."
-                        onEdit={() => setIncomeSourcesSheetOpen(true)}
-                      />
-
-                      <BudgetManageObligationsGroup
-                        totalLabel={fmt.format(
-                          manageObligationRows.reduce((sum, item) => sum + item.amount, 0),
-                        )}
-                        rows={manageObligationRows.map((row) => ({
-                          key: row.key,
-                          label: row.label,
-                          amountLabel: fmt.format(row.amount),
-                        }))}
-                        onEdit={() => setReserveRulesSheetOpen(true)}
-                      />
-
-                      <BudgetManageDistributionGroup
-                        rows={manageBudgetDistributionRows.map((row) => ({
-                          key: row.key,
-                          label: row.label,
-                          amountLabel: fmt.format(row.amount),
-                          iconName: row.iconName,
-                        }))}
-                        onEdit={() => setBudgetDistributionSheetOpen(true)}
-                      />
-                    </>
-                  ) : null}
                 </>
               ) : null}
             </View>

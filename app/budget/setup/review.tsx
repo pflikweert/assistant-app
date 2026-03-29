@@ -21,6 +21,35 @@ function resolveMonthKey(value: string | null | undefined) {
   return option?.key || fallback;
 }
 
+function modeLabel(mode: string) {
+  const value = String(mode || "").toLowerCase();
+  if (value === "balans") return "Balans";
+  if (value === "bespaarmodus") return "Bespaarmodus";
+  if (value === "handmatig") return "Handmatig";
+  return "Standaard";
+}
+
+function monthFeelLabel(value: string) {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "krap") return "Krappe maand";
+  if (normalized === "ruim") return "Ruime maand";
+  return "Haalbare maand";
+}
+
+function strictnessLabel(value: string) {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "licht") return "Lichte sturing";
+  if (normalized === "streng") return "Strakke sturing";
+  return "Normale sturing";
+}
+
+function reserveProtectionLabel(value: string) {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "hoog") return "Hoog beschermd";
+  if (normalized === "laag") return "Laag beschermd";
+  return "Gemiddeld beschermd";
+}
+
 export default function BudgetSetupReviewScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -29,13 +58,39 @@ export default function BudgetSetupReviewScreen() {
     variableTotal?: string;
     categoryCount?: string;
     savingsTarget?: string;
+    adjustedCount?: string;
+    monthFeel?: string;
+    strictness?: string;
+    primaryReason?: string;
+    reserveProtectionLevel?: string;
+    biggestAttentionPoint?: string;
+    nextBestStepTitle?: string;
+    nextBestStepWhy?: string;
   }>();
+
   const monthKey = resolveMonthKey(params.month);
   const monthLabel = getMonthOptionByKey(monthKey)?.label || "Deze maand";
   const variableTotal = Number(params.variableTotal || 0) || 0;
   const categoryCount = Number(params.categoryCount || 0) || 0;
   const savingsTarget = Number(params.savingsTarget || 0) || 0;
-  const mode = String(params.mode || "standaard");
+  const adjustedCount = Number(params.adjustedCount || 0) || 0;
+  const mode = modeLabel(String(params.mode || "standaard"));
+  const monthFeel = monthFeelLabel(String(params.monthFeel || "haalbaar"));
+  const strictness = strictnessLabel(String(params.strictness || "normaal"));
+  const primaryReason =
+    String(params.primaryReason || "").trim() ||
+    "Budio heeft eerst vaste lasten en reserve beschermd.";
+  const reserveProtection = reserveProtectionLabel(
+    String(params.reserveProtectionLevel || "middel"),
+  );
+  const biggestAttentionPoint =
+    String(params.biggestAttentionPoint || "").trim() ||
+    "Blijf je variabele tempo in de gaten houden.";
+  const nextBestStepTitle =
+    String(params.nextBestStepTitle || "").trim() || "Houd deze lijn rustig vast";
+  const nextBestStepWhy =
+    String(params.nextBestStepWhy || "").trim() ||
+    "Zo blijft je maand voorspelbaar en veilig.";
 
   return (
     <FinanceUtilityShell
@@ -43,31 +98,59 @@ export default function BudgetSetupReviewScreen() {
       subtitle={monthLabel}
       onBack={() => router.back()}
       hero={{
-        eyebrow: "Stap 3 van 3",
-        title: "Review",
-        subtitle: "Je voorstel is toegepast. Hier zie je wat is ingesteld en wat je nog kunt finetunen.",
+        eyebrow: "Klaar",
+        title: "Je voorstel staat actief",
+        subtitle: "Hier zie je wat is ingesteld en waar je nog kunt finetunen.",
       }}
     >
       <View style={styles.stack}>
-        <FinanceSettingsGroup title="Succes">
+        <FinanceSettingsGroup title="Status">
           <View style={styles.groupContent}>
             <FinanceInlineCallout
               iconName="check-circle"
               tone="highlight"
-              text="Voorstel toegepast op je bestaande budgetplan."
+              text="Budio heeft je voorstel verwerkt in je budgetplan."
             />
           </View>
         </FinanceSettingsGroup>
 
-        <FinanceSettingsGroup title="Wat is ingesteld">
+        <FinanceSettingsGroup title="Wat dit plan betekent voor je maand">
           <View style={styles.groupContent}>
             <View style={styles.summaryList}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Modus</Text>
+                <Text style={styles.summaryLabel}>Maandgevoel</Text>
+                <Text style={styles.summaryValue}>{monthFeel}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Sturingsniveau</Text>
+                <Text style={styles.summaryValue}>{strictness}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Reservebescherming</Text>
+                <Text style={styles.summaryValue}>{reserveProtection}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Belangrijkste aandachtspunt</Text>
+                <Text style={styles.summaryValue}>{biggestAttentionPoint}</Text>
+              </View>
+            </View>
+            <FinanceInlineCallout iconName="insights" text={primaryReason} />
+            <View style={styles.nextStepCard}>
+              <Text style={styles.nextStepTitle}>{nextBestStepTitle}</Text>
+              <Text style={styles.nextStepWhy}>{nextBestStepWhy}</Text>
+            </View>
+          </View>
+        </FinanceSettingsGroup>
+
+        <FinanceSettingsGroup title="Ingesteld door Budio">
+          <View style={styles.groupContent}>
+            <View style={styles.summaryList}>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Strategie</Text>
                 <Text style={styles.summaryValue}>{mode}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Variabel budget totaal</Text>
+                <Text style={styles.summaryLabel}>Variabele ruimte</Text>
                 <Text style={styles.summaryValue}>{fmt.format(variableTotal)}</Text>
               </View>
               <View style={styles.summaryRow}>
@@ -82,16 +165,29 @@ export default function BudgetSetupReviewScreen() {
           </View>
         </FinanceSettingsGroup>
 
-        <FinanceSettingsGroup title="Nog finetunen">
+        <FinanceSettingsGroup title="Door jou aangepast">
+          <View style={styles.groupContent}>
+            <FinanceInlineCallout
+              iconName={adjustedCount > 0 ? "tune" : "info-outline"}
+              text={
+                adjustedCount > 0
+                  ? `Je hebt ${adjustedCount} aanpassing${adjustedCount === 1 ? "" : "en"} gedaan voordat je toepaste.`
+                  : "Je hebt het voorstel zonder extra aanpassingen toegepast."
+              }
+            />
+          </View>
+        </FinanceSettingsGroup>
+
+        <FinanceSettingsGroup title="Waar finetunen nog zinvol is">
           <View style={styles.groupContent}>
             <View style={styles.actions}>
               <FinanceButton
-                label="Inkomsten bijsturen"
+                label="Inkomsten"
                 variant="secondary"
                 onPress={() =>
                   router.push({
                     pathname: "/budget/setup/proposal",
-                    params: { month: monthKey, mode, stage: "refine", focus: "income" },
+                    params: { month: monthKey, mode: String(params.mode || "standaard"), focus: "income" },
                   })
                 }
                 fullWidth
@@ -102,7 +198,7 @@ export default function BudgetSetupReviewScreen() {
                 onPress={() =>
                   router.push({
                     pathname: "/budget/setup/proposal",
-                    params: { month: monthKey, mode, stage: "refine", focus: "fixed" },
+                    params: { month: monthKey, mode: String(params.mode || "standaard"), focus: "fixed" },
                   })
                 }
                 fullWidth
@@ -113,12 +209,15 @@ export default function BudgetSetupReviewScreen() {
                 onPress={() =>
                   router.push({
                     pathname: "/budget/setup/proposal",
-                    params: { month: monthKey, mode, stage: "refine", focus: "distribution" },
+                    params: { month: monthKey, mode: String(params.mode || "standaard"), focus: "distribution" },
                   })
                 }
                 fullWidth
               />
             </View>
+            <Text style={styles.disclaimer}>
+              Voorspellingen blijven verwachtingen op basis van bekende data.
+            </Text>
           </View>
         </FinanceSettingsGroup>
 
@@ -129,7 +228,7 @@ export default function BudgetSetupReviewScreen() {
               onPress={() =>
                 router.push({
                   pathname: "/budget",
-                  params: { segment: "manage_new", month: monthKey },
+                  params: { segment: "manage", month: monthKey },
                 })
               }
               fullWidth
@@ -174,8 +273,28 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
     fontWeight: "700",
   },
+  nextStepCard: {
+    borderRadius: FinRadius.lg,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgInput,
+    padding: FinSpacing.s,
+    gap: FinSpacing.x2,
+  },
+  nextStepTitle: {
+    ...FinTypography["body-sm"],
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+  },
+  nextStepWhy: {
+    ...FinTypography.caption,
+    color: FinColors.textSecondary,
+  },
   actions: {
     gap: FinSpacing.xs,
   },
+  disclaimer: {
+    ...FinTypography.caption,
+    color: FinColors.textMuted,
+  },
 });
-

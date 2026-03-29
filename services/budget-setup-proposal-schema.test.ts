@@ -7,6 +7,33 @@ function buildValidProposal() {
   return {
     proposalId: "proposal-abc",
     selectedMode: "standaard",
+    planMeaning: {
+      monthFeel: "haalbaar",
+      strictness: "normaal",
+      primaryReason: "Eerst vaste lasten en reserve beschermen.",
+    },
+    safetyImpact: {
+      variableRoomMonthly: 900,
+      reserveProtectionLevel: "middel",
+      biggestAttentionPoint: "Houd je variabele tempo in de gaten.",
+    },
+    nextBestStep: {
+      title: "Gebruik dit voorstel als basis",
+      why: "Zo stuur je rustig bij met minimale handmatige stappen.",
+      dominantConstraint: "stability",
+    },
+    coachActions: [
+      {
+        actionKey: "rebalance_now",
+        label: "Opnieuw verdelen",
+        rationale: "Laat Budio opnieuw verdelen.",
+      },
+      {
+        actionKey: "make_tighter",
+        label: "Maak iets zuiniger",
+        rationale: "Houd meer marge over.",
+      },
+    ],
     rationale: ["x"],
     expectedIncomeTotal: 3200,
     protectedAmounts: {
@@ -50,6 +77,48 @@ function buildValidProposal() {
         note: null,
       },
     ],
+    suggestedCategoriesV2: [
+      {
+        id: "groceries-main",
+        label: "Boodschappen",
+        type: "main",
+        source: "trend",
+        suggestedAmount: 350,
+        why: "Gebaseerd op trend.",
+      },
+      {
+        id: "fuel-main",
+        label: "Vervoer en brandstof",
+        type: "main",
+        source: "trend",
+        suggestedAmount: 150,
+        why: "Gebaseerd op trend.",
+      },
+      {
+        id: "smoking-sub",
+        label: "Roken",
+        type: "sub",
+        source: "trend",
+        suggestedAmount: 50,
+        why: "Gebaseerd op trend.",
+      },
+      {
+        id: "other-main",
+        label: "Overige variabele uitgaven",
+        type: "main",
+        source: "trend",
+        suggestedAmount: 350,
+        why: "Gebaseerd op trend.",
+      },
+      {
+        id: "buffer-focus",
+        label: "Reservebescherming",
+        type: "sub",
+        source: "forecast",
+        suggestedAmount: 180,
+        why: "Gebaseerd op forecast.",
+      },
+    ],
     adjustmentNotes: [],
     needsReviewFlags: ["thin_trend_data"],
     confidence: {
@@ -86,6 +155,7 @@ describe("budget-setup-proposal-schema", () => {
     expect(result.ok).toBe(true);
     expect(result.issues).toEqual([]);
     expect(result.normalized?.applyPayload.monthlyVariableBudgets).toHaveLength(4);
+    expect(result.normalized?.suggestedCategoriesV2).toHaveLength(5);
   });
 
   it("geeft fout bij mismatch tussen variableBudgetPool en som van categorieen", () => {
@@ -106,5 +176,21 @@ describe("budget-setup-proposal-schema", () => {
     );
     expect(result.ok).toBe(true);
   });
-});
 
+  it("blijft backwards-compatible als v2-betekenisvelden ontbreken", () => {
+    const payload = buildValidProposal();
+    const {
+      planMeaning: _planMeaning,
+      safetyImpact: _safetyImpact,
+      nextBestStep: _nextBestStep,
+      coachActions: _coachActions,
+      suggestedCategoriesV2: _suggestedCategoriesV2,
+      ...legacyLike
+    } = payload;
+    const result = validateBudgetSetupProposal(legacyLike);
+    expect(result.ok).toBe(true);
+    expect(result.normalized?.planMeaning.monthFeel).toBeDefined();
+    expect(result.normalized?.nextBestStep.title.length).toBeGreaterThan(3);
+    expect((result.normalized?.suggestedCategoriesV2 || []).length).toBeGreaterThanOrEqual(5);
+  });
+});

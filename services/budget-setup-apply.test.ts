@@ -35,6 +35,33 @@ function buildValidProposal() {
   return {
     proposalId: "proposal-1",
     selectedMode: "bespaarmodus",
+    planMeaning: {
+      monthFeel: "haalbaar",
+      strictness: "streng",
+      primaryReason: "Reserve en vaste lasten eerst beschermen.",
+    },
+    safetyImpact: {
+      variableRoomMonthly: 900,
+      reserveProtectionLevel: "hoog",
+      biggestAttentionPoint: "Houd variabele uitgaven strak.",
+    },
+    nextBestStep: {
+      title: "Beperk variabele uitgaven tijdelijk",
+      why: "Zo houd je genoeg marge tot het einde van de maand.",
+      dominantConstraint: "overspending_tempo",
+    },
+    coachActions: [
+      {
+        actionKey: "rebalance_now",
+        label: "Opnieuw verdelen",
+        rationale: "Laat Budio opnieuw verdelen.",
+      },
+      {
+        actionKey: "protect_savings",
+        label: "Bescherm sparen meer",
+        rationale: "Verhoog je reserve.",
+      },
+    ],
     rationale: ["x"],
     expectedIncomeTotal: 3200,
     protectedAmounts: {
@@ -76,6 +103,48 @@ function buildValidProposal() {
         basedOnTrend: true,
         trendWindowMonths: 3,
         note: null,
+      },
+    ],
+    suggestedCategoriesV2: [
+      {
+        id: "groceries-main",
+        label: "Boodschappen",
+        type: "main",
+        source: "trend",
+        suggestedAmount: 350,
+        why: "Trend",
+      },
+      {
+        id: "fuel-main",
+        label: "Vervoer en brandstof",
+        type: "main",
+        source: "trend",
+        suggestedAmount: 150,
+        why: "Trend",
+      },
+      {
+        id: "smoking-sub",
+        label: "Roken",
+        type: "sub",
+        source: "trend",
+        suggestedAmount: 50,
+        why: "Trend",
+      },
+      {
+        id: "other-main",
+        label: "Overige variabele uitgaven",
+        type: "main",
+        source: "trend",
+        suggestedAmount: 350,
+        why: "Trend",
+      },
+      {
+        id: "buffer-focus",
+        label: "Reservebescherming",
+        type: "sub",
+        source: "forecast",
+        suggestedAmount: 250,
+        why: "Forecast",
       },
     ],
     adjustmentNotes: [],

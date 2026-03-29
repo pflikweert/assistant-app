@@ -261,6 +261,105 @@ function resolveStrategyPoolFactor(strategy: BudgetSetupStrategy) {
   return 1;
 }
 
+function resolveStrictness(strategy: BudgetSetupStrategy) {
+  if (strategy === "bespaarmodus") return "streng" as const;
+  if (strategy === "balans") return "normaal" as const;
+  if (strategy === "handmatig") return "licht" as const;
+  return "normaal" as const;
+}
+
+function resolveMonthFeel(params: {
+  variableBudgetPool: number;
+  safeToSpendUntilNextIncome: number | null;
+  fixedRatioOfIncome: number | null;
+}) {
+  if (
+    (params.safeToSpendUntilNextIncome != null &&
+      params.safeToSpendUntilNextIncome < 150) ||
+    (params.fixedRatioOfIncome != null && params.fixedRatioOfIncome > 0.72)
+  ) {
+    return "krap" as const;
+  }
+  if (
+    (params.safeToSpendUntilNextIncome != null &&
+      params.safeToSpendUntilNextIncome > 900) &&
+    (params.fixedRatioOfIncome == null || params.fixedRatioOfIncome < 0.52) &&
+    params.variableBudgetPool > 1100
+  ) {
+    return "ruim" as const;
+  }
+  return "haalbaar" as const;
+}
+
+function resolveReserveProtectionLevel(params: {
+  reserveTarget: number;
+  expectedIncomeTotal: number;
+}) {
+  if (params.expectedIncomeTotal <= 0) return "laag" as const;
+  const ratio = params.reserveTarget / params.expectedIncomeTotal;
+  if (ratio >= 0.1) return "hoog" as const;
+  if (ratio >= 0.05) return "middel" as const;
+  return "laag" as const;
+}
+
+function resolveDominantConstraint(params: {
+  cashRiskFlag: string;
+  deficitRiskFlag: string;
+  safeToSpendUntilNextIncome: number | null;
+  reserveProtectionLevel: "laag" | "middel" | "hoog";
+  fixedRatioOfIncome: number | null;
+}) {
+  const cashRisk = String(params.cashRiskFlag || "none").toLowerCase();
+  const deficitRisk = String(params.deficitRiskFlag || "none").toLowerCase();
+  if (cashRisk !== "none" || deficitRisk === "high") {
+    return "cash_survival" as const;
+  }
+  if (
+    params.safeToSpendUntilNextIncome != null &&
+    params.safeToSpendUntilNextIncome < 250
+  ) {
+    return "upcoming_obligation" as const;
+  }
+  if (params.reserveProtectionLevel === "laag") {
+    return "buffer_protection" as const;
+  }
+  if (params.fixedRatioOfIncome != null && params.fixedRatioOfIncome > 0.66) {
+    return "overspending_tempo" as const;
+  }
+  return "stability" as const;
+}
+
+function resolveNextBestStep(constraint: ReturnType<typeof resolveDominantConstraint>) {
+  if (constraint === "cash_survival") {
+    return {
+      title: "Beperk uitgaven tot je kernkosten",
+      why: "Je maand vraagt nu maximale rust en bescherming van je basislasten.",
+    };
+  }
+  if (constraint === "upcoming_obligation") {
+    return {
+      title: "Houd extra ruimte tot je volgende inkomen",
+      why: "Er zit weinig veilige ruimte tot je inkomensanker.",
+    };
+  }
+  if (constraint === "buffer_protection") {
+    return {
+      title: "Bescherm je reserve deze maand iets meer",
+      why: "Een sterkere buffer maakt je maand minder kwetsbaar.",
+    };
+  }
+  if (constraint === "overspending_tempo") {
+    return {
+      title: "Zet je variabele tempo iets lager",
+      why: "Zo voorkom je druk later in de maand.",
+    };
+  }
+  return {
+    title: "Gebruik dit voorstel als rustige basis",
+    why: "Je huidige maandbeeld lijkt stabiel genoeg om met kleine stappen te sturen.",
+  };
+}
+
 function buildWeightsFromTrend(base: BudgetSetupBaseContext) {
   const fallback: Record<VariableCategoryKey, number> = {
     groceries: 0.45,
@@ -316,10 +415,79 @@ function buildDeterministicProposal(params: {
   const confidenceScore = base.confidenceContext.hasThinTrendData ? 0.58 : 0.76;
   const confidenceLevel: "hoog" | "middel" | "laag" =
     confidenceScore >= 0.8 ? "hoog" : confidenceScore >= 0.6 ? "middel" : "laag";
+  const reserveProtectionLevel = resolveReserveProtectionLevel({
+    reserveTarget: reserveTargetSuggestion,
+    expectedIncomeTotal: base.incomeSnapshot.expectedIncomeTotal,
+  });
+  const dominantConstraint = resolveDominantConstraint({
+    cashRiskFlag: base.forecastSafetyContext.cashRiskFlag,
+    deficitRiskFlag: base.forecastSafetyContext.deficitRiskFlag,
+    safeToSpendUntilNextIncome: base.forecastSafetyContext.safeToSpendUntilNextIncome,
+    reserveProtectionLevel,
+    fixedRatioOfIncome: base.fixedAndSubscriptionsSnapshot.fixedRatioOfIncome,
+  });
+  const nextStep = resolveNextBestStep(dominantConstraint);
+  const monthFeel = resolveMonthFeel({
+    variableBudgetPool,
+    safeToSpendUntilNextIncome: base.forecastSafetyContext.safeToSpendUntilNextIncome,
+    fixedRatioOfIncome: base.fixedAndSubscriptionsSnapshot.fixedRatioOfIncome,
+  });
+  const biggestAttentionPoint =
+    dominantConstraint === "cash_survival"
+      ? "Je kasruimte staat onder druk."
+      : dominantConstraint === "upcoming_obligation"
+        ? "Je ruimte tot het volgende inkomen is krap."
+        : dominantConstraint === "buffer_protection"
+          ? "Je reserve blijft gevoelig deze maand."
+          : dominantConstraint === "overspending_tempo"
+            ? "Je tempo op variabele uitgaven verdient aandacht."
+            : "Blijf je maandtempo rustig volgen.";
 
   return {
     proposalId: `fallback-${Date.now()}`,
     selectedMode,
+    planMeaning: {
+      monthFeel,
+      strictness: resolveStrictness(selectedMode),
+      primaryReason:
+        dominantConstraint === "cash_survival"
+          ? "Eerst beschermen we je basislasten omdat je kasdruk hoog is."
+          : dominantConstraint === "upcoming_obligation"
+            ? "Eerst houden we extra ruimte tot je volgende inkomen."
+            : "Eerst beschermen we vaste lasten en reserve, daarna verdelen we variabele ruimte.",
+    },
+    safetyImpact: {
+      variableRoomMonthly: variableBudgetPool,
+      reserveProtectionLevel,
+      biggestAttentionPoint,
+    },
+    nextBestStep: {
+      title: nextStep.title,
+      why: nextStep.why,
+      dominantConstraint,
+    },
+    coachActions: [
+      {
+        actionKey: "rebalance_now",
+        label: "Opnieuw verdelen",
+        rationale: "Laat Budio de verdeling opnieuw opbouwen met dezelfde strategie.",
+      },
+      {
+        actionKey: "make_roomier",
+        label: "Maak iets ruimer",
+        rationale: "Geeft iets meer variabele ruimte als je maand stabiel genoeg voelt.",
+      },
+      {
+        actionKey: "make_tighter",
+        label: "Maak iets zuiniger",
+        rationale: "Houd extra veiligheidsmarge over voor de rest van de maand.",
+      },
+      {
+        actionKey: "protect_savings",
+        label: "Bescherm sparen meer",
+        rationale: "Verhoog je reserve als je meer stabiliteit wilt.",
+      },
+    ],
     rationale: [
       "Voorstel start vanuit je bestaande budgetmotor en recente uitgaventrend.",
       "Vaste lasten, abonnementen en reserves worden eerst beschermd.",
@@ -344,6 +512,48 @@ function buildDeterministicProposal(params: {
       trendWindowMonths: base.confidenceContext.trendDataMonths,
       note: null,
     })),
+    suggestedCategoriesV2: [
+      {
+        id: "groceries-main",
+        label: "Boodschappen",
+        type: "main",
+        source: "trend",
+        suggestedAmount: categories.find((row) => row.categoryKey === "groceries")?.amount || 0,
+        why: "Sterk gebaseerd op je recente maandtempo.",
+      },
+      {
+        id: "fuel-main",
+        label: "Vervoer en brandstof",
+        type: "main",
+        source: "trend",
+        suggestedAmount: categories.find((row) => row.categoryKey === "fuel")?.amount || 0,
+        why: "Gevoelig voor maandtempo en terugkerende ritten.",
+      },
+      {
+        id: "smoking-sub",
+        label: "Roken",
+        type: "sub",
+        source: "trend",
+        suggestedAmount: categories.find((row) => row.categoryKey === "smoking")?.amount || 0,
+        why: "Aparte subpost voor betere bijsturing tijdens de maand.",
+      },
+      {
+        id: "other-main",
+        label: "Overige variabele uitgaven",
+        type: "main",
+        source: "trend",
+        suggestedAmount: categories.find((row) => row.categoryKey === "other")?.amount || 0,
+        why: "Vangt wisselende uitgaven op die niet vast zijn.",
+      },
+      {
+        id: "buffer-focus",
+        label: "Reservebescherming",
+        type: "sub",
+        source: "forecast",
+        suggestedAmount: reserveTargetSuggestion,
+        why: "Gebaseerd op forecast- en veiligheidscontext voor deze maand.",
+      },
+    ],
     adjustmentNotes: [
       selectedMode === "bespaarmodus"
         ? "Bespaarmodus verlaagt de variabele ruimte en beschermt extra reserve."
