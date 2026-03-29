@@ -249,6 +249,10 @@ function inferCategoryScope(input: {
           )[0]
       : null;
 
+  if (inferredScope && inferredScope.score >= 7 && inferredScope.slug !== input.requestedScope) {
+    return inferredScope.slug;
+  }
+
   if (
     (input.requestedScope === "none" || input.requestedScope === "unknown") &&
     inferredScope &&
@@ -335,23 +339,42 @@ function buildScopeCandidates(input: {
   }));
 
   const subcategoryEntries: ScopedSpendEntry[] = input.breakdown.categories.flatMap(
-    (category) =>
-      (category.subcategories || []).map((subcategory) => ({
-        category: sanitizeScopeSlug(
-          subcategory.categoryKey || subcategory.key,
-          "unknown",
-        ),
-        label: subcategory.label,
-        total: formatAmount(subcategory.amount) || "onbekend",
-        rawTotal: subcategory.amount,
-        transactionCount: subcategory.transactionCount,
-        granularity: "subcategory" as const,
-        parentCategory: sanitizeScopeSlug(
-          category.categoryKey || category.key,
-          "unknown",
-        ),
-        parentLabel: category.label,
-      })),
+    (category) => {
+      const parentCategory = sanitizeScopeSlug(
+        category.categoryKey || category.key,
+        "unknown",
+      );
+      const parentLabel = normalizeMatchText(category.label);
+
+      return (category.subcategories || [])
+        .filter((subcategory) => {
+          const subcategoryKey = sanitizeScopeSlug(
+            subcategory.categoryKey || subcategory.key,
+            "unknown",
+          );
+          const subcategoryLabel = normalizeMatchText(subcategory.label);
+
+          // Some breakdowns include direct parent spend as a synthetic
+          // "subcategory" with the same key/label as the parent. Keep the
+          // parent total authoritative for parent-scope questions.
+          return !(
+            subcategoryKey === parentCategory && subcategoryLabel === parentLabel
+          );
+        })
+        .map((subcategory) => ({
+          category: sanitizeScopeSlug(
+            subcategory.categoryKey || subcategory.key,
+            "unknown",
+          ),
+          label: subcategory.label,
+          total: formatAmount(subcategory.amount) || "onbekend",
+          rawTotal: subcategory.amount,
+          transactionCount: subcategory.transactionCount,
+          granularity: "subcategory" as const,
+          parentCategory,
+          parentLabel: category.label,
+        }));
+    },
   );
 
   if (input.scope === "none" || input.scope === "unknown") {
@@ -440,15 +463,31 @@ function mapScopedCategories(input: {
       : null;
   const scopedSubcategoryBreakdown =
     scopedParentCategory && scopedParentCategory.subcategories?.length
-      ? scopedParentCategory.subcategories.map((subcategory) => ({
-          category: sanitizeScopeSlug(
-            subcategory.categoryKey || subcategory.key,
-            "unknown",
-          ),
-          label: subcategory.label,
-          total: formatAmount(subcategory.amount) || "onbekend",
-          transactionCount: subcategory.transactionCount,
-        }))
+      ? scopedParentCategory.subcategories
+          .filter((subcategory) => {
+            const subcategoryKey = sanitizeScopeSlug(
+              subcategory.categoryKey || subcategory.key,
+              "unknown",
+            );
+            const parentCategory = sanitizeScopeSlug(
+              scopedParentCategory.categoryKey || scopedParentCategory.key,
+              "unknown",
+            );
+            return !(
+              subcategoryKey === parentCategory &&
+              normalizeMatchText(subcategory.label) ===
+                normalizeMatchText(scopedParentCategory.label)
+            );
+          })
+          .map((subcategory) => ({
+            category: sanitizeScopeSlug(
+              subcategory.categoryKey || subcategory.key,
+              "unknown",
+            ),
+            label: subcategory.label,
+            total: formatAmount(subcategory.amount) || "onbekend",
+            transactionCount: subcategory.transactionCount,
+          }))
       : [];
 
   return {
@@ -549,17 +588,72 @@ function findMerchantAggregate(input: {
   merchantScope: string;
   aggregates: SafeMerchantAggregate[];
 }) {
-  const exact = input.aggregates.find(
-    (aggregate) => aggregate.merchantKey === input.merchantScope,
-  );
+  const normalizeMerchantLookupText = (value: string | null | undefined) =>
+    normalizeMatchText(value)
+      .replace(/_/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  const collapseMerchantLookupText = (value: string | null | undefined) =>
+    normalizeMerchantLookupText(value).replace(/\s+/g, "");
+  const scopeNormalized = normalizeMerchantLookupText(input.merchantScope);
+  const scopeCollapsed = collapseMerchantLookupText(input.merchantScope);
+  const scopeTokens = new Set(tokenizeScopeText(scopeNormalized));
+  const exact = input.aggregates.find((aggregate) => {
+    const keyNormalized = normalizeMerchantLookupText(aggregate.merchantKey);
+    const labelNormalized = normalizeMerchantLookupText(aggregate.merchantLabel);
+    return (
+      keyNormalized === scopeNormalized ||
+      labelNormalized === scopeNormalized ||
+      collapseMerchantLookupText(aggregate.merchantKey) === scopeCollapsed ||
+      collapseMerchantLookupText(aggregate.merchantLabel) === scopeCollapsed
+    );
+  });
   if (exact) return exact;
-  return (
-    input.aggregates.find(
-      (aggregate) =>
-        aggregate.merchantKey.includes(input.merchantScope) ||
-        input.merchantScope.includes(aggregate.merchantKey),
-    ) || null
-  );
+
+  let best:
+    | {
+        aggregate: SafeMerchantAggregate;
+        score: number;
+      }
+    | null = null;
+
+  for (const aggregate of input.aggregates) {
+    const keyNormalized = normalizeMerchantLookupText(aggregate.merchantKey);
+    const labelNormalized = normalizeMerchantLookupText(aggregate.merchantLabel);
+    const keyCollapsed = collapseMerchantLookupText(aggregate.merchantKey);
+    const labelCollapsed = collapseMerchantLookupText(aggregate.merchantLabel);
+    const aggregateTokens = new Set([
+      ...tokenizeScopeText(keyNormalized),
+      ...tokenizeScopeText(labelNormalized),
+    ]);
+
+    let score = 0;
+    if (
+      keyNormalized.includes(scopeNormalized) ||
+      labelNormalized.includes(scopeNormalized) ||
+      scopeNormalized.includes(keyNormalized) ||
+      scopeNormalized.includes(labelNormalized)
+    ) {
+      score += 4;
+    }
+    if (
+      keyCollapsed.includes(scopeCollapsed) ||
+      labelCollapsed.includes(scopeCollapsed) ||
+      scopeCollapsed.includes(keyCollapsed) ||
+      scopeCollapsed.includes(labelCollapsed)
+    ) {
+      score += 5;
+    }
+    for (const token of scopeTokens) {
+      if (aggregateTokens.has(token)) score += 2;
+    }
+
+    if (!best || score > best.score) {
+      best = { aggregate, score };
+    }
+  }
+
+  return best && best.score >= 4 ? best.aggregate : null;
 }
 
 export async function buildHydrationResult(input: {
@@ -845,6 +939,9 @@ export async function buildHydrationResult(input: {
       currentScoped.scopedCategory
         ? `- scopedCategoryLabel: ${currentScoped.scopedCategory.label}`
         : "- scopedCategoryLabel: onbekend",
+      currentScoped.scopedCategory
+        ? `- scopedCategoryGranularity: ${currentScoped.scopedCategory.granularity}`
+        : "- scopedCategoryGranularity: onbekend",
       currentScoped.scopedCategory
         ? `- scopedCategoryTotal: ${currentScoped.scopedCategory.total}`
         : "- scopedCategoryTotal: onbekend",

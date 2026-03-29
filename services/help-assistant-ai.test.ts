@@ -1907,6 +1907,1548 @@ describe("help-assistant-ai spending advice", () => {
     expect(systemText).toContain('"slug":"fuel"');
   });
 
+  it("overschrijft een verkeerde concrete planner-scope bij een sterke parent-labelmatch zoals roken", async () => {
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      period: {
+        key: "2026-03",
+        label: "maart 2026",
+        startIso: "2026-03-01",
+        endIsoExclusive: "2026-04-01",
+        referenceDateIso: "2026-03-20T12:00:00.000Z",
+        usedFallbackPeriod: false,
+      },
+      spending: {
+        currentMonthTotal: 438,
+        currentWeekTotal: 120,
+        currentMonthBreakdown: {
+          total: 438,
+          transactionCount: 8,
+          categories: [
+            {
+              key: "smoking",
+              categoryKey: "smoking",
+              label: "Roken",
+              amount: 438,
+              transactionCount: 8,
+              subcategories: [
+                {
+                  key: "smoking_cigarettes",
+                  categoryKey: "smoking_cigarettes",
+                  label: "Sigaretten",
+                  amount: 375,
+                  transactionCount: 6,
+                },
+                {
+                  key: "smoking_tobacco",
+                  categoryKey: "smoking_tobacco",
+                  label: "Tabak",
+                  amount: 63,
+                  transactionCount: 2,
+                },
+              ],
+            },
+          ],
+        },
+        currentWeekBreakdown: {
+          total: 120,
+          transactionCount: 2,
+          categories: [],
+        },
+      },
+      budgetPlan: {
+        monthlyBudgetTotal: 0,
+        weeklyBudgetTotal: 0,
+        fixedCostsBudget: 0,
+        subscriptionsBudget: 0,
+        variableBudget: 0,
+        variableSubcategoriesBudgetTotal: 0,
+        appliedSavingsTarget: 0,
+        currentWeekBudget: 0,
+        currentWeekActual: 0,
+        currentWeekRemaining: 0,
+        subtotalAfterFixed: 0,
+        subtotalAfterSubscriptions: 0,
+        variableCategoryBudgets: [],
+      },
+      budget: {
+        remainingVariableBudget: 0,
+        spentVariableBudget: 0,
+        totalVariableBudget: 0,
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekRemainingBudget: 0,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+      },
+      planning: {
+        upcomingCommittedExpenseTotal: 0,
+        upcomingCommittedIncomeTotal: 0,
+        expectedFixedCosts: 0,
+        expectedSubscriptions: 0,
+        remainingPlannedExpenseTotal: 0,
+        remainingVariableExpenseEstimate: 0,
+      },
+      forecastCurrentMonth: {
+        hasData: false,
+        expectedEndBalance: null,
+        lowestExpectedBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        remainingMonthNetTotal: null,
+        forecastReferenceDate: null,
+      },
+      forecastNextMonth: {
+        hasData: false,
+        monthKey: "2026-04",
+        monthLabel: "april 2026",
+        expectedEndBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        forecastReferenceDate: null,
+      },
+      currentBalance: {
+        balance: null,
+        date: null,
+      },
+      trend: {
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+        monthProgress: 0,
+      },
+      spendingAdvice: {
+        monthBudget: {
+          monthLabel: "maart 2026",
+          daysRemainingInMonth: 0,
+          variableBudgetTotal: null,
+          variableSpent: null,
+          variableRemaining: null,
+          monthBudgetStatus: "unknown",
+          monthBudgetStatusLabel: null,
+          weekBudgetRemaining: null,
+          weekBudgetStatus: "unknown",
+          weekTempoSignal: "unknown",
+        },
+        cashflowSafety: {
+          currentBalance: null,
+          extraSpaceUntilNextIncome: null,
+          extraSpaceLabel: "",
+          nextIncomeDate: null,
+          nextIncomeAmount: null,
+          nextIncomeAmountMeta: {
+            isAvailable: false,
+            isCanonical: false,
+            isDerived: false,
+            isFallback: false,
+            source: "eval",
+            dataGapReason: "nvt",
+          },
+          daysUntilNextIncome: null,
+          expectedEndBalance: null,
+          lowestProjectedBalance: null,
+          knownUpcomingFixedCosts: null,
+          expectedFixedAndSubscriptions: null,
+          forecastReliability: "low",
+        },
+        categoryStatus: null,
+        assistantAdviceSignals: {
+          confidence: "low",
+          guidance: [],
+        },
+      },
+      quality: {
+        cacheHit: false,
+        fetchedAtIso: "2026-03-20T12:00:00.000Z",
+        cacheTtlMs: 0,
+        hasBudgetSignals: false,
+        hasPlanningSignals: false,
+        hasForecastSignals: false,
+        hasBalanceSignals: false,
+        hasSpendingSignals: true,
+        hasCategorySignals: true,
+        confidence: "medium",
+        dataGaps: [],
+      },
+    });
+    resolveSafeCategoryCatalogScopesMock.mockResolvedValueOnce([
+      { slug: "smoking", label: "Roken", source: "catalog" },
+      { slug: "smoking_cigarettes", label: "Roken > Sigaretten", source: "catalog" },
+      { slug: "smoking_tobacco", label: "Roken > Tabak", source: "catalog" },
+    ]);
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "smoking_cigarettes",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-smoking-parent-match-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-smoking-parent-match-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Antwoord klaar." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("hoeveel heb ik deze maand aan roken uitgegeven?"),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("categoryScope=smoking");
+    expect(systemText).toContain('"category":"smoking"');
+  });
+
+  it("overschrijft een verkeerde concrete planner-scope bij een sterke full-labelmatch zoals boodschappen en huishouden", async () => {
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      period: {
+        key: "2026-03",
+        label: "maart 2026",
+        startIso: "2026-03-01",
+        endIsoExclusive: "2026-04-01",
+        referenceDateIso: "2026-03-20T12:00:00.000Z",
+        usedFallbackPeriod: false,
+      },
+      spending: {
+        currentMonthTotal: 282,
+        currentWeekTotal: 90,
+        currentMonthBreakdown: {
+          total: 282,
+          transactionCount: 6,
+          categories: [
+            {
+              key: "groceries_household",
+              categoryKey: "groceries_household",
+              label: "Boodschappen & huishouden",
+              amount: 282,
+              transactionCount: 6,
+              subcategories: [
+                {
+                  key: "groceries_household_supermarket",
+                  categoryKey: "groceries_household_supermarket",
+                  label: "Supermarkt",
+                  amount: 240,
+                  transactionCount: 5,
+                },
+                {
+                  key: "groceries_household_household_items",
+                  categoryKey: "groceries_household_household_items",
+                  label: "Huishoudelijke artikelen",
+                  amount: 42,
+                  transactionCount: 1,
+                },
+              ],
+            },
+          ],
+        },
+        currentWeekBreakdown: {
+          total: 90,
+          transactionCount: 2,
+          categories: [],
+        },
+      },
+      budgetPlan: {
+        monthlyBudgetTotal: 0,
+        weeklyBudgetTotal: 0,
+        fixedCostsBudget: 0,
+        subscriptionsBudget: 0,
+        variableBudget: 0,
+        variableSubcategoriesBudgetTotal: 0,
+        appliedSavingsTarget: 0,
+        currentWeekBudget: 0,
+        currentWeekActual: 0,
+        currentWeekRemaining: 0,
+        subtotalAfterFixed: 0,
+        subtotalAfterSubscriptions: 0,
+        variableCategoryBudgets: [],
+      },
+      budget: {
+        remainingVariableBudget: 0,
+        spentVariableBudget: 0,
+        totalVariableBudget: 0,
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekRemainingBudget: 0,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+      },
+      planning: {
+        upcomingCommittedExpenseTotal: 0,
+        upcomingCommittedIncomeTotal: 0,
+        expectedFixedCosts: 0,
+        expectedSubscriptions: 0,
+        remainingPlannedExpenseTotal: 0,
+        remainingVariableExpenseEstimate: 0,
+      },
+      forecastCurrentMonth: {
+        hasData: false,
+        expectedEndBalance: null,
+        lowestExpectedBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        remainingMonthNetTotal: null,
+        forecastReferenceDate: null,
+      },
+      forecastNextMonth: {
+        hasData: false,
+        monthKey: "2026-04",
+        monthLabel: "april 2026",
+        expectedEndBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        forecastReferenceDate: null,
+      },
+      currentBalance: {
+        balance: null,
+        date: null,
+      },
+      trend: {
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+        monthProgress: 0,
+      },
+      spendingAdvice: {
+        monthBudget: {
+          monthLabel: "maart 2026",
+          daysRemainingInMonth: 0,
+          variableBudgetTotal: null,
+          variableSpent: null,
+          variableRemaining: null,
+          monthBudgetStatus: "unknown",
+          monthBudgetStatusLabel: null,
+          weekBudgetRemaining: null,
+          weekBudgetStatus: "unknown",
+          weekTempoSignal: "unknown",
+        },
+        cashflowSafety: {
+          currentBalance: null,
+          extraSpaceUntilNextIncome: null,
+          extraSpaceLabel: "",
+          nextIncomeDate: null,
+          nextIncomeAmount: null,
+          nextIncomeAmountMeta: {
+            isAvailable: false,
+            isCanonical: false,
+            isDerived: false,
+            isFallback: false,
+            source: "eval",
+            dataGapReason: "nvt",
+          },
+          daysUntilNextIncome: null,
+          expectedEndBalance: null,
+          lowestProjectedBalance: null,
+          knownUpcomingFixedCosts: null,
+          expectedFixedAndSubscriptions: null,
+          forecastReliability: "low",
+        },
+        categoryStatus: null,
+        assistantAdviceSignals: {
+          confidence: "low",
+          guidance: [],
+        },
+      },
+      quality: {
+        cacheHit: false,
+        fetchedAtIso: "2026-03-20T12:00:00.000Z",
+        cacheTtlMs: 0,
+        hasBudgetSignals: false,
+        hasPlanningSignals: false,
+        hasForecastSignals: false,
+        hasBalanceSignals: false,
+        hasSpendingSignals: true,
+        hasCategorySignals: true,
+        confidence: "medium",
+        dataGaps: [],
+      },
+    });
+    resolveSafeCategoryCatalogScopesMock.mockResolvedValueOnce([
+      { slug: "groceries_household", label: "Boodschappen & huishouden", source: "catalog" },
+      { slug: "shopping_goods", label: "Aankopen & spullen", source: "catalog" },
+    ]);
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "shopping_goods",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-groceries-household-full-label-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-groceries-household-full-label-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Antwoord klaar." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage(
+        "hoeveel heb ik deze maand aan boodschappen & huishouden uitgegeven?",
+      ),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("categoryScope=groceries_household");
+    expect(systemText).toContain('"category":"groceries_household"');
+    expect(systemText).not.toContain('"category":"shopping_goods"');
+  });
+
+  it("promoveert transaction category-total vragen naar category_insight zodat ze niet in transactionFacts vastlopen", async () => {
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      period: {
+        key: "2026-03",
+        label: "maart 2026",
+        startIso: "2026-03-01",
+        endIsoExclusive: "2026-04-01",
+        referenceDateIso: "2026-03-20T12:00:00.000Z",
+        usedFallbackPeriod: false,
+      },
+      currentBalance: { balance: null, date: null },
+      spending: {
+        currentMonthTotal: 438,
+        currentWeekTotal: 120,
+        currentMonthBreakdown: {
+          total: 438,
+          transactionCount: 8,
+          categories: [
+            {
+              key: "smoking",
+              categoryKey: "smoking",
+              label: "Roken",
+              amount: 438,
+              transactionCount: 8,
+              subcategories: [
+                {
+                  key: "smoking_cigarettes",
+                  categoryKey: "smoking_cigarettes",
+                  label: "Sigaretten",
+                  amount: 375,
+                  transactionCount: 6,
+                },
+              ],
+            },
+          ],
+        },
+        currentWeekBreakdown: {
+          total: 120,
+          transactionCount: 2,
+          categories: [],
+        },
+      },
+      budget: {
+        remainingVariableBudget: 0,
+        spentVariableBudget: 0,
+        totalVariableBudget: 0,
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekRemainingBudget: 0,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+      },
+      trend: {
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+        monthProgress: 0,
+      },
+      budgetPlan: {
+        monthlyBudgetTotal: 0,
+        weeklyBudgetTotal: 0,
+        fixedCostsBudget: 0,
+        subscriptionsBudget: 0,
+        variableBudget: 0,
+        variableSubcategoriesBudgetTotal: 0,
+        appliedSavingsTarget: 0,
+        currentWeekBudget: 0,
+        currentWeekActual: 0,
+        currentWeekRemaining: 0,
+        subtotalAfterFixed: 0,
+        subtotalAfterSubscriptions: 0,
+        variableCategoryBudgets: [],
+      },
+      planning: {
+        upcomingCommittedExpenseTotal: 0,
+        upcomingCommittedIncomeTotal: 0,
+        expectedFixedCosts: 0,
+        expectedSubscriptions: 0,
+        remainingPlannedExpenseTotal: 0,
+        remainingVariableExpenseEstimate: 0,
+      },
+      forecastCurrentMonth: {
+        hasData: false,
+        expectedEndBalance: null,
+        lowestExpectedBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        remainingMonthNetTotal: null,
+        forecastReferenceDate: null,
+      },
+      forecastNextMonth: {
+        hasData: false,
+        monthKey: "2026-04",
+        monthLabel: "april 2026",
+        expectedEndBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        forecastReferenceDate: null,
+      },
+      spendingAdvice: {
+        monthBudget: {
+          monthLabel: "maart 2026",
+          daysRemainingInMonth: 0,
+          variableBudgetTotal: null,
+          variableSpent: null,
+          variableRemaining: null,
+          monthBudgetStatus: "unknown",
+          monthBudgetStatusLabel: null,
+          weekBudgetRemaining: null,
+          weekBudgetStatus: "unknown",
+          weekTempoSignal: "unknown",
+        },
+        cashflowSafety: {
+          currentBalance: null,
+          extraSpaceUntilNextIncome: null,
+          extraSpaceLabel: "",
+          nextIncomeDate: null,
+          nextIncomeAmount: null,
+          nextIncomeAmountMeta: {
+            isAvailable: false,
+            isCanonical: false,
+            isDerived: false,
+            isFallback: false,
+            source: "eval",
+            dataGapReason: "nvt",
+          },
+          daysUntilNextIncome: null,
+          expectedEndBalance: null,
+          lowestProjectedBalance: null,
+          knownUpcomingFixedCosts: null,
+          expectedFixedAndSubscriptions: null,
+          forecastReliability: "low",
+        },
+        categoryStatus: null,
+        assistantAdviceSignals: {
+          confidence: "low",
+          guidance: [],
+        },
+      },
+      quality: {
+        cacheHit: false,
+        fetchedAtIso: "2026-03-20T12:00:00.000Z",
+        cacheTtlMs: 0,
+        hasBudgetSignals: false,
+        hasPlanningSignals: false,
+        hasForecastSignals: false,
+        hasBalanceSignals: false,
+        hasSpendingSignals: true,
+        hasCategorySignals: true,
+        confidence: "medium",
+        dataGaps: [],
+      },
+    });
+    resolveSafeCategoryCatalogScopesMock.mockResolvedValueOnce([
+      { slug: "smoking", label: "Roken", source: "catalog" },
+      { slug: "smoking_cigarettes", label: "Roken > Sigaretten", source: "catalog" },
+    ]);
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "transactions_insight",
+          mode: "transaction_lookup",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: true,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "smoking_cigarettes",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-transaction-category-total-promote-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-transaction-category-total-promote-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Antwoord klaar." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("wat ben ik kwijt aan roken?"),
+    });
+
+    expect(postOpenAIChatCompletionMock.mock.calls[1]?.[1]?.useCase).toBe(
+      "help_category_insight",
+    );
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("Kanaal: category_insight");
+    expect(systemText).toContain("scopedCategoryTotal");
+  });
+
+  it("corrigeert merchant-total plannerfouten naar category_insight bij een sterke categorie-match zonder merchant-framing", async () => {
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      period: {
+        key: "2026-02",
+        label: "februari 2026",
+        startIso: "2026-02-01",
+        endIsoExclusive: "2026-03-01",
+        referenceDateIso: "2026-02-20T12:00:00.000Z",
+        usedFallbackPeriod: false,
+      },
+      currentBalance: { balance: null, date: null },
+      spending: {
+        currentMonthTotal: 435,
+        currentWeekTotal: 120,
+        currentMonthBreakdown: {
+          total: 435,
+          transactionCount: 14,
+          categories: [
+            {
+              key: "smoking",
+              categoryKey: "smoking",
+              label: "Roken",
+              amount: 435,
+              transactionCount: 14,
+              subcategories: [
+                {
+                  key: "smoking_cigarettes",
+                  categoryKey: "smoking_cigarettes",
+                  label: "Sigaretten",
+                  amount: 60,
+                  transactionCount: 2,
+                },
+              ],
+            },
+          ],
+        },
+        currentWeekBreakdown: {
+          total: 120,
+          transactionCount: 2,
+          categories: [],
+        },
+      },
+      budget: {
+        remainingVariableBudget: 0,
+        spentVariableBudget: 0,
+        totalVariableBudget: 0,
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekRemainingBudget: 0,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+      },
+      trend: {
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+        monthProgress: 0,
+      },
+      budgetPlan: {
+        monthlyBudgetTotal: 0,
+        weeklyBudgetTotal: 0,
+        fixedCostsBudget: 0,
+        subscriptionsBudget: 0,
+        variableBudget: 0,
+        variableSubcategoriesBudgetTotal: 0,
+        appliedSavingsTarget: 0,
+        currentWeekBudget: 0,
+        currentWeekActual: 0,
+        currentWeekRemaining: 0,
+        subtotalAfterFixed: 0,
+        subtotalAfterSubscriptions: 0,
+        variableCategoryBudgets: [],
+      },
+      planning: {
+        upcomingCommittedExpenseTotal: 0,
+        upcomingCommittedIncomeTotal: 0,
+        expectedFixedCosts: 0,
+        expectedSubscriptions: 0,
+        remainingPlannedExpenseTotal: 0,
+        remainingVariableExpenseEstimate: 0,
+      },
+      forecastCurrentMonth: {
+        hasData: false,
+        expectedEndBalance: null,
+        lowestExpectedBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        remainingMonthNetTotal: null,
+        forecastReferenceDate: null,
+      },
+      forecastNextMonth: {
+        hasData: false,
+        monthKey: "2026-03",
+        monthLabel: "maart 2026",
+        expectedEndBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        forecastReferenceDate: null,
+      },
+      spendingAdvice: {
+        monthBudget: {
+          monthLabel: "februari 2026",
+          daysRemainingInMonth: 0,
+          variableBudgetTotal: null,
+          variableSpent: null,
+          variableRemaining: null,
+          monthBudgetStatus: "unknown",
+          monthBudgetStatusLabel: null,
+          weekBudgetRemaining: null,
+          weekBudgetStatus: "unknown",
+          weekTempoSignal: "unknown",
+        },
+        cashflowSafety: {
+          currentBalance: null,
+          extraSpaceUntilNextIncome: null,
+          extraSpaceLabel: "",
+          nextIncomeDate: null,
+          nextIncomeAmount: null,
+          nextIncomeAmountMeta: {
+            isAvailable: false,
+            isCanonical: false,
+            isDerived: false,
+            isFallback: false,
+            source: "eval",
+            dataGapReason: "nvt",
+          },
+          daysUntilNextIncome: null,
+          expectedEndBalance: null,
+          lowestProjectedBalance: null,
+          knownUpcomingFixedCosts: null,
+          expectedFixedAndSubscriptions: null,
+          forecastReliability: "low",
+        },
+        categoryStatus: null,
+        assistantAdviceSignals: {
+          confidence: "low",
+          guidance: [],
+        },
+      },
+      quality: {
+        cacheHit: false,
+        fetchedAtIso: "2026-02-20T12:00:00.000Z",
+        cacheTtlMs: 0,
+        hasBudgetSignals: false,
+        hasPlanningSignals: false,
+        hasForecastSignals: false,
+        hasBalanceSignals: false,
+        hasSpendingSignals: true,
+        hasCategorySignals: true,
+        confidence: "medium",
+        dataGaps: [],
+      },
+    });
+    resolveSafeCategoryCatalogScopesMock.mockResolvedValueOnce([
+      { slug: "smoking", label: "Roken", source: "catalog" },
+      { slug: "smoking_cigarettes", label: "Roken > Sigaretten", source: "catalog" },
+    ]);
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "transactions_insight",
+          mode: "transaction_lookup",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: true,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "previous",
+            categoryScope: "none",
+            merchantScope: "roken",
+            transactionQuestionType: "merchant_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-smoking-merchant-misroute-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-smoking-merchant-misroute-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Antwoord klaar." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "insights",
+      selectedPeriod: { label: "februari 2026" },
+    });
+
+    await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("wat ging er vorige maand naar roken?"),
+    });
+
+    expect(postOpenAIChatCompletionMock.mock.calls[1]?.[1]?.useCase).toBe(
+      "help_category_insight",
+    );
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("Planner-route: category_insight");
+    expect(systemText).toContain("categoryScope=smoking");
+    expect(systemText).not.toContain("merchantScope=roken");
+  });
+
+  it("kiest de fallbackplanner als een niet-expliciete merchant-lookup eigenlijk een categorie blijkt", async () => {
+    resolveSafeCategoryCatalogScopesMock.mockResolvedValueOnce([
+      {
+        slug: "housing_central_heating_rental",
+        label: "Wonen > CV installatie huur",
+        source: "catalog",
+      },
+    ]);
+    resolveSafeCategoryBreakdownInRangeMock.mockResolvedValueOnce({
+      total: 540,
+      transactionCount: 4,
+      categories: [
+        {
+          key: "housing",
+          categoryId: "cat-housing",
+          categoryKey: "housing",
+          label: "Wonen",
+          amount: 540,
+          transactionCount: 4,
+          subcategories: [
+            {
+              key: "housing_central_heating_rental",
+              categoryId: "cat-housing-cv-rental",
+              categoryKey: "housing_central_heating_rental",
+              label: "CV installatie huur",
+              amount: 66,
+              transactionCount: 1,
+            },
+          ],
+        },
+      ],
+    });
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "transactions_insight",
+          mode: "transaction_lookup",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: true,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "unknown",
+            merchantScope: "cv_installatie_huur",
+            transactionQuestionType: "merchant_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-cv-rental-misroute-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-cv-rental-misroute-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Antwoord klaar." } }],
+        }),
+    });
+
+    await requestHelpAssistantReply({
+      context: buildHelpAssistantContext({
+        screenId: "insights",
+        selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      }),
+      thread: createThreadWithUserMessage("wat heb ik uitgegeven aan cv installatie huur?"),
+    });
+
+    expect(postOpenAIChatCompletionMock.mock.calls[1]?.[1]?.useCase).toBe(
+      "help_category_insight",
+    );
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+    expect(systemText).toContain("Planner-route: category_insight");
+    expect(systemText).toContain("categoryScope=housing_central_heating_rental");
+    expect(systemText).not.toContain("merchantScope=cv_installatie_huur");
+  });
+
+  it("forceert truth-safe merchant lookup feiten in het eindantwoord als hydration ze al heeft", async () => {
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      period: {
+        key: "2026-03",
+        label: "maart 2026",
+        startIso: "2026-03-01",
+        endIsoExclusive: "2026-04-01",
+        referenceDateIso: "2026-03-20T12:00:00.000Z",
+        usedFallbackPeriod: false,
+      },
+      currentBalance: { balance: null, date: null },
+      spending: {
+        currentMonthTotal: 438,
+        currentWeekTotal: 120,
+        currentMonthBreakdown: {
+          total: 438,
+          transactionCount: 8,
+          categories: [],
+        },
+        currentWeekBreakdown: {
+          total: 120,
+          transactionCount: 2,
+          categories: [],
+        },
+      },
+      budget: {
+        remainingVariableBudget: 0,
+        spentVariableBudget: 0,
+        totalVariableBudget: 0,
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekRemainingBudget: 0,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+      },
+      trend: {
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+        monthProgress: 0,
+      },
+      budgetPlan: {
+        monthlyBudgetTotal: 0,
+        weeklyBudgetTotal: 0,
+        fixedCostsBudget: 0,
+        subscriptionsBudget: 0,
+        variableBudget: 0,
+        variableSubcategoriesBudgetTotal: 0,
+        appliedSavingsTarget: 0,
+        currentWeekBudget: 0,
+        currentWeekActual: 0,
+        currentWeekRemaining: 0,
+        subtotalAfterFixed: 0,
+        subtotalAfterSubscriptions: 0,
+        variableCategoryBudgets: [],
+      },
+      planning: {
+        upcomingCommittedExpenseTotal: 0,
+        upcomingCommittedIncomeTotal: 0,
+        expectedFixedCosts: 0,
+        expectedSubscriptions: 0,
+        remainingPlannedExpenseTotal: 0,
+        remainingVariableExpenseEstimate: 0,
+      },
+      forecastCurrentMonth: {
+        hasData: false,
+        expectedEndBalance: null,
+        lowestExpectedBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        remainingMonthNetTotal: null,
+        forecastReferenceDate: null,
+      },
+      forecastNextMonth: {
+        hasData: false,
+        monthKey: "2026-04",
+        monthLabel: "april 2026",
+        expectedEndBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        forecastReferenceDate: null,
+      },
+      spendingAdvice: {
+        monthBudget: {
+          monthLabel: "maart 2026",
+          daysRemainingInMonth: 0,
+          variableBudgetTotal: null,
+          variableSpent: null,
+          variableRemaining: null,
+          monthBudgetStatus: "unknown",
+          monthBudgetStatusLabel: null,
+          weekBudgetRemaining: null,
+          weekBudgetStatus: "unknown",
+          weekTempoSignal: "unknown",
+        },
+        cashflowSafety: {
+          currentBalance: null,
+          extraSpaceUntilNextIncome: null,
+          extraSpaceLabel: "",
+          nextIncomeDate: null,
+          nextIncomeAmount: null,
+          nextIncomeAmountMeta: {
+            isAvailable: false,
+            isCanonical: false,
+            isDerived: false,
+            isFallback: false,
+            source: "eval",
+            dataGapReason: "nvt",
+          },
+          daysUntilNextIncome: null,
+          expectedEndBalance: null,
+          lowestProjectedBalance: null,
+          knownUpcomingFixedCosts: null,
+          expectedFixedAndSubscriptions: null,
+          forecastReliability: "low",
+        },
+        categoryStatus: null,
+        assistantAdviceSignals: {
+          confidence: "low",
+          guidance: [],
+        },
+      },
+      quality: {
+        cacheHit: false,
+        fetchedAtIso: "2026-03-20T12:00:00.000Z",
+        cacheTtlMs: 0,
+        hasBudgetSignals: false,
+        hasPlanningSignals: false,
+        hasForecastSignals: false,
+        hasBalanceSignals: false,
+        hasSpendingSignals: true,
+        hasCategorySignals: false,
+        confidence: "medium",
+        dataGaps: [],
+      },
+    });
+    resolveSafeMerchantAggregatesInRangeMock.mockResolvedValueOnce([
+      {
+        merchantKey: "jumbo_odink",
+        merchantLabel: "JUMBO ODINK",
+        total: 92,
+        transactionCount: 3,
+      },
+    ]);
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "transactions_insight",
+          mode: "transaction_lookup",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: true,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "jumbo_odink",
+            transactionQuestionType: "merchant_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-merchant-total-force-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-merchant-total-force-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Ik zie hier wel wat transacties." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "transactions",
+      selectedPeriod: { label: "maart 2026" },
+    });
+
+    const response = await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("hoeveel gaf ik deze maand uit bij JUMBO ODINK?"),
+    });
+
+    expect(response.answerText).toContain("JUMBO ODINK");
+    expect(response.answerText).toContain("€ 92");
+  });
+
+  it("matcht merchant totals ook als de planner underscores gebruikt en aggregates spaties hebben", async () => {
+    resolveSafeMerchantAggregatesInRangeMock.mockResolvedValueOnce([
+      {
+        merchantKey: "tabaksp wittesteijn",
+        merchantLabel: "Tabaksp. Wittesteijn",
+        total: 375,
+        transactionCount: 13,
+      },
+    ]);
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "transactions_insight",
+          mode: "transaction_lookup",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: true,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "tabaksp_wittesteijn",
+            transactionQuestionType: "merchant_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-merchant-space-key-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-merchant-space-key-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Ik zie hier wel wat transacties." } }],
+        }),
+    });
+
+    const response = await requestHelpAssistantReply({
+      context: buildHelpAssistantContext({
+        screenId: "transactions",
+        selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      }),
+      thread: createThreadWithUserMessage(
+        "hoeveel gaf ik deze maand uit bij Tabaksp. Wittesteijn?",
+      ),
+    });
+
+    expect(response.answerText).toBe(
+      "In maart 2026 heb je € 375 uitgegeven bij Tabaksp. Wittesteijn.",
+    );
+  });
+
+  it("matcht merchant frequentie truth-safe ook bij genormaliseerde merchant-keys", async () => {
+    resolveSafeMerchantAggregatesInRangeMock.mockResolvedValueOnce([
+      {
+        merchantKey: "paypal europe s a r l et cie s c a",
+        merchantLabel: "PayPal Europe S.a.r.l. et Cie S.C.A",
+        total: 83.14,
+        transactionCount: 10,
+      },
+    ]);
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "transactions_insight",
+          mode: "transaction_lookup",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: false,
+            transactionFacts: true,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "none",
+            merchantScope: "paypal_europe_s_a_r_l_et_cie_s_c_a",
+            transactionQuestionType: "merchant_frequency",
+          },
+          useScreenContext: false,
+        },
+        "planner-merchant-frequency-space-key-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-merchant-frequency-space-key-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "Nog onduidelijk." } }],
+        }),
+    });
+
+    const response = await requestHelpAssistantReply({
+      context: buildHelpAssistantContext({
+        screenId: "transactions",
+        selectedPeriod: { key: "2026-03", label: "maart 2026" },
+      }),
+      thread: createThreadWithUserMessage(
+        "hoe vaak betaal ik bij PayPal Europe S.a.r.l. et Cie S.C.A deze maand?",
+      ),
+    });
+
+    expect(response.answerText).toBe(
+      "In maart 2026 heb je 10 betalingen gedaan bij PayPal Europe S.a.r.l. et Cie S.C.A.",
+    );
+  });
+
+  it("negeert synthetische parent-als-subcategorie entries zodat parent totals truth-safe blijven", async () => {
+    resolveUnifiedFinancialAdviceContextMock.mockResolvedValueOnce({
+      period: {
+        key: "2026-03",
+        label: "maart 2026",
+        startIso: "2026-03-01",
+        endIsoExclusive: "2026-04-01",
+        referenceDateIso: "2026-03-20T12:00:00.000Z",
+        usedFallbackPeriod: false,
+      },
+      currentBalance: { balance: null, date: null },
+      spending: {
+        currentMonthTotal: 438,
+        currentWeekTotal: 120,
+        currentMonthBreakdown: {
+          total: 438,
+          transactionCount: 15,
+          categories: [
+            {
+              key: "smoking",
+              categoryKey: "smoking",
+              label: "Roken",
+              amount: 438,
+              transactionCount: 15,
+              subcategories: [
+                {
+                  key: "smoking",
+                  categoryKey: "smoking",
+                  label: "Roken",
+                  amount: 375,
+                  transactionCount: 13,
+                },
+                {
+                  key: "smoking_cigarettes",
+                  categoryKey: "smoking_cigarettes",
+                  label: "Sigaretten",
+                  amount: 63,
+                  transactionCount: 2,
+                },
+              ],
+            },
+          ],
+        },
+        currentWeekBreakdown: {
+          total: 120,
+          transactionCount: 2,
+          categories: [],
+        },
+      },
+      budget: {
+        remainingVariableBudget: 0,
+        spentVariableBudget: 0,
+        totalVariableBudget: 0,
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekRemainingBudget: 0,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+      },
+      trend: {
+        monthStatusLabel: null,
+        monthRiskTone: null,
+        weekStatusLabel: null,
+        weekRiskTone: null,
+        weekTempoDelta: 0,
+        monthProgress: 0,
+      },
+      budgetPlan: {
+        monthlyBudgetTotal: 0,
+        weeklyBudgetTotal: 0,
+        fixedCostsBudget: 0,
+        subscriptionsBudget: 0,
+        variableBudget: 0,
+        variableSubcategoriesBudgetTotal: 0,
+        appliedSavingsTarget: 0,
+        currentWeekBudget: 0,
+        currentWeekActual: 0,
+        currentWeekRemaining: 0,
+        subtotalAfterFixed: 0,
+        subtotalAfterSubscriptions: 0,
+        variableCategoryBudgets: [],
+      },
+      planning: {
+        upcomingCommittedExpenseTotal: 0,
+        upcomingCommittedIncomeTotal: 0,
+        expectedFixedCosts: 0,
+        expectedSubscriptions: 0,
+        remainingPlannedExpenseTotal: 0,
+        remainingVariableExpenseEstimate: 0,
+      },
+      forecastCurrentMonth: {
+        hasData: false,
+        expectedEndBalance: null,
+        lowestExpectedBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        remainingMonthNetTotal: null,
+        forecastReferenceDate: null,
+      },
+      forecastNextMonth: {
+        hasData: false,
+        monthKey: "2026-04",
+        monthLabel: "april 2026",
+        expectedEndBalance: null,
+        riskFlag: "none",
+        cashRiskFlag: "none",
+        forecastReferenceDate: null,
+      },
+      spendingAdvice: {
+        monthBudget: {
+          monthLabel: "maart 2026",
+          daysRemainingInMonth: 0,
+          variableBudgetTotal: null,
+          variableSpent: null,
+          variableRemaining: null,
+          monthBudgetStatus: "unknown",
+          monthBudgetStatusLabel: null,
+          weekBudgetRemaining: null,
+          weekBudgetStatus: "unknown",
+          weekTempoSignal: "unknown",
+        },
+        cashflowSafety: {
+          currentBalance: null,
+          extraSpaceUntilNextIncome: null,
+          extraSpaceLabel: "",
+          nextIncomeDate: null,
+          nextIncomeAmount: null,
+          nextIncomeAmountMeta: {
+            isAvailable: false,
+            isCanonical: false,
+            isDerived: false,
+            isFallback: false,
+            source: "eval",
+            dataGapReason: "nvt",
+          },
+          daysUntilNextIncome: null,
+          expectedEndBalance: null,
+          lowestProjectedBalance: null,
+          knownUpcomingFixedCosts: null,
+          expectedFixedAndSubscriptions: null,
+          forecastReliability: "low",
+        },
+        categoryStatus: null,
+        assistantAdviceSignals: {
+          confidence: "low",
+          guidance: [],
+        },
+      },
+      quality: {
+        cacheHit: false,
+        fetchedAtIso: "2026-03-20T12:00:00.000Z",
+        cacheTtlMs: 0,
+        hasBudgetSignals: false,
+        hasPlanningSignals: false,
+        hasForecastSignals: false,
+        hasBalanceSignals: false,
+        hasSpendingSignals: true,
+        hasCategorySignals: true,
+        confidence: "medium",
+        dataGaps: [],
+      },
+    });
+    resolveSafeCategoryCatalogScopesMock.mockResolvedValueOnce([
+      { slug: "smoking", label: "Roken", source: "catalog" },
+      { slug: "smoking_cigarettes", label: "Roken > Sigaretten", source: "catalog" },
+    ]);
+    postOpenAIChatCompletionMock.mockResolvedValueOnce(
+      createPlannerDecisionResponse(
+        {
+          route: "category_insight",
+          mode: "category_summary",
+          confidence: "high",
+          needsClarification: false,
+          requires: {
+            monthBudget: false,
+            cashflowSafety: false,
+            expectedEndBalance: false,
+            categorySummary: true,
+            transactionFacts: false,
+            screenExplanation: false,
+          },
+          dataRequests: {
+            monthScope: "current",
+            categoryScope: "smoking",
+            merchantScope: "none",
+            transactionQuestionType: "category_total",
+          },
+          useScreenContext: false,
+        },
+        "planner-smoking-parent-total-1",
+      ),
+    );
+    postOpenAIChatCompletionMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "chatcmpl-smoking-parent-total-1",
+          model: "gpt-4.1-mini",
+          choices: [{ message: { content: "In maart 2026 heb je €375 uitgegeven aan de categorie Roken." } }],
+        }),
+    });
+
+    const context = buildHelpAssistantContext({
+      screenId: "dashboard",
+      selectedPeriod: { label: "maart 2026" },
+      screenContext: {
+        kind: "budget",
+        monthLabel: "maart 2026",
+        hasForecastData: true,
+      },
+    });
+
+    const response = await requestHelpAssistantReply({
+      context,
+      thread: createThreadWithUserMessage("hoeveel heb ik deze maand aan roken uitgegeven?"),
+    });
+
+    const finalRequest = postOpenAIChatCompletionMock.mock.calls[1]?.[0];
+    const systemText = (finalRequest?.messages || [])
+      .filter((message: { role?: string }) => message.role === "system")
+      .map((message: { content?: string }) => String(message.content || ""))
+      .join("\n");
+
+    expect(systemText).toContain("- scopedCategoryGranularity: category");
+    expect(systemText).toContain("- scopedCategoryTotal: € 438");
+    expect(systemText).not.toContain("\"label\":\"Roken\",\"total\":\"€ 375\"");
+    expect(response.answerText).toContain("€ 438");
+  });
+
   it("continueert actieve category flow op korte scope-refinement replies", async () => {
     postOpenAIChatCompletionMock.mockResolvedValueOnce(
       createPlannerDecisionResponse(

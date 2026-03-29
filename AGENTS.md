@@ -196,6 +196,20 @@ Gebruik waar relevant bestaande projectcommando's om werk te controleren, zoals:
 
 Voer geen zware of risicovolle commando's uit zonder noodzaak.
 
+## Help Assistant Eval Tools
+
+- Voor DB-grounded Help Assistant validatie bestaat een live eval-harness:
+  - `npm run test:help-assistant-eval`
+  - optioneel begrenzen met `HELP_ASSISTANT_EVAL_LIMIT=50`
+  - schrijft rapport weg naar `tmp/help-assistant-live-eval-report.json`
+- Voor snelle merchant-inspectie bestaat een service-role hulpmiddel:
+  - `npm run help-assistant:list-merchants -- <userId> <startIso> <endIsoExclusive> <limit>`
+  - voorbeeld: `npm run help-assistant:list-merchants -- 08c9f32b-ed7b-45d6-94b5-bb2fefadc89c 2026-03-01 2026-04-01 25`
+- Voor zoeken in de categoriecatalogus bestaat een service-role hulpmiddel:
+  - `npm run help-assistant:search-categories -- roken`
+  - toont key, label en pad in de categorieboom
+- Gebruik deze tools bij voorkeur vóór nieuwe heuristische fixes in routing of hydration, zodat matching eerst aan echte databasefeiten gespiegeld wordt.
+
 ## UX Richtlijnen Per Scherm
 
 ### Dashboard

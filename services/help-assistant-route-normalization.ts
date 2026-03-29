@@ -77,9 +77,17 @@ export function inferCategoryScopeFromCatalog(input: {
   question: string | null | undefined;
   catalog: HelpAssistantAvailableCategoryScope[];
 }): HelpAssistantPlannerScopeSlug {
+  const best = findBestCategoryScopeFromCatalog(input);
+  return best ? best.slug : "none";
+}
+
+function findBestCategoryScopeFromCatalog(input: {
+  question: string | null | undefined;
+  catalog: HelpAssistantAvailableCategoryScope[];
+}) {
   const normalizedQuestion = normalizeQuestionText(input.question);
-  if (!normalizedQuestion) return "none";
-  if (!input.catalog.length) return "none";
+  if (!normalizedQuestion) return null;
+  if (!input.catalog.length) return null;
 
   const questionTokens = tokenizeScopeText(normalizedQuestion);
   const collapsedQuestion = collapseMatchText(normalizedQuestion);
@@ -142,7 +150,47 @@ export function inferCategoryScopeFromCatalog(input: {
     }
   }
 
-  return best ? best.slug : "none";
+  return best;
+}
+
+function resolveStrongCategoryScopeOverride(input: {
+  latestUserText: string | null | undefined;
+  availableCategoryScopes?: HelpAssistantAvailableCategoryScope[];
+  currentScope: HelpAssistantPlannerScopeSlug;
+}) {
+  const best = findBestCategoryScopeFromCatalog({
+    question: input.latestUserText,
+    catalog: input.availableCategoryScopes || [],
+  });
+  if (!best) return null;
+  if (best.slug === input.currentScope) return null;
+  if (best.score < 7) return null;
+  return best.slug;
+}
+
+function resolveStrongCategoryScopeMatch(input: {
+  latestUserText: string | null | undefined;
+  availableCategoryScopes?: HelpAssistantAvailableCategoryScope[];
+}) {
+  const best = findBestCategoryScopeFromCatalog({
+    question: input.latestUserText,
+    catalog: input.availableCategoryScopes || [],
+  });
+  if (!best || best.score < 7) return null;
+  return best.slug;
+}
+
+export function looksLikeExplicitMerchantLookup(text: string | null | undefined) {
+  const normalized = normalizeQuestionText(text);
+  if (!normalized) return false;
+  return (
+    normalized.includes("bij ") ||
+    normalized.includes("welke winkel") ||
+    normalized.includes("welke plek") ||
+    normalized.includes("merchant") ||
+    normalized.includes("winkel") ||
+    normalized.includes("zaak")
+  );
 }
 
 export function resolvePlannerDataCategoryScope(
@@ -354,6 +402,33 @@ function applyRouteDefaults(input: {
   };
   const latestUserText = input.latestUserText || "";
 
+  if (
+    normalized.route === "transactions_insight" &&
+    normalized.dataRequests.transactionQuestionType === "category_total"
+  ) {
+    normalized.route = "category_insight";
+    normalized.insightsFlow = "category_summary";
+  }
+
+  const strongCategoryScopeMatch = resolveStrongCategoryScopeMatch({
+    latestUserText,
+    availableCategoryScopes: input.availableCategoryScopes,
+  });
+
+  if (
+    normalized.route === "transactions_insight" &&
+    normalized.dataRequests.transactionQuestionType === "merchant_total" &&
+    normalized.dataRequests.merchantScope !== "none" &&
+    strongCategoryScopeMatch &&
+    !looksLikeExplicitMerchantLookup(latestUserText)
+  ) {
+    normalized.route = "category_insight";
+    normalized.insightsFlow = "category_summary";
+    normalized.dataRequests.categoryScope = strongCategoryScopeMatch;
+    normalized.dataRequests.merchantScope = "none";
+    normalized.dataRequests.transactionQuestionType = "category_total";
+  }
+
   if (normalized.route === "spending_advice") {
     normalized.insightsFlow = "spending_overview";
     normalized.mode =
@@ -564,6 +639,16 @@ export function normalizePlannerDataRequests(input: {
       fallbackReasons.push("category_scope_unknown_with_catalog");
       shouldClarify = true;
     }
+  }
+
+  const strongCategoryScopeOverride = resolveStrongCategoryScopeOverride({
+    latestUserText: input.latestUserText,
+    availableCategoryScopes: input.availableCategoryScopes,
+    currentScope: normalized.categoryScope,
+  });
+  if (strongCategoryScopeOverride) {
+    normalized.categoryScope = strongCategoryScopeOverride;
+    fallbackReasons.push("overrode_category_scope_with_strong_catalog_match");
   }
 
   if (normalized.transactionQuestionType === "none" && input.requires.transactionFacts) {

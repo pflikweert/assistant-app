@@ -195,6 +195,15 @@ function buildInsightRouteContextPrompt(input: {
       lines.push(
         "Als `scopedCategoryTotal` beschikbaar is, noem dit bedrag expliciet en koppel het aan de genoemde categorie.",
       );
+      lines.push(
+        "Gebruik `scopedCategoryTotal` als canoniek totaal voor de gevraagde categorie; vervang dit niet door een bedrag van een subcategorie.",
+      );
+      lines.push(
+        "Als `scopedCategoryGranularity` gelijk is aan `category`, gebruik dan nooit een bedrag uit `subcategoryBreakdown` als hoofdantwoord op de totaalvraag.",
+      );
+      lines.push(
+        "Bij een totaalvraag over een categorie moet het eerste genoemde bedrag altijd `scopedCategoryTotal` zijn. Eventuele subcategoriebedragen komen pas daarna als toelichting.",
+      );
     }
   }
   return lines.join("\n");
