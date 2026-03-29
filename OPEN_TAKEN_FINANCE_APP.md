@@ -2,7 +2,7 @@
 
 ## Korte status
 
-De grote herontwerpronde is functioneel klaar. De app heeft nu:
+De grote herontwerpronde heeft een bruikbaar fundament opgeleverd. De app heeft nu:
 
 - een herbouwde navigatie en informatie-architectuur
 - opnieuw opgebouwde hoofdschermen voor `Dashboard`, `Budget`, `Insights` en
@@ -11,11 +11,39 @@ De grote herontwerpronde is functioneel klaar. De app heeft nu:
 - een timing-aware forecast met cash-gap-signalen
 - budgetgroepbeheer en inkomenssemantiek als extra productlaag
 
-De focus is nu niet meer "opnieuw bouwen", maar:
+Dat fundament is niet het eindproduct. De nieuwe koers vanaf 29 maart 2026 is:
 
-- afronden en valideren
-- visuele polish
-- laatste productlagen toevoegen waar ze echt waarde geven
+- van budgetapp naar dagelijkse financiële cockpit
+- van schermdenken naar één dominant home-productmoment
+- van observeren naar veilige ruimte, risico en beste volgende actie
+- van losse AI-chat naar contextuele `Money Copilot`
+
+## Nieuwe Hoofdroadmap
+
+### Fase 1 - Nu Eerst
+
+- `Budio Zero`
+  - maak home het scherm dat direct zegt waar je staat, wat veilig kan, wat eraan komt en wat nu telt
+- `Safe-to-Spend Engine`
+  - maak `Nu vrij` en `Veilig tot volgende inkomen` de scherpste productlaag
+- `Autopilot Reserves`
+  - vertaal terugkerende en seizoenslasten naar rustige reservebegeleiding
+- `Subscription Assassin`
+  - maak abonnementen een directe bespaar- en herstelmachine
+
+### Fase 2 - Daarna Slimmer Maken
+
+- `The Money Copilot`
+  - contextuele AI-uitleg en besluitondersteuning
+- `Essential Optimizer`
+  - focus op de posten die maandruimte echt bepalen
+
+### Fase 3 - Daarna Opschalen
+
+- `Budio Agent Layer`
+  - proactieve voorstellen voor herstel en reserveren
+- `Connected Money Graph`
+  - rijkere datalaag voor gedrag, lasten en seizoenspieken
 
 ## Nieuwe leerpunten (vastgelegd)
 
@@ -50,8 +78,10 @@ De focus is nu niet meer "opnieuw bouwen", maar:
   - `Annuleren` moet de kaart direct sluiten en niet laten terugkomen door oude threadstate
   - zichtbare chatcopy moet alleen de verduidelijkende vraag tonen, niet de interne samenvatting
 - Help Assistant gebruikt nu turn-first orchestration met soft-prior active flow:
-  - vervolgtaak: volledige data-hydration toevoegen voor `transactions_insight`
-    en `category_insight` (nu nog light route prompts zonder extra datablokken)
+  - lookup-routes `transactions_insight` en `category_insight` hebben nu
+    truth-safe hydration met veilige aggregaten
+  - vervolgtaak: handmatige QA op routering, periodematch en antwoordkwaliteit
+    voor lookupvragen in huidige en vorige maand
 - In `Transacties` toont het bankrekeningfilter alleen actieve rekeningen:
   - gearchiveerde rekeningen verschijnen niet als filteroptie
   - historische transacties blijven zichtbaar via `Alles` en periode/type/categorie-filters
@@ -86,9 +116,9 @@ De focus is nu niet meer "opnieuw bouwen", maar:
   - compact categoriezoekveld staat vast bovenaan en scrolt niet mee
   - `Via AI` past bij bevestigen dezelfde opties toe als handmatig (bulk op tegenpartij + toekomstige regel)
 
-## Redesign Roadmap
+## Ondersteunende Design- En Shellroadmap
 
-Deze volgorde gebruiken we voortaan als we schermen verder redesignen:
+Deze stroom blijft nuttig, maar is niet langer de primaire productroadmap. Gebruik hem alleen als ondersteunende uitvoering voor de home-first cockpitkoers.
 
 ### Stap 1 - Shell Eerst
 
@@ -190,7 +220,7 @@ Exit-criteria:
 - schermen voelen consistent, rustig en compleet
 - geen onverwachte scroll-, focus- of shellproblemen meer
 
-## Wat nu echt openstaat
+## Ondersteunend Werk Dat Nu Openstaat
 
 ### Hoogste prioriteit
 

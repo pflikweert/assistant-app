@@ -2,26 +2,27 @@
 
 ## Versieblok
 
-- Datum: 27 maart 2026
+- Datum: 29 maart 2026
 - Doel: complete contextbron voor mensen en AI
 - Doelgroep van dit document: productpartners, testers, investeerders, nieuwe teamleden, AI-assistenten
 - Productstatus: actieve consumentenfinance-app met doorlopende verfijning
 
 ## Budio in 1 minuut
 
-Budio helpt mensen grip te krijgen op hun geld zonder financiële vaktaal. De app brengt saldo, transacties, budgettempo en forecast samen in één rustige ervaring. In plaats van alleen terugkijken laat Budio ook vooruitzien: wat komt eraan, waar zit risico, en waar kun je bijsturen.
+Budio is de dagelijkse financiële cockpit die huishoudens zonder financiële vaktaal laat zien waar ze staan, wat eraan komt, wat veilig kan en wat nu de slimste volgende stap is. De app brengt actuele rekeningstand, veilige ruimte, tempo, terugkerende lasten en forecast samen in één rustige, Nederlandstalige ervaring.
 
 Kernprobleem dat Budio oplost:
 
-- veel mensen zien losse banktransacties, maar geen duidelijk maandbeeld
-- budgetteren voelt vaak ingewikkeld of te streng
-- forecast is vaak vaag en niet gekoppeld aan echte transacties
+- veel mensen zien losse banktransacties, maar geen bruikbaar maandbeeld
+- budgetteren voelt snel streng of technisch
+- forecasts zijn vaak vaag of niet gekoppeld aan echte transacties en rekeningen
 
 Kernoplossing:
 
-- actuele rekeningstand + variabel budget + tempo + forecast in één producttaal
-- snelle correctieflow voor categorieën (handmatig en via AI)
-- herkenning van abonnementen, vaste lasten en terugkerende patronen
+- actuele stand + `Nu vrij` + `Veilig tot volgende inkomen` + risico + volgende actie in één producttaal
+- snelle correctieflow voor categorieën, regels en abonnementskoppelingen
+- conservatieve voorspelling op basis van transacties, budgetlogica, vaste patronen en rekeningrollen
+- contextuele `Money Copilot` die uitlegt, richting geeft en helpt beslissen
 
 ## Waarom Budio
 
@@ -29,11 +30,36 @@ Budio is gebouwd voor heldere financiële keuzes in het dagelijks leven. Niet vo
 
 Productprincipes:
 
-- eerst huidige stand, dan ruimte, dan trend/risico, dan advies
+- eerst huidige stand, dan veilige ruimte, dan trend of risico, dan advies
+- home is de dominante ervaring; andere schermen zijn ondersteunende motoren of detailniveaus
+- beslissingen gaan vóór categorieën, beheeropties of interne mechaniek
 - begrijpelijke taal voor niet-technische gebruikers
 - geen dubbele informatie op hetzelfde niveau
 - duidelijke klikbaarheid en duidelijke detailniveaus
-- forecast is verwachting, geen zekerheid
+- de UI presenteert financiële uitkomsten, maar verzint geen eigen financiële waarheid
+- forecast is altijd verwachting, nooit zekerheid
+- AI mag helpen bij uitleg, routing en suggesties, maar niet bij het overschrijven van financiële kernwaarden
+
+## Nieuwe Productvisie En Koersverschuiving
+
+De actuele productvisie staat uitgewerkt in `docs/BUDIO_PRODUCTVISIE_ROADMAP.md`. De harde begrippen- en migratielaag staat in:
+
+- `docs/BUDIO_PRODUCT_CONTRACT.md`
+- `docs/BUDIO_COCKPIT_MIGRATION_MAP.md`
+
+De kernverschuiving is:
+
+- van budgetapp naar dagelijkse financiële cockpit
+- van schermdenken naar één dominant home-productmoment
+- van observatie naar veilige ruimte, komende risico's en beste volgende actie
+- van losse AI-feature naar contextuele `Money Copilot`
+
+Wat dit betekent voor het bestaande product:
+
+- `Dashboard` is niet alleen een overzicht, maar het primaire antwoordscherm
+- `Budget`, `Insights`, forecast en abonnementen zijn onderliggende motoren voor de cockpit
+- `Transactions` blijft belangrijk voor scanbaarheid, begrip en correctie, maar niet als productcentrum
+- de hulpassistent is ondersteunend en context-first, niet chat-first
 
 ## Doelgroep
 
@@ -41,23 +67,24 @@ Primair:
 
 - consumenten van tiener tot senior
 - mensen die overzicht willen op maandruimte en terugkerende lasten
-- mensen die budgetten willen bijsturen zonder complexe spreadsheet-logica
+- mensen die budgetten willen bijsturen zonder spreadsheet-denken
 
 Secondair:
 
-- mensen die net starten met financiële planning
-- partners/gezinssituaties met gezamenlijke uitgavensturing
+- starters met financiële planning
+- huishoudens of partners met gedeelde uitgavensturing
 
 Niet bedoeld voor:
 
 - zakelijk boekhouden
-- complexe enterprise-finance workflows
+- enterprise-finance workflows
 
 ## Statuslegenda
 
 - `Actief`: primaire, actuele productflow
 - `Legacy`: oudere overgangsflow die nog in de codebase staat
-- `Technisch/Hulproute`: ondersteunende of router-/bridgeflow, niet het hoofdproductverhaal
+- `Legacy redirect`: compatibele bridge naar een nieuwere route
+- `Technisch/Hulproute`: ondersteunende of router-/shellflow, niet het hoofdproductverhaal
 
 ---
 
@@ -68,456 +95,230 @@ Niet bedoeld voor:
 ### Route: `app/(tabs)/index.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: Dashboard met actuele stand en snelle maand-/weekcontext
-- Voor wie / wanneer: dagelijks startscherm
+- Doel: primair home-cockpit-scherm voor stand, ruimte, risico en dagelijkse context
 - Kernfunctionaliteiten:
-  - huidig saldo
+  - huidig saldo en maandcontext
+  - bouwt toe naar `Nu vrij` en `Veilig tot volgende inkomen` als dominante home-antwoorden
+  - komende risico's en statuscallouts
+  - entry naar concrete vervolgstappen via detail, beheer of assistent
   - recente transacties
-  - maand- en weektempo-indicatie
-  - compacte inline call-outs voor status en tempo (gedeelde `FinanceInlineCallout`-standaard)
-- Belangrijkste acties:
-  - doorklik naar transacties en detail
-- Relatie met andere pagina's:
-  - voedt door naar `Transactions`, `Budget`, `Transaction Detail`
+  - entry naar detail en hulpassistent
 
 ### Route: `app/(tabs)/transactions.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: centrale transactielijst met zoeken en filters
-- Voor wie / wanneer: uitgavenanalyse en correcties
+- Doel: centrale transactielijst met zoeken, filters en correctie-ingangen
 - Kernfunctionaliteiten:
-  - filteren op type/categorie/rekening/periode
-  - zoekveld en snelle filterchips
-  - importactie vanuit transacties
-- Belangrijkste acties:
-  - open transactie-detail
-  - categorie/labels controleren
-- Relatie met andere pagina's:
-  - koppeling met `transaction-detail`, `import-control`, `subscriptions`
+  - filteren op type, categorie, rekening en periode
+  - zoeken en snelle filterchips
+  - importactie en doorklik naar transactie-detail
 
 ### Route: `app/(tabs)/budget.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: week- en maandsturing op variabel budget
-- Voor wie / wanneer: doorlopende maandcontrole
+- Doel: ondersteunende sturingslaag voor veilige ruimte, tempo en budgetbeheer
 - Kernfunctionaliteiten:
-  - variabel budget, weekritme, maandtempo
-  - categorie-opbouw en week-/maandmodalen
-  - uitsluiten/meetellen van transacties in budget
-- Belangrijkste acties:
-  - budget aanpassen
-  - categorie-instellingen openen
-- Relatie met andere pagina's:
-  - gebruikt transactiedata en forecastcontext
+  - variabel budget, weekritme en maandtempo
+  - categorie-opbouw en budgetbeheer
+  - transactie-inclusie of -exclusie in budget
+  - forecastbron in samenhang met budgetlogica
 
 ### Route: `app/(tabs)/insights.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: trend-, risico- en forecastuitleg
-- Voor wie / wanneer: periodieke analyse en vooruitblik
+- Doel: verdiepende uitleglaag voor trend, risico, forecast en waarom iets aandacht vraagt
 - Kernfunctionaliteiten:
-  - forecastkaart
-  - wat valt op
-  - komende momenten
-  - resterende maand modal
-- Belangrijkste acties:
-  - doorklikken naar relevante detailflows
-- Relatie met andere pagina's:
-  - bouwt bovenop budget/forecast/transactieservices
+  - forecastsamenvatting
+  - `Wat valt op`
+  - `Komende momenten`
+  - resterende-maandcontext en categorie-overzichten
 
 ### Route: `app/(tabs)/settings.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: account- en appinstellingen
-- Voor wie / wanneer: beheer en voorkeuren
+- Doel: account- en appinstellingen
 - Kernfunctionaliteiten:
   - accountbeheer
-  - utility-navigatie
-  - onderhouds- en statusacties
-- Belangrijkste acties:
-  - navigeren naar wachtwoord, gekoppelde rekeningen, etc.
-- Relatie met andere pagina's:
-  - toegangspunt voor beheerflows
+  - utilitynavigatie
+  - toegang tot beheer- en beveiligingsflows
 
 ### Route: `app/admin/index.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: compacte Budio-beheeromgeving voor AI-inzicht en configuratie
-- Voor wie / wanneer: alleen voor admingebruikers
+- Doel: compacte beheeromgeving voor AI-observability en routering
+- Voor wie: alleen admingebruikers
 - Kernfunctionaliteiten:
   - review inbox voor assistentfrictie
-  - AI-verbruik met live OpenAI totalen en 10-minuten cache
-  - per-use-case route- en modelinstellingen
-- Belangrijkste acties:
-  - review-item bekijken en status wijzigen
-  - AI-route-instellingen aanpassen
-- Relatie met andere pagina's:
-  - ontsloten vanuit `Instellingen`
+  - AI-verbruik, kosten en OpenAI-totalen
+  - per use-case model- en route-instellingen
 
 ### Route: `app/(tabs)/_layout.tsx`
 
 - Status: `Technisch/Hulproute`
-- Doel van deze pagina: tab-navigatiestructuur
-- Voor wie / wanneer: routerlaag
-- Kernfunctionaliteiten:
-  - tab-registratie
-  - shellintegratie
-- Belangrijkste acties:
-  - n.v.t. (structuur)
-- Relatie met andere pagina's:
-  - container voor alle hoofdschermen
+- Doel: tabnavigatie en shellregistratie
 
 ### Help Assistant
 
 - Status: `Actief`
 - Shelltype: `utility/subscherm`
-- Doel van deze flow: rustige hulpassistent voor schermuitleg, probleemhulp,
-  idee-intake en bestedingsruimtevragen
-- Voor wie / wanneer: wanneer een gebruiker context of sturing nodig heeft
+- Doel van deze flow: contextuele `Money Copilot` voor uitleg, bestedingsruimte, keuzes, categorie- en transactievragen, probleemmeldingen en ideeën
 - Kernfunctionaliteiten:
-  - turn-first OpenAI-router beoordeelt elke user-turn opnieuw
-  - actieve flow werkt als soft prior (context), niet als harde lock
-  - planner-routes ondersteunen nu ook `transactions_insight`,
-    `category_insight` en `screen_explanation` naast `issue_intake`,
-    `spending_advice` en `general`
-  - planner geeft nu ook generieke `dataRequests` door (zoals maand-/categorie-/
-    merchant-scope en transactievraagtype), waarna de app conditioneel en
-    privacy-safe hydration uitvoert
-  - planner geeft nu ook verplicht een `insightsFlow` terug, zodat expliciet is
-    welk intern insights-pad nodig is voor het antwoord
-  - bij category/transactievragen geeft de app beschikbare category-scopes
-    (slug + label) mee als catalogus voor AI-scopekeuze en verduidelijking
-  - bij vragen over `vorige maand` probeert de assistant de juiste maandcontext
-    opnieuw te laden in plaats van automatisch op de huidige maand te blijven
-  - duidelijke intent-shifts mogen route-switches veroorzaken, ook met actieve flow
-  - korte verduidelijkingsantwoorden kunnen actieve flow voortzetten
-  - issue-/idee-flow toont een compacte reviewkaart vast boven de chat
-  - reviewkaart blijft zichtbaar en kan live worden bijgewerkt in de chat
-  - `Annuleren` sluit de kaart direct
-  - issue/idee-meldingen worden pas na expliciete klik op `Versturen` naar de
-    server-side GitHub-flow gestuurd
-  - de GitHub issue-body bevat bij chatmeldingen de naam en het gebruikers-ID
-    van de melder
-  - quick actions starten de intake of vullen direct een duidelijke vraag in
-- Belangrijkste acties:
-  - schermuitleg vragen
-  - idee of probleem melden
-  - bestedingsruimte of forecastvraag stellen
+  - turn-first planner via OpenAI beoordeelt elke user-turn opnieuw
+  - actieve flow werkt als soft prior, nooit als harde lock
+  - planner-routes: `issue_intake`, `spending_advice`, `general`, `transactions_insight`, `category_insight`, `screen_explanation`
+  - planner geeft altijd `mode`, `insightsFlow`, `requires`, `dataRequests`, `continueActiveFlow` en `activeFlowInfluence` terug
+  - de app hydrateert daarna conditioneel alleen veilige contextblokken
+  - category- en merchantvragen gebruiken truth-safe aggregaten, geen ruwe transactiedumps
+  - voor bepaalde lookupvragen dwingt de app feitelijke antwoorden af op basis van gehydrateerde totalen
+  - issue-/idee-flow toont een vaste reviewkaart boven de chat en verstuurt pas na expliciete bevestiging
+  - quick actions starten gesprekken of vullen vragen voor, maar doen geen directe submit
 - Relatie met andere pagina's:
-  - gebruikt de context van het actieve scherm als veilige basis voor AI en
-    meldkaartsamenvatting
-  - respecteert dezelfde budget-/forecasttaal als Dashboard, Budget en Insights
-  - gebruikt geen directe client-side GitHub writes
+  - gebruikt het actieve scherm, de periode en de financiële context als veilige basis
+  - respecteert dezelfde budget-, forecast- en producttaal als Dashboard, Budget en Insights
 
 ### Route: `help-assistant`
 
 - Status: `Actief`
-- Doel van deze pagina: modal-/sheetflow voor de Help Assistant
-- Voor wie / wanneer: vanuit elke relevante appcontext
+- Doel: modal-/sheetflow voor de hulpassistent
 - Kernfunctionaliteiten:
-  - vaste reviewbanner voor meldingen
-  - chat-first intake
-  - spending advice en algemene hulp in dezelfde sheet
-- Belangrijkste acties:
-  - uitklappen van context, sturen, annuleren
-- Relatie met andere pagina's:
-  - gekoppeld aan context van de actieve route en periode
+  - lokale chatstate
+  - pending assistant-state en foutafhandeling
+  - reviewbanner voor issue-intake
+  - contextchips en quick actions
 
 ### Utility- en detailflows
+
+### Route: `app/transactions/[id].tsx`
+
+- Status: `Actief`
+- Doel: actuele route voor transactie-detail
 
 ### Route: `app/transaction-detail.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: volledige context en correctie per transactie
-- Voor wie / wanneer: bij twijfel of foutieve categorisatie
+- Doel: detailweergave en correctieflow per transactie
 - Kernfunctionaliteiten:
-  - categorie wijzigen (AI/handmatig)
-  - regelbeheer rond tegenpartij
-  - budget-inclusie/exclusie
-  - historie van dezelfde tegenpartij met extra filter `zelfde categorie`
-- Belangrijkste acties:
-  - bevestigen van categorie-aanpassing
-- Relatie met andere pagina's:
-  - aangeroepen vanuit transactielijsten en budgetdetails
-
-### Route: `app/transactions.tsx`
-
-- Status: `Technisch/Hulproute`
-- Doel van deze pagina: route-entry voor transacties
-- Voor wie / wanneer: routing-compatibiliteit
-- Kernfunctionaliteiten:
-  - route-omleiding of bridgegedrag
-- Belangrijkste acties:
-  - n.v.t.
-- Relatie met andere pagina's:
-  - hangt samen met `app/(tabs)/transactions.tsx`
+  - categorie wijzigen via AI of handmatig
+  - regels beheren voor toekomstige matching
+  - budget-inclusie of -exclusie
+  - historie van dezelfde tegenpartij
 
 ### Route: `app/analysis-detail.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: verdiepend analyse-detail
-- Voor wie / wanneer: detailuitleg van geaggregeerde inzichten
-- Kernfunctionaliteiten:
-  - detailregels achter analyses
-  - context per groep/categorie
-- Belangrijkste acties:
-  - inspectie, terugnavigatie
-- Relatie met andere pagina's:
-  - vanuit `Insights` of samenvattingsblokken
+- Doel: verdiepend analyse-detail vanuit Insights
 
 ### Route: `app/subscriptions.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: beheer van abonnementen en terugkerende uitgaven
-- Voor wie / wanneer: controle op vaste terugkerende kosten
-- Kernfunctionaliteiten:
-  - abonnement detecteren en beheren
-  - koppelingen met transacties
-  - regels voor matching
-- Belangrijkste acties:
-  - abonnement toevoegen/wijzigen
-- Relatie met andere pagina's:
-  - gekoppeld aan transactiedetail en forecast
+- Doel: beheer van abonnementen en terugkerende uitgaven
 
 ### Route: `app/bankrekeningen.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: beheer van bankrekeningen in de app
-- Voor wie / wanneer: rekening toevoegen/bewerken/archiveren
-- Kernfunctionaliteiten:
-  - rekeningnaam/type/provider
-  - actief/archiefstatus
-  - budget-inclusie op rekeningniveau
-- Belangrijkste acties:
-  - rekeningformulieren openen en opslaan
-- Relatie met andere pagina's:
-  - beïnvloedt transactiefilters en budget-inclusie
+- Doel: beheer van bankrekeningen en forecast-/budgetscope
 
 ### Route: `app/accounts/link.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: rekeningen koppelen in importflow
-- Voor wie / wanneer: na importdetectie
-- Kernfunctionaliteiten:
-  - matchen van gevonden rekeningen
-  - voorbereiding op importafronding
-- Belangrijkste acties:
-  - koppeling bevestigen
-- Relatie met andere pagina's:
-  - onderdeel van importketen
+- Doel: rekeningen koppelen tijdens importflow
 
 ### Route: `app/rekeningen-koppelen.tsx`
 
 - Status: `Legacy redirect`
-- Doel van deze pagina: compatibele doorsturing naar de nieuwe accounts-link route
-- Voor wie / wanneer: oude links/bookmarks
-- Kernfunctionaliteiten:
-  - directe redirect naar `app/accounts/link.tsx`
-- Belangrijkste acties:
-  - geen
-- Relatie met andere pagina's:
-  - bridge naar de nieuwe import-koppelroute
+- Doel: bridge naar `app/accounts/link.tsx`
 
 ### Route: `app/import-control.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: importcontrole en validatie
-- Voor wie / wanneer: tijdens importworkflow
-- Kernfunctionaliteiten:
-  - controle van importbron/bestanden
-  - status en vervolgstappen
-- Belangrijkste acties:
-  - door naar afronden
-- Relatie met andere pagina's:
-  - samen met `csv-import`, `import-afronden`
+- Doel: importcontrole en validatie
 
 ### Route: `app/import-afronden.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: finale importbevestiging
-- Voor wie / wanneer: laatste stap import
-- Kernfunctionaliteiten:
-  - samenvatting van importresultaat
-  - bevestiging van verwerken
-- Belangrijkste acties:
-  - import afronden
-- Relatie met andere pagina's:
-  - eindpunt van importflow
+- Doel: finale importbevestiging
 
 ### Route: `app/csv-import.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: bestandimport starten
-- Voor wie / wanneer: nieuwe transacties uploaden
-- Kernfunctionaliteiten:
-  - bestandsselectie
-  - parserstart
-- Belangrijkste acties:
-  - bestand kiezen en uploaden
-- Relatie met andere pagina's:
-  - startpunt importflow
+- Doel: bestandsimport starten
 
 ### Route: `app/category-budget-groups.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: beheren van categorie-budgetgroepen
-- Voor wie / wanneer: finetunen van budget- en insightlogica
-- Kernfunctionaliteiten:
-  - categorieën groeperen
-  - overrides beheren
-- Belangrijkste acties:
-  - groepen aanpassen/oplaan
-- Relatie met andere pagina's:
-  - impact op budget en insights
+- Doel: budgetgroepbeheer voor categorieën
 
 ### Route: `app/settings/security/password.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: wachtwoord wijzigen
-- Voor wie / wanneer: accountbeveiliging
-- Kernfunctionaliteiten:
-  - wachtwoordvalidatie
-  - updateflow
-- Belangrijkste acties:
-  - wijziging bevestigen
-- Relatie met andere pagina's:
-  - gekoppeld aan auth en settings
+- Doel: wachtwoord wijzigen
 
 ### Route: `app/account/change-password.tsx`
 
 - Status: `Legacy redirect`
-- Doel van deze pagina: compatibele doorsturing naar de nieuwe settings-security route
-- Voor wie / wanneer: oude links/bookmarks
-- Kernfunctionaliteiten:
-  - directe redirect naar `app/settings/security/password.tsx`
-- Belangrijkste acties:
-  - geen
-- Relatie met andere pagina's:
-  - bridge naar de nieuwe security-locatie
+- Doel: bridge naar `app/settings/security/password.tsx`
 
 ### Auth- en systeemroutes
 
 ### Route: `app/auth/login.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: inloggen
-- Voor wie / wanneer: toegang tot app
-- Kernfunctionaliteiten:
-  - e-mail/wachtwoord login
-- Belangrijkste acties:
-  - aanmelden
-- Relatie met andere pagina's:
-  - toegang tot hoofdapp
+- Doel: inloggen
 
 ### Route: `app/auth/register.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: accountregistratie
-- Voor wie / wanneer: nieuwe gebruikers
-- Kernfunctionaliteiten:
-  - account aanmaken
-  - validatie
-- Belangrijkste acties:
-  - registratie bevestigen
-- Relatie met andere pagina's:
-  - start auth-onboarding
+- Doel: accountregistratie
 
 ### Route: `app/auth/forgot-password.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: resetverzoek starten
-- Voor wie / wanneer: wachtwoord vergeten
-- Kernfunctionaliteiten:
-  - reset e-mail trigger
-- Belangrijkste acties:
-  - reset aanvragen
-- Relatie met andere pagina's:
-  - auth herstelketen
+- Doel: resetverzoek starten
 
 ### Route: `app/auth/reset-password.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: resetflow vervolgen
-- Voor wie / wanneer: via resetlink
-- Kernfunctionaliteiten:
-  - tokengebaseerde reset
-- Belangrijkste acties:
-  - nieuw wachtwoord instellen
-- Relatie met andere pagina's:
-  - auth herstelketen
+- Doel: resetflow vervolgen
 
 ### Route: `app/auth/new-password.tsx`
 
 - Status: `Actief`
-- Doel van deze pagina: nieuw wachtwoord instellen binnen recoveryflow
-- Voor wie / wanneer: vervolg op reset
-- Kernfunctionaliteiten:
-  - wachtwoordregels en bevestiging
-- Belangrijkste acties:
-  - opslaan nieuw wachtwoord
-- Relatie met andere pagina's:
-  - auth herstelketen
+- Doel: nieuw wachtwoord instellen in recoveryflow
 
 ### Route: `app/auth/_layout.tsx`
 
 - Status: `Technisch/Hulproute`
-- Doel van deze pagina: auth-routerlayout
-- Voor wie / wanneer: structuurlaag
-- Kernfunctionaliteiten:
-  - auth-stack opbouw
-- Belangrijkste acties:
-  - n.v.t.
-- Relatie met andere pagina's:
-  - container voor auth-routes
+- Doel: auth-routerlayout
 
 ### Route: `app/login.tsx`
 
 - Status: `Technisch/Hulproute`
-- Doel van deze pagina: compatibele login-entry
-- Voor wie / wanneer: fallback/bridge
-- Kernfunctionaliteiten:
-  - routeverwijzing
-- Belangrijkste acties:
-  - n.v.t.
-- Relatie met andere pagina's:
-  - samenhang met `app/auth/login.tsx`
+- Doel: compatibele login-entry
+
+### Route: `app/transactions.tsx`
+
+- Status: `Technisch/Hulproute`
+- Doel: route-entry/bridge naar transacties
 
 ### Route: `app/modal.tsx`
 
 - Status: `Technisch/Hulproute`
-- Doel van deze pagina: generieke modale route/demo shell
-- Voor wie / wanneer: systeem of experimentele route
-- Kernfunctionaliteiten:
-  - modalpresentatie
-- Belangrijkste acties:
-  - n.v.t.
-- Relatie met andere pagina's:
-  - shell- en navigatietestpad
+- Doel: generieke modalroute of demo-shell
+
+### Route: `app/+html.tsx`
+
+- Status: `Technisch/Hulproute`
+- Doel: web-HTML shell voor Expo Web
 
 ### Route: `app/_layout.tsx`
 
 - Status: `Technisch/Hulproute`
-- Doel van deze pagina: root-layout en globale providers
-- Voor wie / wanneer: appbootstrap
-- Kernfunctionaliteiten:
-  - root routing
-  - globale wrappers
-- Belangrijkste acties:
-  - n.v.t.
-- Relatie met andere pagina's:
-  - container voor alle routes
+- Doel: root-layout en globale providers
 
 ### Route: `app/insights-legacy.tsx`
 
 - Status: `Legacy`
-- Doel van deze pagina: oudere inzichtenimplementatie
-- Voor wie / wanneer: overgangscontext en fallbackhistoriek
-- Kernfunctionaliteiten:
-  - eerdere insightopbouw
-- Belangrijkste acties:
-  - n.v.t. voor primaire flow
-- Relatie met andere pagina's:
-  - vervangen door `app/(tabs)/insights.tsx`, blijft als referentie/overgang
+- Doel: oudere inzichtenimplementatie als overgangsreferentie
 
 ---
 
@@ -525,454 +326,431 @@ Niet bedoeld voor:
 
 ### Auth & sessie
 
-- `services/auth-email-validation.ts` (`helper`): valideert e-mailinvoer voor authflows.
-- `services/auth-error-messages.ts` (`helper`): vertaalt authfouten naar begrijpelijke copy.
-- `services/auth-password-errors.ts` (`helper`): structureert wachtwoordfouten.
-- `services/auth-password-validation.ts` (`helper`): regels voor sterk/valide wachtwoord.
-- `services/auth-routing.ts` (`kernlogica`): bepaalt authroute-overgangen.
-- `services/auth-session.ts` (`kernlogica`): sessiestatus ophalen/bewaken.
-- `services/auth-url.ts` (`helper`): auth-URL parsing/normalisatie.
+- authvalidatie, foutvertaling, URL-routing en sessiebeheer via `auth-*` services
+- huidige gebruiker en identity-opbouw via `current-user.ts`
 
-### Infra & basislaag
+### Infra, API en observability
 
-- `services/supabase.ts` (`kernlogica`): Supabase client en platformconfig.
-- `services/current-user.ts` (`kernlogica`): huidige user-id/identity-resolutie.
-- `services/api-base.ts` (`helper`): basis voor API-calls buiten pure DB-queries.
-- `services/openai-proxy.ts` (`kernlogica`): veilige proxylaag voor AI-calls, use-case metadata en centrale telemetrie.
-- `services/pattern-normalization.ts` (`helper`): tekstnormalisatie voor matching/dedupe.
+- Supabase client en platformconfig via `supabase.ts`
+- generieke API-basis via `api-base.ts`
+- OpenAI-proxy, response-adapter, usage, pricing, telemetry en org-usage via de AI-infra-services
+- request-cache, perf-metrics, runtime-debug en timezone-provider als ondersteunende infrastructuur
 
-### Transacties & categorisatie
+### Transacties, categorisatie en regels
 
-- `services/categorization.ts` (`kernlogica`): batch/AI categoriseren en orchestration.
-- `services/categorization-repository.ts` (`kernlogica`): categorie-reads/writes op transacties.
-- `services/categorization-status.ts` (`helper`): status van background categorisatie.
-- `services/category-display.ts` (`helper`): categoriepadlabels voor UI.
-- `services/category-icon.ts` (`helper`): iconmapping categorieen.
-- `services/transaction-ai-categorization.ts` (`kernlogica`): AI-hercategorisatie op transactie.
-- `services/transaction-rule-management.ts` (`kernlogica`): regels voor toekomstige toewijzingen.
-- `services/transaction-details.ts` (`helper`): detailnormalisatie voor transactieweergave.
-- `services/transaction-data-cleanup.ts` (`helper`): opschoning legacy strings/velden.
-- `services/transaction-month-options.ts` (`kernlogica`): maandkeuzes en maandnavigatie.
-- `services/analysis.ts` (`kernlogica`): analyse-opbouw voor detail/insight context.
+- transactienormalisatie, detailopbouw, datumvensters en maandopties
+- categorisatie-orchestratie, AI-hercategorisatie, repositorylaag en statusbewaking
+- tegenpartijregels en cleanup van legacy detailstrings
 
-### Bankrekeningen
+### Bankrekeningen, scope en semantiek
 
-- `services/bank-accounts.ts` (`kernlogica`): bankrekening CRUD, actief/archief, budgetinclusie.
-- `services/own-account-transfer-heuristics.ts` (`helper`): heuristiek voor interne overboekingen.
+- bankrekening-CRUD, simpele forecastinstellingen en rekeningfilters
+- `finance-scope` en `finance-scope-preference` bepalen welk geldbeeld een surface gebruikt
+- `financial-semantics`, `income-semantics` en `financial-surface-semantics` bewaken betekenis van geldlagen en UI-interpretatie
 
 ### Budget & week/maandsturing
 
-- `services/budget-plan.ts` (`kernlogica`): hoofdrekenlogica voor budgetplan.
-- `services/budget-plan-repository.ts` (`kernlogica`): instellingen/overrides opslag.
-- `services/budget-plan-surface.ts` (`kernlogica`): user-facing loader met guardrail-lagen.
-- `services/budget-week-guardrails.ts` (`kernlogica`): mildere weekherverdeling op basis van maandruimte.
-- `services/budget-week-utils.ts` (`kernlogica`): weekranges en basale weekbudgetverdeling.
-- `services/budget-week-attention.ts` (`helper`): categorie-attentierijen voor weeksturing.
-- `services/budget-risk.ts` (`kernlogica`): statuslabels op schema/let op/boven tempo.
-- `services/budget-lock-utils.ts` (`helper`): lock- en allocatiehulplogica.
-- `services/budget-income-preview.ts` (`helper`): inkomenspreview voor budgetbeheer.
-- `services/budget-coach.ts` (`helper`): coachende samenvatting/acties op budget.
-- `services/category-budget-groups.ts` (`kernlogica`): beheer effectieve budgetgroepen.
+- budgetplan, repository, surface-loader en locklogica
+- weekverdeling, guardrails, attenties, risico en coachsamenvattingen
+- budgetgroepbeheer en inkomenspreview
 
 ### Forecast & risico
 
-- `services/forecasting.ts` (`kernlogica`): maandforecastopbouw en persist.
-- `services/forecast-month-math.ts` (`kernlogica`): rekendefinities voor cashflow/eindsaldo.
-- `services/forecast-refresh.ts` (`kernlogica`): dirty/fresh status en recompute-triggering.
-- `services/forecast-reference.ts` (`helper`): referentiedata voor forecastvensters.
-- `services/forecast-timeline.ts` (`kernlogica`): timeline-events en datumlogica.
-- `services/forecast-timeline-events.ts` (`kernlogica`): timeline-event opslag/reads.
-- `services/forecast-budget-plan-requests.ts` (`helper`): budgetplan-requestbeschrijvingen voor forecast.
-- `services/forecast-income-baseline.ts` (`kernlogica`): income baseline voor voorspelling.
-- `services/forecast-income-utils.ts` (`helper`): inkomenhulpfuncties.
-- `services/forecast-derived-income-sources.ts` (`kernlogica`): afgeleide inkomstenbronnen.
-- `services/forecast-expense-baseline.ts` (`kernlogica`): expense baseline inclusief budgettrendkoppeling.
-- `services/forecast-expense-utils.ts` (`helper`): expensehulpfuncties.
-- `services/forecast-expense-source-display.ts` (`helper`): displaylabels forecastbron.
-- `services/month-forecast-summary.ts` (`kernlogica`): compacte maandforecast-read voor surfaces.
+- end-to-end forecastopbouw in `forecasting.ts`
+- refresh, referentiedata, month math, roll-forward en summary-adapters
+- event-normalisatie, forecast-domain, accountregels en timeline-persist/read
+- income- en expense-baselines plus bronweergave
+- reserve-opbouw via reserve-rules en reserve-surface
+- zeldzame abonnementssignalen via `rare-subscriptions.ts`
+
+### Insights-selectoren
+
+- maandcontext, forecastkaart, highlights, repeat suppression, categorie-overzichten, resterende maand en komende momenten
+- `latest-known-balance.ts` als gedeelde live saldo-ankerbron
+
+### Help Assistant & AI
+
+- contextmodel, chatstate, intentheuristiek en quick actions
+- planner, route-normalisatie, hydration, financial context en spending-advice-signalen
+- final prompts, orchestration-shared helpers, live eval, issue draft/flow/submit en GitHub-serverpad
+- AI modelcatalogus, use cases, admin route settings en review inbox
+
+### Import-pipeline
+
+- bronkeuze, runner, parser, normalizer, dedupe/matching en web drop
+- PDF parser en Rabobank AI-mapper als aanvullende importlagen
+
+### Abonnementen, explainability en formattering
+
+- subscription-profielen en koppelingen
+- explainability, explain-logic, safety-explanation en safety-spend-window voor mensentaal en guardrails
+- gedeelde UI-formatters voor labels, datums, valuta en percentages
+
+---
 
 ## Forecastmodel: volledige werking
 
-Deze sectie beschrijft hoe het forecastmodel nu technisch en productmatig werkt, gebaseerd op de huidige implementatie.
+Deze sectie beschrijft hoe het forecastmodel nu technisch en productmatig werkt op basis van de actuele implementatie.
 
 ### 1) Doel en output van het model
 
 Het model maakt per maand een conservatieve cashflowverwachting met:
 
-- verwachte inkomsten en uitgaven (gesplitst naar vaste lasten, abonnementen, variabele kosten en spaaruitstroom)
+- verwachte inkomsten en uitgaven
 - verwacht eindsaldo van de maand
-- laagste verwachte saldo binnen de maand
-- eerstvolgend verwacht moment
+- laagste verwachte operationele punt in de maand
+- eerstvolgend verwacht moment in de timeline
 - risico-indicatoren:
-  - `riskFlag`: `deficit_warning` als verwacht eindsaldo negatief is
-  - `cashRiskFlag`: `cash_gap_warning` als tussentijds (timeline) saldo onder nul komt
+  - `riskFlag`: `deficit_warning` als het verwachte eindsaldo negatief is
+  - `cashRiskFlag`: `cash_gap_warning` als de timeline tussentijds onder nul komt
 
-### 2) Wanneer forecast wordt herberekend
+### 2) Scope, geldlagen en rekeningrollen
 
-De orchestration zit in `services/forecast-refresh.ts`:
+Forecast werkt niet alleen op één generiek saldo, maar op een gekozen `MoneyViewScope` met expliciete rekeningrollen.
 
-- forecast kan `dirty` worden gezet bij relevante mutaties (bijv. budgetsave, categorisatie, abonnementswijziging)
-- `ensureForecastFresh(...)` herberekent alleen als:
-  - status dirty is, of
-  - er nog geen berekening is, of
-  - de laatste berekening ouder is dan max-age (standaard 6 uur), of
-  - `force` is gevraagd
-- meerdere gelijktijdige refreshes voor dezelfde gebruiker worden gededuped via een in-flight map
+Belangrijke begrippen:
 
-### 3) Maandscope en referentiedatum
+- `MoneyViewScope`: welk geldbeeld de gebruiker of surface bekijkt
+- rekeningrollen: `operational`, `reserve`, `goal`, `shared`, `observation_only`, `excluded`
+- money layers: `operational`, `reserved`, `net_worth`, `free_to_spend`
 
-In `services/forecasting.ts`:
+### 3) Wanneer forecast wordt herberekend
 
-- aangevraagde maand in het verleden: alleen die maand wordt berekend
-- huidige of toekomstige maand: huidige maand + vooruitkijkvenster (standaard t/m 6 maanden vooruit)
-- per maand wordt een `forecastReferenceDate` bepaald:
-  - verleden: laatste dag van die maand
-  - huidige maand: vandaag
-  - toekomstige maand: dag voor maandstart
+- forecast kan `dirty` worden gezet na relevante mutaties
+- `ensureForecastFresh(...)` herberekent alleen als nodig
+- gelijktijdige refreshes per gebruiker en scope worden gededuped
 
-Dit bepaalt welke transacties al "geboekt" tellen en welke events nog "komend" zijn.
+### 4) Maandscope en referentiedatum
 
-### 4) Databronnen die worden ingelezen
+- voor verleden wordt alleen de gevraagde maand berekend
+- voor huidige of toekomstige context wordt een venster vooruit berekend, standaard tot 6 maanden
+- elke maand krijgt een `forecastReferenceDate`
 
-Voor de berekening worden parallel opgehaald:
+Dit bepaalt welke transacties al geboekt zijn en welke events nog verwacht zijn.
 
-- transacties (met lookback van 760 dagen) uit `transactions`
-- categorieen uit `categories`
-- persisted income sources uit `forecast_income_sources`
-- actieve subscription profiles uit `subscription_profiles`
-- budgetplan per forecastmaand via `computeBudgetPlan(...)`
+### 5) Databronnen die worden gebruikt
+
+- transacties met ruime lookback
+- categorieën en budgetgroepen
+- bankrekeningen en hun scope-/forecastinstellingen
+- budgetplan per forecastmaand
+- persisted income sources
+- subscription profiles
+- rare subscription signalen
+- annual obligation reserve rules
+- laatste bekende balansanker
 
 Belangrijk:
 
-- transacties van rekeningen die niet meetellen in budget worden vooraf uitgesloten
-- transacties met `budget_excluded = true` tellen niet mee in forecastberekeningen
+- uitgesloten rekeningen en `budget_excluded` transacties tellen niet zomaar mee
+- de UI mag deze logica niet zelf opnieuw uitvinden
 
-### 5) Income-opbouw (baseline + committed events)
+### 6) Event-normalisatie en certainty-lagen
 
-Income komt uit twee lagen:
+`forecast-event-normalization.ts` bouwt een canonieke eventset voor de maand.
 
-1. Baseline (`services/forecast-income-baseline.ts`)
-- voorkeur is budgetplan-basis (trend/preview) als die beschikbaar is
-- anders fallback naar income sources die qua frequentie in die maand vallen
-- include/exclude per income-bucket (`salary`, `childBudget`, `structuralOther`, `variable`) wordt toegepast
+Die eventset onderscheidt:
 
-2. Committed income events (`services/forecasting.ts` + `services/forecast-timeline.ts`)
-- recurrente inkomens worden afgeleid uit transacties (frequentie + verwachte dag)
-- persisted income sources worden gemerged met afgeleide bronnen (`services/forecast-derived-income-sources.ts`)
-- al waargenomen inkomsten in de maand worden niet nogmaals als toekomst-event toegevoegd
+- eventtypes: `income`, `expense`, `internal_transfer`, `reserve_allocation`, `correction`
+- certainty: `booked`, `committed`, `inferred`, `estimated`
+- timeline-kind: `income`, `fixed_cost`, `subscription`, `savings_transfer`
 
-### 6) Expense-opbouw (baseline + committed events)
+Belangrijk gedrag:
 
-Expense-basis komt uit `services/forecast-expense-baseline.ts`:
+- interne overboekingen en reserve-allocaties worden apart behandeld om dubbeltelling te voorkomen
+- accountmetadata en inkomenssemantiek winnen van oudere heuristiek
 
-- bronkeuze via budgetinstelling `forecastExpenseSource`:
-  - `budget_settings`: gebruik budgetflowwaarden als primaire baseline
-  - `trend`: gebruik trend/history als primaire baseline
-- maand-tot-nu uitgaven vormen een harde ondergrens (niet lager voorspellen dan al uitgegeven)
-- voor variabele kosten kan extra projectie worden gebruikt:
-  - maand-tot-nu variabel + resterend weekbudget uit budgetplan
+### 7) Income-opbouw
 
-Historycomponent komt uit `services/forecast-expense-utils.ts`:
+Income komt uit meerdere lagen:
 
-- recente afgeronde maanden (standaard 2) met gewogen gemiddelde (recentste maand weegt zwaarder)
-- onderverdeling variabel: `groceries`, `fuel`, `smoking`, `other`
+1. baseline
+- budget- of trendgebaseerde income-baseline
+- include/exclude per income-bucket
 
-Committed expense events:
+2. committed income events
+- recurrente inkomens uit historie
+- persisted income sources
+- afgeleide inkomstenbronnen uit transacties
 
-- recurrente vaste lasten/abonnementen uit transactiehistorie
-- actieve subscription profiles als extra abonnementsevents
-- rare subscriptions als aanvullende signalen
-- aparte committed events voor spaaruitstroom (`savings_transfer`)
+Conservatieve regel:
 
-### 7) Geboekte maandtotalen (month-to-date)
+- wat al als geboekt is gezien in de maand, wordt niet nog eens als toekomstig inkomen opgevoerd
 
-`summarizeBookedMonthTransactions(...)` telt voor de maand t/m referentiedatum:
+### 8) Expense-opbouw
 
-- geboekte inkomsten (incl. uitgesplitst structureel/variabel)
-- geboekte forecast-eligible inkomsten (met income-bucket include-regels)
-- geboekte uitgaven per type (`fixed_costs`, `subscriptions`, `variable_costs`)
-- geboekte spaaruitstroom (`savings_transfer`)
+Expense-basis ondersteunt meerdere bronnen:
 
-### 8) Rekenkern naar maanduitkomst
+- `budget_settings`
+- `trend`
 
-`services/forecast-month-math.ts` combineert booked + baseline + committed:
+Verder tellen mee:
 
-- `remainingExpectedIncomeTotal` = max(committed income, income baseline - booked eligible income, 0)
-- elk expense-blok gebruikt een conservatieve max-benadering:
-  - max(booked + committed, baseline, booked)
-- `expectedEndOfMonthBalance`:
-  - met `startingBalance`: start + expected income - expected cash out
-  - anders met `currentBalanceAnchor`: anchor + resterende income - resterende expense - resterende savings
+- vaste lasten en abonnementen uit historie
+- actieve subscription profiles
+- rare subscriptions als aanvullend signaal
+- spaaruitstroom als aparte laag
+- reserve-regels voor grotere jaarlijkse of halfjaarlijkse verplichtingen
 
-Voor toekomstige maanden wordt startbalans gechained:
+Conservatieve regel:
 
-- expected eindsaldo maand N wordt startsaldo voor maand N+1
+- maand-tot-nu uitgaven vormen een harde ondergrens
 
-### 9) Timeline-projection en cash-risico
+### 9) Geboekte maandtotalen en rekenschil
 
-`services/forecast-timeline.ts` bouwt de volgorde van toekomstige events:
+`forecast-month-math.ts` combineert geboekt, baseline en committed:
 
-- alleen events na referentiedatum en binnen gekozen maand
-- running balance vanaf `currentBalanceAnchor`
-- laagste punt in de reeks wordt opgeslagen als `lowestExpectedBalance` + datum
-- `cashRiskFlag` wordt `cash_gap_warning` zodra dat laagste punt negatief is
+- resterende income gebruikt een conservatieve max-logica
+- expenseblokken gebruiken eveneens een max-benadering
+- voor huidige maand kan de berekening starten vanaf het laatste bekende operationele balansanker
+- toekomstige maanden chainen op verwachte eindsaldi van eerdere maanden
 
-Daarnaast worden samenvattingen bepaald:
+### 10) Timeline, laagste punt en cash-risico
 
-- `upcomingCommittedIncomeTotal`
-- `upcomingCommittedExpenseTotal`
-- `upcomingCommittedSavingsOutflowTotal`
-- `nextExpectedEventDate` + `nextExpectedEventLabel`
+`forecast-timeline.ts` bouwt de volgorde van toekomstige events:
 
-### 10) Persist en readpad
+- alleen events na referentiedatum en binnen de gekozen maand
+- running balance vanaf het actuele anker
+- opslag van `lowestExpectedBalance` en `lowestExpectedBalanceDate`
+- `cashRiskFlag` wordt `cash_gap_warning` zodra de reeks onder nul komt
+
+### 11) Reserve-regels en zeldzame abonnementen
+
+Forecast gebruikt twee extra voorzichtig-lagen:
+
+- `rare-subscriptions.ts` detecteert halfjaarlijkse, jaarlijkse of mogelijke single-pattern lasten
+- `reserve-rules.ts` kan daaruit conservatief maandreserves afleiden voor annual obligations
+
+Belangrijk:
+
+- deze laag is ondersteunend, niet autonoom financieel leidend
+- ontbrekende tabellen of niet-uitgerolde migraties vallen stil en defensief terug
+
+### 12) Persist, readpad en adapters
 
 Persist:
 
-- maandsamenvatting naar `monthly_cashflow_forecasts` (upsert op `user_id,month_start`)
-- timeline-events naar `forecast_timeline_events` (eerst clearen per maand, dan insert)
-- bij ontbrekende kolommen/tabellen wordt defensief gefallbacked waar mogelijk
+- maandsamenvatting naar `monthly_cashflow_forecasts`
+- timeline-events naar `forecast_timeline_events`
 
 Readpad:
 
-- `services/month-forecast-summary.ts` roept eerst `ensureForecastFresh(...)` aan
-- leest daarna de maandrij uit `monthly_cashflow_forecasts`
-- `services/forecast-timeline-events.ts` leest timeline-events voor Insights
-- `services/insights-upcoming-moments.ts` vertaalt events naar betekenisvolle `Komende momenten`-kaarten
+- `month-forecast-summary.ts` triggert zo nodig eerst refresh
+- scoped latest-known balance kan een extra refresh afdwingen voor de huidige maand
+- adapters en roll-forward helpers houden oudere readpaden en nieuwe forecaststaat op elkaar aangesloten
 
-### 11) Conservatieve ontwerpkeuzes (belangrijk voor review)
+### 13) Conservatieve ontwerpkeuzes
 
-Het model kiest bewust voor voorzichtigheid:
+- forecast blijft een verwachting, geen zekerheid
+- bij twijfel liever minder slimme afleiding dan een onjuiste conclusie
+- schema-safe fallbacks bij ontbrekende tabellen, kolommen of migraties
+- AI schrijft geen financiële kernwaarden over
 
-- geen event als het deze maand al waargenomen is
-- bij twijfel liever baseline/boeking als ondergrens dan optimistische afleiding
-- verwachting wordt niet als zekerheid gepresenteerd (risicoflags en copy blijven probabilistisch)
-- schema-safe fallbacks bij migraties of ontbrekende tabellen/kolommen
+---
 
-### Insights-selectoren
+## Help Assistant en AI: volledige werking
 
-- `services/insights-month-context.ts` (`kernlogica`): maandcontextstatus en kernsamenvatting.
-- `services/insights-forecast-card.ts` (`kernlogica`): model voor forecastkaart.
-- `services/insights-category-summary.ts` (`kernlogica`): categorieblok in insights.
-- `services/insights-upcoming-moments.ts` (`kernlogica`): selectie van komende momenten.
-- `services/insights-remaining-month.ts` (`kernlogica`): resterende-maand berekeningen.
-- `services/insights-highlights.ts` (`kernlogica`): selectie/dedupe/confidence voor wat valt op.
-- `services/insights-highlight-history.ts` (`helper`): repeat-suppressiehistoriek.
-- `services/latest-known-balance.ts` (`kernlogica`): gedeelde live saldo-snapshotbron.
+### 1) Entry point en lokale staat
 
-### Import-pipeline
+De flow start in `requestHelpAssistantReply(...)` met:
 
-- `services/import/index.ts` (`kernlogica`): importentry en orchestratie.
-- `services/import/types.ts` (`helper`): types voor importflow.
-- `services/import/import-source.ts` (`kernlogica`): bronkeuze en source-state.
-- `services/import/import-flow-state.ts` (`kernlogica`): voortgangstoestand importflow.
-- `services/import/import-runner.ts` (`kernlogica`): pipeline-runner.
-- `services/import/import-web-drop.ts` (`helper`): web drag-and-drop handling.
-- `services/import/csv-parser.ts` (`kernlogica`): CSV parsing.
-- `services/import/pdf-parser.ts` (`kernlogica`): PDF parsing.
-- `services/import/rabobank-pdf-ai-mapper.ts` (`helper`): Rabobank PDF veldmapping.
-- `services/import/normalizer.ts` (`kernlogica`): normalisatie van importrows.
-- `services/import/transaction-import-parser.ts` (`kernlogica`): parsing naar transactievorm.
-- `services/import/transaction-import-match.ts` (`kernlogica`): matching/dedupe bij import.
+- `HelpAssistantContext`
+- `HelpAssistantThreadState`
+- optioneel al geladen financiële context
+- optioneel `activeFlow`
 
-### Subscriptions & herhaling
+De lokale chatstate bewaart:
 
-- `services/subscriptions.ts` (`kernlogica`): abonnementprofielen, koppelingen en lifecycle.
-- `services/rare-subscriptions.ts` (`helper`): detectie van minder frequente terugkerende patronen.
+- user- en assistant-berichten
+- pending assistant placeholders
+- pending issue draft ids
+- metadata over bron, intent, target en context
 
-### Semantiek
+### 2) Planner-first orchestration
 
-- `services/income-semantics.ts` (`kernlogica`): betekenislaag voor inkomenssoorten en compensaties.
+Per user-turn gebeurt meestal:
 
-### Testbestanden
+1. lokale intent- en amount-signalen bepalen
+2. optioneel vroege financiële context laden voor category catalog
+3. planner-call naar OpenAI
+4. parser + normalisatie + fallbackplanner
+5. conditionele hydration
+6. final answer-call op basis van gekozen route
 
-- `*.test.ts` en `*.test.tsx` vallen buiten functionele matrix en worden gebruikt als validatie van gedrag.
+Productmatig blijft dit secundair aan de cockpit: de assistent vult home en schermcontext aan, maar vervangt ze niet als primaire experience.
+
+### 3) Actuele route- en modecontracten
+
+Routes:
+
+- `issue_intake`
+- `spending_advice`
+- `general`
+- `transactions_insight`
+- `category_insight`
+- `screen_explanation`
+
+Belangrijke plannervelden:
+
+- `mode`
+- `insightsFlow`
+- `requires`
+- `dataRequests`
+- `needsClarification`
+- `continueActiveFlow`
+- `activeFlowInfluence`
+- `useScreenContext`
+
+### 4) Hydration en truth-safe data
+
+De planner haalt zelf nooit data op. De app bepaalt welke veilige blokken worden geladen, onder meer:
+
+- maandbudget en cashflowveiligheid
+- expected end balance
+- category summary
+- transaction facts
+- screen explanation context
+
+Belangrijk:
+
+- geen ruwe transactierijen naar OpenAI
+- geen privacygevoelige identifiers
+- category- en merchantvragen gebruiken geaggregeerde of gestriptte feiten
+- bij `previous month` probeert de app echt de vorige maandcontext te laden
+
+### 5) Guardrails op feitelijke antwoorden
+
+Voor bepaalde lookup-routes corrigeert de app het eindantwoord als nodig:
+
+- `category_insight` met `category_total`
+- `transactions_insight` met `merchant_total` of `merchant_frequency`
+
+### 6) Spending advice
+
+`spending_advice` gebruikt:
+
+- financiële context met budget-, planning- en forecastsignalen
+- veilig fallbackadvies uit app-code
+- vast antwoordspatroon: conclusie, waarom, risico, vervolgstap
+
+### 7) Issue-intake en GitHub-pad
+
+Issue- of idee-intake werkt via:
+
+- vaste reviewkaart boven de chat
+- AI-samenvatting en verdiepende vraag
+- expliciete submit-actie
+- server-side issueflow en submitpad
+
+### 8) Use cases, modellen en beheer
+
+Actieve AI-use-cases in de code:
+
+- `help_general`
+- `help_spending_advice`
+- `help_transactions_insight`
+- `help_category_insight`
+- `budget_coach`
+- `transaction_categorization`
+- `import_pdf_mapping`
+
+De adminlaag ondersteunt:
+
+- modelcatalogus
+- route-instellingen per use case
+- usage/cost monitoring
+- review inbox voor lage confidence, fallback of niet-geholpen antwoorden
+
+### 9) Eval en kwaliteitsbewaking
+
+Voor de hulpassistent bestaat een live eval-harness:
+
+- `npm run test:help-assistant-eval`
+- output naar `tmp/help-assistant-live-eval-report.json`
 
 ---
 
 ## Wat kan Budio nu? (pitch-ready)
 
-### 1. Saldoinzicht
+### 1. Dagelijkse cockpit
 
-- Gebruikerswaarde: direct weten waar je nu staat.
-- Onderliggende onderdelen:
-  - Pagina's: `Dashboard`, `Insights`
-  - Services: `latest-known-balance`, `transaction-details`, `supabase`
+- toont actuele rekeningstand en de juiste financiële context per surface
+- gebruikt scoped balansankers voor dashboard, budget en insights
+- is de plek waar Budio uiteindelijk direct antwoord moet geven op ruimte, risico en volgende actie
 
-### 2. Transactiebeheer en filters
+### 2. Veilige ruimte en sturing
 
-- Gebruikerswaarde: snel vinden, begrijpen en corrigeren van transacties.
-- Onderliggende onderdelen:
-  - Pagina's: `Transactions`, `Transaction Detail`
-  - Services: `categorization-repository`, `transaction-month-options`, `category-display`
+- variabel budget, weekritme en maandtempo
+- logische overlapweken en guardrails
+- fundament voor `safe to spend` en `veilig tot volgende inkomen`
 
-### 3. Categorisatie (handmatig + AI + regels)
+### 3. Vooruitblik en risico
 
-- Gebruikerswaarde: minder handwerk en meer consistente indeling.
-- Onderliggende onderdelen:
-  - Pagina's: `Transaction Detail`, `Transactions`
-  - Services: `categorization`, `transaction-ai-categorization`, `transaction-rule-management`
+- verwacht eindsaldo en laagste punt
+- cash-gap signalen
+- betekenisvolle komende momenten op basis van timeline-events
+- forecastbron, scope en reserve-signalen in samenhang
 
-### 4. Budgetsturing week/maand
+### 4. Begrip en correctie
 
-- Gebruikerswaarde: bijsturen voordat de maand ontspoort.
-- Onderliggende onderdelen:
-  - Pagina's: `Budget`
-  - Services: `budget-plan`, `budget-risk`, `budget-week-guardrails`
+- scanbare transactielijst met zoeken, maandkeuze en filters
+- snelle doorklik naar detail, correctie en abonnementskoppeling
+- handmatige categoriewijziging, AI-hercategorisatie en tegenpartijregels
 
-### 5. Forecast en komende momenten
+### 5. Reserves en terugkerende lasten
 
-- Gebruikerswaarde: vooruitkijken met risicosignalen i.p.v. alleen terugkijken.
-- Onderliggende onderdelen:
-  - Pagina's: `Insights`
-  - Services: `forecasting`, `forecast-month-math`, `insights-upcoming-moments`
+- actieve subscription profiles
+- koppeling met transacties
+- detectie van minder frequente lasten
+- basis voor conservatieve reserve-opbouw
 
-### 6. Import en controleflow
+### 6. Money Copilot
 
-- Gebruikerswaarde: bankdata snel in de app en veilig gecontroleerd.
-- Onderliggende onderdelen:
-  - Pagina's: `csv-import`, `accounts/link`, `import-control`, `import-afronden`
-  - Services: `services/import/*`, `bank-accounts`, `transaction-import-match`
+- schermuitleg en algemene hulp
+- bestedingsruimtevragen
+- feitelijke categorie- en transactievragen
+- ideeën en problemen melden via reviewkaart
 
-### 7. Abonnementen en vaste lasten
+### 7. Datagrondslag
 
-- Gebruikerswaarde: terugkerende kosten zichtbaar en beheersbaar.
-- Onderliggende onderdelen:
-  - Pagina's: `Subscriptions`, `Budget`, `Insights`
-  - Services: `subscriptions`, `rare-subscriptions`, `forecast-timeline`
+- CSV en PDF import
+- normalisatie, matching en dedupe
+- rekeningkoppeling en afrondcontrole
 
 ---
 
-## Route Coverage Matrix (alle `app/` routes)
+## Route Coverage Matrix (samenvatting)
 
-| Route                             | Status              | Korte functionele samenvatting    | Sectie           |
-| --------------------------------- | ------------------- | --------------------------------- | ---------------- |
-| `app/(tabs)/_layout.tsx`          | Technisch/Hulproute | Tabrouter en shellkoppeling       | Pagina-overzicht |
-| `app/(tabs)/budget.tsx`           | Actief              | Budget week/maand sturing         | Pagina-overzicht |
-| `app/(tabs)/index.tsx`            | Actief              | Dashboard met saldo en tempo      | Pagina-overzicht |
-| `app/(tabs)/insights.tsx`         | Actief              | Inzichten, forecast en signalen   | Pagina-overzicht |
-| `app/(tabs)/settings.tsx`         | Actief              | Instellingen en beheer            | Pagina-overzicht |
-| `app/(tabs)/transactions.tsx`     | Actief              | Transactielijst met filters       | Pagina-overzicht |
-| `app/_layout.tsx`                 | Technisch/Hulproute | Rootlayout en providers           | Pagina-overzicht |
-| `app/account/change-password.tsx` | Legacy redirect     | Bridge naar settings security     | Pagina-overzicht |
-| `app/analysis-detail.tsx`         | Actief              | Detailuitleg analyses             | Pagina-overzicht |
-| `app/auth/_layout.tsx`            | Technisch/Hulproute | Authrouterlayout                  | Pagina-overzicht |
-| `app/auth/forgot-password.tsx`    | Actief              | Wachtwoord reset aanvragen        | Pagina-overzicht |
-| `app/auth/login.tsx`              | Actief              | Inloggen                          | Pagina-overzicht |
-| `app/auth/new-password.tsx`       | Actief              | Nieuw wachtwoord instellen        | Pagina-overzicht |
-| `app/auth/register.tsx`           | Actief              | Accountregistratie                | Pagina-overzicht |
-| `app/auth/reset-password.tsx`     | Actief              | Resetflow afronden                | Pagina-overzicht |
-| `app/settings/security/password.tsx` | Actief           | Wachtwoord wijzigen               | Pagina-overzicht |
-| `app/accounts/link.tsx`           | Actief              | Rekeningen koppelen in importflow | Pagina-overzicht |
-| `app/bankrekeningen.tsx`          | Actief              | Rekeningen beheren                | Pagina-overzicht |
-| `app/category-budget-groups.tsx`  | Actief              | Budgetgroepbeheer                 | Pagina-overzicht |
-| `app/csv-import.tsx`              | Actief              | Import starten                    | Pagina-overzicht |
-| `app/import-afronden.tsx`         | Actief              | Import afronden                   | Pagina-overzicht |
-| `app/import-control.tsx`          | Actief              | Importcontrole                    | Pagina-overzicht |
-| `app/insights-legacy.tsx`         | Legacy              | Oude inzichtenflow                | Pagina-overzicht |
-| `app/login.tsx`                   | Technisch/Hulproute | Login bridge-route                | Pagina-overzicht |
-| `app/modal.tsx`                   | Technisch/Hulproute | Generieke modalroute              | Pagina-overzicht |
-| `app/rekeningen-koppelen.tsx`     | Legacy redirect     | Bridge naar accounts link          | Pagina-overzicht |
-| `app/subscriptions.tsx`           | Actief              | Abonnementenbeheer                | Pagina-overzicht |
-| `app/transaction-detail.tsx`      | Actief              | Transactiecontext en correctie    | Pagina-overzicht |
-| `app/transactions.tsx`            | Technisch/Hulproute | Transacties route-entry           | Pagina-overzicht |
+- Totaal routes gevonden in `app/`: `32`
+- Hoofdschermen: Dashboard, Transacties, Budget, Insights, Instellingen
+- Utility/detail: Help Assistant, Transactie-detail, Analyse-detail, Import, Bankrekeningen, Subscriptions, Budgetgroepbeheer, Wachtwoord
+- Auth/system: login, register, reset, layouts, web HTML shell en bridge-routes
 
----
+## Service Coverage Matrix (samenvatting)
 
-## Service Coverage Matrix (alle non-test `services/` files)
-
-| Service                                        | Status     | Korte functionele samenvatting                | Sectie                      |
-| ---------------------------------------------- | ---------- | --------------------------------------------- | --------------------------- |
-| `services/analysis.ts`                         | kernlogica | Analyseopbouw voor detail en inzichten        | Transacties & categorisatie |
-| `services/api-base.ts`                         | helper     | API-basishulp voor requests                   | Infra & basislaag           |
-| `services/auth-email-validation.ts`            | helper     | E-mailvalidatie voor authflows                | Auth & sessie               |
-| `services/auth-error-messages.ts`              | helper     | Authfouten naar menselijke meldingen          | Auth & sessie               |
-| `services/auth-password-errors.ts`             | helper     | Structuur voor wachtwoordfouten               | Auth & sessie               |
-| `services/auth-password-validation.ts`         | helper     | Wachtwoordregels en validatie                 | Auth & sessie               |
-| `services/auth-routing.ts`                     | kernlogica | Routeregels tussen authstappen                | Auth & sessie               |
-| `services/auth-session.ts`                     | kernlogica | Sessiebeheer en authstatus                    | Auth & sessie               |
-| `services/auth-url.ts`                         | helper     | URL parsing voor authlinks                    | Auth & sessie               |
-| `services/bank-accounts.ts`                    | kernlogica | CRUD en status van bankrekeningen             | Bankrekeningen              |
-| `services/budget-coach.ts`                     | helper     | Coachende budgetsamenvattingen                | Budget & week/maandsturing  |
-| `services/budget-income-preview.ts`            | helper     | Inkomenspreview in budgetbeheer               | Budget & week/maandsturing  |
-| `services/budget-lock-utils.ts`                | helper     | Lock/allocatiehulplogica                      | Budget & week/maandsturing  |
-| `services/budget-plan-repository.ts`           | kernlogica | Opslag budgetinstellingen en overrides        | Budget & week/maandsturing  |
-| `services/budget-plan-surface.ts`              | kernlogica | User-facing budgetloader met guardrails       | Budget & week/maandsturing  |
-| `services/budget-plan.ts`                      | kernlogica | Hoofdberekening budgetplan                    | Budget & week/maandsturing  |
-| `services/budget-risk.ts`                      | kernlogica | Risicotones en labels op schema/let op        | Budget & week/maandsturing  |
-| `services/budget-week-attention.ts`            | helper     | Weekcategorie-attentieblokken                 | Budget & week/maandsturing  |
-| `services/budget-week-guardrails.ts`           | kernlogica | Mildere weekherverdeling op maandruimte       | Budget & week/maandsturing  |
-| `services/budget-week-utils.ts`                | kernlogica | Weekranges en basisverdeling                  | Budget & week/maandsturing  |
-| `services/categorization-repository.ts`        | kernlogica | Categorie write/read op transacties           | Transacties & categorisatie |
-| `services/categorization-status.ts`            | helper     | Background categorisatiestatus                | Transacties & categorisatie |
-| `services/categorization.ts`                   | kernlogica | Categorisatie-orchestratie                    | Transacties & categorisatie |
-| `services/category-budget-groups.ts`           | kernlogica | Categoriebudgetgroepen en overrides           | Budget & week/maandsturing  |
-| `services/category-display.ts`                 | helper     | Categoriepadlabels voor UI                    | Transacties & categorisatie |
-| `services/category-icon.ts`                    | helper     | Categorie-icoonresolutie                      | Transacties & categorisatie |
-| `services/current-user.ts`                     | kernlogica | Current user-id en identity                   | Infra & basislaag           |
-| `services/forecast-budget-plan-requests.ts`    | helper     | Budgetplanrequestdescriptoren voor forecast   | Forecast & risico           |
-| `services/forecast-derived-income-sources.ts`  | kernlogica | Afgeleide inkomstenbronnen                    | Forecast & risico           |
-| `services/forecast-expense-baseline.ts`        | kernlogica | Expense baseline voor forecast                | Forecast & risico           |
-| `services/forecast-expense-source-display.ts`  | helper     | UI-labels voor forecastbron                   | Forecast & risico           |
-| `services/forecast-expense-utils.ts`           | helper     | Hulpfuncties expensecalculaties               | Forecast & risico           |
-| `services/forecast-income-baseline.ts`         | kernlogica | Income baseline voor forecast                 | Forecast & risico           |
-| `services/forecast-income-utils.ts`            | helper     | Hulpfuncties inkomenscalculaties              | Forecast & risico           |
-| `services/forecast-month-math.ts`              | kernlogica | Kernrekenregels maandforecast                 | Forecast & risico           |
-| `services/forecast-reference.ts`               | helper     | Referentiedatumlogica forecast                | Forecast & risico           |
-| `services/forecast-refresh.ts`                 | kernlogica | Dirty/fresh en herberekeningstriggers         | Forecast & risico           |
-| `services/forecast-timeline-events.ts`         | kernlogica | Timeline event persistence/read               | Forecast & risico           |
-| `services/forecast-timeline.ts`                | kernlogica | Timeline event logica                         | Forecast & risico           |
-| `services/forecasting.ts`                      | kernlogica | End-to-end forecast opbouw en opslag          | Forecast & risico           |
-| `services/import/csv-parser.ts`                | kernlogica | CSV inleesparser                              | Import-pipeline             |
-| `services/import/import-flow-state.ts`         | kernlogica | Importflowstatus en state                     | Import-pipeline             |
-| `services/import/import-runner.ts`             | kernlogica | Uitvoering importpipeline                     | Import-pipeline             |
-| `services/import/import-source.ts`             | kernlogica | Importbronkeuze en routing                    | Import-pipeline             |
-| `services/import/import-web-drop.ts`           | helper     | Web drag/drop handling                        | Import-pipeline             |
-| `services/import/index.ts`                     | kernlogica | Import entry/orchestratie                     | Import-pipeline             |
-| `services/import/normalizer.ts`                | kernlogica | Normalisatie importrecords                    | Import-pipeline             |
-| `services/import/pdf-parser.ts`                | kernlogica | PDF parser                                    | Import-pipeline             |
-| `services/import/rabobank-pdf-ai-mapper.ts`    | helper     | Rabobank PDF veldmapping                      | Import-pipeline             |
-| `services/import/transaction-import-match.ts`  | kernlogica | Matching/dedupe imported transacties          | Import-pipeline             |
-| `services/import/transaction-import-parser.ts` | kernlogica | Parser naar transactiemodel                   | Import-pipeline             |
-| `services/import/types.ts`                     | helper     | Typedefinities import                         | Import-pipeline             |
-| `services/income-semantics.ts`                 | kernlogica | Inkomenssemantiek en compensaties             | Semantiek                   |
-| `services/insights-category-summary.ts`        | kernlogica | Categorie-overzichtmodel voor Insights        | Insights-selectoren         |
-| `services/insights-forecast-card.ts`           | kernlogica | Forecastkaartmodel                            | Insights-selectoren         |
-| `services/insights-highlight-history.ts`       | helper     | Historiek voor repeat suppression             | Insights-selectoren         |
-| `services/insights-highlights.ts`              | kernlogica | Selectie, confidence en dedupe insights       | Insights-selectoren         |
-| `services/insights-month-context.ts`           | kernlogica | Maandcontextstatus en summary                 | Insights-selectoren         |
-| `services/insights-remaining-month.ts`         | kernlogica | Rest-maand berekening                         | Insights-selectoren         |
-| `services/insights-upcoming-moments.ts`        | kernlogica | Komende momenten selectie                     | Insights-selectoren         |
-| `services/latest-known-balance.ts`             | kernlogica | Laatste bekende saldo bron                    | Insights-selectoren         |
-| `services/month-forecast-summary.ts`           | kernlogica | Maandforecast-summary loader                  | Forecast & risico           |
-| `services/openai-proxy.ts`                     | kernlogica | Proxylaag naar AI endpoint en AI-telemetrie   | Infra & basislaag           |
-| `services/admin-access.ts`                     | helper     | Adminrol en toegangsbepaling                  | Beheerlagen                 |
-| `services/ai-route-settings.ts`                | helper     | Laden en wijzigen van AI route-instellingen   | Beheerlagen                 |
-| `services/ai-review-inbox.ts`                  | helper     | Review-inbox ophalen en bijwerken             | Beheerlagen                 |
-| `services/ai-usage.ts`                         | helper     | AI-verbruiksoverzicht                         | Beheerlagen                 |
-| `services/own-account-transfer-heuristics.ts`  | helper     | Heuristieken interne overboekingen            | Bankrekeningen              |
-| `services/pattern-normalization.ts`            | helper     | Tekstnormalisatie voor matching               | Infra & basislaag           |
-| `services/rare-subscriptions.ts`               | helper     | Detectie minder frequente abonnementspatronen | Subscriptions & herhaling   |
-| `services/subscriptions.ts`                    | kernlogica | Abonnementprofielen en koppelingen            | Subscriptions & herhaling   |
-| `services/supabase.ts`                         | kernlogica | Database/auth client                          | Infra & basislaag           |
-| `services/transaction-ai-categorization.ts`    | kernlogica | AI hercategorisatie per transactie            | Transacties & categorisatie |
-| `services/transaction-data-cleanup.ts`         | helper     | Opschoning details/legacy velden              | Transacties & categorisatie |
-| `services/transaction-details.ts`              | helper     | Detailopbouw transacties                      | Transacties & categorisatie |
-| `services/transaction-month-options.ts`        | kernlogica | Maandselectie en periodeopties                | Transacties & categorisatie |
-| `services/transaction-rule-management.ts`      | kernlogica | Regelbeheer tegenpartij/categorie             | Transacties & categorisatie |
-
----
+- Totaal non-test servicefiles in `services/`: `128`
+- Belangrijkste servicefamilies:
+  - auth en sessie
+  - infra en API
+  - transacties en categorisatie
+  - bankrekeningen en scope
+  - budget
+  - forecast en risico
+  - insights
+  - Help Assistant en AI
+  - import
+  - abonnementen, explainability en formattering
 
 ## Compleetheidscheck
 
-- Totaal routes gevonden in `app/`: `27`
-- Totaal services gevonden in `services/` (inclusief tests): `125`
-- Totaal non-test servicefiles in matrix: `73`
-- Routes opgenomen in route matrix: `27`
-- Services opgenomen in service matrix: `73`
-- Resultaat: volledige dekking van alle huidige routes en alle non-test services in deze codebase.
+- Route-inventaris bijgewerkt inclusief `app/+html.tsx` en `app/transactions/[id].tsx`
+- Forecastsectie bijgewerkt met scope, money layers, event-normalisatie, reserves en read/adapters
+- Help Assistant-sectie bijgewerkt met planner, hydration, factual guardrails, use cases en admin-observability
+- Designdocs bewust buiten scope gelaten
 
 ## Gebruik van dit document
 
-- Voor mensen: snelle productcontext + betrouwbare featurekaart.
-- Voor AI: complete functionele mapping met statuslabels en domeingrenzen.
-- Voor pitch: secties `Budio in 1 minuut`, `Waarom Budio` en `Wat kan Budio nu?` zijn direct herbruikbaar.
+- Voor mensen: snelle productcontext en betrouwbare featurekaart
+- Voor AI: functionele subsystemen, producttaal en guardrails
+- Voor pitch: secties `Budio in 1 minuut`, `Waarom Budio` en `Wat kan Budio nu?`
+- Voor koers: lees samen met `docs/BUDIO_PRODUCTVISIE_ROADMAP.md`, `docs/BUDIO_PRODUCT_CONTRACT.md` en `docs/BUDIO_COCKPIT_MIGRATION_MAP.md`
