@@ -24,9 +24,84 @@ Gebruik deze skill bij alle design-, UI- en schermtaken in Budio.
   - `projects/12076228720239525233`
 - Titel:
   - `Budio Design System 2026`
+- Canonieke design system asset:
+  - `assets/ead01f9cb9454e8da9de7ec3d8ef18e6`
+- Canonieke design system naam:
+  - `Budio Core Fintech`
 - Centrale bron:
   - `docs/design/stitch-project-registry.md`
 - Vraag niet opnieuw naar een Stitch project code id als dit standaardproject volstaat.
+
+## Companion skills
+
+Gebruik deze atomic skills als standaard uitbreiding:
+
+- `.codex/skills/budio-enhance-prompt.md`
+- `.codex/skills/budio-stitch-loop.md`
+- `.codex/skills/budio-design-sync-check.md`
+- `.codex/skills/budio-rn-component-mapper.md`
+- `.codex/skills/budio-stitch-design-system.md`
+
+## Verplicht sync-rondje na grote designwijziging
+
+Volg altijd:
+
+1. update `docs/design/stitch-design-md.md`
+2. verifieer actief design system met:
+   - `npm run stitch:tool -- list_design_systems -d '{"projectId":"12076228720239525233"}'`
+   - `npm run stitch:tool -- get_project -d '{"name":"projects/12076228720239525233"}'`
+3. registreer ids/links in:
+   - `docs/design/stitch-project-registry.md`
+   - relevante `design_refs/proposals/.../README.md`
+
+## Stitch operatiegids
+
+Gebruik deze commando's als vaste standaard:
+
+- tools tonen:
+  - `npm run stitch:tools:list`
+- projecten tonen:
+  - `npm run stitch:tool -- list_projects`
+- screens tonen:
+  - `npm run stitch:tool -- list_screens -d '{"projectId":"12076228720239525233"}'`
+- nieuwe screen genereren:
+  - `npm run stitch:tool -- generate_screen_from_text -d '{"projectId":"12076228720239525233","deviceType":"MOBILE","prompt":"..."}'`
+- screen preview ophalen:
+  - `npm run stitch:tool -- get_screen_image -d '{"projectId":"12076228720239525233","screenId":"..."}'`
+- screen html ophalen:
+  - `npm run stitch:tool -- get_screen_code -d '{"projectId":"12076228720239525233","screenId":"..."}'`
+
+Praktische learnings:
+
+- `generate_screen_from_text` kan meerdere minuten duren. Niet opnieuw starten zolang een run nog bezig is.
+- `list_screens` kan direct na generatie achterlopen. Eerst opnieuw `list_screens` draaien voordat je concludeert dat de screen ontbreekt.
+- Als een variant niet zichtbaar wordt, genereer opnieuw met expliciete prompt:
+  - `Create a NEW mobile screen ... with title exactly "...". Do not edit existing screens.`
+- Houd varianten apart, zodat A/B/C nooit per ongeluk dezelfde screen overschrijven.
+
+Verplichte registratie na generatie:
+
+- leg per variant vast in `design_refs/proposals/{screen}/{variant}/README.md`:
+  - `project` id
+  - `screen` id
+  - directe `preview` link
+- update of controleer ook `docs/design/stitch-project-registry.md` bij projectwijzigingen.
+
+Single design-system guardrail:
+
+- Gebruik bij schermwerk geen `create_design_system`.
+- Gebruik bij schermwerk geen nieuwe asset-id.
+- Als preflight `get_project` afwijkt van canonieke asset:
+  - eerst `apply_design_system` op `assets/ead01f9cb9454e8da9de7ec3d8ef18e6`
+  - daarna pas varianten genereren.
+
+## Wat we geleerd hebben
+
+- `asset-stub-assets-...` is een UI-notatie; gebruik in tooling altijd `assets/{id}`.
+- Verifieer Stitch-resultaten altijd met zowel `list_design_systems` als `get_project`.
+- `update_design_system` kan een sessie bevestigen zonder dat de verkeerde velden echt zijn opgeslagen; controle achteraf is verplicht.
+- `apply_design_system` kan nieuwe screen-varianten maken zonder automatisch de project-level design-system instance te wisselen.
+- Houd prompts en zichtbare copy standaard Nederlands, anders gaat Stitch snel naar Engelstalige output.
 
 ## Source of truth
 
@@ -53,6 +128,13 @@ Gebruik deze skill bij alle design-, UI- en schermtaken in Budio.
 - Werk altijd mobile-first.
 - Laat shells het ritme bepalen, niet losse scherm-overrides.
 - Gebruik bestaande producttaal en introduceer geen nieuwe termen als bestaande termen volstaan.
+
+## Taal en copy
+
+- Standaard alle zichtbare UI-teksten in het Nederlands.
+- Alleen afwijken naar Engels of andere taal als de gebruiker dat expliciet vraagt.
+- Ook Stitch prompts, kaarttitels, labels, CTA's en helperteksten zijn standaard Nederlandstalig.
+- Vermijd technische of interne termen in zichtbare copy.
 
 ## Component regels
 
@@ -95,3 +177,4 @@ Gebruik deze skill bij alle design-, UI- en schermtaken in Budio.
 - Behandel `legacy` als bestaand gedrag dat niet verder uitgebreid moet worden.
 - Start bij UI-werk altijd met proposals, niet met productiecode.
 - Benoem expliciet welke bestanden je aanpast, welke risico's er zijn en hoe je handmatig verifieert.
+- Voor Stitch design-system beheer: gebruik ook `.codex/skills/budio-stitch-design-system.md`.

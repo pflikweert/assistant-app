@@ -21,6 +21,42 @@ Gebruik deze flow bij redesign van bestaande schermen in Budio.
 - Project-id bron:
   - `docs/design/stitch-project-registry.md`
 
+## Taalregel
+
+- Alle zichtbare UI-teksten in redesign-varianten zijn standaard Nederlands.
+- Alleen bij expliciete user-vraag mag een andere taal worden gebruikt.
+
+## Stitch quickstart voor redesign
+
+Gebruik dit vaste volgorde:
+
+1. preflight design-system check:
+   - `npm run stitch:tool -- get_project -d '{"name":"projects/12076228720239525233"}'`
+   - bevestig canonieke asset `assets/ead01f9cb9454e8da9de7ec3d8ef18e6` (`Budio Core Fintech`)
+2. als nodig eerst herstellen:
+   - `npm run stitch:tool -- apply_design_system -d '{"projectId":"12076228720239525233","assetId":"ead01f9cb9454e8da9de7ec3d8ef18e6","selectedScreenInstances":[...]}'
+3. `npm run stitch:tool -- list_screens -d '{"projectId":"12076228720239525233"}'`
+4. per variant prompt uit `design_refs/proposals/{screen}/v1|v2|v3/stitch-prompt.md` gebruiken met:
+   `npm run stitch:tool -- generate_screen_from_text -d '{"projectId":"12076228720239525233","deviceType":"MOBILE","prompt":"..."}'`
+5. opnieuw `list_screens` draaien en screen ids vastleggen
+6. previewlink per variant registreren in variant-README
+
+Fallback regels:
+
+- Als een variant na succesvolle generatie niet direct in `list_screens` staat:
+  - eerst nogmaals `list_screens` draaien
+  - daarna pas opnieuw genereren met expliciete tekst:
+    `Create a NEW mobile screen ... with title exactly "...". Do not edit existing screens.`
+- Nooit direct implementeren voordat A/B/C previews zichtbaar en gedocumenteerd zijn.
+- Bij design-system drift of foutieve Stitch-stijl: gebruik `.codex/skills/budio-stitch-design-system.md`.
+- Gebruik nooit `create_design_system` tijdens redesign-flow.
+
+## Wat we geleerd hebben
+
+- Na `generate_screen_from_text` altijd nogmaals `list_screens` doen, omdat indexering soms vertraagt.
+- Bij ontbrekende variant helpt een expliciete retry-prompt met vaste titel en `Do not edit existing screens`.
+- Leg per variant direct `project`, `screen` en `preview` vast in de variant-README om verlies van context te voorkomen.
+
 ## Stap 1 — Analyse
 
 - identificeer huidige componenten
