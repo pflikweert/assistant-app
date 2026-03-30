@@ -67,6 +67,65 @@ function normalizeSearch(value: string) {
     .trim();
 }
 
+type AmountSearchTerm = {
+  amount: number;
+  sign: "any" | "plus" | "minus";
+};
+
+function parseAmountSearchToken(rawToken: string): number | null {
+  let token = String(rawToken || "").trim().replace(/\s+/g, "");
+  if (!token) return null;
+
+  let sign = 1;
+  if (token.startsWith("+")) {
+    token = token.slice(1);
+  } else if (token.startsWith("-")) {
+    sign = -1;
+    token = token.slice(1);
+  }
+
+  token = token.replace(/[^\d.,]/g, "");
+  if (!token) return null;
+
+  if (token.includes(",") && token.includes(".")) {
+    token = token.replace(/\./g, "").replace(",", ".");
+  } else if (token.includes(",")) {
+    token = token.replace(",", ".");
+  }
+
+  const parsed = Number.parseFloat(token);
+  if (Number.isNaN(parsed)) return null;
+  return sign * parsed;
+}
+
+function extractAmountSearchTerms(query: string): AmountSearchTerm[] {
+  const matches = String(query || "").match(/[+\-]?\s*\d[\d.,]*/g) || [];
+  const terms: AmountSearchTerm[] = [];
+  const seen = new Set<string>();
+
+  for (const rawMatch of matches) {
+    const compact = rawMatch.replace(/\s+/g, "");
+    const parsed = parseAmountSearchToken(compact);
+    if (parsed == null) continue;
+
+    const sign: AmountSearchTerm["sign"] =
+      compact.startsWith("+") ? "plus" : compact.startsWith("-") ? "minus" : "any";
+    const amount = Math.abs(parsed);
+    const key = `${sign}:${amount.toFixed(4)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    terms.push({ amount, sign });
+  }
+
+  return terms;
+}
+
+function amountMatchesSearchTerm(amount: number, term: AmountSearchTerm) {
+  if (term.sign === "plus" && amount <= 0) return false;
+  if (term.sign === "minus" && amount >= 0) return false;
+  return Math.abs(Math.abs(amount) - term.amount) < 0.005;
+}
+
 function parseSaldo(value: unknown): number | null {
   if (value == null) return null;
   const normalized = String(value).replace(/\./g, "").replace(/,/g, ".").trim();
@@ -77,17 +136,20 @@ function parseSaldo(value: unknown): number | null {
 function formatSectionDateLabel(value: string) {
   const today = new Date().toISOString().slice(0, 10);
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const currentYear = new Date().getUTCFullYear();
 
   if (value === today) return "Vandaag";
   if (value === yesterday) return "Gisteren";
 
   const date = new Date(`${value}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime())) return value;
+  const includeYear = date.getUTCFullYear() !== currentYear;
 
   return date.toLocaleDateString("nl-NL", {
     weekday: "long",
     day: "numeric",
     month: "long",
+    ...(includeYear ? { year: "numeric" as const } : {}),
   });
 }
 
@@ -172,6 +234,34 @@ export default function TransactionsScreen({
   );
 
   const categoryById = React.useMemo(() => buildCategoryRecordMap(categories), [categories]);
+  const textSearchTokens = React.useMemo(
+    () =>
+      normalizeSearch(searchQuery)
+        .split(" ")
+        .filter((token) => /[a-z]/.test(token)),
+    [searchQuery],
+  );
+  const amountSearchTerms = React.useMemo(
+    () => extractAmountSearchTerms(searchQuery),
+    [searchQuery],
+  );
+  const searchCategoryIdCsv = React.useMemo(() => {
+    if (!textSearchTokens.length) return "";
+
+    const matchingIds = categories
+      .filter((category) => {
+        const parent = category.parent_id ? categoryById.get(category.parent_id) : null;
+        const categorySearchText = normalizeSearch(
+          [parent?.name, category.name, category.key.replace(/_/g, " ")]
+            .filter(Boolean)
+            .join(" "),
+        );
+        return textSearchTokens.every((token) => categorySearchText.includes(token));
+      })
+      .map((category) => category.id);
+
+    return matchingIds.join(",");
+  }, [categories, categoryById, textSearchTokens]);
   const activeMonthKey = React.useMemo(() => {
     if (monthStartFilter && /^\d{4}-\d{2}/.test(monthStartFilter)) {
       return monthStartFilter.slice(0, 7);
@@ -291,6 +381,7 @@ export default function TransactionsScreen({
         analysisMainGroup: analysisMainGroupFilter,
         analysisCategory: analysisCategoryFilter,
         categoryFilterIdCsv,
+        searchCategoryIdCsv,
         searchQuery,
         limit: PAGE_SIZE,
         offset: start,
@@ -340,7 +431,7 @@ export default function TransactionsScreen({
     } finally {
       setLoading(false);
     }
-  }, [analysisCategoryFilter, analysisMainGroupFilter, bankAccountIdFilter, categoryFilterIdCsv, categoryFilterIds.length, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchQuery]);
+  }, [analysisCategoryFilter, analysisMainGroupFilter, bankAccountIdFilter, categoryFilterIdCsv, categoryFilterIds.length, categoryKeyFilter, counterpartyFilter, monthEndExclusiveFilter, monthStartFilter, searchCategoryIdCsv, searchQuery]);
 
   React.useEffect(() => {
     setPage(0);
@@ -383,20 +474,19 @@ export default function TransactionsScreen({
     }));
   }, [transactions, categoryById]);
 
-  const searchTokens = React.useMemo(
-    () => normalizeSearch(searchQuery).split(" ").filter(Boolean),
-    [searchQuery],
-  );
   const filteredTransactions = React.useMemo(() => {
-    if (!searchTokens.length) return displayTransactions;
+    if (!textSearchTokens.length && !amountSearchTerms.length) return displayTransactions;
 
     return displayTransactions.filter((tx) => {
       const haystack = normalizeSearch(
         [tx.subscriptionProfileName, tx.counterparty, tx.description, tx.omschrijving1, tx.categoryLabel].filter(Boolean).join(" "),
       );
-      return searchTokens.every((token) => haystack.includes(token));
+      const textMatches = textSearchTokens.every((token) => haystack.includes(token));
+      if (!textMatches) return false;
+
+      return amountSearchTerms.every((term) => amountMatchesSearchTerm(tx.amount, term));
     });
-  }, [displayTransactions, searchTokens]);
+  }, [amountSearchTerms, displayTransactions, textSearchTokens]);
 
   const sections = React.useMemo<TxSection[]>(() => {
     const grouped: Record<string, TxRowItem[]> = {};

@@ -16,6 +16,7 @@ export type TransactionsDateWindowParams = {
   analysisMainGroup?: "income" | "expense";
   analysisCategory?: string;
   categoryFilterIdCsv?: string;
+  searchCategoryIdCsv?: string;
   searchQuery?: string;
   limit: number;
   offset?: number;
@@ -39,6 +40,59 @@ function normalizeSearch(value: string) {
     .trim();
 }
 
+type AmountSearchTerm = {
+  amount: number;
+  sign: "any" | "plus" | "minus";
+};
+
+function parseAmountSearchToken(rawToken: string): number | null {
+  let token = String(rawToken || "").trim().replace(/\s+/g, "");
+  if (!token) return null;
+
+  let sign = 1;
+  if (token.startsWith("+")) {
+    token = token.slice(1);
+  } else if (token.startsWith("-")) {
+    sign = -1;
+    token = token.slice(1);
+  }
+
+  token = token.replace(/[^\d.,]/g, "");
+  if (!token) return null;
+
+  if (token.includes(",") && token.includes(".")) {
+    token = token.replace(/\./g, "").replace(",", ".");
+  } else if (token.includes(",")) {
+    token = token.replace(",", ".");
+  }
+
+  const parsed = Number.parseFloat(token);
+  if (Number.isNaN(parsed)) return null;
+  return sign * parsed;
+}
+
+function extractAmountSearchTerms(query: string): AmountSearchTerm[] {
+  const matches = String(query || "").match(/[+\-]?\s*\d[\d.,]*/g) || [];
+  const terms: AmountSearchTerm[] = [];
+  const seen = new Set<string>();
+
+  for (const rawMatch of matches) {
+    const compact = rawMatch.replace(/\s+/g, "");
+    const parsed = parseAmountSearchToken(compact);
+    if (parsed == null) continue;
+
+    const sign: AmountSearchTerm["sign"] =
+      compact.startsWith("+") ? "plus" : compact.startsWith("-") ? "minus" : "any";
+    const amount = Math.abs(parsed);
+    const key = `${sign}:${amount.toFixed(4)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    terms.push({ amount, sign });
+  }
+
+  return terms;
+}
+
 export async function fetchTransactionsDateWindow(
   params: TransactionsDateWindowParams,
 ): Promise<TransactionsDateWindowResult> {
@@ -57,6 +111,7 @@ export async function fetchTransactionsDateWindow(
     analysisMainGroup: params.analysisMainGroup || null,
     analysisCategory: params.analysisCategory || null,
     categoryFilterIdCsv: params.categoryFilterIdCsv || null,
+    searchCategoryIdCsv: params.searchCategoryIdCsv || null,
     searchQuery,
     limit,
     offset,
@@ -89,13 +144,47 @@ export async function fetchTransactionsDateWindow(
         );
       }
 
-      const searchTokens = normalizeSearch(searchQuery).split(" ").filter(Boolean);
-      if (searchTokens.length) {
-        const tokenFilters = searchTokens.map(
+      const textSearchTokens = normalizeSearch(searchQuery)
+        .split(" ")
+        .filter((token) => /[a-z]/.test(token));
+      const amountSearchTerms = extractAmountSearchTerms(searchQuery);
+      const searchClauses: string[] = [];
+
+      if (textSearchTokens.length) {
+        const tokenFilters = textSearchTokens.map(
           (token) => `or(details.ilike.%${token}%,counterparty.ilike.%${token}%)`,
         );
-        const searchFilter =
+        const textSearchClause =
           tokenFilters.length === 1 ? tokenFilters[0] : `and(${tokenFilters.join(",")})`;
+        searchClauses.push(textSearchClause);
+      }
+
+      if (params.searchCategoryIdCsv) {
+        searchClauses.push(
+          `or(category_id_user.in.(${params.searchCategoryIdCsv}),category_id_auto.in.(${params.searchCategoryIdCsv}))`,
+        );
+      }
+
+      if (amountSearchTerms.length) {
+        const amountFilters = new Set<string>();
+        for (const term of amountSearchTerms) {
+          if (term.sign === "plus") {
+            amountFilters.add(`amount.eq.${term.amount}`);
+          } else if (term.sign === "minus") {
+            amountFilters.add(`amount.eq.-${term.amount}`);
+          } else {
+            amountFilters.add(`amount.eq.${term.amount}`);
+            amountFilters.add(`amount.eq.-${term.amount}`);
+          }
+        }
+        if (amountFilters.size) {
+          searchClauses.push(`or(${Array.from(amountFilters).join(",")})`);
+        }
+      }
+
+      if (searchClauses.length) {
+        const searchFilter =
+          searchClauses.length === 1 ? searchClauses[0] : `or(${searchClauses.join(",")})`;
         query = query.or(searchFilter);
       }
 
@@ -130,4 +219,3 @@ export async function fetchTransactionsDateWindow(
     cacheHit: result.cacheHit,
   };
 }
-

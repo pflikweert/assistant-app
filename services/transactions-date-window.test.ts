@@ -65,6 +65,28 @@ describe("fetchTransactionsDateWindow", () => {
     expect(result.rows).toHaveLength(1);
   });
 
+  it("supports searching by category ids and signed amounts", async () => {
+    rangeMock.mockResolvedValueOnce({
+      data: [{ id: "tx-amount", date: "2026-03-20" }],
+      error: null,
+      count: 1,
+    });
+
+    await fetchTransactionsDateWindow({
+      select: "id,date,amount",
+      fromDateInclusive: "2026-03-01",
+      toDateExclusive: "2026-04-01",
+      searchQuery: "+12,50 huur",
+      searchCategoryIdCsv: "cat-1,cat-2",
+      limit: 20,
+      offset: 0,
+    });
+
+    const lastOrCall = orMock.mock.calls.at(-1)?.[0] as string;
+    expect(lastOrCall).toContain("category_id_user.in.(cat-1,cat-2)");
+    expect(lastOrCall).toContain("amount.eq.12.5");
+  });
+
   it("collapses identical requests with short TTL cache", async () => {
     rangeMock.mockResolvedValue({
       data: [{ id: "tx-2", date: "2026-03-25" }],
