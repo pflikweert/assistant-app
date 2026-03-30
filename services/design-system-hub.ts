@@ -645,6 +645,19 @@ export const designSystemHubComponentFamilies: DesignSystemHubComponentFamily[] 
     items: ["DashboardBalanceSummary", "DashboardBudgetOverviewCard", "DashboardAssistantCallout"],
   },
   {
+    title: "Budget setup selector",
+    status: "in gebruik",
+    source: "components/budget/budget-setup-strategy-selector.tsx, services/budget-setup-strategy-copy.ts",
+    usedIn: "Slim budget instellen en budgetmodus-beheer",
+    note: "Eén gedeelde strategie-selector voor slimme setup en beheer, met korte cards op mobiel en slider fallback bij krappe breedte.",
+    items: [
+      "BudgetSetupStrategySelector",
+      "BUDGET_SETUP_STRATEGY_COPY",
+      "BUDGET_SETUP_SMART_STRATEGIES",
+      "BUDGET_SETUP_ALL_STRATEGIES",
+    ],
+  },
+  {
     title: "Budget cockpitblokken",
     status: "in gebruik",
     source: "components/budget-month-summary-card.tsx, budget-week-rhythm-card.tsx, budget-pressure-list.tsx",
@@ -702,11 +715,17 @@ export const designSystemHubComponentFamilies: DesignSystemHubComponentFamily[] 
   },
   {
     title: "Budget setup flow",
-    status: "legacy",
-    source: "app/(tabs)/budget.tsx",
-    usedIn: "Beheersegment binnen budgettab",
-    note: "Beheer is aanwezig maar nog grotendeels inline; centralisatie naar gedeelde beheercomponenten is kandidaat.",
-    items: ["Budget manage segment (inline)", "FinanceBottomSheetShell", "FinanceSettingsGroup"],
+    status: "in gebruik",
+    source: "app/budget/setup/index.tsx, app/budget/setup/proposal.tsx, app/budget/setup/review.tsx",
+    usedIn: "Slim budget instellen binnen Budget",
+    note: "Begeleide setupflow met strategie-keuze, voorstel, betekenislaag en review vóór toepassen.",
+    items: [
+      "FinanceStepIndicator",
+      "BudgetSetupStrategySelector",
+      "FinanceBottomSheetShell",
+      "FinanceSettingsGroup",
+      "FinanceInlineCallout",
+    ],
   },
   {
     title: "Inline route-UI kandidaten",
@@ -963,7 +982,7 @@ export const designSystemHubFlowCoverage: DesignSystemHubFlowCoverage[] = [
   },
   {
     area: "Budget beheer",
-    routes: ["/budget (segment manage/manage_new)"],
+    routes: ["/budget (segment manage/manage_new)", "/budget/setup/*"],
     shell: "FinanceHeroShell + lokale beheerblokken + FinanceBottomSheetShell",
     componentFocus: [
       "FinanceSettingsGroup",
@@ -972,6 +991,8 @@ export const designSystemHubFlowCoverage: DesignSystemHubFlowCoverage[] = [
       "FinanceScopeSwitch",
       "BudgetMonthSummaryCard",
       "BudgetWeekRhythmCard",
+      "BudgetSetupStrategySelector",
+      "FinanceStepIndicator",
     ],
     tokenFocus: [
       "FinTypography budget-title styles",
@@ -982,10 +1003,15 @@ export const designSystemHubFlowCoverage: DesignSystemHubFlowCoverage[] = [
     patternFocus: [
       "Dag/week/maand/beheer scheiden",
       "Setupflow met start/analyse/voorstel/refine",
+      "Slimme setup met voorstelgestuurde strategie-selector",
       "Block-level edit sheets i.p.v. losse schermexplosie",
     ],
     sourceFocus: [
       "app/(tabs)/budget.tsx",
+      "app/budget/setup/index.tsx",
+      "app/budget/setup/proposal.tsx",
+      "app/budget/setup/review.tsx",
+      "components/budget/budget-setup-strategy-selector.tsx",
       "docs/design/screen-inventory.md",
       "docs/UI_PATTERNS.md",
     ],

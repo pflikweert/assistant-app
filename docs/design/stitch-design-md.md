@@ -79,20 +79,23 @@ Voor de nieuwe begeleide budget-instelflow geldt:
 - AI komt pas ná het voorstel als uitleg- en verfijnlaag, niet als chat-first startpunt
 - lokale bewerkingen blijven secundair en gebruiken bestaande sheets of compacte detailflows
 - de flow gebruikt alleen bestaande Budio-taal en existing design tokens; geen nieuwe visuele of producttaal
+- de strategie-selector toont op normale mobielbreedte drie kaarten naast elkaar en valt pas op echt smalle schermen terug naar een horizontale slider
+- de budgetbeheer-modus gebruikt dezelfde vier productkeuzes als de slimme flow, met dezelfde centrale copy
 
 ### Instapscherm
 
-- doel: gebruiker snel laten kiezen tussen `Slim met Budio` en `Handmatig`
+- doel: gebruiker snel laten kiezen tussen de slimme strategieën voor deze maand
 - hoofdsecties:
   - korte hero met uitleg dat Budio eerst een voorstel maakt
-  - primaire CTA `Slim met Budio`
-  - secundaire CTA `Handmatig`
-  - compacte trustregel met wat Budio meeneemt in de analyse
+  - strategiekaart-selector met `Normaal`, `Balans` en `Bespaarmodus`
+  - `Balans` is standaard actief
+  - compacte trustregel met wat Budio meeneemt in de berekening
+  - op smalle schermen schakelt de selector door naar een horizontale slider, zodat kaarten niet te smal worden
 - states:
   - loading: knop disabled en korte voorbereidingstekst
-  - empty: geen budgetdata beschikbaar, maar wel route naar `Handmatig`
+  - empty: geen budgetdata beschikbaar, maar wel route naar de volgende stap van de slimme flow
   - partial: voorstel kan al starten met beperkte brondata
-  - error: hersteltekst en terugval naar `Handmatig`
+  - error: hersteltekst en terugval naar de slimme instap
   - success: flow start en analysefase opent
 
 ### Analysefase
@@ -192,14 +195,48 @@ Vanaf fase-2 herziening geldt voor het voorstel- en reviewmoment:
 
 ### Strategie-semantiek
 
-- `Standaard`: volgt grotendeels bestaand patroon, met zo weinig mogelijk sturing
+- `Normaal` (`standaard`): volgt grotendeels bestaand patroon, met zo weinig mogelijk sturing
 - `Balans`: licht corrigeren en waar haalbaar ruimte voor sparen houden
 - `Bespaarmodus`: strakke verdeling met prioriteit op veilig blijven en bufferbescherming
 - `Handmatig`: gebruiker kiest volledig zelf
 
+### Strategiekaarten copy
+
+Volledige copy die in de strategie-selector en andere budget-flows herbruikbaar blijft:
+
+- `Normaal`
+  - `Voor een gewone maand.`
+  - `Een rustige verdeling die past bij je normale uitgaven.`
+  - korte kaartcopy: `Gewone maand, rustige verdeling`
+
+- `Balans`
+  - `Voor meer grip en wat extra zekerheid.`
+  - `We beschermen iets meer voordat we je budget verdelen.`
+  - korte kaartcopy: `Meer grip en extra bescherming`
+
+- `Bespaarmodus`
+  - `Voor als je deze maand scherper moet sturen.`
+  - `We zetten je budgetten strakker zodat je meer overhoudt.`
+  - korte kaartcopy: `Strakker budget, meer overhouden`
+
+- `Handmatig`
+  - `Voor als je liever zelf kiest.`
+  - `Je stelt alles zelf in, met volledige controle.`
+  - korte kaartcopy: `Zelf alles instellen`
+
+Voor de slimme instap geldt:
+
+- de strategiekaarten staan compact naast elkaar op mobiel
+- onder een minimale schermbreedte verandert de selector in een horizontale slider
+- er is geen aparte `ACTIEF`-badge in de kaartkop; selectie zie je aan de geselecteerde state
+- `Handmatig` blijft buiten de slimme instap en de slimme modal
+- de selector is een gedeelde component en staat ook in de admin design-system componentcatalogus
+
 ### Shell-keuze
 
 - instap, analyse, voorstel en verfijnfase zijn utility/subschermen
+- utility-schermen met hero gebruiken standaard een full-width hero-opbouw onder de enkele topbar; de hero wordt niet opnieuw gecentreerd met een extra max-width container
+- de hero start direct onder de utility-topbar met shell-offset gelijk aan de topbarhoogte; geen extra ruimte tussen topbar en hero-container
 - block-level bewerking gebruikt compacte sheets of detailflows, geen nieuwe hoofdscherm-shell
 - de Budget-tab blijft zichtbaar als start- en terugkeerpunt, niet als een nieuw primair productmoment
 
@@ -207,6 +244,7 @@ Vanaf fase-2 herziening geldt voor het voorstel- en reviewmoment:
 
 - `Budget tab - voorstel eerst` (`a74406b7485749d089cf9eb18af0c9c4`)
 - `Budget beheer - keuze tussen slim en handmatig` (`1c496e99c3b743b1b394c68c18be11e0`)
+- `Budget setup strategiekaarten` (`09e0e82498c0449abf9bdeb3a377aea3`)
 - `Slim budget instellen - voorsteloverzicht` (`2efd1341088b447e9e7327790a071203`)
 - `Slim instellen - onderdelen bewerken` (`d5baa7e078204f2d8a158177713ccade`)
 - `Budget toegepast - review` (`df0b05118c3b49faaa58b324a7b6819e`)

@@ -3,10 +3,16 @@ import { FinanceButton } from "@/components/ui/finance-button";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
 import { FinanceInlineCallout } from "@/components/ui/finance-inline-callout";
 import { FinanceSettingsGroup } from "@/components/ui/finance-settings-group";
+import { FinanceStepIndicator } from "@/components/ui/finance-step-indicator";
 import { FinanceText } from "@/components/ui/finance-text";
 import { FinanceUtilityShell } from "@/components/ui/finance-utility-shell";
 import { FinColors, FinRadius, FinSpacing, FinTypography } from "@/constants/theme";
 import { buildBudgetSetupProposal } from "@/services/budget-setup-orchestrator";
+import {
+  BUDGET_SETUP_SMART_STRATEGIES,
+  getBudgetSetupStrategyDescription,
+  getBudgetSetupStrategyLabel,
+} from "@/services/budget-setup-strategy-copy";
 import type {
   BudgetSetupProposal,
   BudgetSetupStrategy,
@@ -16,21 +22,28 @@ import { setBudgetSetupReviewContext } from "@/services/budget-setup-review-cont
 import { getCurrentMonthKey, getMonthOptionByKey } from "@/services/transaction-month-options";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  InteractionManager,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 const fmt = new Intl.NumberFormat("nl-NL", {
   style: "currency",
   currency: "EUR",
 });
 
-const STRATEGY_OPTIONS: { key: BudgetSetupStrategy; label: string }[] = [
-  { key: "standaard", label: "Standaard" },
-  { key: "balans", label: "Balans" },
-  { key: "bespaarmodus", label: "Bespaarmodus" },
-  { key: "handmatig", label: "Handmatig" },
-];
-
 const VARIABLE_ORDER: VariableCategoryKey[] = ["groceries", "fuel", "smoking", "other"];
+const BUDGET_SETUP_STEPS = [
+  { key: "choice", label: "Keuze" },
+  { key: "proposal", label: "Voorstel" },
+  { key: "review", label: "Toepassen" },
+] as const;
 
 type ScreenState =
   | "loading"
@@ -150,7 +163,7 @@ function buildEffectiveRows(input: {
 
 export default function BudgetSetupProposalScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ month?: string; mode?: string; stage?: string }>();
+  const params = useLocalSearchParams<{ month?: string; mode?: string }>();
   const monthKey = resolveMonthKey(params.month);
   const monthOption = getMonthOptionByKey(monthKey);
   const monthStartIso =
@@ -311,6 +324,15 @@ export default function BudgetSetupProposalScreen() {
     });
   }, [adjustmentCount, applyPayloadProposal, monthKey, monthStartIso, router]);
 
+  const runDeferredProposalReload = React.useCallback(
+    (strategy: BudgetSetupStrategy) => {
+      InteractionManager.runAfterInteractions(() => {
+        void loadProposal(strategy);
+      });
+    },
+    [loadProposal],
+  );
+
   const otherShare = React.useMemo(() => {
     if (variableDraftTotal <= 0) return 0;
     const otherAmount = effectiveVariableRows.find((row) => row.categoryKey === "other")?.amount || 0;
@@ -319,23 +341,29 @@ export default function BudgetSetupProposalScreen() {
 
   return (
     <FinanceUtilityShell
-      title="Slim budget instellen"
+      title="Je maand klaarzetten"
       subtitle={monthOption?.label || "Deze maand"}
       onBack={() => router.push({ pathname: "/budget/setup", params: { month: monthKey } })}
       hero={{
-        eyebrow: "Zo zetten we je maand op",
-        title: "Rustig stap voor stap",
-        subtitle: "Eerst inkomen en bescherming, daarna je verdeling en review.",
+        eyebrow: "Maandplan",
+        title: "Budio zet je maand alvast rustig klaar",
+        subtitle: "We rekenen mee, beschermen eerst wat vast staat en laten daarna zien wat er overblijft.",
       }}
     >
       <View style={styles.stack}>
+        <FinanceStepIndicator
+          steps={[...BUDGET_SETUP_STEPS]}
+          currentStepKey="proposal"
+          completedStepKeys={["choice"]}
+          style={styles.stepIndicator}
+        />
         {state === "loading" ? (
-          <FinanceSettingsGroup title="Voorstel wordt opgebouwd">
+          <FinanceSettingsGroup title="We zetten je maand klaar">
             <View style={styles.groupContent}>
               <View style={styles.loadingRow}>
                 <ActivityIndicator color={FinColors.textSecondary} />
                 <FinanceText variant="body-sm" tone="secondary">
-                  Budio kijkt naar inkomsten, vaste lasten, reserves en recente maandtrend.
+                  Budio kijkt naar je inkomen, vaste lasten, bescherming en ruimte voor deze maand.
                 </FinanceText>
               </View>
             </View>
@@ -343,16 +371,16 @@ export default function BudgetSetupProposalScreen() {
         ) : null}
 
         {state === "error" ? (
-          <FinanceSettingsGroup title="Voorstel nu niet beschikbaar">
+          <FinanceSettingsGroup title="Je maandplan lukt nu even niet">
             <View style={styles.groupContent}>
               <FinanceInlineCallout
                 iconName="error-outline"
-                text={errorMessage || "Er ging iets mis bij het opbouwen van je voorstel."}
+                text={errorMessage || "Het klaarzetten van je maand is even mislukt."}
               />
               <FinanceButton
-                label="Opnieuw proberen"
+                label="Probeer opnieuw"
                 variant="secondary"
-                onPress={() => void loadProposal(selectedMode)}
+                onPress={() => runDeferredProposalReload(selectedMode)}
                 fullWidth
               />
             </View>
@@ -360,18 +388,18 @@ export default function BudgetSetupProposalScreen() {
         ) : null}
 
         {state === "empty" ? (
-          <FinanceSettingsGroup title="Nog geen bruikbaar voorstel">
+          <FinanceSettingsGroup title="We missen nog wat om dit goed te doen">
             <View style={styles.groupContent}>
               <FinanceText variant="body-sm" tone="secondary">
-                Er is nu te weinig context om veilig te verdelen. Je kunt handmatig doorgaan en later opnieuw proberen.
+                Er is nu te weinig bekend om je maand rustig klaar te zetten. Je kunt de aanpak opnieuw kiezen.
               </FinanceText>
               <FinanceButton
-                label="Ga naar handmatig"
+                label="Terug naar aanpak"
                 variant="secondary"
                 onPress={() =>
                   router.push({
                     pathname: "/budget/setup",
-                    params: { month: monthKey, stage: "refine" },
+                    params: { month: monthKey },
                   })
                 }
                 fullWidth
@@ -382,11 +410,11 @@ export default function BudgetSetupProposalScreen() {
 
         {proposal ? (
           <>
-            <FinanceSettingsGroup title="Wat telt mee als inkomen">
+            <FinanceSettingsGroup title="Hier rekenen we deze maand mee">
               <View style={styles.groupContent}>
                 <FinanceInlineCallout
                   iconName="insights"
-                  text={`Dit voorstel rekent met ${fmt.format(proposal.expectedIncomeTotal)} aan inkomen voor deze maand.`}
+                  text={`Voor deze maand rekenen we met ${fmt.format(proposal.expectedIncomeTotal)} aan inkomen.`}
                 />
                 <View style={styles.summaryList}>
                   <View style={styles.summaryRow}>
@@ -405,7 +433,7 @@ export default function BudgetSetupProposalScreen() {
                   </View>
                 </View>
                 <FinanceButton
-                  label="Slim aanpassen"
+                  label="Pas dit aan"
                   variant="secondary"
                   onPress={() => setShowIncomeSheet(true)}
                   fullWidth
@@ -413,7 +441,7 @@ export default function BudgetSetupProposalScreen() {
               </View>
             </FinanceSettingsGroup>
 
-            <FinanceSettingsGroup title="Wat beschermen we eerst">
+            <FinanceSettingsGroup title="Dit beschermen we eerst">
               <View style={styles.groupContent}>
                 <View style={styles.summaryList}>
                   <View style={styles.summaryRow}>
@@ -431,10 +459,10 @@ export default function BudgetSetupProposalScreen() {
                 </View>
                 <FinanceInlineCallout
                   iconName="shield"
-                  text={`Bescherming staat nu op ${reserveProtectionLabel(proposal.safetyImpact.reserveProtectionLevel).toLowerCase()}.`}
+                  text={`Zo blijft je bescherming deze maand ${reserveProtectionLabel(proposal.safetyImpact.reserveProtectionLevel).toLowerCase()}.`}
                 />
                 <FinanceButton
-                  label="Bescherming aanpassen"
+                  label="Pas bescherming aan"
                   variant="secondary"
                   onPress={() => setShowFixedSheet(true)}
                   fullWidth
@@ -442,38 +470,41 @@ export default function BudgetSetupProposalScreen() {
               </View>
             </FinanceSettingsGroup>
 
-            <FinanceSettingsGroup title="Wat blijft over voor deze maand">
+            <FinanceSettingsGroup title="Dit blijft er voor je maand over">
               <View style={styles.groupContent}>
-                <View style={styles.nextStepCard}>
-                  <Text style={styles.nextStepTitle}>{fmt.format(variableDraftTotal)} vrij te verdelen</Text>
+                <View style={styles.heroDecisionCard}>
+                  <Text style={styles.decisionEyebrow}>{monthFeelLabel(proposal.planMeaning.monthFeel)}</Text>
+                  <Text style={styles.heroDecisionAmount}>{fmt.format(variableDraftTotal)}</Text>
+                  <Text style={styles.nextStepTitle}>blijft er over om vrij te verdelen</Text>
                   <Text style={styles.nextStepWhy}>{proposal.nextBestStep.why}</Text>
-                  <Text style={styles.nextStepConstraint}>
-                    {monthFeelLabel(proposal.planMeaning.monthFeel)} · {proposal.nextBestStep.title}
+                </View>
+                <View style={styles.strategyBlock}>
+                  <Text style={styles.strategyLabel}>Gekozen aanpak</Text>
+                  <Text style={styles.strategyValue}>{getBudgetSetupStrategyLabel(selectedMode)}</Text>
+                  <Text style={styles.strategyDescription}>
+                    {getBudgetSetupStrategyDescription(selectedMode)}
+                  </Text>
+                  <Text style={styles.strategyReason}>
+                    Waarom dit past: {proposal.planMeaning.primaryReason}
                   </Text>
                 </View>
                 <View style={styles.summaryList}>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Aanpak</Text>
-                    <Text style={styles.summaryValue}>
-                      {STRATEGY_OPTIONS.find((option) => option.key === selectedMode)?.label || "Standaard"}
-                    </Text>
-                  </View>
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Aandachtspunt</Text>
                     <Text style={styles.summaryValue}>{proposal.safetyImpact.biggestAttentionPoint}</Text>
                   </View>
                 </View>
                 <FinanceButton
-                  label="Slim aanpassen"
+                  label="Kies een andere aanpak"
                   variant="secondary"
                   onPress={() => setShowStrategySheet(true)}
                   fullWidth
                 />
-                <FinanceButton label="Ga naar review" onPress={handleContinueToReview} fullWidth />
+                <FinanceButton label="Bekijk mijn maandplan" onPress={handleContinueToReview} fullWidth />
               </View>
             </FinanceSettingsGroup>
 
-            <FinanceSettingsGroup title="Welke budgetten zetten we klaar">
+            <FinanceSettingsGroup title="Deze budgetten zetten we alvast klaar">
               <View style={styles.groupContent}>
                 <View style={styles.categoryList}>
                   {visibleDistributionRows.map((row) => (
@@ -495,22 +526,22 @@ export default function BudgetSetupProposalScreen() {
                 {smokingSupportStrong ? null : (
                   <FinanceInlineCallout
                     iconName="info-outline"
-                    text="Roken tonen we alleen als transactiedata daar sterk genoeg voor is."
+                    text="We laten roken alleen los zien als je transacties daar duidelijk genoeg op wijzen."
                   />
                 )}
                 {otherShare >= 0.35 ? (
                   <FinanceInlineCallout
                     iconName="insights"
-                    text="Overige ruimte is nu relatief groot. Verdeel dit alleen verder als dat je maandbeslissing helpt."
+                    text="Een groter deel staat nu nog als overige ruimte. Alleen verder verdelen als dat je helpt kiezen."
                   />
                 ) : null}
                 {adjustmentCount > 0 ? (
                   <FinanceText variant="caption" tone="secondary">
-                    Concept aangepast ({adjustmentCount} wijziging{adjustmentCount === 1 ? "" : "en"}).
+                    Je hebt al {adjustmentCount} aanpassing{adjustmentCount === 1 ? "" : "en"} gedaan.
                   </FinanceText>
                 ) : null}
                 <FinanceButton
-                  label="Verdeling aanpassen"
+                  label="Pas verdeling aan"
                   variant="secondary"
                   onPress={() => setShowDistributionSheet(true)}
                   fullWidth
@@ -523,25 +554,30 @@ export default function BudgetSetupProposalScreen() {
 
       <FinanceBottomSheetShell
         visible={showStrategySheet}
-        title="Slim aanpassen"
-        subtitle="Kies de aanpak die nu het beste past."
+        title="Kies de aanpak voor deze maand"
+        subtitle="Balans staat standaard aan. Kies wat het best past bij deze maand."
         onClose={() => setShowStrategySheet(false)}
       >
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
-          {STRATEGY_OPTIONS.map((option) => {
-            const selected = selectedMode === option.key;
+          {BUDGET_SETUP_SMART_STRATEGIES.map((strategy) => {
+            const selected = selectedMode === strategy;
             return (
               <Pressable
-                key={option.key}
+                key={strategy}
                 style={[styles.sheetRow, selected && styles.sheetRowActive]}
                 onPress={() => {
                   setShowStrategySheet(false);
-                  setSelectedMode(option.key);
-                  void loadProposal(option.key);
+                  setSelectedMode(strategy);
+                  runDeferredProposalReload(strategy);
                 }}
               >
-                <Text style={styles.sheetLabel}>{option.label}</Text>
-                <Text style={styles.sheetValue}>{selected ? "Actief" : "Kies"}</Text>
+                <View style={styles.sheetRowText}>
+                  <Text style={styles.sheetLabel}>{getBudgetSetupStrategyLabel(strategy)}</Text>
+                  <Text style={styles.sheetDescription}>
+                    {getBudgetSetupStrategyDescription(strategy)}
+                  </Text>
+                </View>
+                <Text style={styles.sheetValue}>{selected ? "Gekozen" : "Kies"}</Text>
               </Pressable>
             );
           })}
@@ -550,8 +586,8 @@ export default function BudgetSetupProposalScreen() {
 
       <FinanceBottomSheetShell
         visible={showIncomeSheet}
-        title="Inkomen aanpassen"
-        subtitle="Kies welke inkomsten meetellen in dit voorstel."
+        title="Pas je inkomen aan"
+        subtitle="Kies wat we voor deze maand meenemen."
         onClose={() => setShowIncomeSheet(false)}
       >
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
@@ -583,8 +619,8 @@ export default function BudgetSetupProposalScreen() {
 
       <FinanceBottomSheetShell
         visible={showFixedSheet}
-        title="Bescherming aanpassen"
-        subtitle="Controleer beschermde bedragen en reserve."
+        title="Pas je bescherming aan"
+        subtitle="Controleer wat eerst apart blijft staan."
         onClose={() => setShowFixedSheet(false)}
       >
         <View style={styles.sheetContent}>
@@ -612,8 +648,8 @@ export default function BudgetSetupProposalScreen() {
 
       <FinanceBottomSheetShell
         visible={showDistributionSheet}
-        title="Verdeling aanpassen"
-        subtitle="Pas je verdeling aan waar dat helpt."
+        title="Pas je verdeling aan"
+        subtitle="Werk alleen bij wat echt helpt voor deze maand."
         onClose={() => setShowDistributionSheet(false)}
       >
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
@@ -643,6 +679,9 @@ const styles = StyleSheet.create({
   stack: {
     gap: FinSpacing.m,
   },
+  stepIndicator: {
+    paddingHorizontal: FinSpacing.s,
+  },
   groupContent: {
     padding: FinSpacing.m,
     gap: FinSpacing.s,
@@ -656,6 +695,33 @@ const styles = StyleSheet.create({
     borderRadius: FinRadius.lg,
     backgroundColor: FinColors.bgInput,
     overflow: "hidden",
+  },
+  strategyBlock: {
+    borderRadius: FinRadius.lg,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    backgroundColor: FinColors.bgCard,
+    padding: FinSpacing.s,
+    gap: FinSpacing.x2,
+  },
+  strategyLabel: {
+    ...FinTypography.caption,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  strategyValue: {
+    ...FinTypography["body-lg"],
+    color: FinColors.textPrimary,
+    fontWeight: "800",
+  },
+  strategyDescription: {
+    ...FinTypography.caption,
+    color: FinColors.textSecondary,
+  },
+  strategyReason: {
+    ...FinTypography.caption,
+    color: FinColors.textPrimary,
+    fontWeight: "600",
   },
   summaryRow: {
     flexDirection: "row",
@@ -697,6 +763,24 @@ const styles = StyleSheet.create({
   nextStepConstraint: {
     ...FinTypography.caption,
     color: FinColors.textMuted,
+  },
+  heroDecisionCard: {
+    borderRadius: FinRadius.lg,
+    backgroundColor: FinColors.bgCard,
+    borderWidth: 1,
+    borderColor: FinColors.borderSubtle,
+    padding: FinSpacing.m,
+    gap: FinSpacing.x2,
+  },
+  decisionEyebrow: {
+    ...FinTypography.caption,
+    color: FinColors.textSecondary,
+    fontWeight: "700",
+  },
+  heroDecisionAmount: {
+    ...FinTypography.h2,
+    color: FinColors.textPrimary,
+    fontWeight: "900",
   },
   categoryList: {
     borderRadius: FinRadius.lg,
@@ -752,14 +836,24 @@ const styles = StyleSheet.create({
     backgroundColor: FinColors.bgInput,
     paddingHorizontal: FinSpacing.s,
     paddingVertical: FinSpacing.s,
+    gap: FinSpacing.s,
   },
   sheetRowActive: {
     borderColor: FinColors.warningText,
+  },
+  sheetRowText: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
   },
   sheetLabel: {
     ...FinTypography["body-sm"],
     color: FinColors.textPrimary,
     fontWeight: "700",
+  },
+  sheetDescription: {
+    ...FinTypography.caption,
+    color: FinColors.textSecondary,
   },
   sheetValue: {
     ...FinTypography.caption,

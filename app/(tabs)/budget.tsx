@@ -15,7 +15,8 @@ import {
 import { BudgetMonthSummaryCard } from "@/components/budget-month-summary-card";
 import { BudgetWeekRhythmCard } from "@/components/budget-week-rhythm-card";
 import { BudgetMonthActionCard } from "@/components/budget/budget-month-action-card";
-import { SmartBudgetSetupEntryCard } from "@/components/budget/smart-budget-setup-entry-card";
+import { BudgetSetupStrategySelector } from "@/components/budget/budget-setup-strategy-selector";
+import { DashboardAssistantCallout } from "@/components/dashboard/dashboard-assistant-callout";
 import { TransactionCategoryIcon } from "@/components/category-icon";
 import { RiskProgressBar } from "@/components/risk-progress-bar";
 import {
@@ -105,6 +106,10 @@ import {
   getForecastExpenseSourceDescription,
 } from "@/services/forecast-expense-source-display";
 import {
+  BUDGET_SETUP_ALL_STRATEGIES,
+  getBudgetSetupStrategyShortDescription,
+} from "@/services/budget-setup-strategy-copy";
+import {
   buildAnnualReserveSheetSummary,
   getBudgetInclusionTogglePresentation,
 } from "@/services/ui-formatters/labels";
@@ -159,11 +164,9 @@ const BUDGET_EDIT_ORDER: BudgetCategoryKey[] = [
   "other",
 ];
 
-const BUDGET_MODE_OPTIONS: { value: BudgetPlanMode; label: string }[] = [
-  { value: "active_savings", label: "Actief sparen" },
-  { value: "balanced", label: "Gebalanceerd" },
-  { value: "custom", label: "Aangepast" },
-];
+type BudgetModeChoice = (typeof BUDGET_SETUP_ALL_STRATEGIES)[number];
+
+const BUDGET_MODE_CHOICE_DEFAULT: BudgetModeChoice = "balans";
 
 const DEFAULT_INCLUDE_INCOME: BudgetIncomeInclusionSettings = {
   salary: true,
@@ -439,14 +442,21 @@ function formatCountLabel(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function getBudgetModeDescription(mode: BudgetPlanMode) {
-  if (mode === "active_savings") {
-    return "Automatisch een ambitieuzer spaardoel met minder vrije variabele ruimte.";
-  }
-  if (mode === "balanced") {
-    return "Meer rust en buffer, met een gematigd automatisch spaardoel.";
-  }
-  return "Je kiest zelf hoeveel je deze maand wilt overhouden. Werkt in stappen van 25 euro.";
+function getBudgetModeDescription(choice: BudgetModeChoice) {
+  return getBudgetSetupStrategyShortDescription(choice);
+}
+
+function resolveBudgetModeChoiceFromPlanMode(mode: BudgetPlanMode): BudgetModeChoice {
+  if (mode === "custom") return "handmatig";
+  if (mode === "active_savings") return "bespaarmodus";
+  return "balans";
+}
+
+function resolveBudgetPlanModeFromChoice(choice: BudgetModeChoice): BudgetPlanMode {
+  if (choice === "handmatig") return "custom";
+  if (choice === "bespaarmodus") return "active_savings";
+  if (choice === "standaard") return "balanced";
+  return "balanced";
 }
 
 function getAutomaticModePreviewMeta(
@@ -897,6 +907,8 @@ export default function BudgetScreen() {
   const [loading, setLoading] = React.useState(true);
   const [savingManage, setSavingManage] = React.useState(false);
   const [recalculatingBudget, setRecalculatingBudget] = React.useState(false);
+  const [budgetModeChoiceDraft, setBudgetModeChoiceDraft] =
+    React.useState<BudgetModeChoice>(BUDGET_MODE_CHOICE_DEFAULT);
   const [budgetModeDraft, setBudgetModeDraft] =
     React.useState<BudgetPlanMode>("active_savings");
   const [budgetIncomeDraft, setBudgetIncomeDraft] =
@@ -1558,6 +1570,7 @@ export default function BudgetScreen() {
     if (lastHydratedDraftKeyRef.current === hydrationKey) return;
 
     const nextMode = budgetPlan.settings.mode;
+    const nextModeChoice = resolveBudgetModeChoiceFromPlanMode(nextMode);
     const nextIncomeDraft = {
       salary: budgetPlan.settings.includeIncome.salary,
       childBudget: budgetPlan.settings.includeIncome.childBudget,
@@ -1588,6 +1601,7 @@ export default function BudgetScreen() {
     });
 
     lastHydratedDraftKeyRef.current = hydrationKey;
+    setBudgetModeChoiceDraft(nextModeChoice);
     setBudgetModeDraft(nextMode);
     setBudgetIncomeDraft(nextIncomeDraft);
     setForecastExpenseSourceDraft(nextForecastExpenseSource);
@@ -1628,7 +1642,9 @@ export default function BudgetScreen() {
   );
 
   const handleBudgetModeDraftChange = React.useCallback(
-    (nextMode: BudgetPlanMode) => {
+    (nextChoice: BudgetModeChoice) => {
+      const nextMode = resolveBudgetPlanModeFromChoice(nextChoice);
+      setBudgetModeChoiceDraft(nextChoice);
       setBudgetModeDraft(nextMode);
       setBudgetDraftValues((current) =>
         rebuildManagedVariableDraftValues(current, { mode: nextMode }),
@@ -1912,7 +1928,7 @@ export default function BudgetScreen() {
       return {
         label: "Spaardoel deze maand",
         amount: 0,
-        meta: getBudgetModeDescription(budgetModeDraft),
+        meta: getBudgetModeDescription(budgetModeChoiceDraft),
       };
     }
 
@@ -1925,6 +1941,7 @@ export default function BudgetScreen() {
     };
   }, [
     budgetModeDraft,
+    budgetModeChoiceDraft,
     savingsTargetMonthlyDraft,
     selectedModeTargetPreview,
   ]);
@@ -3152,19 +3169,46 @@ export default function BudgetScreen() {
               </View>
             ) : null}
             {segment === "new" ? (
-              <SmartBudgetSetupEntryCard
-                onStartSmart={() =>
-                  router.push({
-                    pathname: "/budget/setup",
-                    params: { month: selectedMonth.key },
-                  })
-                }
-                onStartManual={() =>
-                  router.push({
-                    pathname: "/budget/setup",
-                    params: { month: selectedMonth.key, stage: "refine" },
-                  })
-                }
+              <DashboardAssistantCallout
+                screenId="budget"
+                selectedPeriod={{
+                  key: selectedMonth.key,
+                  label: selectedMonth.label,
+                  startIso: selectedMonth.startIso,
+                  endIsoExclusive: selectedMonth.endIso,
+                }}
+                screenContext={{
+                  kind: "budget",
+                  monthLabel: selectedMonth.label,
+                  monthBudgetState: monthBudgetSnapshot.state,
+                  monthStatusLabel: monthBudgetSnapshot.label,
+                  monthRiskTone,
+                  remainingVariableBudget: monthlyRemaining,
+                  spentVariableBudget: monthSpent,
+                  totalVariableBudget: monthBudgetSnapshot.budget,
+                  weekStatusLabel: focusWeekSnapshot.label,
+                  weekRiskTone: focusWeekSnapshot.tone,
+                  weekRemainingBudget: focusWeekSnapshot.remaining,
+                  weekTempoDelta: focusWeekSnapshot.tempoDelta,
+                  upcomingCommittedExpenseTotal:
+                    assistantForecastSurface?.forecast?.upcomingCommittedExpenseTotal ?? null,
+                  expectedFixedCosts:
+                    assistantForecastSurface?.forecast?.expectedFixedCosts ?? null,
+                  expectedSubscriptions:
+                    assistantForecastSurface?.forecast?.expectedSubscriptions ?? null,
+                  forecastExpectedEndBalance:
+                    assistantForecastSurface?.balances.expectedEndOperationalBalance.amount ??
+                    null,
+                  forecastLowestExpectedBalance:
+                    assistantForecastSurface?.balances.lowestOperationalPointInMonth.amount ??
+                    null,
+                  hasForecastData: assistantForecastSurface != null,
+                }}
+                eyebrow="SLIM MET BUDIO"
+                title={`Stel je ${selectedMonth.label} budget slim in met hulp van Budio`}
+                copy={`Krijg direct een rustig voorstel voor ${selectedMonth.label} en laat Budio je stap voor stap helpen.`}
+                accessibilityHint="Open slim budget instellen."
+                href={`/budget/setup?month=${selectedMonth.key}`}
               />
             ) : null}
             <View style={styles.mainStack}>
@@ -3490,7 +3534,7 @@ export default function BudgetScreen() {
                           Slim met Budio staat voorop
                         </Text>
                         <Text style={styles.manageSectionDescription}>
-                          Start met een voorstel van Budio. Handmatig instellen blijft beschikbaar als tweede route.
+                          Start met een voorstel van Budio en stuur daarna rustig bij op wat nu het belangrijkst is.
                         </Text>
                         <View style={styles.manageRouteActions}>
                           <FinanceButton
@@ -3503,51 +3547,26 @@ export default function BudgetScreen() {
                             }
                             style={styles.manageRouteButton}
                           />
-                          <FinanceButton
-                            label="Handmatig"
-                            variant="secondary"
-                            onPress={() => setSegment("manage")}
-                            style={styles.manageRouteButton}
-                          />
                         </View>
                       </View>
                     </View>
                   </FinanceSettingsGroup>
-                  <FinanceSettingsGroup title="Aanpak">
+                  <FinanceSettingsGroup title="Budgetmodus">
                     <View style={styles.manageGroupContent}>
                       <View style={styles.manageSection}>
-                        <Text style={styles.manageSectionTitle}>Budgetmodus</Text>
+                        <Text style={styles.manageSectionTitle}>Kies je aanpak</Text>
                         <Text style={styles.manageSectionDescription}>
                           Kies hoe Budio je maandruimte en spaardoel voor deze maand opbouwt.
                         </Text>
-                        <View style={styles.modeRow}>
-                          {BUDGET_MODE_OPTIONS.map((option) => {
-                            const selected = budgetModeDraft === option.value;
-                            return (
-                              <Pressable
-                                key={option.value}
-                                style={[
-                                  styles.modeButton,
-                                  selected && styles.modeButtonActive,
-                                ]}
-                                onPress={() =>
-                                  handleBudgetModeDraftChange(option.value)
-                                }
-                              >
-                                <Text
-                                  style={[
-                                    styles.modeButtonText,
-                                    selected && styles.modeButtonTextActive,
-                                  ]}
-                                >
-                                  {option.label}
-                                </Text>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
+                        <BudgetSetupStrategySelector
+                          eyebrowLabel="Aanpak"
+                          selectedStrategy={budgetModeChoiceDraft}
+                          visibleStrategies={BUDGET_SETUP_ALL_STRATEGIES}
+                          onChange={handleBudgetModeDraftChange}
+                          style={styles.manageModeSelector}
+                        />
                         <Text style={styles.manageCompactSupport}>
-                          {getBudgetModeDescription(budgetModeDraft)}
+                          {getBudgetModeDescription(budgetModeChoiceDraft)}
                         </Text>
                         <View style={styles.managePreviewSurface}>
                           <View style={styles.managePreviewHeader}>
@@ -6203,6 +6222,9 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
     fontSize: 14,
     fontWeight: "700",
+  },
+  manageModeSelector: {
+    marginTop: 4,
   },
   modeRow: {
     flexDirection: "row",

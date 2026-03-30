@@ -7,6 +7,7 @@ import { BudgetMonthActionCard } from "@/components/budget/budget-month-action-c
 import { BudgetMonthSummaryCard } from "@/components/budget-month-summary-card";
 import { BudgetPressureList } from "@/components/budget-pressure-list";
 import { BudgetWeekRhythmCard } from "@/components/budget-week-rhythm-card";
+import { BudgetSetupStrategySelector } from "@/components/budget/budget-setup-strategy-selector";
 import { DashboardAssistantCallout } from "@/components/dashboard/dashboard-assistant-callout";
 import { DashboardBalanceSummary } from "@/components/dashboard/dashboard-balance-summary";
 import { buildDashboardBudgetOverviewModel, DashboardBudgetOverviewCard } from "@/components/dashboard/dashboard-overview-card";
@@ -51,6 +52,10 @@ import {
   designSystemHubFlowCoverage,
   designSystemHubSections,
 } from "@/services/design-system-hub";
+import {
+  BUDGET_SETUP_ALL_STRATEGIES,
+} from "@/services/budget-setup-strategy-copy";
+import type { BudgetSetupStrategy } from "@/services/budget-setup-proposal-schema";
 import type { CategoryRecord } from "@/types/categorization";
 import { useRouter, type Href } from "expo-router";
 import React from "react";
@@ -291,6 +296,8 @@ export default function DesignSystemComponentsScreen() {
   const [bankFormSheetOpen, setBankFormSheetOpen] = React.useState(false);
   const [scopePreview, setScopePreview] = React.useState<"personal" | "shared" | "household">("personal");
   const [sliderValue, setSliderValue] = React.useState(300);
+  const [setupPreviewStrategy, setSetupPreviewStrategy] =
+    React.useState<BudgetSetupStrategy>("balans");
   const [copiedKey, setCopiedKey] = React.useState<string | null>(null);
   const router = useRouter();
   const quickLinks = designSystemHubSections.filter((section) => section.id !== "components");
@@ -629,6 +636,25 @@ export default function DesignSystemComponentsScreen() {
                   iconName="warning"
                   tone="highlight"
                   text="Highlight alleen bij direct aandachtspunt met beslisimpact."
+                />
+              </View>
+            </ComponentPreviewItem>
+            <ComponentPreviewItem
+              title="BudgetSetupStrategySelector"
+              copyValue="BudgetSetupStrategySelector"
+              onCopy={handleCopy}
+              copied={copiedKey === "BudgetSetupStrategySelector"}
+            >
+              <View style={styles.stack}>
+                <BudgetSetupStrategySelector
+                  selectedStrategy={setupPreviewStrategy}
+                  visibleStrategies={BUDGET_SETUP_ALL_STRATEGIES}
+                  onChange={setSetupPreviewStrategy}
+                  eyebrowLabel="Aanpak"
+                />
+                <FinanceInlineCallout
+                  iconName="insights"
+                  text="Dezelfde selector wordt gebruikt in slimme setup en budgetbeheer; op smalle schermen schuift hij naar een slider."
                 />
               </View>
             </ComponentPreviewItem>

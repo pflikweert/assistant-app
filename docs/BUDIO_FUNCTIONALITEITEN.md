@@ -122,9 +122,10 @@ Niet bedoeld voor:
   - categorie-opbouw en budgetbeheer
   - transactie-inclusie of -exclusie in budget
   - forecastbron in samenhang met budgetlogica
-  - startpunt voor de begeleide budget-instelflow met `Slim met Budio` (primair) en `Handmatig` (secundair)
+  - startpunt voor de begeleide budget-instelflow met een slimme strategiekaart-selector
   - analyse → voorstel → verfijning als leidende instelvolgorde
-  - strategiekeuze tussen `Standaard`, `Balans`, `Bespaarmodus` en `Handmatig`
+  - strategiekeuze tussen `Normaal`, `Balans`, `Bespaarmodus` en `Handmatig`
+  - Budgetmodus in beheer gebruikt dezelfde vier productkeuzes en valt op echt smalle schermen terug naar een horizontale slider
   - lokale blokbewerkingen voor `Aanpak`, `Inkomstenbasis`, `Vaste lasten & reserveringen` en `Variabele budgetverdeling`
 
 ### Budget instellen
@@ -134,7 +135,28 @@ De budget-instelflow is ontworpen als begeleide voorstelroute binnen de bestaand
 - Budio berekent eerst inkomen, vaste lasten, reserveringen en variabele ruimte
 - de gebruiker ziet daarna een voorstel en hoeft vooral te bevestigen of bij te sturen
 - AI helpt met uitleg, advies en verfijning, maar niet als chat-first startpunt
-- de start blijft rustig en voorstelgestuurd met `Slim met Budio` als primaire route en `Handmatig` als fallback
+- de start blijft rustig en voorstelgestuurd met `Balans` als standaard aanpak in de slimme instap
+- de slimme instap toont alleen `Normaal`, `Balans` en `Bespaarmodus`; `Handmatig` blijft documentair beschikbaar voor andere flows
+- de compacte selector toont de drie slimme kaarten naast elkaar op mobiel, en schuift alleen naar een slider bij heel smalle schermen
+- de selector gebruikt geen aparte `ACTIEF`-badge
+
+### Strategietekst voor hergebruik
+
+De strategietekst blijft centraal vastliggen voor kaarten, modal en uitleg:
+
+- `Normaal`
+  - lang: `Voor een gewone maand. Een rustige verdeling die past bij je normale uitgaven.`
+  - kort: `Gewone maand, rustige verdeling`
+- `Balans`
+  - lang: `Voor meer grip en wat extra zekerheid. We beschermen iets meer voordat we je budget verdelen.`
+  - kort: `Meer grip en extra bescherming`
+- `Bespaarmodus`
+  - lang: `Voor als je deze maand scherper moet sturen. We zetten je budgetten strakker zodat je meer overhoudt.`
+  - kort: `Strakker budget, meer overhouden`
+- `Handmatig`
+  - lang: `Voor als je liever zelf kiest. Je stelt alles zelf in, met volledige controle.`
+  - kort: `Zelf alles instellen`
+- onder kleine schermbreedte schuift die selector door als horizontale slider in plaats van kaarten te stapelen
 - lokale bewerkingsflows zijn secundair en vervangen de hoofdflow niet
 - voorstel-scherm werkt in vier rustige blokken: `wat telt mee als inkomen`, `wat beschermen we eerst`, `wat blijft over voor deze maand` en `welke budgetten zetten we klaar`
 - strategie blijft secundair via `Slim aanpassen` en domineert niet als primaire chip- of tablaag
@@ -142,6 +164,30 @@ De budget-instelflow is ontworpen als begeleide voorstelroute binnen de bestaand
 - toepassen gebeurt op review via primaire CTA `Gebruik dit plan`; secundair blijft `Nog iets aanpassen`
 - categorieën blijven uitkomst van de flow (niet het startpunt), met terughoudend tonen van `Roken` en `Overige ruimte`
 - de v1-engine en toolgrenzen staan uitgewerkt in `docs/design/budget-setup-engine-v1.md`
+
+### Strategiekaarten copy
+
+Volledige herbruikbare copy voor de budgetstrategiekaarten:
+
+- `Normaal`
+  - `Voor een gewone maand.`
+  - `Een rustige verdeling die past bij je normale uitgaven.`
+  - korte kaartcopy: `Gewone maand, rustige verdeling`
+
+- `Balans`
+  - `Voor meer grip en wat extra zekerheid.`
+  - `We beschermen iets meer voordat we je budget verdelen.`
+  - korte kaartcopy: `Meer grip en extra bescherming`
+
+- `Bespaarmodus`
+  - `Voor als je deze maand scherper moet sturen.`
+  - `We zetten je budgetten strakker zodat je meer overhoudt.`
+  - korte kaartcopy: `Strakker budget, meer overhouden`
+
+- `Handmatig`
+  - `Voor als je liever zelf kiest.`
+  - `Je stelt alles zelf in, met volledige controle.`
+  - korte kaartcopy: `Zelf alles instellen`
 
 ### Route: `app/(tabs)/insights.tsx`
 
@@ -180,7 +226,7 @@ De budget-instelflow is ontworpen als begeleide voorstelroute binnen de bestaand
 - Kernfunctionaliteiten:
   - overzicht van de canonieke referenties en governance-afspraken
   - tokenpagina met kleuren, typografie, spacing, radius, borders en shadows
-  - componentpagina met live previews en praktische usage-notes
+  - componentpagina met live previews en praktische usage-notes, inclusief de budget setup strategie-selector en de dashboard assistant-callout
   - patroonpagina met shellkeuzes en opbouwregels
   - bronnen- en syncpagina met Stitch project, canonical asset en leidende docs
   - compact changelog-overzicht voor interne referentie

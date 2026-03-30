@@ -60,12 +60,13 @@ export function FinanceUtilityShell({
       {disableScroll ? (
         <View style={[styles.staticContent, contentContainerStyle]}>
           {hero ? (
-            <FinanceHeroShell
-              eyebrow={hero.eyebrow}
-              title={hero.title}
-              subtitle={hero.subtitle}
-              shellStyle={hero.shellStyle}
-            />
+          <FinanceHeroShell
+            eyebrow={hero.eyebrow}
+            title={hero.title}
+            subtitle={hero.subtitle}
+            layout="utility"
+            shellStyle={hero.shellStyle}
+          />
           ) : null}
           <View style={styles.contentMax}>{children}</View>
         </View>
@@ -75,12 +76,13 @@ export function FinanceUtilityShell({
           contentContainerStyle={[styles.scroll, contentContainerStyle]}
         >
           {hero ? (
-            <FinanceHeroShell
-              eyebrow={hero.eyebrow}
-              title={hero.title}
-              subtitle={hero.subtitle}
-              shellStyle={hero.shellStyle}
-            />
+          <FinanceHeroShell
+            eyebrow={hero.eyebrow}
+            title={hero.title}
+            subtitle={hero.subtitle}
+            layout="utility"
+            shellStyle={hero.shellStyle}
+          />
           ) : null}
           <View style={styles.contentMax}>{children}</View>
         </ScrollView>
@@ -103,13 +105,13 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   scroll: {
-    paddingTop: FinSpacing.x20,
+    paddingTop: FinSpacing.x14,
     paddingBottom: FinSpacing.x32,
     gap: FinSpacing.x3,
   },
   staticContent: {
     flex: 1,
-    paddingTop: FinSpacing.x20,
+    paddingTop: FinSpacing.x14,
   },
   contentMax: {
     width: "100%",

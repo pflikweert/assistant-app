@@ -123,3 +123,35 @@ Documentatie:
 - geen route- of servicename-renames
 - geen brede design language wijziging
 - geen extra afhankelijkheden
+
+## Strategiekaarten copy
+
+De slimme instap gebruikt alleen de slimme varianten, maar de volledige copy blijft hier vastliggen voor hergebruik:
+
+- `Normaal`
+  - `Voor een gewone maand. Een rustige verdeling die past bij je normale uitgaven.`
+  - korte kaartcopy: `Gewone maand, rustige verdeling`
+
+- `Balans`
+  - `Voor meer grip en wat extra zekerheid. We beschermen iets meer voordat we je budget verdelen.`
+  - korte kaartcopy: `Meer grip en extra bescherming`
+
+- `Bespaarmodus`
+  - `Voor als je deze maand scherper moet sturen. We zetten je budgetten strakker zodat je meer overhoudt.`
+  - korte kaartcopy: `Strakker budget, meer overhouden`
+
+- `Handmatig`
+  - `Voor als je liever zelf kiest. Je stelt alles zelf in, met volledige controle.`
+  - korte kaartcopy: `Zelf alles instellen`
+
+Smart flow-regel:
+
+- op de eerste slimme setup-pagina zijn alleen `Normaal`, `Balans` en `Bespaarmodus` zichtbaar
+- `Balans` is de standaard selectie
+- `Handmatig` is documentair beschikbaar, maar niet zichtbaar in deze instap
+- de gekozen strategie stuurt de volgende proposal-berekening
+- de strategiekaarten zijn compact genoeg om naast elkaar op mobiel te passen
+- in de modal blijft alleen de slimme 3-optie-keuze zichtbaar
+- op de budget-beheerpagina gebruikt dezelfde selector ook de vierde keuze `Handmatig`
+- op normale mobielbreedte blijven de drie slimme kaarten naast elkaar zichtbaar; pas op echt smalle schermen schuift de selector naar een horizontale slider
+- de selector is dezelfde gedeelde component die ook in de admin design-system componentcatalogus staat
