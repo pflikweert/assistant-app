@@ -136,9 +136,11 @@ De budget-instelflow is ontworpen als begeleide voorstelroute binnen de bestaand
 - AI helpt met uitleg, advies en verfijning, maar niet als chat-first startpunt
 - de start blijft rustig en voorstelgestuurd met `Slim met Budio` als primaire route en `Handmatig` als fallback
 - lokale bewerkingsflows zijn secundair en vervangen de hoofdflow niet
-- voorstel-scherm werkt besluitgestuurd: eerst `strategie`, `maandgevoel`, `veiligheid/impact` en `beste volgende stap`, daarna pas categorieverdeling
-- review-scherm start met `wat dit plan betekent voor je maand`, gevolgd door `ingesteld`, `aangepast` en `finetunen`
-- coachlaag gebruikt compacte quick actions (zoals `maak iets zuiniger` of `verdeel opnieuw`) zonder chat-first productgedrag
+- voorstel-scherm werkt in vier rustige blokken: `wat telt mee als inkomen`, `wat beschermen we eerst`, `wat blijft over voor deze maand` en `welke budgetten zetten we klaar`
+- strategie blijft secundair via `Slim aanpassen` en domineert niet als primaire chip- of tablaag
+- review-scherm is besluitondersteunend met drie kaarten: betekenis voor je maand, wat Budio heeft ingesteld en of je nog iets wilt aanpassen
+- toepassen gebeurt op review via primaire CTA `Gebruik dit plan`; secundair blijft `Nog iets aanpassen`
+- categorieën blijven uitkomst van de flow (niet het startpunt), met terughoudend tonen van `Roken` en `Overige ruimte`
 - de v1-engine en toolgrenzen staan uitgewerkt in `docs/design/budget-setup-engine-v1.md`
 
 ### Route: `app/(tabs)/insights.tsx`

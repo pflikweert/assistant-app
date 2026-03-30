@@ -6,13 +6,13 @@ import { FinanceSettingsGroup } from "@/components/ui/finance-settings-group";
 import { FinanceText } from "@/components/ui/finance-text";
 import { FinanceUtilityShell } from "@/components/ui/finance-utility-shell";
 import { FinColors, FinRadius, FinSpacing, FinTypography } from "@/constants/theme";
-import { applyBudgetSetupProposal } from "@/services/budget-setup-apply";
 import { buildBudgetSetupProposal } from "@/services/budget-setup-orchestrator";
 import type {
   BudgetSetupProposal,
   BudgetSetupStrategy,
   VariableCategoryKey,
 } from "@/services/budget-setup-proposal-schema";
+import { setBudgetSetupReviewContext } from "@/services/budget-setup-review-context";
 import { getCurrentMonthKey, getMonthOptionByKey } from "@/services/transaction-month-options";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
@@ -39,8 +39,6 @@ type ScreenState =
   | "partial"
   | "proposal_available"
   | "proposal_needs_review";
-
-type FocusTarget = "income" | "fixed" | "distribution";
 
 type DraftValues = Record<VariableCategoryKey, string>;
 
@@ -91,7 +89,7 @@ function getCategoryLabel(categoryKey: VariableCategoryKey) {
   if (categoryKey === "groceries") return "Boodschappen";
   if (categoryKey === "fuel") return "Brandstof";
   if (categoryKey === "smoking") return "Roken";
-  return "Overig";
+  return "Overige ruimte";
 }
 
 function getCategoryIcon(categoryKey: VariableCategoryKey) {
@@ -105,12 +103,6 @@ function monthFeelLabel(value: BudgetSetupProposal["planMeaning"]["monthFeel"]) 
   if (value === "krap") return "Krappe maand";
   if (value === "ruim") return "Ruime maand";
   return "Haalbare maand";
-}
-
-function strictnessLabel(value: BudgetSetupProposal["planMeaning"]["strictness"]) {
-  if (value === "licht") return "Lichte sturing";
-  if (value === "streng") return "Strakke sturing";
-  return "Normale sturing";
 }
 
 function reserveProtectionLabel(
@@ -134,22 +126,31 @@ function buildDraftsFromProposal(proposal: BudgetSetupProposal): DraftValues {
   return next;
 }
 
-function trimVariableDraftsByAmount(current: DraftValues, amountToTrim: number): DraftValues {
-  const result: DraftValues = { ...current };
-  let remaining = Math.max(0, Math.round(amountToTrim));
-  for (const key of ["other", "smoking", "fuel", "groceries"] as VariableCategoryKey[]) {
-    if (remaining <= 0) break;
-    const value = asMoneyDraft(result[key]);
-    const deduction = Math.min(value, remaining);
-    result[key] = String(Math.max(0, value - deduction));
-    remaining -= deduction;
+function buildEffectiveRows(input: {
+  drafts: DraftValues;
+  showSmoking: boolean;
+}) {
+  const amounts: Record<VariableCategoryKey, number> = {
+    groceries: asMoneyDraft(input.drafts.groceries),
+    fuel: asMoneyDraft(input.drafts.fuel),
+    smoking: asMoneyDraft(input.drafts.smoking),
+    other: asMoneyDraft(input.drafts.other),
+  };
+  if (!input.showSmoking && amounts.smoking > 0) {
+    amounts.other += amounts.smoking;
+    amounts.smoking = 0;
   }
-  return result;
+  return sortVariableRows(
+    VARIABLE_ORDER.map((categoryKey) => ({
+      categoryKey,
+      amount: amounts[categoryKey],
+    })),
+  );
 }
 
 export default function BudgetSetupProposalScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ month?: string; mode?: string; stage?: string; focus?: string }>();
+  const params = useLocalSearchParams<{ month?: string; mode?: string; stage?: string }>();
   const monthKey = resolveMonthKey(params.month);
   const monthOption = getMonthOptionByKey(monthKey);
   const monthStartIso =
@@ -160,9 +161,8 @@ export default function BudgetSetupProposalScreen() {
   const [proposal, setProposal] = React.useState<BudgetSetupProposal | null>(null);
   const [state, setState] = React.useState<ScreenState>("loading");
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
-  const [applying, setApplying] = React.useState(false);
 
-  const [showRefineSheet, setShowRefineSheet] = React.useState(false);
+  const [showStrategySheet, setShowStrategySheet] = React.useState(false);
   const [showIncomeSheet, setShowIncomeSheet] = React.useState(false);
   const [showFixedSheet, setShowFixedSheet] = React.useState(false);
   const [showDistributionSheet, setShowDistributionSheet] = React.useState(false);
@@ -180,18 +180,6 @@ export default function BudgetSetupProposalScreen() {
     smoking: "0",
     other: "0",
   });
-
-  const openFocusSheet = React.useCallback((focus: FocusTarget) => {
-    if (focus === "income") {
-      setShowIncomeSheet(true);
-      return;
-    }
-    if (focus === "fixed") {
-      setShowFixedSheet(true);
-      return;
-    }
-    setShowDistributionSheet(true);
-  }, []);
 
   const loadProposal = React.useCallback(
     async (strategy: BudgetSetupStrategy) => {
@@ -232,23 +220,30 @@ export default function BudgetSetupProposalScreen() {
     void loadProposal(resolveMode(params.mode));
   }, [loadProposal, params.mode]);
 
-  React.useEffect(() => {
-    const focus = String(params.focus || "").trim().toLowerCase();
-    if (!focus || state === "loading") return;
-    if (focus === "income" || focus === "fixed" || focus === "distribution") {
-      openFocusSheet(focus as FocusTarget);
-    }
-  }, [openFocusSheet, params.focus, state]);
-
-  const variableRows = React.useMemo(() => {
-    const baseRows = proposal?.applyPayload.monthlyVariableBudgets ||
-      VARIABLE_ORDER.map((categoryKey) => ({ categoryKey, amount: 0 }));
-    return sortVariableRows(baseRows);
+  const smokingSupportStrong = React.useMemo(() => {
+    if (!proposal) return false;
+    const smoking = proposal.suggestedCategories.find((item) => item.categoryKey === "smoking");
+    if (!smoking) return false;
+    return Boolean(smoking.basedOnTrend && (smoking.trendWindowMonths || 0) >= 2 && smoking.suggestedAmount > 0);
   }, [proposal]);
 
+  const effectiveVariableRows = React.useMemo(
+    () =>
+      buildEffectiveRows({
+        drafts: variableDrafts,
+        showSmoking: smokingSupportStrong,
+      }),
+    [smokingSupportStrong, variableDrafts],
+  );
+
+  const visibleDistributionRows = React.useMemo(
+    () => effectiveVariableRows.filter((row) => row.categoryKey !== "smoking" || smokingSupportStrong),
+    [effectiveVariableRows, smokingSupportStrong],
+  );
+
   const variableDraftTotal = React.useMemo(
-    () => VARIABLE_ORDER.reduce((sum, key) => sum + asMoneyDraft(variableDrafts[key]), 0),
-    [variableDrafts],
+    () => effectiveVariableRows.reduce((sum, row) => sum + row.amount, 0),
+    [effectiveVariableRows],
   );
 
   const applyPayloadProposal = React.useMemo(() => {
@@ -267,15 +262,10 @@ export default function BudgetSetupProposalScreen() {
           applySavingsTargetToVariableBudget:
             selectedMode === "balans" || selectedMode === "bespaarmodus",
         },
-        monthlyVariableBudgets: sortVariableRows(
-          VARIABLE_ORDER.map((categoryKey) => ({
-            categoryKey,
-            amount: asMoneyDraft(variableDrafts[categoryKey]),
-          })),
-        ),
+        monthlyVariableBudgets: effectiveVariableRows,
       },
     };
-  }, [includeIncomeDraft, proposal, savingsTargetDraft, selectedMode, variableDraftTotal, variableDrafts]);
+  }, [effectiveVariableRows, includeIncomeDraft, proposal, savingsTargetDraft, selectedMode, variableDraftTotal]);
 
   const adjustmentCount = React.useMemo(() => {
     if (!proposal || !applyPayloadProposal) return 0;
@@ -304,90 +294,28 @@ export default function BudgetSetupProposalScreen() {
     return count;
   }, [applyPayloadProposal, proposal]);
 
-  const handleApply = React.useCallback(async () => {
+  const handleContinueToReview = React.useCallback(() => {
     if (!applyPayloadProposal) return;
-    setApplying(true);
-    setErrorMessage(null);
-    try {
-      const result = await applyBudgetSetupProposal({
-        proposal: applyPayloadProposal,
-        monthStartIso,
-        planKey: "default",
-        idempotencyKey: applyPayloadProposal.proposalId,
-      });
-      router.push({
-        pathname: "/budget/setup/review",
-        params: {
-          month: monthKey,
-          mode: applyPayloadProposal.selectedMode,
-          variableTotal: String(result.summary.configuredVariableBudgetTotal),
-          categoryCount: String(result.summary.configuredCategoryCount),
-          savingsTarget: String(result.summary.configuredSavingsTargetMonthly || 0),
-          adjustedCount: String(adjustmentCount),
-          monthFeel: applyPayloadProposal.planMeaning.monthFeel,
-          strictness: applyPayloadProposal.planMeaning.strictness,
-          primaryReason: applyPayloadProposal.planMeaning.primaryReason,
-          reserveProtectionLevel: applyPayloadProposal.safetyImpact.reserveProtectionLevel,
-          biggestAttentionPoint: applyPayloadProposal.safetyImpact.biggestAttentionPoint,
-          nextBestStepTitle: applyPayloadProposal.nextBestStep.title,
-          nextBestStepWhy: applyPayloadProposal.nextBestStep.why,
-        },
-      });
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Toepassen is mislukt.");
-      setState("error");
-    } finally {
-      setApplying(false);
-    }
+    setBudgetSetupReviewContext({
+      monthKey,
+      monthStartIso,
+      adjustmentCount,
+      proposal: applyPayloadProposal,
+    });
+    router.push({
+      pathname: "/budget/setup/review",
+      params: {
+        month: monthKey,
+        mode: applyPayloadProposal.selectedMode,
+      },
+    });
   }, [adjustmentCount, applyPayloadProposal, monthKey, monthStartIso, router]);
 
-  const applyModeOnly = React.useCallback((mode: BudgetSetupStrategy) => {
-    setSelectedMode(mode);
-    void loadProposal(mode);
-  }, [loadProposal]);
-
-  const applyVariableScale = React.useCallback((factor: number) => {
-    setVariableDrafts((current) => {
-      const next: DraftValues = { ...current };
-      for (const key of VARIABLE_ORDER) {
-        next[key] = fromMoneyDraft(asMoneyDraft(current[key]) * factor);
-      }
-      return next;
-    });
-  }, []);
-
-  const makeMoreSavings = React.useCallback(() => {
-    setSavingsTargetDraft((current) => String(asMoneyDraft(current) + 50));
-    setVariableDrafts((current) => trimVariableDraftsByAmount(current, 50));
-  }, []);
-
-  const handleCoachAction = React.useCallback(
-    (actionKey: BudgetSetupProposal["coachActions"][number]["actionKey"]) => {
-      if (actionKey === "rebalance_now") {
-        void loadProposal(selectedMode);
-        return;
-      }
-      if (actionKey === "make_roomier") {
-        applyVariableScale(1.08);
-        return;
-      }
-      if (actionKey === "make_tighter") {
-        applyVariableScale(0.92);
-        return;
-      }
-      if (actionKey === "protect_savings") {
-        makeMoreSavings();
-      }
-    },
-    [applyVariableScale, loadProposal, makeMoreSavings, selectedMode],
-  );
-
-  const confidenceLabel = React.useMemo(() => {
-    if (!proposal) return "";
-    if (proposal.confidence.level === "hoog") return "Hoge betrouwbaarheid";
-    if (proposal.confidence.level === "middel") return "Gemiddelde betrouwbaarheid";
-    return "Lagere betrouwbaarheid";
-  }, [proposal]);
+  const otherShare = React.useMemo(() => {
+    if (variableDraftTotal <= 0) return 0;
+    const otherAmount = effectiveVariableRows.find((row) => row.categoryKey === "other")?.amount || 0;
+    return otherAmount / variableDraftTotal;
+  }, [effectiveVariableRows, variableDraftTotal]);
 
   return (
     <FinanceUtilityShell
@@ -395,9 +323,9 @@ export default function BudgetSetupProposalScreen() {
       subtitle={monthOption?.label || "Deze maand"}
       onBack={() => router.push({ pathname: "/budget/setup", params: { month: monthKey } })}
       hero={{
-        eyebrow: "Voorstel eerst",
-        title: "Budio heeft een voorstel voor je maand",
-        subtitle: "In één oogopslag zien, dan toepassen of gericht bijsturen.",
+        eyebrow: "Zo zetten we je maand op",
+        title: "Rustig stap voor stap",
+        subtitle: "Eerst inkomen en bescherming, daarna je verdeling en review.",
       }}
     >
       <View style={styles.stack}>
@@ -409,11 +337,6 @@ export default function BudgetSetupProposalScreen() {
                 <FinanceText variant="body-sm" tone="secondary">
                   Budio kijkt naar inkomsten, vaste lasten, reserves en recente maandtrend.
                 </FinanceText>
-              </View>
-              <View style={styles.loadingList}>
-                <Text style={styles.loadingItem}>Inkomstenbasis controleren</Text>
-                <Text style={styles.loadingItem}>Beschermde bedragen bepalen</Text>
-                <Text style={styles.loadingItem}>Variabele ruimte verdelen</Text>
               </View>
             </View>
           </FinanceSettingsGroup>
@@ -459,157 +382,101 @@ export default function BudgetSetupProposalScreen() {
 
         {proposal ? (
           <>
-            <FinanceSettingsGroup title="Strategie en maandgevoel">
+            <FinanceSettingsGroup title="Wat telt mee als inkomen">
               <View style={styles.groupContent}>
-                {state === "proposal_needs_review" ? (
-                  <FinanceInlineCallout
-                    iconName="priority-high"
-                    text="Check dit voorstel extra goed: een deel van de brondata is onzeker of onvolledig."
-                  />
-                ) : state === "partial" ? (
-                  <FinanceInlineCallout
-                    iconName="insights"
-                    text="Voorstel is conservatief opgebouwd met beperkte context."
-                  />
-                ) : (
-                  <FinanceInlineCallout
-                    iconName="check-circle"
-                    text="Voorstel klaar op basis van je bestaande budget- en contextdata."
-                  />
-                )}
-
+                <FinanceInlineCallout
+                  iconName="insights"
+                  text={`Dit voorstel rekent met ${fmt.format(proposal.expectedIncomeTotal)} aan inkomen voor deze maand.`}
+                />
                 <View style={styles.summaryList}>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Geadviseerde strategie</Text>
+                    <Text style={styles.summaryLabel}>Salaris</Text>
+                    <Text style={styles.summaryValue}>{includeIncomeDraft.salary ? "Mee" : "Niet mee"}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Kindgebonden budget</Text>
+                    <Text style={styles.summaryValue}>{includeIncomeDraft.childBudget ? "Mee" : "Niet mee"}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Overig inkomen</Text>
                     <Text style={styles.summaryValue}>
-                      {STRATEGY_OPTIONS.find((option) => option.key === proposal.selectedMode)?.label || "Standaard"}
+                      {includeIncomeDraft.structuralOther || includeIncomeDraft.variable ? "Deels mee" : "Niet mee"}
                     </Text>
                   </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Maandgevoel</Text>
-                    <Text style={styles.summaryValue}>{monthFeelLabel(proposal.planMeaning.monthFeel)}</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Sturingsniveau</Text>
-                    <Text style={styles.summaryValue}>{strictnessLabel(proposal.planMeaning.strictness)}</Text>
-                  </View>
                 </View>
-
-                <View style={styles.modeRow}>
-                  {STRATEGY_OPTIONS.map((option) => {
-                    const selected = selectedMode === option.key;
-                    return (
-                      <Pressable
-                        key={option.key}
-                        style={[styles.modeButton, selected && styles.modeButtonActive]}
-                        onPress={() => applyModeOnly(option.key)}
-                      >
-                        <Text style={[styles.modeButtonText, selected && styles.modeButtonTextActive]}>
-                          {option.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                <Text style={styles.rationaleText}>{proposal.planMeaning.primaryReason}</Text>
-                <Text style={styles.helperText}>{confidenceLabel}</Text>
+                <FinanceButton
+                  label="Slim aanpassen"
+                  variant="secondary"
+                  onPress={() => setShowIncomeSheet(true)}
+                  fullWidth
+                />
               </View>
             </FinanceSettingsGroup>
 
-            <FinanceSettingsGroup title="Veiligheid en impact">
+            <FinanceSettingsGroup title="Wat beschermen we eerst">
               <View style={styles.groupContent}>
                 <View style={styles.summaryList}>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Ruimte voor variabele uitgaven</Text>
-                    <Text style={styles.summaryValueStrong}>{fmt.format(variableDraftTotal)}</Text>
+                    <Text style={styles.summaryLabel}>Vaste lasten</Text>
+                    <Text style={styles.summaryValue}>{fmt.format(proposal.protectedAmounts.fixedCosts)}</Text>
                   </View>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Reservebescherming</Text>
-                    <Text style={styles.summaryValue}>
-                      {reserveProtectionLabel(proposal.safetyImpact.reserveProtectionLevel)}
-                    </Text>
+                    <Text style={styles.summaryLabel}>Abonnementen</Text>
+                    <Text style={styles.summaryValue}>{fmt.format(proposal.protectedAmounts.subscriptions)}</Text>
                   </View>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Belangrijkste aandachtspunt</Text>
-                    <Text style={styles.summaryValue}>{proposal.safetyImpact.biggestAttentionPoint}</Text>
+                    <Text style={styles.summaryLabel}>Reserve per maand</Text>
+                    <Text style={styles.summaryValue}>{fmt.format(asMoneyDraft(savingsTargetDraft))}</Text>
                   </View>
                 </View>
                 <FinanceInlineCallout
-                  iconName="insights"
-                  text={`Dit voorstel houdt ongeveer ${fmt.format(
-                    proposal.safetyImpact.variableRoomMonthly,
-                  )} variabele ruimte per maand over.`}
+                  iconName="shield"
+                  text={`Bescherming staat nu op ${reserveProtectionLabel(proposal.safetyImpact.reserveProtectionLevel).toLowerCase()}.`}
                 />
-              </View>
-            </FinanceSettingsGroup>
-
-            <FinanceSettingsGroup title="Beste volgende stap">
-              <View style={styles.groupContent}>
-                <View style={styles.nextStepCard}>
-                  <Text style={styles.nextStepTitle}>{proposal.nextBestStep.title}</Text>
-                  <Text style={styles.nextStepWhy}>{proposal.nextBestStep.why}</Text>
-                  <Text style={styles.nextStepConstraint}>
-                    Focus: {proposal.nextBestStep.dominantConstraint.replace(/_/g, " ")}
-                  </Text>
-                </View>
                 <FinanceButton
-                  label="Toepassen"
-                  onPress={() => void handleApply()}
-                  loading={applying}
+                  label="Bescherming aanpassen"
+                  variant="secondary"
+                  onPress={() => setShowFixedSheet(true)}
                   fullWidth
                 />
-                <View style={styles.secondaryRow}>
-                  <FinanceButton
-                    label="1 ding aanpassen"
-                    variant="secondary"
-                    onPress={() => setShowRefineSheet(true)}
-                    style={styles.halfAction}
-                  />
-                  <FinanceButton
-                    label="Opnieuw verdelen"
-                    variant="secondary"
-                    onPress={() => void loadProposal(selectedMode)}
-                    style={styles.halfAction}
-                  />
-                </View>
-                <View style={styles.refinementWrap}>
-                  {(proposal.coachActions.length ? proposal.coachActions : []).map((action) => (
-                    <Pressable
-                      key={action.actionKey}
-                      style={styles.refinementChip}
-                      onPress={() => handleCoachAction(action.actionKey)}
-                    >
-                      <Text style={styles.refinementText}>{action.label}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {adjustmentCount > 0 ? (
-                  <FinanceText variant="caption" tone="secondary">
-                    Concept aangepast ({adjustmentCount} wijziging{adjustmentCount === 1 ? "" : "en"}).
-                  </FinanceText>
-                ) : null}
               </View>
             </FinanceSettingsGroup>
 
-            <FinanceSettingsGroup title="Verdeling over variabele categorieën">
+            <FinanceSettingsGroup title="Wat blijft over voor deze maand">
               <View style={styles.groupContent}>
-                <View style={styles.rationaleList}>
-                  {(proposal.rationale.length ? proposal.rationale : proposal.adjustmentNotes)
-                    .slice(0, 2)
-                    .map((item) => (
-                      <View key={item} style={styles.rationaleRow}>
-                        <View style={styles.rationaleDot} />
-                        <Text style={styles.rationaleText}>{item}</Text>
-                      </View>
-                    ))}
+                <View style={styles.nextStepCard}>
+                  <Text style={styles.nextStepTitle}>{fmt.format(variableDraftTotal)} vrij te verdelen</Text>
+                  <Text style={styles.nextStepWhy}>{proposal.nextBestStep.why}</Text>
+                  <Text style={styles.nextStepConstraint}>
+                    {monthFeelLabel(proposal.planMeaning.monthFeel)} · {proposal.nextBestStep.title}
+                  </Text>
                 </View>
+                <View style={styles.summaryList}>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Aanpak</Text>
+                    <Text style={styles.summaryValue}>
+                      {STRATEGY_OPTIONS.find((option) => option.key === selectedMode)?.label || "Standaard"}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Aandachtspunt</Text>
+                    <Text style={styles.summaryValue}>{proposal.safetyImpact.biggestAttentionPoint}</Text>
+                  </View>
+                </View>
+                <FinanceButton
+                  label="Slim aanpassen"
+                  variant="secondary"
+                  onPress={() => setShowStrategySheet(true)}
+                  fullWidth
+                />
+                <FinanceButton label="Ga naar review" onPress={handleContinueToReview} fullWidth />
+              </View>
+            </FinanceSettingsGroup>
+
+            <FinanceSettingsGroup title="Welke budgetten zetten we klaar">
+              <View style={styles.groupContent}>
                 <View style={styles.categoryList}>
-                  {sortVariableRows(
-                    VARIABLE_ORDER.map((key) => ({
-                      categoryKey: key,
-                      amount: asMoneyDraft(variableDrafts[key]),
-                    })),
-                  ).map((row) => (
+                  {visibleDistributionRows.map((row) => (
                     <View key={row.categoryKey} style={styles.categoryRow}>
                       <View style={styles.categoryMain}>
                         <View style={styles.categoryIcon}>
@@ -625,25 +492,29 @@ export default function BudgetSetupProposalScreen() {
                     </View>
                   ))}
                 </View>
-                <View style={styles.coachList}>
-                  {(proposal.suggestedCategoriesV2 || []).slice(0, 6).map((item) => (
-                    <View key={item.id} style={styles.coachRow}>
-                      <View style={styles.coachRowMain}>
-                        <Text style={styles.coachLabel}>{item.label}</Text>
-                        <Text style={styles.coachMeta}>
-                          {item.type === "sub" ? "Subcategorie" : "Hoofdcategorie"} ·{" "}
-                          {item.source === "trend"
-                            ? "Trend"
-                            : item.source === "forecast"
-                              ? "Forecast"
-                              : "Trend + forecast"}
-                        </Text>
-                        <Text style={styles.coachWhy}>{item.why}</Text>
-                      </View>
-                      <Text style={styles.coachAmount}>{fmt.format(item.suggestedAmount)}</Text>
-                    </View>
-                  ))}
-                </View>
+                {smokingSupportStrong ? null : (
+                  <FinanceInlineCallout
+                    iconName="info-outline"
+                    text="Roken tonen we alleen als transactiedata daar sterk genoeg voor is."
+                  />
+                )}
+                {otherShare >= 0.35 ? (
+                  <FinanceInlineCallout
+                    iconName="insights"
+                    text="Overige ruimte is nu relatief groot. Verdeel dit alleen verder als dat je maandbeslissing helpt."
+                  />
+                ) : null}
+                {adjustmentCount > 0 ? (
+                  <FinanceText variant="caption" tone="secondary">
+                    Concept aangepast ({adjustmentCount} wijziging{adjustmentCount === 1 ? "" : "en"}).
+                  </FinanceText>
+                ) : null}
+                <FinanceButton
+                  label="Verdeling aanpassen"
+                  variant="secondary"
+                  onPress={() => setShowDistributionSheet(true)}
+                  fullWidth
+                />
               </View>
             </FinanceSettingsGroup>
           </>
@@ -651,45 +522,35 @@ export default function BudgetSetupProposalScreen() {
       </View>
 
       <FinanceBottomSheetShell
-        visible={showRefineSheet}
-        title="Wat wil je bijsturen?"
-        subtitle="Kies één onderdeel. Je kunt daarna direct toepassen."
-        onClose={() => setShowRefineSheet(false)}
+        visible={showStrategySheet}
+        title="Slim aanpassen"
+        subtitle="Kies de aanpak die nu het beste past."
+        onClose={() => setShowStrategySheet(false)}
       >
-        <View style={styles.sheetContent}>
-          <FinanceButton
-            label="Inkomsten"
-            variant="secondary"
-            onPress={() => {
-              setShowRefineSheet(false);
-              setShowIncomeSheet(true);
-            }}
-            fullWidth
-          />
-          <FinanceButton
-            label="Vaste lasten / reserves"
-            variant="secondary"
-            onPress={() => {
-              setShowRefineSheet(false);
-              setShowFixedSheet(true);
-            }}
-            fullWidth
-          />
-          <FinanceButton
-            label="Budgetverdeling"
-            variant="secondary"
-            onPress={() => {
-              setShowRefineSheet(false);
-              setShowDistributionSheet(true);
-            }}
-            fullWidth
-          />
-        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
+          {STRATEGY_OPTIONS.map((option) => {
+            const selected = selectedMode === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                style={[styles.sheetRow, selected && styles.sheetRowActive]}
+                onPress={() => {
+                  setShowStrategySheet(false);
+                  setSelectedMode(option.key);
+                  void loadProposal(option.key);
+                }}
+              >
+                <Text style={styles.sheetLabel}>{option.label}</Text>
+                <Text style={styles.sheetValue}>{selected ? "Actief" : "Kies"}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </FinanceBottomSheetShell>
 
       <FinanceBottomSheetShell
         visible={showIncomeSheet}
-        title="Inkomsten"
+        title="Inkomen aanpassen"
         subtitle="Kies welke inkomsten meetellen in dit voorstel."
         onClose={() => setShowIncomeSheet(false)}
       >
@@ -698,7 +559,7 @@ export default function BudgetSetupProposalScreen() {
             { key: "salary", label: "Salaris" },
             { key: "childBudget", label: "Kindgebonden budget" },
             { key: "structuralOther", label: "Overig structureel" },
-            { key: "variable", label: "Variabel" },
+            { key: "variable", label: "Variabel inkomen" },
           ].map((item) => {
             const enabled = includeIncomeDraft[item.key as keyof IncludeIncomeDraft];
             return (
@@ -722,8 +583,8 @@ export default function BudgetSetupProposalScreen() {
 
       <FinanceBottomSheetShell
         visible={showFixedSheet}
-        title="Vaste lasten / reserves"
-        subtitle="Controleer beschermde bedragen en je maandreserve."
+        title="Bescherming aanpassen"
+        subtitle="Controleer beschermde bedragen en reserve."
         onClose={() => setShowFixedSheet(false)}
       >
         <View style={styles.sheetContent}>
@@ -751,12 +612,12 @@ export default function BudgetSetupProposalScreen() {
 
       <FinanceBottomSheetShell
         visible={showDistributionSheet}
-        title="Budgetverdeling"
-        subtitle="Pas bedragen aan per categorie."
+        title="Verdeling aanpassen"
+        subtitle="Pas je verdeling aan waar dat helpt."
         onClose={() => setShowDistributionSheet(false)}
       >
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
-          {sortVariableRows(variableRows).map((row) => (
+          {visibleDistributionRows.map((row) => (
             <View key={row.categoryKey} style={styles.sheetDistributionRow}>
               <Text style={styles.sheetLabel}>{getCategoryLabel(row.categoryKey)}</Text>
               <TextInput
@@ -791,46 +652,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: FinSpacing.s,
   },
-  loadingList: {
-    borderRadius: FinRadius.lg,
-    backgroundColor: FinColors.bgInput,
-    padding: FinSpacing.s,
-    gap: FinSpacing.x2,
-  },
-  loadingItem: {
-    ...FinTypography.caption,
-    color: FinColors.textSecondary,
-    fontWeight: "700",
-  },
-  helperText: {
-    ...FinTypography.caption,
-    color: FinColors.textMuted,
-  },
-  modeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: FinSpacing.xs,
-  },
-  modeButton: {
-    borderRadius: FinRadius.pill,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgInput,
-    paddingHorizontal: FinSpacing.s,
-    paddingVertical: FinSpacing.x2,
-  },
-  modeButtonActive: {
-    borderColor: FinColors.warningText,
-    backgroundColor: FinColors.yellowSoft,
-  },
-  modeButtonText: {
-    ...FinTypography.caption,
-    color: FinColors.textSecondary,
-    fontWeight: "700",
-  },
-  modeButtonTextActive: {
-    color: FinColors.textPrimary,
-  },
   summaryList: {
     borderRadius: FinRadius.lg,
     backgroundColor: FinColors.bgInput,
@@ -851,21 +672,10 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
     flex: 1,
   },
-  summaryLabelStrong: {
-    ...FinTypography.caption,
-    color: FinColors.textPrimary,
-    flex: 1,
-    fontWeight: "800",
-  },
   summaryValue: {
     ...FinTypography["body-sm"],
     color: FinColors.textPrimary,
     fontWeight: "700",
-  },
-  summaryValueStrong: {
-    ...FinTypography["body-sm"],
-    color: FinColors.textPrimary,
-    fontWeight: "900",
   },
   nextStepCard: {
     borderRadius: FinRadius.lg,
@@ -887,27 +697,6 @@ const styles = StyleSheet.create({
   nextStepConstraint: {
     ...FinTypography.caption,
     color: FinColors.textMuted,
-    textTransform: "capitalize",
-  },
-  rationaleList: {
-    gap: FinSpacing.x2,
-  },
-  rationaleRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: FinSpacing.x2,
-  },
-  rationaleDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 999,
-    marginTop: 6,
-    backgroundColor: FinColors.textMuted,
-  },
-  rationaleText: {
-    ...FinTypography.caption,
-    color: FinColors.textSecondary,
-    flex: 1,
   },
   categoryList: {
     borderRadius: FinRadius.lg,
@@ -948,73 +737,9 @@ const styles = StyleSheet.create({
     color: FinColors.textPrimary,
     fontWeight: "800",
   },
-  secondaryRow: {
-    flexDirection: "row",
-    gap: FinSpacing.xs,
-  },
-  halfAction: {
-    flex: 1,
-  },
-  refinementWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: FinSpacing.x2,
-  },
-  refinementChip: {
-    borderRadius: FinRadius.pill,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgInput,
-    paddingHorizontal: FinSpacing.s,
-    paddingVertical: FinSpacing.x2,
-  },
-  refinementText: {
-    ...FinTypography.caption,
-    color: FinColors.textSecondary,
-    fontWeight: "700",
-  },
-  coachList: {
-    borderRadius: FinRadius.lg,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgCard,
-    overflow: "hidden",
-  },
-  coachRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: FinSpacing.xs,
-    paddingHorizontal: FinSpacing.s,
-    paddingVertical: FinSpacing.s,
-    borderBottomWidth: 1,
-    borderBottomColor: FinColors.borderSubtle,
-  },
-  coachRowMain: {
-    flex: 1,
-    gap: FinSpacing.x2,
-  },
-  coachLabel: {
-    ...FinTypography["body-sm"],
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-  },
-  coachMeta: {
-    ...FinTypography.caption,
-    color: FinColors.textMuted,
-  },
-  coachWhy: {
-    ...FinTypography.caption,
-    color: FinColors.textSecondary,
-  },
-  coachAmount: {
-    ...FinTypography.caption,
-    color: FinColors.textPrimary,
-    fontWeight: "800",
-  },
   sheetContent: {
     paddingHorizontal: FinSpacing.m,
-    paddingBottom: FinSpacing.x24,
+    paddingBottom: FinSpacing["2xl"],
     gap: FinSpacing.s,
   },
   sheetRow: {

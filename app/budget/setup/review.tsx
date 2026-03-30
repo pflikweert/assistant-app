@@ -3,6 +3,11 @@ import { FinanceInlineCallout } from "@/components/ui/finance-inline-callout";
 import { FinanceSettingsGroup } from "@/components/ui/finance-settings-group";
 import { FinanceUtilityShell } from "@/components/ui/finance-utility-shell";
 import { FinColors, FinRadius, FinSpacing, FinTypography } from "@/constants/theme";
+import { applyBudgetSetupProposal } from "@/services/budget-setup-apply";
+import {
+  clearBudgetSetupReviewContext,
+  getBudgetSetupReviewContext,
+} from "@/services/budget-setup-review-context";
 import { getCurrentMonthKey, getMonthOptionByKey } from "@/services/transaction-month-options";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
@@ -36,13 +41,6 @@ function monthFeelLabel(value: string) {
   return "Haalbare maand";
 }
 
-function strictnessLabel(value: string) {
-  const normalized = String(value || "").toLowerCase();
-  if (normalized === "licht") return "Lichte sturing";
-  if (normalized === "streng") return "Strakke sturing";
-  return "Normale sturing";
-}
-
 function reserveProtectionLabel(value: string) {
   const normalized = String(value || "").toLowerCase();
   if (normalized === "hoog") return "Hoog beschermd";
@@ -52,189 +50,180 @@ function reserveProtectionLabel(value: string) {
 
 export default function BudgetSetupReviewScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{
-    month?: string;
-    mode?: string;
-    variableTotal?: string;
-    categoryCount?: string;
-    savingsTarget?: string;
-    adjustedCount?: string;
-    monthFeel?: string;
-    strictness?: string;
-    primaryReason?: string;
-    reserveProtectionLevel?: string;
-    biggestAttentionPoint?: string;
-    nextBestStepTitle?: string;
-    nextBestStepWhy?: string;
-  }>();
+  const params = useLocalSearchParams<{ month?: string; mode?: string }>();
+  const context = getBudgetSetupReviewContext();
 
-  const monthKey = resolveMonthKey(params.month);
+  const monthKey = resolveMonthKey(params.month || context?.monthKey);
   const monthLabel = getMonthOptionByKey(monthKey)?.label || "Deze maand";
-  const variableTotal = Number(params.variableTotal || 0) || 0;
-  const categoryCount = Number(params.categoryCount || 0) || 0;
-  const savingsTarget = Number(params.savingsTarget || 0) || 0;
-  const adjustedCount = Number(params.adjustedCount || 0) || 0;
-  const mode = modeLabel(String(params.mode || "standaard"));
-  const monthFeel = monthFeelLabel(String(params.monthFeel || "haalbaar"));
-  const strictness = strictnessLabel(String(params.strictness || "normaal"));
-  const primaryReason =
-    String(params.primaryReason || "").trim() ||
-    "Budio heeft eerst vaste lasten en reserve beschermd.";
-  const reserveProtection = reserveProtectionLabel(
-    String(params.reserveProtectionLevel || "middel"),
-  );
-  const biggestAttentionPoint =
-    String(params.biggestAttentionPoint || "").trim() ||
-    "Blijf je variabele tempo in de gaten houden.";
-  const nextBestStepTitle =
-    String(params.nextBestStepTitle || "").trim() || "Houd deze lijn rustig vast";
-  const nextBestStepWhy =
-    String(params.nextBestStepWhy || "").trim() ||
-    "Zo blijft je maand voorspelbaar en veilig.";
+
+  const [applying, setApplying] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  const hasContext = Boolean(context?.proposal);
+
+  const summary = React.useMemo(() => {
+    if (!context?.proposal) return null;
+    const monthlyRows = context.proposal.applyPayload.monthlyVariableBudgets;
+    const variableTotal = monthlyRows.reduce((sum, row) => sum + Math.max(0, Math.round(row.amount)), 0);
+    const categoryCount = monthlyRows.filter((row) => row.amount > 0).length;
+    return {
+      mode: modeLabel(context.proposal.selectedMode),
+      variableTotal,
+      categoryCount,
+      savingsTarget: context.proposal.applyPayload.planSettings.savingsTargetMonthly || 0,
+      monthFeel: monthFeelLabel(context.proposal.planMeaning.monthFeel),
+      reserveProtection: reserveProtectionLabel(context.proposal.safetyImpact.reserveProtectionLevel),
+      primaryReason: context.proposal.planMeaning.primaryReason,
+      biggestAttentionPoint: context.proposal.safetyImpact.biggestAttentionPoint,
+      nextBestStepTitle: context.proposal.nextBestStep.title,
+      nextBestStepWhy: context.proposal.nextBestStep.why,
+      adjustedCount: context.adjustmentCount,
+    };
+  }, [context]);
+
+  const handleApply = React.useCallback(async () => {
+    if (!context?.proposal) {
+      setErrorMessage("Deze review heeft geen actief voorstel meer. Ga een stap terug.");
+      return;
+    }
+    setApplying(true);
+    setErrorMessage(null);
+    try {
+      await applyBudgetSetupProposal({
+        proposal: context.proposal,
+        monthStartIso: context.monthStartIso,
+        planKey: "default",
+        idempotencyKey: context.proposal.proposalId,
+      });
+      clearBudgetSetupReviewContext();
+      router.push({
+        pathname: "/budget",
+        params: { segment: "manage", month: monthKey },
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Toepassen is mislukt.");
+    } finally {
+      setApplying(false);
+    }
+  }, [context, monthKey, router]);
 
   return (
     <FinanceUtilityShell
-      title="Budget toegepast"
+      title="Je maand staat klaar"
       subtitle={monthLabel}
       onBack={() => router.back()}
       hero={{
-        eyebrow: "Klaar",
-        title: "Je voorstel staat actief",
-        subtitle: "Hier zie je wat is ingesteld en waar je nog kunt finetunen.",
+        eyebrow: "Review",
+        title: "Controleer en bevestig je maandplan",
+        subtitle: "Kort, duidelijk en klaar om te gebruiken.",
       }}
     >
       <View style={styles.stack}>
-        <FinanceSettingsGroup title="Status">
-          <View style={styles.groupContent}>
-            <FinanceInlineCallout
-              iconName="check-circle"
-              tone="highlight"
-              text="Budio heeft je voorstel verwerkt in je budgetplan."
-            />
-          </View>
-        </FinanceSettingsGroup>
-
-        <FinanceSettingsGroup title="Wat dit plan betekent voor je maand">
-          <View style={styles.groupContent}>
-            <View style={styles.summaryList}>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Maandgevoel</Text>
-                <Text style={styles.summaryValue}>{monthFeel}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Sturingsniveau</Text>
-                <Text style={styles.summaryValue}>{strictness}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Reservebescherming</Text>
-                <Text style={styles.summaryValue}>{reserveProtection}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Belangrijkste aandachtspunt</Text>
-                <Text style={styles.summaryValue}>{biggestAttentionPoint}</Text>
-              </View>
-            </View>
-            <FinanceInlineCallout iconName="insights" text={primaryReason} />
-            <View style={styles.nextStepCard}>
-              <Text style={styles.nextStepTitle}>{nextBestStepTitle}</Text>
-              <Text style={styles.nextStepWhy}>{nextBestStepWhy}</Text>
-            </View>
-          </View>
-        </FinanceSettingsGroup>
-
-        <FinanceSettingsGroup title="Ingesteld door Budio">
-          <View style={styles.groupContent}>
-            <View style={styles.summaryList}>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Strategie</Text>
-                <Text style={styles.summaryValue}>{mode}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Variabele ruimte</Text>
-                <Text style={styles.summaryValue}>{fmt.format(variableTotal)}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Categorieën ingesteld</Text>
-                <Text style={styles.summaryValue}>{String(categoryCount)}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Reserve per maand</Text>
-                <Text style={styles.summaryValue}>{fmt.format(savingsTarget)}</Text>
-              </View>
-            </View>
-          </View>
-        </FinanceSettingsGroup>
-
-        <FinanceSettingsGroup title="Door jou aangepast">
-          <View style={styles.groupContent}>
-            <FinanceInlineCallout
-              iconName={adjustedCount > 0 ? "tune" : "info-outline"}
-              text={
-                adjustedCount > 0
-                  ? `Je hebt ${adjustedCount} aanpassing${adjustedCount === 1 ? "" : "en"} gedaan voordat je toepaste.`
-                  : "Je hebt het voorstel zonder extra aanpassingen toegepast."
-              }
-            />
-          </View>
-        </FinanceSettingsGroup>
-
-        <FinanceSettingsGroup title="Waar finetunen nog zinvol is">
-          <View style={styles.groupContent}>
-            <View style={styles.actions}>
-              <FinanceButton
-                label="Inkomsten"
-                variant="secondary"
-                onPress={() =>
-                  router.push({
-                    pathname: "/budget/setup/proposal",
-                    params: { month: monthKey, mode: String(params.mode || "standaard"), focus: "income" },
-                  })
-                }
-                fullWidth
+        {!hasContext || !summary ? (
+          <FinanceSettingsGroup title="Review niet beschikbaar">
+            <View style={styles.groupContent}>
+              <FinanceInlineCallout
+                iconName="info-outline"
+                text="Er is geen actief voorstel om te bevestigen. Start opnieuw vanaf de vorige stap."
               />
               <FinanceButton
-                label="Vaste lasten / reserves"
+                label="Terug naar voorstel"
                 variant="secondary"
                 onPress={() =>
                   router.push({
                     pathname: "/budget/setup/proposal",
-                    params: { month: monthKey, mode: String(params.mode || "standaard"), focus: "fixed" },
-                  })
-                }
-                fullWidth
-              />
-              <FinanceButton
-                label="Budgetverdeling"
-                variant="secondary"
-                onPress={() =>
-                  router.push({
-                    pathname: "/budget/setup/proposal",
-                    params: { month: monthKey, mode: String(params.mode || "standaard"), focus: "distribution" },
+                    params: { month: monthKey, mode: String(params.mode || "standaard") },
                   })
                 }
                 fullWidth
               />
             </View>
-            <Text style={styles.disclaimer}>
-              Voorspellingen blijven verwachtingen op basis van bekende data.
-            </Text>
-          </View>
-        </FinanceSettingsGroup>
+          </FinanceSettingsGroup>
+        ) : (
+          <>
+            <FinanceSettingsGroup title="Wat dit plan betekent voor jouw maand">
+              <View style={styles.groupContent}>
+                <View style={styles.summaryList}>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Maandgevoel</Text>
+                    <Text style={styles.summaryValue}>{summary.monthFeel}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Reservebescherming</Text>
+                    <Text style={styles.summaryValue}>{summary.reserveProtection}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Belangrijkste aandachtspunt</Text>
+                    <Text style={styles.summaryValue}>{summary.biggestAttentionPoint}</Text>
+                  </View>
+                </View>
+                <FinanceInlineCallout iconName="insights" text={summary.primaryReason} />
+                <View style={styles.nextStepCard}>
+                  <Text style={styles.nextStepTitle}>{summary.nextBestStepTitle}</Text>
+                  <Text style={styles.nextStepWhy}>{summary.nextBestStepWhy}</Text>
+                </View>
+              </View>
+            </FinanceSettingsGroup>
 
-        <FinanceSettingsGroup title="Klaar">
-          <View style={styles.groupContent}>
-            <FinanceButton
-              label="Terug naar Budget"
-              onPress={() =>
-                router.push({
-                  pathname: "/budget",
-                  params: { segment: "manage", month: monthKey },
-                })
-              }
-              fullWidth
-            />
-          </View>
-        </FinanceSettingsGroup>
+            <FinanceSettingsGroup title="Wat Budio heeft ingesteld">
+              <View style={styles.groupContent}>
+                <View style={styles.summaryList}>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Aanpak</Text>
+                    <Text style={styles.summaryValue}>{summary.mode}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Vrij te verdelen</Text>
+                    <Text style={styles.summaryValue}>{fmt.format(summary.variableTotal)}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Klaargezette budgetten</Text>
+                    <Text style={styles.summaryValue}>{String(summary.categoryCount)}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Reserve per maand</Text>
+                    <Text style={styles.summaryValue}>{fmt.format(summary.savingsTarget)}</Text>
+                  </View>
+                </View>
+              </View>
+            </FinanceSettingsGroup>
+
+            <FinanceSettingsGroup title="Wil je nog iets aanpassen?">
+              <View style={styles.groupContent}>
+                <FinanceInlineCallout
+                  iconName={summary.adjustedCount > 0 ? "tune" : "check-circle"}
+                  text={
+                    summary.adjustedCount > 0
+                      ? `Je hebt al ${summary.adjustedCount} aanpassing${summary.adjustedCount === 1 ? "" : "en"} gedaan.`
+                      : "Je plan staat klaar. Je kunt nu bevestigen of nog één stap aanpassen."
+                  }
+                />
+                {errorMessage ? (
+                  <FinanceInlineCallout iconName="error-outline" text={errorMessage} />
+                ) : null}
+                <View style={styles.actions}>
+                  <FinanceButton
+                    label="Gebruik dit plan"
+                    onPress={() => void handleApply()}
+                    loading={applying}
+                    fullWidth
+                  />
+                  <FinanceButton
+                    label="Nog iets aanpassen"
+                    variant="secondary"
+                    onPress={() =>
+                      router.push({
+                        pathname: "/budget/setup/proposal",
+                        params: { month: monthKey, mode: String(params.mode || "standaard") },
+                      })
+                    }
+                    fullWidth
+                  />
+                </View>
+              </View>
+            </FinanceSettingsGroup>
+          </>
+        )}
       </View>
     </FinanceUtilityShell>
   );
@@ -292,9 +281,5 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: FinSpacing.xs,
-  },
-  disclaimer: {
-    ...FinTypography.caption,
-    color: FinColors.textMuted,
   },
 });
