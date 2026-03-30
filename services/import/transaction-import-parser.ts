@@ -34,7 +34,6 @@ type PdfTransactionBlock = {
   amountX: number | null;
   detailLines: string[];
   metadata: Record<string, string>;
-  suppressDetailLines: boolean;
 };
 
 type PdfStatementBalances = {
@@ -66,6 +65,11 @@ const PDF_DETAIL_MIN_X = 190;
 const PDF_DETAIL_IGNORE_PATTERNS = [
   /^Verwerkingsdatum:/i,
   /^Periode\b/i,
+  /^\d{2}-\d{2}-\d{4}$/i,
+  /^\d+\s+van\s+\d+$/i,
+  /^Naam\/omschrijving$/i,
+  /^Bedrag af \(debet\)$/i,
+  /^Bedrag bij \(credit\)$/i,
   /^CR\s*=\s*tegoed\b/i,
   /^D\s*=\s*tekort\b/i,
   /^Totaal /i,
@@ -222,6 +226,44 @@ function isIgnoredPdfDetailLine(value: string): boolean {
   return PDF_DETAIL_IGNORE_PATTERNS.some((pattern) => pattern.test(value));
 }
 
+function shouldMergePdfDetailLine(previous: string, next: string): boolean {
+  if (!previous || !next) return false;
+  if (previous.endsWith("-")) return true;
+
+  const previousEndsWithWord = /[A-Za-z]$/.test(previous);
+  const nextStartsWithContinuation = /^[a-z]/.test(next);
+  if (previousEndsWithWord && nextStartsWithContinuation) {
+    return true;
+  }
+
+  const previousEndsWithDateFragment = /-\d{1,3}$/.test(previous);
+  const nextStartsWithDigit = /^\d/.test(next);
+  if (previousEndsWithDateFragment && nextStartsWithDigit) {
+    return true;
+  }
+
+  return false;
+}
+
+function mergePdfDetailLines(lines: string[]): string[] {
+  const merged: string[] = [];
+
+  for (const line of lines) {
+    const value = line.trim();
+    if (!value) continue;
+
+    const previous = merged[merged.length - 1];
+    if (previous && shouldMergePdfDetailLine(previous, value)) {
+      merged[merged.length - 1] = `${previous}${value}`;
+      continue;
+    }
+
+    merged.push(value);
+  }
+
+  return merged;
+}
+
 function parsePdfAmountLine(value: string): number | null {
   const normalized = value.replace(/\s+/g, "").replace(/[.](?=\d{3}(?:,|$))/g, "");
   if (!/^\d+(?:,\d{2})?$/.test(normalized)) {
@@ -232,6 +274,50 @@ function parsePdfAmountLine(value: string): number | null {
 
 function normalizePdfMetadataValue(value: string): string {
   return value.replace(/\s*\|\s*$/, "").trim();
+}
+
+function normalizeImportTextValue(value: string): string {
+  return String(value || "")
+    .replace(/[\r\n]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeImportDetailPart(value: string): string {
+  return normalizeImportTextValue(value).replace(/\s{2,}/g, " | ");
+}
+
+function normalizeImportDetailsValue(value: string): string {
+  const normalized = normalizeImportTextValue(value)
+    .replace(/\s*\|\s*/g, " ")
+    .replace(/([0-9])\s+(?=[0-9])/g, "$1")
+    .replace(/\bVOORSC HOT\b/gi, "VOORSCHOT")
+    .replace(/\bbestellingvia\b/gi, "bestelling via")
+    .replace(/\bvindtu\b/gi, "vindt u")
+    .replace(
+      /\s+Periode\s+\d{2}-\d{2}-\d{4}\s+t\/m\s+\d{2}-\d{2}-\d{4}$/i,
+      "",
+    )
+    .replace(
+      /^(?:[A-Z0-9]{8,}\s+)?[A-Z]{2}\d{2}ZZZ[A-Z0-9]+\s+(?=\d{6,}\/PAYPAL\b)/i,
+      "",
+    )
+    .replace(/^.*?(\d{6,}\/PAYPAL)$/i, "$1")
+    .replace(/\d*(\d{13})\/PAYPAL$/i, "$1/PAYPAL");
+
+  if (/^Betalingengb\s*=/i.test(normalized)) {
+    return "Betalingen";
+  }
+
+  return normalized;
+}
+
+function normalizePdfCounterparty(value: string): string {
+  return normalizeImportTextValue(
+    String(value || "")
+      .replace(/\bS\.\s*C\.A\./g, "S.C.A.")
+      .replace(/\bN\s+V\b/g, "NV"),
+  );
 }
 
 function formatPdfBalanceValue(value: number): string {
@@ -476,13 +562,14 @@ function finalizePdfBlock(
   const detailLines = block.detailLines.filter(
     (line) => line && !isIgnoredPdfDetailLine(line),
   );
-  const firstDetailLine = detailLines[0] || "";
+  const normalizedDetailLines = mergePdfDetailLines(detailLines);
+  const firstDetailLine = normalizedDetailLines[0] || "";
   const rawCounterparty = toTrimmedString(block.counterparty || "");
   const normalizedCounterpartyHint = normalizeStatementAccountHint(rawCounterparty);
   const hasAccountLikeCounterparty = Boolean(normalizedCounterpartyHint);
 
   let counterparty = rawCounterparty;
-  let detailsToUse = detailLines;
+  let detailsToUse = normalizedDetailLines;
 
   if (
     !counterparty ||
@@ -492,12 +579,52 @@ function finalizePdfBlock(
   ) {
     counterparty = firstDetailLine || counterparty;
     if (firstDetailLine) {
-      detailsToUse = detailLines.slice(1);
+      detailsToUse = normalizedDetailLines.slice(1);
     }
   }
 
-  const details = normalizeTransactionDetails(detailsToUse.join(" | "));
-  const fallbackDetails = normalizeTransactionDetails(firstDetailLine);
+  if (
+    counterparty &&
+    detailsToUse.length > 1 &&
+    detailsToUse[0]?.toLowerCase() === counterparty.toLowerCase()
+  ) {
+    detailsToUse = detailsToUse.slice(1);
+  }
+
+  if (
+    counterparty &&
+    detailsToUse.length > 0 &&
+    /^[A-Z](?:\.[A-Z])?\.?$/i.test(detailsToUse[0] || "")
+  ) {
+    counterparty = `${counterparty} ${detailsToUse[0]}`.replace(/\s+/g, " ").trim();
+    detailsToUse = detailsToUse.slice(1);
+  }
+
+  if (
+    (block.type || "").toLowerCase() === "db" &&
+    counterparty &&
+    !/^rabobank$/i.test(counterparty) &&
+    detailsToUse.length === 1 &&
+    /^[\d-]{5,}$/.test(detailsToUse[0] || "")
+  ) {
+    const combined =
+      counterparty.includes(detailsToUse[0])
+        ? counterparty
+        : `${counterparty} ${detailsToUse[0]}`.replace(/\s+/g, " ").trim();
+    detailsToUse = [combined];
+    counterparty = "";
+  }
+
+  if ((block.type || "").toLowerCase() === "db" && /^Eff\.nota\b/i.test(counterparty)) {
+    counterparty = "";
+  }
+
+  if (detailsToUse.length > 1 && /^[A-Z]{2}\d{2}ZZZ[A-Z0-9]+$/i.test(detailsToUse[0] || "")) {
+    detailsToUse = detailsToUse.slice(1);
+  }
+
+  const details = normalizeImportDetailsValue(normalizeTransactionDetails(detailsToUse.join(" | ")));
+  const fallbackDetails = normalizeImportDetailsValue(normalizeTransactionDetails(firstDetailLine));
   const resolvedDetails = details || fallbackDetails;
   if (!resolvedDetails) {
     return null;
@@ -529,7 +656,7 @@ function finalizePdfBlock(
   return {
     date,
     details: resolvedDetails,
-    counterparty,
+    counterparty: normalizePdfCounterparty(counterparty),
     amount,
     currency: "EUR",
     type: toTrimmedString(block.type || "PDF"),
@@ -620,7 +747,6 @@ function parsePdfContent(base64Content: string): TransactionImportRecord[] {
         amountX: null,
         detailLines: [],
         metadata: {},
-        suppressDetailLines: false,
       };
       continue;
     }
@@ -638,7 +764,6 @@ function parsePdfContent(base64Content: string): TransactionImportRecord[] {
     const metadataLabel = isPdfMetadataLabel(text);
     if (metadataLabel) {
       currentBlock.metadata[metadataLabel] = "";
-      currentBlock.suppressDetailLines = true;
       continue;
     }
 
@@ -683,9 +808,6 @@ function parsePdfContent(base64Content: string): TransactionImportRecord[] {
     }
 
     if (item.x >= PDF_DETAIL_MIN_X) {
-      if (currentBlock.suppressDetailLines) {
-        continue;
-      }
       currentBlock.detailLines.push(text);
     }
   }
@@ -702,22 +824,27 @@ function mapCsvRow(row: CsvRow): TransactionImportRecord | null {
   const date = normalizeImportDate(row["Datum"] || row.Date || "");
   const amount = normalizeImportAmount(row["Bedrag"] || row.Amount || "0");
   const currency = toTrimmedString(row["Munt"] || row.Currency || "EUR") || "EUR";
+  const rawCounterparty =
+    toTrimmedString(row["Naam tegenpartij"]) ||
+    toTrimmedString(row["Naam uiteindelijke partij"]) ||
+    toTrimmedString(row["Tegenrekening IBAN/BBAN"]) ||
+    "";
   const descParts: string[] = [];
 
   if (row["Omschrijving-1"]) descParts.push(row["Omschrijving-1"]);
   if (row["Omschrijving-2"]) descParts.push(row["Omschrijving-2"]);
   if (row["Omschrijving-3"]) descParts.push(row["Omschrijving-3"]);
-  if (row["Naam tegenpartij"]) descParts.push(row["Naam tegenpartij"]);
   if (row["Naam / Omschrijving"]) descParts.push(row["Naam / Omschrijving"]);
 
   const details = normalizeTransactionDetails(
     descParts
-      .map((part) => toTrimmedString(part))
+      .map((part) => normalizeImportDetailPart(toTrimmedString(part)))
       .filter(Boolean)
-      .join(" | ") || toTrimmedString(row["Naam / Omschrijving"]),
+      .join(" | ") || normalizeImportDetailPart(toTrimmedString(row["Naam / Omschrijving"])),
   );
+  const resolvedDetails = normalizeImportDetailsValue(details || rawCounterparty);
 
-  if (!date || amount == null || !details) {
+  if (!date || amount == null || !resolvedDetails) {
     return null;
   }
 
@@ -757,12 +884,8 @@ function mapCsvRow(row: CsvRow): TransactionImportRecord | null {
 
   return {
     date,
-    details,
-    counterparty:
-      toTrimmedString(row["Naam tegenpartij"]) ||
-      toTrimmedString(row["Naam uiteindelijke partij"]) ||
-      toTrimmedString(row["Tegenrekening IBAN/BBAN"]) ||
-      "",
+    details: resolvedDetails,
+    counterparty: normalizePdfCounterparty(rawCounterparty) || "",
     amount,
     currency,
     type: toTrimmedString(row["Code"] || row["Type"] || ""),

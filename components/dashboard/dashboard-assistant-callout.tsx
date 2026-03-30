@@ -2,22 +2,24 @@ import { FinanceAssistantMotionGlyph } from "@/components/motions/finance-assist
 import { FinanceHelpAssistantTrigger } from "@/components/ui/finance-help-assistant-trigger";
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinColors } from "@/constants/theme";
+import { useRouter } from "expo-router";
 import type {
   HelpAssistantPeriodContext,
+  HelpAssistantScreenId,
   HelpAssistantScreenContextData,
 } from "@/services/help-assistant-context";
 import React from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  type PressableStateCallbackType,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, type PressableStateCallbackType, View } from "react-native";
 
 type DashboardAssistantCalloutProps = {
+  screenId?: HelpAssistantScreenId;
   selectedPeriod?: HelpAssistantPeriodContext | null;
   screenContext?: HelpAssistantScreenContextData | null;
+  eyebrow?: string;
+  title?: string;
+  copy?: string;
+  accessibilityHint?: string;
+  href?: string;
 };
 
 function buildCardStyle({ pressed }: PressableStateCallbackType) {
@@ -25,19 +27,70 @@ function buildCardStyle({ pressed }: PressableStateCallbackType) {
 }
 
 export function DashboardAssistantCallout({
+  screenId = "dashboard",
   selectedPeriod,
   screenContext,
+  eyebrow = "BUDIO AI",
+  title = "Laat Budio even met je meekijken",
+  copy = "Vraag rustig wat er deze maand nog kan, waar je tempo oploopt of hoe je budget ervoor staat.",
+  accessibilityHint = "Stel een vraag aan Budio over je geld, budget of uitgaven.",
+  href,
 }: DashboardAssistantCalloutProps) {
+  const router = useRouter();
+
+  const navigate = React.useCallback(() => {
+    if (href) {
+      router.push(href);
+    }
+  }, [href, router]);
+
+  if (href) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityHint={accessibilityHint}
+        onPress={navigate}
+        style={buildCardStyle}
+      >
+        <View style={styles.iconBubble}>
+          <FinanceAssistantMotionGlyph
+            size={22}
+            color={FinColors.warningText}
+            backgroundColor={FinColors.yellow}
+          />
+        </View>
+
+        <View style={styles.copyWrap}>
+          <Text style={styles.eyebrow}>{eyebrow}</Text>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.copy} numberOfLines={2}>
+            {copy}
+          </Text>
+        </View>
+
+        <View style={styles.chevronWrap}>
+          <AppIcon
+            name="arrow-forward"
+            size={18}
+            color={FinColors.bgCard}
+            variant="outlined"
+          />
+        </View>
+      </Pressable>
+    );
+  }
+
   return (
     <FinanceHelpAssistantTrigger
-      screenId="dashboard"
+      screenId={screenId}
       selectedPeriod={selectedPeriod}
       screenContext={screenContext}
       renderTrigger={({ onPress, context }) => (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Open hulpassistent voor ${context.screenTitle}`}
-          accessibilityHint="Stel een vraag aan Budio over je geld, budget of uitgaven."
+          accessibilityHint={accessibilityHint}
           onPress={onPress}
           style={buildCardStyle}
         >
@@ -50,11 +103,10 @@ export function DashboardAssistantCallout({
           </View>
 
           <View style={styles.copyWrap}>
-            <Text style={styles.eyebrow}>BUDIO AI</Text>
-            <Text style={styles.title}>Laat Budio even met je meekijken</Text>
+            <Text style={styles.eyebrow}>{eyebrow}</Text>
+            <Text style={styles.title}>{title}</Text>
             <Text style={styles.copy} numberOfLines={2}>
-              Vraag rustig wat er deze maand nog kan, waar je tempo oploopt of hoe
-              je budget ervoor staat.
+              {copy}
             </Text>
           </View>
 

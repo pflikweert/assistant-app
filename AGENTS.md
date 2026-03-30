@@ -6,7 +6,7 @@ Dit is de dagelijkse financiële cockpit die huishoudens zonder vaktaal laat zie
 
 ## Wat De App Doet
 
-- toont actuele rekeningstand, `Nu vrij` en `Veilig tot volgende inkomen`
+- toont actuele rekeningstand, `Veilig tot volgende inkomen` en `Nu vrij`
 - helpt gebruikers direct begrijpen wat veilig kan en wat aandacht vraagt
 - vertaalt week- en maandsturing naar concrete beslissingen
 - analyseert transacties en categoriseert uitgaven
@@ -24,11 +24,14 @@ Dit is de dagelijkse financiële cockpit die huishoudens zonder vaktaal laat zie
 ## Productprincipes
 
 - Toon eerst de huidige stand, daarna de beschikbare ruimte, daarna trend of risico, daarna advies
+- Op Home is `Veilig tot volgende inkomen` het dominante primaire signaal; `Nu vrij` / `Vrij besteedbaar` blijft secundaire context
 - Maak van home het dominante productmoment; andere schermen zijn ondersteunend tenzij expliciet anders onderbouwd
 - Zet beslissingen boven categorieën, beheeropties of interne mechaniek
+- Home toont maximaal 1 dominante `Komende risico's`-kaart en exact 1 dominante `Beste actie vandaag`-kaart
 - `safe to spend` en `veilig tot volgende inkomen` zijn kernvragen van het product
 - Gebruik AI context-first op het juiste moment; maak van chat geen primaire productidentiteit
 - Kies productcompressie boven productexplosie: liever één absurd sterk antwoord dan vijf losse oppervlakken
+- Toon `Buffer` als apart begrip, maar presenteer Home compact als `Reserves & buffer`
 - Laat geen dubbele of niet-relevante data op hetzelfde niveau zien
 - Maak altijd duidelijk wat klikbaar is en wat een detailniveau is
 - Houd taal en copy begrijpelijk voor niet-technische gebruikers
@@ -50,6 +53,7 @@ Gebruik `docs/BUDIO_PRODUCTVISIE_ROADMAP.md` als expliciete productbron voor dez
 Voor harde productbetekenis en truth hierarchy gelden aanvullend:
 
 - `docs/BUDIO_PRODUCT_CONTRACT.md`
+- `docs/BUDIO_HOME_CONTRACT.md`
 - `docs/BUDIO_COCKPIT_MIGRATION_MAP.md`
 
 Bij conflict tussen producttaal en bestaande schermstructuur:
@@ -66,6 +70,7 @@ Bij conflict tussen producttaal en bestaande schermstructuur:
 - voeg geen nieuw scherm toe zonder sterke reden en expliciete cockpitwaarde
 - productcompressie gaat boven featuregroei
 - voeg geen nieuw primair home-signaal toe als het niet helpt bij stand, veilige ruimte, risico of volgende actie
+- subscription-optimalisatie hoort niet standaard op Home-risiconiveau; alleen bij nabije aantoonbare cash-impact of tijdsgevoelig financieel risico
 
 ## Migratieregel
 
@@ -142,7 +147,10 @@ Beslisregel:
 - `variabel budget`: ruimte voor niet-vaste uitgaven binnen de relevante periode
 - `veilig te besteden`: bedrag dat nu verantwoord kan worden uitgegeven binnen de actuele context
 - `veilig tot volgende inkomen`: ruimte die overblijft tot het volgende verwachte inkomensmoment
+- `reserves & buffer`: compact Home-blok dat beschermde ruimte samenvat, met buffer apart benoemd
+- `buffer`: beschermd geld voor stabiliteit, apart van concrete reserveringen of verplichtingen
 - `beste volgende actie`: de meest logische concrete stap die nu helpt om rust, ruimte of herstel te vergroten
+  volgt vaste prioriteit: cash survival risk, harde nabije verplichting, buffer / reserve protection, gedragstempo / overspending, subscription optimization
 - `forecast`: verwachte ontwikkeling van saldo of beschikbare ruimte op basis van bekende inkomsten, vaste lasten en patronen
 - `vaste lasten`: terugkerende, min of meer voorspelbare verplichtingen
 - `abonnement`: herkende terugkerende betaling met relatie tussen transacties
@@ -202,12 +210,13 @@ Gebruik deze volgorde bij twijfel:
 1. bestaande werkende businesslogica in services en dataflows
 2. dit playbook
 3. `docs/BUDIO_PRODUCT_CONTRACT.md` voor begrippen, truth hierarchy en beslisregels
-4. `docs/BUDIO_COCKPIT_MIGRATION_MAP.md` voor product- en domeinmigratie
-5. `docs/BUDIO_PRODUCTVISIE_ROADMAP.md` voor productrichting, prioritering en cockpit-keuzes
-6. `docs/BUDIO_FUNCTIONALITEITEN.md` voor de actuele functionele kaart en producttaal
-7. `docs/UI_PATTERNS.md` voor UI-patronen, kleuren en designbeslissingen
-8. schermspecifieke bestaande patronen in de codebase
-9. open taken in `OPEN_TAKEN_FINANCE_APP.md`
+4. `docs/BUDIO_HOME_CONTRACT.md` voor Home-hiërarchie, blokken en actie-/signaalprioriteit
+5. `docs/BUDIO_COCKPIT_MIGRATION_MAP.md` voor product- en domeinmigratie
+6. `docs/BUDIO_PRODUCTVISIE_ROADMAP.md` voor productrichting, prioritering en cockpit-keuzes
+7. `docs/BUDIO_FUNCTIONALITEITEN.md` voor de actuele functionele kaart en producttaal
+8. `docs/UI_PATTERNS.md` voor UI-patronen, kleuren en designbeslissingen
+9. schermspecifieke bestaande patronen in de codebase
+10. open taken in `OPEN_TAKEN_FINANCE_APP.md`
 
 Als iets in code en playbook lijkt te botsen, analyseer eerst of de code legacygedrag bevat of een bewuste productkeuze is. Verander dit niet zomaar zonder dit expliciet te benoemen.
 
@@ -280,12 +289,21 @@ Voer geen zware of risicovolle commando's uit zonder noodzaak.
 ### Dashboard
 
 - Dashboard is het primaire cockpit-scherm van Budio
+- Dashboard/Home is geen generiek overzichtsscherm, maar de dagelijkse cockpit die budget-, forecast-, reserve- en risicomotoren samenbrengt
 - laat direct zien:
-  - `Nu vrij`
-  - `Veilig tot volgende inkomen`
-  - `Komende risico's`
-  - `Beste actie vandaag`
-  - `Verwacht eindsaldo`
+  - `Veilig tot volgende inkomen` als dominant hoofdsignaal
+  - `Nu vrij` als secundair contextsignaal
+  - `Komende risico's` met maximaal 1 dominante risicokaart
+  - `Beste actie vandaag` met exact 1 dominante actiekaart
+  - compact blok `Reserves & buffer`
+- `Verwacht eindsaldo` mag secundair zichtbaar blijven als context, maar nooit luider dan de Home-hoofdblokken
+- prioriteitsvolgorde voor Home-risico's en acties is vast:
+  - 1) cash survival risk
+  - 2) harde nabije verplichting
+  - 3) buffer / reserve protection
+  - 4) gedragstempo / overspending
+  - 5) subscription optimization
+- subscription-optimalisatie hoort standaard niet in `Komende risico's`; alleen bij nabije aantoonbare cash-impact of tijdsgevoelig financieel risico
 - houd positieve feedback kort en motiverend
 - vermijd doorverwijzingsdenken; home moet eerst zelf antwoord geven
 - laat analyseblokken alleen door als ze de beslissing van vandaag scherper maken

@@ -1,13 +1,13 @@
 import { useSession } from "@/app/_layout";
 import { BudioAssistantEmptyState } from "@/components/help-assistant/budio-assistant-empty-state";
 import {
-  HelpAssistantComposer,
+  HELP_ASSISTANT_COMPOSER_DOCK_HEIGHT,
+  HelpAssistantComposerDock,
   type HelpAssistantComposerHandle,
-} from "@/components/help-assistant/help-assistant-composer";
-import { AiAssistantResponse } from "@/components/help-assistant/ai-assistant-response";
+} from "@/components/help-assistant/help-assistant-composer-dock";
+import { HelpAssistantLiveStatus } from "@/components/help-assistant/help-assistant-live-status";
 import { HelpAssistantIssueDraftPreviewCard } from "@/components/help-assistant/help-assistant-issue-draft-preview";
-import { HelpAssistantMarkdown } from "@/components/help-assistant/help-assistant-markdown";
-import { AppIcon } from "@/components/ui/app-icon";
+import { HelpAssistantThreadMessage } from "@/components/help-assistant/help-assistant-thread-message";
 import {
   applyQuickActionLocally,
   appendLocalAssistantInfoMessage,
@@ -38,9 +38,8 @@ import {
   type HelpAssistantContext,
 } from "@/services/help-assistant-context";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
-import { FinColors } from "@/constants/theme";
 import React from "react";
-import { Animated, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, View } from "react-native";
 
 type HelpAssistantSheetProps = {
   visible: boolean;
@@ -49,7 +48,6 @@ type HelpAssistantSheetProps = {
 };
 
 const STICKY_MESSAGE_TOP_OFFSET = 8;
-const COMPOSER_DOCK_HEIGHT = 110;
 
 export function HelpAssistantSheet({
   visible,
@@ -90,7 +88,6 @@ export function HelpAssistantSheet({
   const [scrollBehaviorMode, setScrollBehaviorMode] = React.useState<"auto" | "smooth">(
     "auto",
   );
-  const livePulseValue = React.useRef(new Animated.Value(1)).current;
   const quickActions = React.useMemo(
     () => listHelpAssistantQuickActions(context),
     [context],
@@ -125,23 +122,6 @@ export function HelpAssistantSheet({
           } as any)
         : null,
     [scrollBehaviorMode],
-  );
-  const liveStatusDotAnimatedStyle = React.useMemo(
-    () => ({
-      opacity: livePulseValue.interpolate({
-        inputRange: [0.75, 1],
-        outputRange: [0.62, 1],
-      }),
-      transform: [
-        {
-          scale: livePulseValue.interpolate({
-            inputRange: [0.75, 1],
-            outputRange: [0.88, 1.06],
-          }),
-        },
-      ],
-    }),
-    [livePulseValue],
   );
   const userFirstName = React.useMemo(
     () => resolveHelpAssistantFirstName(user),
@@ -184,27 +164,6 @@ export function HelpAssistantSheet({
       });
     });
   }, []);
-
-  React.useEffect(() => {
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(livePulseValue, {
-          toValue: 0.75,
-          duration: 900,
-          useNativeDriver: true,
-        }),
-        Animated.timing(livePulseValue, {
-          toValue: 1,
-          duration: 900,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    pulseLoop.start();
-    return () => {
-      pulseLoop.stop();
-    };
-  }, [livePulseValue]);
 
   React.useEffect(() => {
     if (!visible) return;
@@ -534,24 +493,7 @@ export function HelpAssistantSheet({
     <FinanceBottomSheetShell
       visible={visible}
       title="Budio Assistent"
-      headerAccessory={
-        <View style={styles.liveStatusWrap}>
-          <View style={styles.liveStatusAvatar}>
-            <AppIcon
-              name="smart-toy"
-              size={13}
-              color={FinColors.textPrimary}
-              variant="outlined"
-            />
-          </View>
-          <View style={styles.livePill}>
-            <Animated.View
-              style={[styles.liveDot, liveStatusDotAnimatedStyle]}
-            />
-            <Text style={styles.livePillLabel}>Live</Text>
-          </View>
-        </View>
-      }
+      headerAccessory={<HelpAssistantLiveStatus active={visible} />}
       onClose={onClose}
       presentation="fullscreen"
       bodyStyle={styles.bodyShell}
@@ -611,21 +553,17 @@ export function HelpAssistantSheet({
             {thread.messages.length > 0 ? (
               <View style={styles.threadWrap}>
                 {thread.messages.map((message) => {
-                  const isAssistant = message.role === "assistant";
                   const isLatestAssistant = message.id === latestAssistantMessageId;
-                  const isPending = message.status === "pending";
-                  const isReady = message.status === "ready";
                   const isTypedCompleted = typedCompletedByMessageId[message.id] === true;
-                  const shouldRenderLiveAssistant =
-                    isAssistant &&
-                    isLatestAssistant &&
-                    message.id === liveTypingMessageId &&
-                    isReady &&
-                    !isTypedCompleted;
 
                   return (
-                    <View
+                    <HelpAssistantThreadMessage
                       key={message.id}
+                      message={message}
+                      visible={visible}
+                      isLatestAssistant={isLatestAssistant}
+                      liveTypingMessageId={liveTypingMessageId}
+                      typedCompleted={isTypedCompleted}
                       onLayout={(event) => {
                         messageLayoutYByIdRef.current[message.id] =
                           event.nativeEvent.layout.y;
@@ -636,79 +574,19 @@ export function HelpAssistantSheet({
                           scrollMessageToTopAnchor(message.id);
                         }
                       }}
-                      style={[
-                        styles.threadBubble,
-                        message.role === "user"
-                          ? styles.threadBubbleUser
-                          : styles.threadBubbleAssistant,
-                      ]}
-                    >
-                      {message.role === "assistant" ? (
-                        <View style={styles.assistantMessageWrap}>
-                          <View style={styles.assistantHeaderRow}>
-                            <View style={styles.assistantAvatar}>
-                              <AppIcon
-                                name="smart-toy"
-                                size={14}
-                                color={FinColors.textPrimary}
-                                variant="outlined"
-                              />
-                            </View>
-                            <Text style={styles.assistantLabel}>BUDIO</Text>
-                          </View>
-
-                          {isPending ? (
-                            <AiAssistantResponse
-                              isLoading
-                              text=""
-                              theme={{
-                                primary: FinColors.green,
-                                text: FinColors.textPrimary,
-                              }}
-                              style={styles.assistantLiveResponse}
-                            />
-                          ) : (
-                            <View style={styles.assistantBubbleSurface}>
-                              {shouldRenderLiveAssistant ? (
-                                <AiAssistantResponse
-                                  isLoading={false}
-                                  text={message.text}
-                                  theme={{
-                                    primary: FinColors.green,
-                                    text: FinColors.textPrimary,
-                                  }}
-                                  onTypingComplete={() => {
-                                    setTypedCompletedByMessageId((current) => ({
-                                      ...current,
-                                      [message.id]: true,
-                                    }));
-                                    setLiveTypingMessageId((current) =>
-                                      current === message.id ? null : current,
-                                    );
-                                    setStickyMessageAnchorId((current) =>
-                                      current === message.id ? null : current,
-                                    );
-                                  }}
-                                  style={styles.assistantLiveResponse}
-                                />
-                              ) : (
-                                <HelpAssistantMarkdown
-                                  text={message.text}
-                                  tone="assistant"
-                                />
-                              )}
-                            </View>
-                          )}
-                        </View>
-                      ) : (
-                        <View style={styles.userMessageWrap}>
-                          <HelpAssistantMarkdown
-                            text={message.text}
-                            tone="user"
-                          />
-                        </View>
-                      )}
-                    </View>
+                      onTypingComplete={(messageId) => {
+                        setTypedCompletedByMessageId((current) => ({
+                          ...current,
+                          [messageId]: true,
+                        }));
+                        setLiveTypingMessageId((current) =>
+                          current === messageId ? null : current,
+                        );
+                        setStickyMessageAnchorId((current) =>
+                          current === messageId ? null : current,
+                        );
+                      }}
+                    />
                   );
                 })}
               </View>
@@ -716,17 +594,12 @@ export function HelpAssistantSheet({
           </View>
         </ScrollView>
 
-        <View style={styles.composerDock} pointerEvents="box-none">
-          <View style={styles.composerDockGlass} />
-          <View style={styles.composerContentWrap}>
-            <HelpAssistantComposer
-              ref={composerRef}
-              value={composerValue}
-              onChangeText={setComposerValue}
-              onSubmit={handleSubmit}
-            />
-          </View>
-        </View>
+        <HelpAssistantComposerDock
+          composerRef={composerRef}
+          value={composerValue}
+          onChangeText={setComposerValue}
+          onSubmit={handleSubmit}
+        />
       </View>
     </FinanceBottomSheetShell>
   );
@@ -742,41 +615,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
   },
-  liveStatusWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  liveStatusAvatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: FinColors.yellow,
-  },
-  livePill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: "rgba(17,17,17,0.05)",
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: FinColors.green,
-  },
-  livePillLabel: {
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-    color: FinColors.textSecondary,
-  },
   scroll: {
     flex: 1,
     minHeight: 0,
@@ -785,7 +623,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     gap: 20,
-    paddingBottom: COMPOSER_DOCK_HEIGHT + 28,
+    paddingBottom: HELP_ASSISTANT_COMPOSER_DOCK_HEIGHT + 28,
   },
   issueDraftStickyWrap: {
     marginBottom: 12,
@@ -816,90 +654,5 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     zIndex: 1,
-  },
-  threadBubble: {
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  threadBubbleUser: {
-    alignSelf: "flex-end",
-    maxWidth: "78%",
-    borderWidth: 1,
-    borderColor: FinColors.warningBorder,
-    backgroundColor: FinColors.yellowSoft,
-  },
-  threadBubbleAssistant: {
-    alignSelf: "flex-start",
-    width: "100%",
-    maxWidth: "92%",
-    borderWidth: 0,
-    backgroundColor: "transparent",
-    paddingHorizontal: 0,
-    paddingVertical: 2,
-    borderRadius: 0,
-  },
-  assistantMessageWrap: {
-    gap: 8,
-  },
-  assistantHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  assistantAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: FinColors.yellow,
-  },
-  assistantLabel: {
-    fontSize: 10,
-    lineHeight: 14,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-    color: FinColors.textMuted,
-  },
-  assistantBubbleSurface: {
-    borderRadius: 28,
-    backgroundColor: "#e9e9ea",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  userMessageWrap: {
-    gap: 0,
-  },
-  assistantLiveResponse: {
-    marginHorizontal: 0,
-    marginVertical: 0,
-  },
-  composerDock: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 30,
-    paddingTop: 14,
-    paddingBottom: 4,
-  },
-  composerDockGlass: {
-    ...StyleSheet.absoluteFillObject,
-    top: 0,
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    backgroundColor: "rgba(250,251,255,0.74)",
-    borderTopWidth: 1,
-    borderColor: "rgba(255,255,255,0.56)",
-    ...(Platform.OS === "web"
-      ? ({
-          backdropFilter: "blur(10px)",
-        } as any)
-      : null),
-  },
-  composerContentWrap: {
-    paddingHorizontal: 2,
-    paddingBottom: 2,
   },
 });

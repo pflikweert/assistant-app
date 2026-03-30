@@ -13,6 +13,17 @@ export type IncomingImportTransaction = {
   metadata?: Record<string, string>;
 };
 
+export type ImportedTransactionMatchReason =
+  | "reference"
+  | "exact"
+  | "details"
+  | "counterparty";
+
+export type ImportedTransactionMatchResult = {
+  candidate: ImportedTransactionMatchCandidate;
+  reason: ImportedTransactionMatchReason;
+};
+
 const REFERENCE_KEYS = new Set([
   "Transactiereferentie",
   "Betalingskenmerk",
@@ -57,6 +68,14 @@ export function findMatchingImportedTransaction(
   existingRows: ImportedTransactionMatchCandidate[] | null | undefined,
   incoming: IncomingImportTransaction,
 ): ImportedTransactionMatchCandidate | null {
+  const result = findMatchingImportedTransactionWithReason(existingRows, incoming);
+  return result?.candidate || null;
+}
+
+export function findMatchingImportedTransactionWithReason(
+  existingRows: ImportedTransactionMatchCandidate[] | null | undefined,
+  incoming: IncomingImportTransaction,
+): ImportedTransactionMatchResult | null {
   const candidates = existingRows || [];
   if (!candidates.length) return null;
 
@@ -74,7 +93,10 @@ export function findMatchingImportedTransaction(
     });
 
     if (referenceMatch) {
-      return referenceMatch;
+      return {
+        candidate: referenceMatch,
+        reason: "reference",
+      };
     }
   }
 
@@ -87,18 +109,33 @@ export function findMatchingImportedTransaction(
       resolveNormalizedDetails(row.counterparty) === normalizedIncomingCounterparty
     );
   });
-  if (exactMatch) return exactMatch;
+  if (exactMatch) {
+    return {
+      candidate: exactMatch,
+      reason: "exact",
+    };
+  }
 
   const detailsMatch = candidates.find(
     (row) => resolveNormalizedDetails(row.details) === normalizedIncomingDetails,
   );
-  if (detailsMatch) return detailsMatch;
+  if (detailsMatch) {
+    return {
+      candidate: detailsMatch,
+      reason: "details",
+    };
+  }
 
   const counterpartyMatch = candidates.find(
     (row) =>
       resolveNormalizedDetails(row.counterparty) === normalizedIncomingCounterparty,
   );
-  if (counterpartyMatch) return counterpartyMatch;
+  if (counterpartyMatch) {
+    return {
+      candidate: counterpartyMatch,
+      reason: "counterparty",
+    };
+  }
 
   return null;
 }

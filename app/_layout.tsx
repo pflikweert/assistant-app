@@ -476,7 +476,19 @@ function RootNavigator() {
           }}
         />
         <Stack.Screen
+          name="budget"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
           name="admin/index"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="admin/design-system"
           options={{
             headerShown: false,
           }}

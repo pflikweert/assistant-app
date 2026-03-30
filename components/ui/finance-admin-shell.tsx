@@ -5,6 +5,7 @@ import React from "react";
 import {
   ScrollView,
   StyleSheet,
+  type RefObject,
   type StyleProp,
   type ViewStyle,
   View,
@@ -16,6 +17,7 @@ type FinanceAdminShellProps = {
   onBack: () => void;
   rightSlot?: React.ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  scrollRef?: RefObject<ScrollView>;
   children: React.ReactNode;
 };
 
@@ -25,6 +27,7 @@ export function FinanceAdminShell({
   onBack,
   rightSlot,
   contentContainerStyle,
+  scrollRef,
   children,
 }: FinanceAdminShellProps) {
   return (
@@ -38,6 +41,7 @@ export function FinanceAdminShell({
         shellStyle={styles.topBar}
       />
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scroll, contentContainerStyle]}
       >

@@ -1,6 +1,9 @@
 import { AppIcon } from "@/components/ui/app-icon";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
+import { FinanceBudgetProgressBar } from "@/components/ui/finance-budget-progress-bar";
+import { FinanceButton } from "@/components/ui/finance-button";
 import { FinanceDetailShell } from "@/components/ui/finance-detail-shell";
+import { FinanceStatusChip } from "@/components/ui/finance-status-chip";
 import { FinanceStepIndicator } from "@/components/ui/finance-step-indicator";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import { ImportBankAccountSheet } from "@/components/import/import-bank-account-sheet";
@@ -69,32 +72,6 @@ function getGroupStatusTone(group: ImportAccountGroup) {
   return "watch" as const;
 }
 
-function StatusPill({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: "good" | "watch";
-}) {
-  return (
-    <View
-      style={[
-        styles.statusPill,
-        tone === "good" ? styles.statusPillGood : styles.statusPillWatch,
-      ]}
-    >
-      <Text
-        style={[
-          styles.statusPillText,
-          tone === "good" ? styles.statusPillTextGood : styles.statusPillTextWatch,
-        ]}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
-
 type AccountPickerSheetProps = {
   visible: boolean;
   group: ImportAccountGroup | null;
@@ -132,14 +109,12 @@ function AccountPickerSheet({
       bodyStyle={styles.sheetBody}
       footerStyle={styles.sheetFooter}
       footer={
-        <Pressable
-          accessibilityRole="button"
+        <FinanceButton
+          label="Nieuwe rekening"
           onPress={onCreateNew}
-          style={({ pressed }) => [styles.sheetCreateButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.sheetCreateButtonText}>Nieuwe rekening</Text>
-          <AppIcon name="add" size={18} color={FinColors.bgBase} variant="outlined" />
-        </Pressable>
+          leftIcon={<AppIcon name="add" size={16} color={FinColors.textPrimary} variant="outlined" />}
+          fullWidth
+        />
       }
     >
       {loading ? (
@@ -410,16 +385,14 @@ export function RekeningenKoppelenScreenContent() {
                   <Text style={styles.progressLabel}>Klaar om door te gaan</Text>
                   <Text style={styles.progressValue}>{linkedSummary}</Text>
                 </View>
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      {
-                        width: `${draft.summary.totalTransactions ? (linkedTransactionCount / draft.summary.totalTransactions) * 100 : 0}%`,
-                      },
-                    ]}
-                  />
-                </View>
+                <FinanceBudgetProgressBar
+                  progress={
+                    draft.summary.totalTransactions
+                      ? (linkedTransactionCount / draft.summary.totalTransactions) * 100
+                      : 0
+                  }
+                  tone={allLinked ? "good" : "watch"}
+                />
               </View>
             </View>
           ) : (
@@ -429,13 +402,11 @@ export function RekeningenKoppelenScreenContent() {
               <Text style={styles.emptyText}>
                 Kies opnieuw een bestand om verder te gaan.
               </Text>
-              <Pressable
-                accessibilityRole="button"
+              <FinanceButton
+                label="Terug naar stap 1"
+                variant="secondary"
                 onPress={goToImportStepOne}
-                style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-              >
-                <Text style={styles.secondaryButtonText}>Terug naar stap 1</Text>
-              </Pressable>
+              />
             </View>
           )}
 
@@ -477,7 +448,7 @@ export function RekeningenKoppelenScreenContent() {
                     <Text style={styles.groupProvider}>{group.providerLabel}</Text>
                     <Text style={styles.groupAccount}>{group.sourceAccountLabel}</Text>
                   </View>
-                  <StatusPill label={statusLabel} tone={statusTone} />
+                  <FinanceStatusChip label={statusLabel} tone={statusTone} />
                 </View>
 
                 {linked ? (
@@ -509,30 +480,28 @@ export function RekeningenKoppelenScreenContent() {
                 ) : (
                   <>
                     <View style={styles.actionRow}>
-                      <Pressable
-                        accessibilityRole="button"
+                      <FinanceButton
+                        label="Nieuwe rekening"
+                        size="sm"
+                        leftIcon={<AppIcon name="add" size={16} color={FinColors.textPrimary} variant="outlined" />}
                         onPress={() => setCreateGroupKey(group.key)}
-                        style={({ pressed }) => [
-                          styles.primaryButton,
-                          styles.flexButton,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <AppIcon name="add" size={16} color={FinColors.textPrimary} variant="outlined" />
-                        <Text style={styles.primaryButtonText}>Nieuwe rekening</Text>
-                      </Pressable>
-                      <Pressable
-                        accessibilityRole="button"
+                        style={styles.flexButton}
+                      />
+                      <FinanceButton
+                        label="Kies rekening"
+                        size="sm"
+                        variant="secondary"
+                        leftIcon={
+                          <AppIcon
+                            name="manage-accounts"
+                            size={16}
+                            color={FinColors.textSecondary}
+                            variant="outlined"
+                          />
+                        }
                         onPress={() => setSelectionGroupKey(group.key)}
-                        style={({ pressed }) => [
-                          styles.secondaryButton,
-                          styles.flexButton,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <AppIcon name="manage-accounts" size={16} color={FinColors.textSecondary} variant="outlined" />
-                        <Text style={styles.secondaryButtonText}>Kies rekening</Text>
-                      </Pressable>
+                        style={styles.flexButton}
+                      />
                     </View>
                   </>
                 )}
@@ -545,18 +514,12 @@ export function RekeningenKoppelenScreenContent() {
             <Text style={styles.footerText}>
               Ga verder zodra elke rekening is gekoppeld.
             </Text>
-            <Pressable
-              accessibilityRole="button"
+            <FinanceButton
+              label="Transacties inlezen"
+              fullWidth
               disabled={!allLinked}
               onPress={goToImportControl}
-              style={({ pressed }) => [
-                styles.primaryWideButton,
-                !allLinked && styles.primaryWideButtonDisabled,
-                pressed && allLinked && styles.pressed,
-              ]}
-            >
-              <Text style={styles.primaryWideButtonText}>Transacties inlezen</Text>
-            </Pressable>
+            />
           </View>
         
 
@@ -680,17 +643,6 @@ const styles = StyleSheet.create({
     color: FinColors.textSecondary,
     fontWeight: "700",
   },
-  progressTrack: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: FinColors.warningText,
-  },
   groupCard: {
     ...FinSurfaces.topLevelCard,
     borderRadius: 28,
@@ -764,40 +716,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     minWidth: 160,
   },
-  secondaryButton: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: FinColors.borderSubtle,
-    backgroundColor: FinColors.bgInput,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-  },
-  secondaryButtonText: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: FinColors.textSecondary,
-    fontWeight: "800",
-  },
-  primaryButton: {
-    borderRadius: 999,
-    backgroundColor: FinColors.yellow,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 8,
-  },
-  primaryButtonText: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: FinColors.textPrimary,
-    fontWeight: "800",
-  },
   linkedBox: {
     borderRadius: 18,
     backgroundColor: FinColors.bgInput,
@@ -859,21 +777,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: FinColors.textSecondary,
   },
-  primaryWideButton: {
-    borderRadius: 999,
-    backgroundColor: FinColors.yellow,
-    paddingVertical: 15,
-    alignItems: "center",
-  },
-  primaryWideButtonDisabled: {
-    opacity: 0.55,
-  },
-  primaryWideButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "800",
-    color: FinColors.textPrimary,
-  },
   emptyCard: {
     ...FinSurfaces.topLevelCard,
     borderRadius: 28,
@@ -912,31 +815,6 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.86,
-  },
-  statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    alignSelf: "flex-start",
-  },
-  statusPillGood: {
-    backgroundColor: FinColors.greenBg,
-  },
-  statusPillWatch: {
-    backgroundColor: FinColors.warningBg,
-  },
-  statusPillText: {
-    fontSize: 11,
-    lineHeight: 13,
-    fontWeight: "900",
-    letterSpacing: 0.9,
-    textTransform: "uppercase",
-  },
-  statusPillTextGood: {
-    color: FinColors.green,
-  },
-  statusPillTextWatch: {
-    color: FinColors.warningText,
   },
   sheetBody: {
     minHeight: 0,
@@ -1006,21 +884,5 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: FinColors.textSecondary,
     textAlign: "center",
-  },
-  sheetCreateButton: {
-    borderRadius: 999,
-    backgroundColor: FinColors.textPrimary,
-    paddingVertical: 15,
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-  sheetCreateButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
-    color: FinColors.bgBase,
-    fontWeight: "800",
   },
 });

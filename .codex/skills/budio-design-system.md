@@ -140,6 +140,9 @@ Single design-system guardrail:
 
 - Gebruik bestaande componenten eerst.
 - Maak geen nieuwe component zonder duidelijke herbruikbaarheid.
+- Maak nieuwe componenten alleen na goedgekeurde Stitch-designreview.
+- Gebruik Engelse componentnamen met duidelijke intentie.
+- Plaats componenten in logische mappen (`components/{domain}` of `components/ui`).
 - Gebruik bestaande shells eerst:
   - `FinanceDashboardHeader`
   - `FinanceTopBar`

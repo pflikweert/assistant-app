@@ -3,9 +3,11 @@ import {
   AuthScreenShell,
   authScreenStyles,
 } from "@/components/auth/auth-screen-shell";
+import { FinanceButton } from "@/components/ui/finance-button";
+import { FinanceInputField } from "@/components/ui/finance-input-field";
 import type { Href } from "expo-router";
 import React from "react";
-import { ActivityIndicator, Pressable, Text, TextInput } from "react-native";
+import { Text } from "react-native";
 import { getAuthRedirectUrl } from "@/services/auth-url";
 import { getAuthRegistrationErrorMessage } from "@/services/auth-error-messages";
 import { getEmailFeedback } from "@/services/auth-email-validation";
@@ -97,10 +99,9 @@ export default function RegisterScreen() {
         },
       ]}
     >
-      <TextInput
-        style={authScreenStyles.input}
+      <FinanceInputField
+        label="Naam"
         placeholder="Je naam"
-        placeholderTextColor="#7E8A9A"
         autoCapitalize="words"
         autoComplete="name"
         value={name}
@@ -111,14 +112,11 @@ export default function RegisterScreen() {
           if (success) setSuccess(null);
         }}
         editable={!submitting}
+        hint={nameHint}
       />
-      {nameHint ? (
-        <Text style={authScreenStyles.inlineHint}>{nameHint}</Text>
-      ) : null}
-      <TextInput
-        style={authScreenStyles.input}
+      <FinanceInputField
+        label="E-mail"
         placeholder="E-mail"
-        placeholderTextColor="#7E8A9A"
         autoCapitalize="none"
         autoComplete="email"
         keyboardType="email-address"
@@ -130,14 +128,11 @@ export default function RegisterScreen() {
           if (success) setSuccess(null);
         }}
         editable={!submitting}
+        hint={emailHint}
       />
-      {emailHint ? (
-        <Text style={authScreenStyles.inlineHint}>{emailHint}</Text>
-      ) : null}
-      <TextInput
-        style={authScreenStyles.input}
+      <FinanceInputField
+        label="Wachtwoord"
         placeholder="Wachtwoord"
-        placeholderTextColor="#7E8A9A"
         autoCapitalize="none"
         autoComplete="new-password"
         secureTextEntry
@@ -149,14 +144,11 @@ export default function RegisterScreen() {
           if (success) setSuccess(null);
         }}
         editable={!submitting}
+        hint={passwordInlineHint}
       />
-      {passwordInlineHint ? (
-        <Text style={authScreenStyles.inlineHint}>{passwordInlineHint}</Text>
-      ) : null}
-      <TextInput
-        style={authScreenStyles.input}
+      <FinanceInputField
+        label="Herhaal wachtwoord"
         placeholder="Herhaal wachtwoord"
-        placeholderTextColor="#7E8A9A"
         autoCapitalize="none"
         autoComplete="new-password"
         secureTextEntry
@@ -168,10 +160,8 @@ export default function RegisterScreen() {
           if (success) setSuccess(null);
         }}
         editable={!submitting}
+        hint={confirmInlineHint}
       />
-      {confirmInlineHint ? (
-        <Text style={authScreenStyles.inlineHint}>{confirmInlineHint}</Text>
-      ) : null}
       <Text style={authScreenStyles.helperText}>
         {getPasswordRequirementsText()}
       </Text>
@@ -179,20 +169,13 @@ export default function RegisterScreen() {
       {success ? (
         <Text style={authScreenStyles.successText}>{success}</Text>
       ) : null}
-      <Pressable
-        style={[
-          authScreenStyles.button,
-          disabled && authScreenStyles.buttonDisabled,
-        ]}
+      <FinanceButton
+        label="Account aanmaken"
+        fullWidth
         onPress={handleRegister}
         disabled={disabled}
-      >
-        {submitting ? (
-          <ActivityIndicator color="#07130D" />
-        ) : (
-          <Text style={authScreenStyles.buttonText}>Account aanmaken</Text>
-        )}
-      </Pressable>
+        loading={submitting}
+      />
     </AuthScreenShell>
   );
 }

@@ -1,12 +1,13 @@
 import React from "react";
 import type { Href } from "expo-router";
 import { Link } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import {
   AuthScreenShell,
   authScreenStyles,
 } from "@/components/auth/auth-screen-shell";
+import { FinanceButton } from "@/components/ui/finance-button";
 
 export type AuthErrorCode =
   | "otp_expired"
@@ -70,15 +71,11 @@ export default function AuthErrorMessage({
         <Text style={styles.noticeBody}>{message}</Text>
       </View>
 
-      <Pressable
-        style={authScreenStyles.button}
+      <FinanceButton
+        label="Vraag nieuwe resetlink aan"
+        fullWidth
         onPress={onReset}
-        accessibilityRole="button"
-      >
-        <Text style={authScreenStyles.buttonText}>
-          Vraag nieuwe resetlink aan
-        </Text>
-      </Pressable>
+      />
 
       <Text style={styles.helperText}>
         Je kunt daarna direct opnieuw een wachtwoord instellen.

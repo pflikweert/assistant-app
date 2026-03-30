@@ -14,6 +14,7 @@ type FinanceHeroShellProps = {
   title: React.ReactNode;
   subtitle: React.ReactNode;
   children?: React.ReactNode;
+  layout?: "default" | "utility";
   shellStyle?: StyleProp<ViewStyle>;
   innerStyle?: StyleProp<ViewStyle>;
   titleStyle?: StyleProp<TextStyle>;
@@ -27,6 +28,7 @@ export function FinanceHeroShell({
   title,
   subtitle,
   children,
+  layout = "default",
   shellStyle,
   innerStyle,
   titleStyle,
@@ -34,9 +36,12 @@ export function FinanceHeroShell({
   eyebrowStyle,
   subtitleLineStyle,
 }: FinanceHeroShellProps) {
+  const shellLayoutStyle = layout === "utility" ? styles.utilityShell : styles.shell;
+  const innerLayoutStyle = layout === "utility" ? styles.utilityInner : styles.inner;
+
   return (
-    <View style={[styles.shell, shellStyle]}>
-      <View style={[styles.inner, innerStyle]}>
+    <View style={[shellLayoutStyle, shellStyle]}>
+      <View style={[innerLayoutStyle, innerStyle]}>
         <View style={styles.eyebrowRow}>
           <View style={styles.eyebrowDot} />
           <Text style={[styles.eyebrow, eyebrowStyle]}>{eyebrow}</Text>
@@ -57,6 +62,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: FinColors.borderSubtle,
   },
+  utilityShell: {
+    backgroundColor: FinColors.bgElevated,
+    borderBottomWidth: 1,
+    borderBottomColor: FinColors.borderSubtle,
+    width: "100%",
+  },
   inner: {
     width: "100%",
     maxWidth: 1040,
@@ -64,6 +75,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: FinSpacing.x4,
     paddingTop: 102,
     paddingBottom: FinSpacing.x6,
+  },
+  utilityInner: {
+    width: "100%",
+    alignSelf: "stretch",
+    paddingHorizontal: FinSpacing.x4,
+    paddingTop: FinSpacing.x6,
+    paddingBottom: FinSpacing.x5,
   },
   eyebrowRow: {
     flexDirection: "row",

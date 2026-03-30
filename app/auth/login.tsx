@@ -3,15 +3,14 @@ import {
   AuthScreenShell,
   authScreenStyles,
 } from "@/components/auth/auth-screen-shell";
+import { FinanceButton } from "@/components/ui/finance-button";
+import { FinanceInputField } from "@/components/ui/finance-input-field";
 import type { Href } from "expo-router";
 import { Link } from "expo-router";
 import React from "react";
 import {
-  ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { getAuthSignInErrorMessage } from "@/services/auth-error-messages";
@@ -57,11 +56,9 @@ export default function LoginScreen() {
       <Text style={styles.securityNote}>
         Je sessie blijft veilig opgeslagen op dit apparaat.
       </Text>
-      <Text style={authScreenStyles.fieldLabel}>E-mailadres</Text>
-      <TextInput
-        style={authScreenStyles.input}
+      <FinanceInputField
+        label="E-mailadres"
         placeholder="naam@voorbeeld.nl"
-        placeholderTextColor="#8F8A83"
         autoCapitalize="none"
         autoComplete="email"
         keyboardType="email-address"
@@ -70,11 +67,9 @@ export default function LoginScreen() {
         editable={!submitting}
       />
       <View style={authScreenStyles.fieldGroup}>
-        <Text style={authScreenStyles.fieldLabel}>Wachtwoord</Text>
-        <TextInput
-          style={authScreenStyles.input}
+        <FinanceInputField
+          label="Wachtwoord"
           placeholder="Voer je wachtwoord in"
-          placeholderTextColor="#8F8A83"
           autoCapitalize="none"
           autoComplete="password"
           secureTextEntry
@@ -90,20 +85,13 @@ export default function LoginScreen() {
         </Link>
       </View>
       {error ? <Text style={authScreenStyles.errorText}>{error}</Text> : null}
-      <Pressable
-        style={[
-          authScreenStyles.button,
-          disabled && authScreenStyles.buttonDisabled,
-        ]}
+      <FinanceButton
+        label="Inloggen"
+        fullWidth
         onPress={handleLogin}
         disabled={disabled}
-      >
-        {submitting ? (
-          <ActivityIndicator color="#111111" />
-        ) : (
-          <Text style={authScreenStyles.buttonText}>Inloggen</Text>
-        )}
-      </Pressable>
+        loading={submitting}
+      />
       <Text style={styles.metaText}>
         Je accountgegevens blijven gekoppeld aan je eigen omgeving en worden
         automatisch hersteld bij een volgende sessie.

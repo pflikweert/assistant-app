@@ -1,41 +1,60 @@
 import React from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
 import {
-  Canvas,
-  Circle,
-  Fill,
-  Group,
-  LinearGradient,
-  Path,
-  vec,
-} from "@shopify/react-native-skia";
-import Animated, {
-  useAnimatedStyle,
-  useDerivedValue,
-} from "react-native-reanimated";
+  Platform,
+  StyleSheet,
+  type ImageSourcePropType,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+  View,
+} from "react-native";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import { FinTokens } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { FinanceText } from "@/components/ui/finance-text";
+import { FinanceLiveStatusDotMotion } from "./finance-live-status-dot-motion";
 import { useSplashLoaderAnimation } from "./useSplashLoaderAnimation";
+const AnimatedView = Animated.createAnimatedComponent(View);
 
 export type SplashLoaderProps = {
+  eyebrow?: string;
+  title?: string;
+  subtitle?: string;
   label?: string;
+  imageSource?: ImageSourcePropType;
   size?: number;
   speed?: number;
   intensity?: number;
   background?: boolean;
   testID?: string;
   reduceMotion?: boolean;
+  style?: StyleProp<ViewStyle>;
+  cardStyle?: StyleProp<ViewStyle>;
+  eyebrowStyle?: StyleProp<TextStyle>;
+  titleStyle?: StyleProp<TextStyle>;
+  subtitleStyle?: StyleProp<TextStyle>;
+  labelStyle?: StyleProp<TextStyle>;
 };
 
-const AnimatedView = Animated.createAnimatedComponent(View);
-
 export function SplashLoader({
-  label = "Laden…",
+  eyebrow = "Budio",
+  title = "Budio cockpit wordt voorbereid",
+  subtitle = "We zetten je veilige ruimte en context rustig voor je klaar.",
+  label = "Je overzicht wordt bijgewerkt.",
+  imageSource,
   size = 96,
   speed = 1,
   intensity = 0.6,
   background = true,
   testID,
   reduceMotion = false,
+  style,
+  cardStyle,
+  eyebrowStyle,
+  titleStyle,
+  subtitleStyle,
+  labelStyle,
 }: SplashLoaderProps) {
   const theme = useTheme();
   const animation = useSplashLoaderAnimation({
@@ -44,146 +63,140 @@ export function SplashLoader({
     intensity,
     reduceMotion,
   });
+  const motionFactor = Math.max(0.8, Math.min(1.4, size / 96));
+  const contentWidth = Math.round(300 + motionFactor * 60);
+  const backgroundSource = imageSource;
 
-  const breathingStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: animation.pulse.value }],
-    opacity: reduceMotion ? 1 : 0.9 + animation.glow.value * 0.1,
-  }));
+  const backgroundMotionStyle = useAnimatedStyle(() => {
+    const cycle = animation.phase.value * Math.PI * 2;
+    const driftStrength = 10 * motionFactor * Math.max(0.5, intensity);
+    const driftX = Math.sin(cycle * 0.72) * driftStrength;
+    const driftY = Math.cos(cycle * 0.58 + 0.25) * (driftStrength * 0.82);
+    const scale = 1.06 + (animation.pulse.value - 0.94) * 0.48;
+    const rotate = Math.sin(cycle * 0.26) * Math.max(0.35, intensity * 1.1);
 
-  const ringStyle = useAnimatedStyle(() => ({
+    return {
+      transform: [
+        { translateX: driftX },
+        { translateY: driftY },
+        { scale },
+        { rotate: `${rotate}deg` },
+      ],
+    };
+  });
+
+  const hazeMotionStyle = useAnimatedStyle(() => {
+    const baseOpacity = reduceMotion ? 0.42 : 0.2 + animation.glow.value * 0.28;
+    const scale = reduceMotion ? 1 : 0.94 + animation.glow.value * 0.08;
+
+    return {
+      opacity: baseOpacity,
+      transform: [{ scale }],
+    };
+  });
+
+  const contentMotionStyle = useAnimatedStyle(() => ({
     transform: [
-      { rotateZ: `${animation.phase.value * Math.PI * 2}rad` },
-      { scale: 1 },
+      {
+        translateY: reduceMotion ? 0 : (1 - animation.pulse.value) * 8,
+      },
     ],
-    opacity: reduceMotion
-      ? 0.72
-      : 0.62 + animation.glow.value * 0.14 + animation.ringProgress.value * 0.08,
+    opacity: reduceMotion ? 1 : 0.96 + animation.glow.value * 0.04,
   }));
-  const glowAlpha = useDerivedValue(() =>
-    reduceMotion ? 0.26 : 0.18 + animation.glow.value * 0.32,
-  );
-  const coreRadius = useDerivedValue(() => size * (0.26 + animation.pulse.value * 0.08));
-  const haloRadius = useDerivedValue(() => size * (0.36 + animation.pulse.value * 0.13));
-  const webHaloStyle = useAnimatedStyle(() => ({
-    opacity: glowAlpha.value,
-  }));
-  const webCorePulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: animation.pulse.value }],
-  }));
-
-  const frameSize = Math.round(size * 1.8);
-  const center = frameSize / 2;
-  const ringRadius = size * 0.49;
-  const ringPath = React.useMemo(() => {
-    const startAngle = (-112 * Math.PI) / 180;
-    const endAngle = (112 * Math.PI) / 180;
-    const startX = center + ringRadius * Math.cos(startAngle);
-    const startY = center + ringRadius * Math.sin(startAngle);
-    const endX = center + ringRadius * Math.cos(endAngle);
-    const endY = center + ringRadius * Math.sin(endAngle);
-    return `M ${startX} ${startY} A ${ringRadius} ${ringRadius} 0 1 1 ${endX} ${endY}`;
-  }, [center, ringRadius]);
-  const isWeb = Platform.OS === "web";
 
   return (
     <View
       testID={testID}
+      accessibilityRole="progressbar"
+      accessibilityLabel={`${eyebrow}: ${title}`}
+      accessibilityLiveRegion="polite"
       style={[
         styles.root,
-        background && { backgroundColor: theme.colors.canvas },
+        background ? { backgroundColor: theme.colors.canvas } : null,
+        style,
       ]}
-      accessibilityRole="progressbar"
-      accessibilityLabel={label}
-      accessibilityLiveRegion="polite"
     >
-      <AnimatedView style={breathingStyle}>
-        {isWeb ? (
-          <AnimatedView
-            style={[
-              styles.webCanvasFallback,
-              {
-                width: frameSize,
-                height: frameSize,
-              },
-            ]}
-          >
-            <AnimatedView
-              style={[
-                styles.webHalo,
-                {
-                  width: size * 1.02,
-                  height: size * 1.02,
-                  borderRadius: size * 0.51,
-                  backgroundColor: theme.colors.brandPrimary,
-                },
-                webHaloStyle,
-              ]}
+      <View style={styles.backgroundLayer}>
+        <AnimatedView style={[styles.backgroundMotionWrap, backgroundMotionStyle]}>
+          {backgroundSource ? (
+            <Image
+              source={backgroundSource}
+              style={styles.backgroundImage}
+              contentFit="cover"
+              transition={0}
+              accessibilityIgnoresInvertColors
             />
-            <AnimatedView
-              style={[
-                styles.webCore,
-                {
-                  width: size * 0.64,
-                  height: size * 0.64,
-                  borderRadius: size * 0.32,
-                  backgroundColor: theme.colors.brandHighlight,
-                  borderColor: theme.colors.brandAccent,
-                },
-                webCorePulseStyle,
-              ]}
-            />
-            <AnimatedView
-              style={[
-                styles.webRing,
-                {
-                  width: size * 1.06,
-                  height: size * 1.06,
-                  borderRadius: size * 0.53,
-                  borderColor: theme.colors.brandAccent,
-                },
-                ringStyle,
-              ]}
-            />
-          </AnimatedView>
-        ) : (
-          <AnimatedView style={ringStyle}>
-            <Canvas style={{ width: frameSize, height: frameSize }}>
-              <Fill color="transparent" />
-              <Group>
-                <Circle cx={center} cy={center} r={haloRadius} opacity={glowAlpha}>
-                  {/* Tweak colors here to match a future brand refresh. */}
-                  <LinearGradient
-                    start={vec(center - size * 0.45, center - size * 0.45)}
-                    end={vec(center + size * 0.45, center + size * 0.45)}
-                    colors={[theme.colors.brandPrimary, theme.colors.brandAccent]}
-                  />
-                </Circle>
-                <Circle cx={center} cy={center} r={coreRadius} opacity={0.88}>
-                  <LinearGradient
-                    start={vec(center - size * 0.2, center - size * 0.2)}
-                    end={vec(center + size * 0.2, center + size * 0.2)}
-                    colors={[theme.colors.brandPrimary, theme.colors.brandHighlight]}
-                  />
-                </Circle>
-              </Group>
-              <Path
-                path={ringPath}
-                style="stroke"
-                strokeWidth={Math.max(1.2, size * 0.02)}
-                opacity={0.9}
-                color={theme.colors.brandAccent}
-              />
-            </Canvas>
-          </AnimatedView>
-        )}
-      </AnimatedView>
+          ) : null}
+        </AnimatedView>
 
-      <Text
-        style={[styles.label, { color: theme.colors.textMuted }]}
-        maxFontSizeMultiplier={1.2}
-      >
-        {label}
-      </Text>
+        <AnimatedView style={[styles.topHaze, hazeMotionStyle]} />
+        <AnimatedView style={[styles.bottomHaze, hazeMotionStyle]} />
+        <View style={styles.overlayWash} />
+        <View style={styles.vignetteTop} />
+        <View style={styles.vignetteBottom} />
+        <View style={styles.microAccent} />
+      </View>
+
+      <AnimatedView style={[styles.contentWrap, contentMotionStyle]}>
+        <View
+          style={[
+            styles.card,
+            Platform.OS === "web"
+              ? ({
+                  backdropFilter: "blur(16px)",
+                  WebkitBackdropFilter: "blur(16px)",
+                } as any)
+              : null,
+            cardStyle,
+          ]}
+        >
+          <View style={styles.eyebrowRow}>
+            <View style={styles.eyebrowChip}>
+              <FinanceLiveStatusDotMotion size={8} />
+              <FinanceText
+                variant="caption"
+                tone="secondary"
+                weight="bold"
+                style={[styles.eyebrowText, eyebrowStyle]}
+              >
+                {eyebrow}
+              </FinanceText>
+            </View>
+          </View>
+
+          <FinanceText
+            variant="h3"
+            tone="primary"
+            weight="black"
+            align="center"
+            style={[styles.title, titleStyle]}
+          >
+            {title}
+          </FinanceText>
+
+          <FinanceText
+            variant="body"
+            tone="secondary"
+            align="center"
+            style={[styles.subtitle, subtitleStyle]}
+          >
+            {subtitle}
+          </FinanceText>
+
+          <View style={[styles.labelPill, { maxWidth: contentWidth }]}>
+            <FinanceText
+              variant="caption"
+              tone="muted"
+              weight="bold"
+              align="center"
+              style={[styles.label, labelStyle]}
+              numberOfLines={2}
+            >
+              {label}
+            </FinanceText>
+          </View>
+        </View>
+      </AnimatedView>
     </View>
   );
 }
@@ -193,34 +206,127 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 18,
-    paddingHorizontal: 24,
+    overflow: "hidden",
+    paddingHorizontal: FinTokens.spacing.l,
+    paddingVertical: FinTokens.spacing["4xl"],
   },
-  label: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "600",
-    letterSpacing: 0.2,
-    textAlign: "center",
+  backgroundLayer: {
+    ...StyleSheet.absoluteFillObject,
+    pointerEvents: "none",
   },
-  webCanvasFallback: {
+  backgroundMotionWrap: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
   },
-  webHalo: {
-    position: "absolute",
-    opacity: 0.26,
+  backgroundImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
   },
-  webCore: {
+  overlayWash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(250, 248, 242, 0.36)",
+  },
+  topHaze: {
     position: "absolute",
+    top: -100,
+    right: -80,
+    width: 320,
+    height: 320,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.48)",
+  },
+  bottomHaze: {
+    position: "absolute",
+    bottom: -120,
+    left: -100,
+    width: 300,
+    height: 300,
+    borderRadius: 999,
+    backgroundColor: "rgba(242,201,76,0.16)",
+  },
+  vignetteTop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 190,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  vignetteBottom: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 180,
+    backgroundColor: "rgba(17,17,17,0.08)",
+  },
+  microAccent: {
+    position: "absolute",
+    right: FinTokens.spacing.xl,
+    bottom: FinTokens.spacing.xl,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 1,
-    opacity: 0.9,
+    borderColor: "rgba(242,201,76,0.45)",
+    backgroundColor: "rgba(255,255,255,0.52)",
+    transform: [{ rotate: "45deg" }],
   },
-  webRing: {
-    position: "absolute",
-    borderWidth: 1.4,
-    borderTopColor: "transparent",
-    borderLeftColor: "transparent",
-    opacity: 0.8,
+  contentWrap: {
+    width: "100%",
+    maxWidth: 560,
+    alignItems: "center",
+  },
+  card: {
+    width: "100%",
+    borderRadius: FinTokens.radius.xxl,
+    paddingHorizontal: FinTokens.spacing.xl,
+    paddingVertical: FinTokens.spacing.xl,
+    alignItems: "center",
+    gap: FinTokens.spacing.m,
+    backgroundColor: "rgba(250, 248, 242, 0.76)",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.07)",
+    boxShadow: "0px 18px 32px rgba(17,17,17,0.10)",
+    elevation: 4,
+  },
+  eyebrowRow: {
+    width: "100%",
+    alignItems: "center",
+  },
+  eyebrowChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: FinTokens.spacing.xs,
+    paddingHorizontal: FinTokens.spacing.s,
+    paddingVertical: FinTokens.spacing.xs,
+    borderRadius: FinTokens.radius.pill,
+    backgroundColor: "rgba(255,255,255,0.60)",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.06)",
+  },
+  eyebrowText: {
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  title: {
+    maxWidth: 420,
+  },
+  subtitle: {
+    maxWidth: 440,
+  },
+  labelPill: {
+    alignSelf: "stretch",
+    paddingHorizontal: FinTokens.spacing.m,
+    paddingVertical: FinTokens.spacing.s,
+    borderRadius: FinTokens.radius.xl,
+    backgroundColor: "rgba(255,255,255,0.68)",
+    borderWidth: 1,
+    borderColor: "rgba(17,17,17,0.06)",
+  },
+  label: {
+    letterSpacing: 0.4,
   },
 });

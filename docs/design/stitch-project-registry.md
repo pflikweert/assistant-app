@@ -56,3 +56,17 @@ Dit bestand legt de vaste Stitch-projecten voor Budio vast.
   - `docs/design/design-tokens.md`
   - `docs/design/component-inventory.md`
   - `docs/design/screen-shells.md`
+
+## Laatste flowset (29 maart 2026)
+
+Slim-budget-instellen en budgetbeheer exploration (canonieke asset):
+
+- `a74406b7485749d089cf9eb18af0c9c4` — `Budget tab - voorstel eerst`
+- `1c496e99c3b743b1b394c68c18be11e0` — `Budget beheer - keuze tussen slim en handmatig`
+- `2efd1341088b447e9e7327790a071203` — `Slim budget instellen - voorsteloverzicht`
+- `d5baa7e078204f2d8a158177713ccade` — `Slim instellen - onderdelen bewerken`
+- `df0b05118c3b49faaa58b324a7b6819e` — `Budget toegepast - review`
+
+Niet-canonieke generatie (niet gebruiken als basis):
+
+- `d4e753cdbd354f30987f4e528ecc0532` gebruikte tijdelijk een niet-canonieke design-system asset (`assets/43821ba64bc84aadb8441fbaccf6b6c5`) en is expliciet buiten scope van de reviewset.

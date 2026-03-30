@@ -1,6 +1,9 @@
 import { AppIcon } from "@/components/ui/app-icon";
+import { FinanceButton } from "@/components/ui/finance-button";
+import { FinanceDetailCard } from "@/components/ui/finance-detail-card";
 import { FinanceDetailShell } from "@/components/ui/finance-detail-shell";
 import { FinanceHelpAssistantTrigger } from "@/components/ui/finance-help-assistant-trigger";
+import { FinanceStatusChip } from "@/components/ui/finance-status-chip";
 import { FinanceStepIndicator } from "@/components/ui/finance-step-indicator";
 import { FinColors, FinSurfaces } from "@/constants/theme";
 import { IMPORT_FLOW_STEPS } from "@/components/import/import-flow-steps";
@@ -16,7 +19,6 @@ import React from "react";
 import {
   ActivityIndicator,
   Alert,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -50,6 +52,9 @@ function StageRow({
   detail: string;
   accent?: string | null;
 }) {
+  const chipTone = tone === "done" ? "good" : tone === "current" ? "watch" : "neutral";
+  const chipLabel = tone === "done" ? "Klaar" : tone === "current" ? "Lopend" : "Wachten";
+
   return (
     <View style={styles.stageRow}>
       <View
@@ -66,7 +71,10 @@ function StageRow({
         ) : null}
       </View>
       <View style={styles.stageTextWrap}>
-        <Text style={styles.stageLabel}>{label}</Text>
+        <View style={styles.stageLabelRow}>
+          <Text style={styles.stageLabel}>{label}</Text>
+          <FinanceStatusChip label={chipLabel} tone={chipTone} />
+        </View>
         <Text style={styles.stageDetail}>{detail}</Text>
         {accent ? <Text style={styles.stageAccent}>{accent}</Text> : null}
       </View>
@@ -209,20 +217,18 @@ export default function ImportControlScreen() {
         contentContainerStyle={styles.content}
         contentMaxStyle={styles.contentMax}
       >
-        <View style={styles.emptyCard}>
+        <FinanceDetailCard style={styles.emptyCard}>
           <AppIcon name="folder-open" size={34} color={FinColors.warningText} variant="outlined" />
           <Text style={styles.emptyTitle}>Geen import gevonden</Text>
           <Text style={styles.emptyText}>
             Ga terug naar importeren en kies opnieuw een bestand.
           </Text>
-          <Pressable
-            accessibilityRole="button"
+          <FinanceButton
+            label="Terug naar import"
+            variant="secondary"
             onPress={() => router.replace("/csv-import")}
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.secondaryButtonText}>Terug naar import</Text>
-          </Pressable>
-        </View>
+          />
+        </FinanceDetailCard>
       </FinanceDetailShell>
     );
   }
@@ -282,29 +288,31 @@ export default function ImportControlScreen() {
           </View>
 
           {run.status === "error" && run.errorMessage ? (
-            <View style={styles.errorCard}>
+            <FinanceDetailCard style={styles.errorCard}>
               <Text style={styles.errorTitle}>Transacties inlezen mislukt</Text>
               <Text style={styles.errorText}>{run.errorMessage}</Text>
               <View style={styles.errorActions}>
-                <Pressable
-                  accessibilityRole="button"
+                <FinanceButton
+                  label="Opnieuw proberen"
                   onPress={() => {
                     resetImportRun();
                   }}
-                  style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-                >
-                  <AppIcon name="refresh" size={16} color={FinColors.textPrimary} variant="outlined" />
-                  <Text style={styles.primaryButtonText}>Opnieuw proberen</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
+                  leftIcon={
+                    <AppIcon
+                      name="refresh"
+                      size={16}
+                      color={FinColors.textPrimary}
+                      variant="outlined"
+                    />
+                  }
+                />
+                <FinanceButton
+                  label="Terug naar koppelen"
+                  variant="secondary"
                   onPress={() => router.back()}
-                  style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-                >
-                  <Text style={styles.secondaryButtonText}>Terug naar koppelen</Text>
-                </Pressable>
+                />
               </View>
-            </View>
+            </FinanceDetailCard>
           ) : (
             <View style={styles.progressCard}>
               <View style={styles.progressHeader}>
@@ -483,6 +491,12 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  stageLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
   stageLabel: {
     fontSize: 13,
     lineHeight: 18,
@@ -540,7 +554,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   emptyCard: {
-    ...FinSurfaces.topLevelCard,
     borderRadius: 28,
     padding: 20,
     gap: 10,
@@ -556,38 +569,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     color: FinColors.textSecondary,
-  },
-  primaryButton: {
-    borderRadius: 999,
-    backgroundColor: FinColors.yellow,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  primaryButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
-    color: FinColors.textPrimary,
-    fontWeight: "800",
-  },
-  secondaryButton: {
-    borderRadius: 999,
-    backgroundColor: FinColors.bgElevated,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  secondaryButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
-    color: FinColors.textPrimary,
-    fontWeight: "700",
-  },
-  pressed: {
-    opacity: 0.86,
   },
 });

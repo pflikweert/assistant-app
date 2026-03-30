@@ -1,6 +1,7 @@
 import { AppIcon, type AppIconName } from "@/components/ui/app-icon";
 import { FinanceAdminShell } from "@/components/ui/finance-admin-shell";
 import { FinanceBottomSheetShell } from "@/components/ui/finance-bottom-sheet-shell";
+import { FinanceButton } from "@/components/ui/finance-button";
 import { FinanceHeroShell } from "@/components/ui/finance-hero-shell";
 import { FinanceSectionHeader } from "@/components/ui/finance-section-header";
 import { FinColors, FinSurfaces } from "@/constants/theme";
@@ -352,6 +353,27 @@ export default function AdminScreen() {
         </FinanceHeroShell>
 
         <View style={styles.contentMax}>
+          <SectionCard
+            title="Design system"
+            subtitle="Interne referentie voor tokens, componenten, patronen en Stitch-sync."
+          >
+            <View style={styles.designSystemRow}>
+              <View style={styles.designSystemText}>
+                <Text style={styles.designSystemTitle}>Budio Design System</Text>
+                <Text style={styles.designSystemMeta}>
+                  Alleen zichtbaar voor admins. Gebruik deze hub om snel de huidige bron van
+                  waarheid te bekijken en te gebruiken.
+                </Text>
+              </View>
+              <FinanceButton
+                label="Open"
+                variant="secondary"
+                size="md"
+                onPress={() => router.push("/admin/design-system" as Href)}
+              />
+            </View>
+          </SectionCard>
+
           <SectionCard
             title="Assistent review"
             subtitle="Items waar de assistent waarschijnlijk niet voldoende heeft geholpen of waar productfrictie zichtbaar is."
@@ -875,6 +897,27 @@ const styles = StyleSheet.create({
     maxWidth: 760,
     fontSize: 16,
     lineHeight: 24,
+  },
+  designSystemRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  designSystemText: {
+    flex: 1,
+    gap: 6,
+  },
+  designSystemTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "800",
+    color: FinColors.textPrimary,
+  },
+  designSystemMeta: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: FinColors.textSecondary,
   },
   heroPills: {
     flexDirection: "row",

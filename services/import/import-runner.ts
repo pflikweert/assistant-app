@@ -11,8 +11,9 @@ import type {
 } from "./import-flow-state";
 import { setCurrentImportRunResult, setImportRunError, setImportRunProgress } from "./import-flow-state";
 import {
-  findMatchingImportedTransaction,
+  findMatchingImportedTransactionWithReason,
   type ImportedTransactionMatchCandidate,
+  type ImportedTransactionMatchReason,
 } from "./transaction-import-match";
 
 export type ImportRunPhase = ImportRunProgress["phase"];
@@ -25,6 +26,11 @@ export type ExecuteImportDraftOptions = {
 type ExistingImportedTransactionCandidate = ImportedTransactionMatchCandidate & {
   date?: string | null;
   amount?: number | null;
+};
+
+type TransactionUpdatePlan = {
+  id: string;
+  payload: Record<string, unknown>;
 };
 
 function emitProgress(
@@ -147,6 +153,29 @@ async function insertTransactionBatch(batch: Record<string, unknown>[]): Promise
   return insertedIds;
 }
 
+async function updateTransactionBatch(
+  userId: string,
+  bankAccountId: string,
+  batch: TransactionUpdatePlan[],
+): Promise<string[]> {
+  if (!batch.length) return [];
+
+  const updatedIds: string[] = [];
+  for (const update of batch) {
+    const { error } = await supabase
+      .from("transactions")
+      .update(update.payload)
+      .eq("id", update.id)
+      .eq("user_id", userId)
+      .eq("bank_account_id", bankAccountId);
+
+    if (error) throw error;
+    updatedIds.push(update.id);
+  }
+
+  return updatedIds;
+}
+
 async function loadExistingTransactionCandidates(
   userId: string,
   bankAccountId: string,
@@ -185,6 +214,124 @@ async function loadExistingTransactionCandidates(
 }
 
 const WRITE_BATCH_SIZE = 5;
+
+function toStringMap(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const entries = Object.entries(value as Record<string, unknown>).map(([key, rawValue]) => [
+    key,
+    rawValue == null ? "" : String(rawValue),
+  ]);
+  return Object.fromEntries(entries);
+}
+
+function hasEqualRecordValues(
+  left: Record<string, string>,
+  right: Record<string, string>,
+): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+
+  return leftKeys.every((key) => (right[key] || "") === (left[key] || ""));
+}
+
+function hasMeaningfulDetails(details: string, counterparty: string): boolean {
+  const normalizedDetails = normalizeTransactionDetails(details);
+  const normalizedCounterparty = String(counterparty || "").trim();
+  if (!normalizedDetails) return false;
+  if (!normalizedCounterparty) return true;
+  return normalizedDetails.toLowerCase() !== normalizedCounterparty.toLowerCase();
+}
+
+function buildMatchedTransactionUpdatePlan(
+  existingRow: ImportedTransactionMatchCandidate,
+  incomingRow: {
+    details: string;
+    counterparty: string;
+    currency: string;
+    type: string;
+    metadata: Record<string, string>;
+  },
+  reason: ImportedTransactionMatchReason,
+): TransactionUpdatePlan | null {
+  const id = String(existingRow.id || "");
+  if (!id) return null;
+
+  const existingDetails = normalizeTransactionDetails(existingRow.details || "");
+  const existingCounterparty = String(existingRow.counterparty || "").trim();
+  const incomingDetails = normalizeTransactionDetails(incomingRow.details || "");
+  const incomingCounterparty = String(incomingRow.counterparty || "").trim();
+  const mergedMetadata = {
+    ...toStringMap(existingRow.metadata),
+    ...toStringMap(incomingRow.metadata),
+  };
+
+  const detailsChanged = existingDetails !== incomingDetails;
+  const counterpartyChanged = existingCounterparty !== incomingCounterparty;
+  const metadataChanged = !hasEqualRecordValues(
+    toStringMap(existingRow.metadata),
+    mergedMetadata,
+  );
+
+  const existingLooksLikeFallbackDetails =
+    existingDetails.length > 0 &&
+    existingCounterparty.length > 0 &&
+    existingDetails.toLowerCase() === existingCounterparty.toLowerCase();
+
+  const existingHasMeaningfulDetails = hasMeaningfulDetails(
+    existingDetails,
+    existingCounterparty,
+  );
+  const incomingHasMeaningfulDetails = hasMeaningfulDetails(
+    incomingDetails,
+    incomingCounterparty,
+  );
+
+  const incomingHasRicherDetails =
+    incomingDetails.length > existingDetails.length &&
+    incomingHasMeaningfulDetails;
+
+  const allowDetailsOverwrite =
+    detailsChanged &&
+    incomingHasMeaningfulDetails &&
+    (!existingHasMeaningfulDetails ||
+      existingLooksLikeFallbackDetails ||
+      (incomingHasRicherDetails &&
+        (reason === "reference" || reason === "exact" || reason === "details")));
+
+  const allowCounterpartyOverwrite = reason === "reference" || reason === "exact";
+  const allowMetadataOverwrite =
+    reason === "reference" || reason === "exact" || reason === "details";
+  const shouldUpdateDetails = allowDetailsOverwrite;
+  const shouldUpdateCounterparty = allowCounterpartyOverwrite && counterpartyChanged;
+  const shouldUpdateMetadata =
+    metadataChanged &&
+    (allowMetadataOverwrite || shouldUpdateDetails || shouldUpdateCounterparty);
+
+  if (!shouldUpdateDetails && !shouldUpdateCounterparty && !shouldUpdateMetadata) {
+    return null;
+  }
+
+  const payload: Record<string, unknown> = {};
+  if (shouldUpdateDetails) {
+    payload.details = incomingDetails;
+  }
+  if (shouldUpdateCounterparty) {
+    payload.counterparty = incomingCounterparty || null;
+  }
+  if (shouldUpdateMetadata) {
+    payload.metadata = mergedMetadata;
+  }
+
+  if (reason === "reference" || reason === "exact") {
+    payload.type = incomingRow.type || null;
+    payload.currency = incomingRow.currency || "EUR";
+  }
+
+  return { id, payload };
+}
 
 export async function executeImportDraft(
   draft: ImportDraft,
@@ -228,6 +375,7 @@ export async function executeImportDraft(
     let importedTransactions = 0;
     let skippedTransactions = 0;
     const insertedIds: string[] = [];
+    const updatedIds: string[] = [];
 
     for (const group of linkedGroups) {
       assertLinked(group);
@@ -236,6 +384,7 @@ export async function executeImportDraft(
       const groupStartedAt = Date.now();
 
       const rowsToInsert: Record<string, unknown>[] = [];
+      const rowsToUpdate: TransactionUpdatePlan[] = [];
       const seenKeys = new Set<string>();
       const candidateRows = group.transactions.map((row) => ({
         date: row.date,
@@ -269,13 +418,28 @@ export async function executeImportDraft(
 
         const existingCandidates =
           existingRowsByDateAmount.get(buildDateAmountKey(row.date, row.amount)) || [];
-        const matchedExisting = findMatchingImportedTransaction(existingCandidates, {
+        const matchedExisting = findMatchingImportedTransactionWithReason(existingCandidates, {
           details: row.details,
           counterparty: row.counterparty,
           metadata: row.metadata,
         });
         if (matchedExisting) {
-          skippedTransactions += 1;
+          const updatePlan = buildMatchedTransactionUpdatePlan(
+            matchedExisting.candidate,
+            {
+              details: row.details,
+              counterparty: row.counterparty,
+              currency: row.currency || "EUR",
+              type: row.type || "",
+              metadata: row.metadata || {},
+            },
+            matchedExisting.reason,
+          );
+          if (updatePlan) {
+            rowsToUpdate.push(updatePlan);
+          } else {
+            skippedTransactions += 1;
+          }
           continue;
         }
 
@@ -301,6 +465,7 @@ export async function executeImportDraft(
         linkedBy: group.linkedBy,
         transactionCount: group.transactionCount,
         rowsToInsert: rowsToInsert.length,
+        rowsToUpdate: rowsToUpdate.length,
         skippedDuringPrepare: skippedTransactions,
       });
 
@@ -381,18 +546,41 @@ export async function executeImportDraft(
         emitProgress(options.onProgress, batchDoneProgress);
         setImportRunProgress(batchDoneProgress);
       }
+
+      for (let start = 0; start < rowsToUpdate.length; start += WRITE_BATCH_SIZE) {
+        const batch = rowsToUpdate.slice(start, start + WRITE_BATCH_SIZE);
+        const batchNumber = Math.floor(start / WRITE_BATCH_SIZE) + 1;
+        const batchTotal = Math.ceil(rowsToUpdate.length / WRITE_BATCH_SIZE);
+        const updatedInBatchIds = await updateTransactionBatch(userId, bankAccountId, batch);
+
+        updatedIds.push(...updatedInBatchIds);
+        importedTransactions += updatedInBatchIds.length;
+
+        const updateBatchProgress: ImportRunProgress = {
+          ...baseWritingProgress,
+          batchNumber,
+          batchTotal,
+          batchSize: batch.length,
+          savedCount: importedTransactions,
+          skippedCount: skippedTransactions,
+        };
+        emitProgress(options.onProgress, updateBatchProgress);
+        setImportRunProgress(updateBatchProgress);
+      }
     }
 
-    const categorizationQueued = insertedIds.length > 0;
+    const idsToCategorize = Array.from(new Set([...insertedIds, ...updatedIds]));
+    const categorizationQueued = idsToCategorize.length > 0;
 
     if (categorizationQueued) {
       debugImport("finalizing import", {
         insertedIds: insertedIds.length,
+        updatedIds: updatedIds.length,
         importedTransactions,
         skippedTransactions,
         elapsedMs: Date.now() - startedAt,
       });
-      runCategorizationInBackground(insertedIds, userId);
+      runCategorizationInBackground(idsToCategorize, userId);
     }
 
     const result: ImportRunResult = {

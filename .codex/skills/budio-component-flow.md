@@ -18,6 +18,7 @@ Gebruik deze flow bij het aanmaken van nieuwe componenten in Budio.
 - Pas na user keuze:
   - gekozen variant verplaatsen naar `design_refs/approved/{screen}/`
   - daarna pas implementatie starten
+- Nieuwe componenten mogen alleen worden gebouwd nadat Stitch-designs expliciet zijn goedgekeurd in review.
 - Project-id bron:
   - `docs/design/stitch-project-registry.md`
 
@@ -61,6 +62,22 @@ Fallback:
 
 - component minimaal 3x herbruikbaar is
 - component nog niet bestaat in het system
+- er expliciete goedkeuring op de Stitch-variant bestaat
+
+## Component engineering contract
+
+- Gebruik componentnamen in het Engels met duidelijke intentie (`SmartBudgetSetupEntryCard`, `BudgetSetupReviewSummaryCard`).
+- Gebruik logische mapstructuur:
+  - domeincomponenten onder `components/{domain}/...`
+  - generieke UI-primitives onder `components/ui/...`
+- Nieuwe componenten moeten design-system-first zijn:
+  - tokens uit `constants/theme.ts`
+  - bestaande shells/patronen eerst
+  - geen losse one-off styleblokken als een gedeelde variant mogelijk is
+- Nieuwe componenten moeten herbruikbaar zijn:
+  - heldere props
+  - states expliciet (loading/empty/partial/error waar relevant)
+  - geen verborgen koppeling aan één route
 
 ## Variantenfase
 
