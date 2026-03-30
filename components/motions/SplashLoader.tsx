@@ -39,9 +39,9 @@ export type SplashLoaderProps = {
 
 export function SplashLoader({
   eyebrow = "Budio",
-  title = "Je financiële cockpit wordt klaargezet",
-  subtitle = "We laden veilige ruimte, wat nu vrij is en de eerstvolgende stap.",
-  label = "Even geduld, je context wordt gesynchroniseerd.",
+  title = "Budio cockpit wordt voorbereid",
+  subtitle = "We zetten je veilige ruimte en context rustig voor je klaar.",
+  label = "Je overzicht wordt bijgewerkt.",
   imageSource,
   size = 96,
   speed = 1,

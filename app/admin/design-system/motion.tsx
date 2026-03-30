@@ -275,9 +275,9 @@ export default function DesignSystemMotionScreen() {
               <SplashLoader
                 imageSource={require("../../../assets/images/budio-splash-motion.png")}
                 eyebrow="Budio"
-                title="Je cockpit komt zo online"
-                subtitle="We laden veilige ruimte, wat nu vrij is en de volgende stap."
-                label="Synchroniseren"
+                title="Budio cockpit wordt voorbereid"
+                subtitle="We zetten je veilige ruimte en context rustig voor je klaar."
+                label="Je overzicht wordt bijgewerkt."
                 size={78}
                 background={false}
               />

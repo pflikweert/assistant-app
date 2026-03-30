@@ -517,9 +517,9 @@ export default function DashboardScreen() {
       {isBootstrapping ? (
         <SplashLoader
           imageSource={require("../../assets/images/budio-splash-motion.png")}
-          title="Je financiële cockpit wordt klaargezet"
-          subtitle="Veilig tot volgende inkomen, nu vrij en komende risico's komen zo in beeld."
-          label="Je context wordt geladen…"
+          title="Budio cockpit wordt voorbereid"
+          subtitle="We zetten je veilige ruimte en context rustig voor je klaar."
+          label="Je overzicht wordt bijgewerkt."
         />
       ) : (
         <ScrollView
