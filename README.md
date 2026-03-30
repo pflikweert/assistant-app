@@ -14,6 +14,13 @@ De actuele productrichting staat in:
 
 De kernverschuiving is home-first: forecast, budget, insights, transacties en AI zijn onderliggende motoren voor één dominante cockpit-ervaring.
 
+## Knowledge sync
+
+Voor de vaste set product- en designbronnen die in ChatGPT Projects als source gebruikt wordt, is er een kleine Google Drive sync-tool:
+
+- [docs/knowledge-sync.md](./docs/knowledge-sync.md)
+- run met `npm run knowledge:sync`
+
 ## Get started
 
 1. Install dependencies
