@@ -267,12 +267,20 @@ export default function DesignSystemMotionScreen() {
           <MotionPreviewItem
             title="SplashLoader"
             copyValue="SplashLoader"
-            note="Loadercomponent voor opstart- of wachtcontext met reduce-motion ondersteuning."
+            note="Image-based splash met configureerbare copy, rustige motion en reduce-motion ondersteuning."
             copied={copiedKey === "SplashLoader"}
             onCopy={handleCopy}
           >
             <View style={styles.loaderFrame}>
-              <SplashLoader label="Data laden…" size={78} background={false} />
+              <SplashLoader
+                imageSource={require("../../../assets/images/budio-splash-motion.png")}
+                eyebrow="Budio"
+                title="Je cockpit komt zo online"
+                subtitle="We laden veilige ruimte, wat nu vrij is en de volgende stap."
+                label="Synchroniseren"
+                size={78}
+                background={false}
+              />
             </View>
           </MotionPreviewItem>
         </View>

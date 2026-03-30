@@ -756,7 +756,7 @@ export const designSystemHubMotionFamilies: DesignSystemHubMotionFamily[] = [
     status: "in gebruik",
     source: "components/motions/SplashLoader.tsx, useSplashLoaderAnimation.ts",
     usedIn: "Splash, opstart- en loading-contexten",
-    note: "Gebruik deze alleen bij echte wachttijd. Respecteer reduce-motion altijd.",
+    note: "Image-based splash met configureerbare copy en rustige motion. Gebruik alleen bij echte wachttijd en respecteer reduce-motion altijd.",
     items: ["SplashLoader", "useSplashLoaderAnimation"],
   },
   {
