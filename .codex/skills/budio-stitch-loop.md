@@ -1,6 +1,18 @@
-# Budio Stitch Loop Skill
+# Status
 
-Gebruik deze skill voor consistente redesign-verkenning over meerdere schermen.
+- Status: companion/detaildoc
+- Rol: multi-screen variantloop als verdieping binnen full path
+- Alleen gebruiken wanneer:
+  - multi-screen harmonisatie is getriggerd
+- Niet gebruiken als top-level skillroutering:
+  - centrale full-path skill is `budio-stitch-governance`
+  - default blijft `budio-delivery-fast-path`
+- Primaire routing:
+  - zie `.codex/skills/README.md`
+
+# Budio Stitch Loop (Companion)
+
+Gebruik deze companion alleen als detailhulp voor multi-screen werk binnen full path.
 
 ## Doel
 

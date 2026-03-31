@@ -1,6 +1,17 @@
-# Budio RN Component Mapper Skill
+# Status
 
-Gebruik deze skill om Stitch-schermstructuur te vertalen naar React Native/Expo componentmapping voor Budio.
+- Status: companion detaildoc
+- Rol: aanvullende mappingrichtlijnen naast formele top-level skillfile
+- Alleen gebruiken wanneer:
+  - `budio-rn-component-mapper` al gekozen is als top-level skill
+- Niet gebruiken als top-level skillroutering:
+  - gebruik `.codex/skills/budio-rn-component-mapper/SKILL.md` als primaire entry
+- Primaire routing:
+  - zie `.codex/skills/README.md`
+
+# Budio RN Component Mapper (Companion)
+
+Gebruik deze companion als aanvullende detailnotities; primaire ingang is de top-level `SKILL.md`.
 
 ## Doel
 

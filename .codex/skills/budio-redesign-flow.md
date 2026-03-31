@@ -1,6 +1,18 @@
-# Budio Redesign Flow
+# Status
 
-Gebruik deze flow bij redesign van bestaande schermen in Budio.
+- Status: companion/detaildoc
+- Rol: detailflow voor redesign binnen full path
+- Alleen gebruiken wanneer:
+  - redesign-trigger aanwezig is (grote impact/shell/hierarchie)
+- Niet gebruiken als top-level skillroutering:
+  - centrale full-path routering is `budio-stitch-governance`
+  - kleine taken blijven in `budio-delivery-fast-path`
+- Primaire routing:
+  - zie `.codex/skills/README.md`
+
+# Budio Redesign Flow (Companion)
+
+Gebruik deze companionflow alleen als detailhulp binnen een bevestigd full-path redesign.
 
 ## Preview-first regel
 

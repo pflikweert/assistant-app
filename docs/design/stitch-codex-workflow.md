@@ -1,3 +1,15 @@
+# Status
+
+- Status: companion workflowdoc (geen top-level skill)
+- Rol: operationele Stitch-detailinstructies
+- Alleen gebruiken wanneer:
+  - full path al gekozen is via `budio-stitch-governance`
+- Niet gebruiken als top-level skillroutering:
+  - start altijd met `budio-delivery-fast-path`
+  - gebruik `budio-stitch-governance` als centrale full-path entry
+- Primaire routing:
+  - zie `.codex/skills/README.md`
+
 # Stitch + Codex Workflow
 
 Gebruik dit als vaste basis om Stitch vanuit Codex betrouwbaar te gebruiken.

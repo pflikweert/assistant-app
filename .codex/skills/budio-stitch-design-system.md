@@ -1,6 +1,17 @@
-# Budio Stitch Design System Flow
+# Status
 
-Gebruik deze skill als Stitch design-system governance moet worden afgedwongen op bestaande screens.
+- Status: companion inputdoc voor governance
+- Rol: detailregels voor Stitch design-system beheer
+- Alleen gebruiken wanneer:
+  - `budio-stitch-governance` al actief is in full path
+- Niet gebruiken als top-level skillroutering:
+  - gebruik `budio-stitch-governance` als centrale entry
+- Primaire routing:
+  - zie `.codex/skills/README.md`
+
+# Budio Stitch Design System (Companion)
+
+Gebruik deze companion voor design-system details binnen een al gekozen `budio-stitch-governance` traject.
 
 ## Doel
 

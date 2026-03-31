@@ -1,6 +1,18 @@
-# Component Creation Flow
+# Status
 
-Gebruik deze flow bij het aanmaken van nieuwe componenten in Budio.
+- Status: companion/detaildoc
+- Rol: component-variant detailhulp voor designtrajecten
+- Alleen gebruiken wanneer:
+  - componentwerk onderdeel is van een bevestigd designpad
+- Niet gebruiken als top-level skillroutering:
+  - start via `budio-delivery-fast-path`
+  - bij full-path trigger via `budio-stitch-governance`
+- Primaire routing:
+  - zie `.codex/skills/README.md`
+
+# Component Creation Flow (Companion)
+
+Gebruik deze companionflow alleen als detailhulp binnen een al gekozen designpad.
 
 ## Preview-first regel
 

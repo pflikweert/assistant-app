@@ -1,6 +1,17 @@
-# Budio Design System Skill
+# Status
 
-Gebruik deze skill bij alle design-, UI- en schermtaken in Budio.
+- Status: companion inputdoc voor governance
+- Rol: historische design-system richtlijnen
+- Alleen gebruiken wanneer:
+  - extra detail nodig is binnen een bestaand full-path traject
+- Niet gebruiken als top-level skillroutering:
+  - centrale routering loopt via `budio-stitch-governance`
+- Primaire routing:
+  - zie `.codex/skills/README.md`
+
+# Budio Design System (Companion)
+
+Gebruik deze companion als achtergrondreferentie binnen `budio-stitch-governance`, niet als primaire ingang.
 
 ## Preview-first workflow
 

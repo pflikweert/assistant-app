@@ -1,6 +1,18 @@
-# Budio New Screen Flow
+# Status
 
-Gebruik deze flow bij het bouwen van nieuwe schermen in Budio.
+- Status: companion/detaildoc
+- Rol: detailuitwerking voor nieuwe-scherm trajecten
+- Alleen gebruiken wanneer:
+  - full path al is bevestigd via trigger
+- Niet gebruiken als top-level skillroutering:
+  - centrale routing loopt via `budio-stitch-governance`
+  - zonder trigger blijft `budio-delivery-fast-path` leidend
+- Primaire routing:
+  - zie `.codex/skills/README.md`
+
+# Budio New Screen Flow (Companion)
+
+Gebruik deze companionflow alleen als detailhulp nadat `budio-stitch-governance` is gekozen.
 
 ## Preview-first regel
 

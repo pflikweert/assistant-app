@@ -1,6 +1,17 @@
-# Budio Design Sync Check Skill
+# Status
 
-Gebruik deze skill om prompt/design drift tussen codebase docs en Stitch state te detecteren.
+- Status: companion inputdoc voor governance-audit
+- Rol: driftcheck detailstappen
+- Alleen gebruiken wanneer:
+  - full path actief is en governance-validatie nodig is
+- Niet gebruiken als top-level skillroutering:
+  - centrale full-path skill is `budio-stitch-governance`
+- Primaire routing:
+  - zie `.codex/skills/README.md`
+
+# Budio Design Sync Check (Companion)
+
+Gebruik deze companion als auditdetail binnen een actief `budio-stitch-governance` pad.
 
 ## Doel
 

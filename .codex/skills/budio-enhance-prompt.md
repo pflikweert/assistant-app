@@ -1,6 +1,18 @@
-# Budio Enhance Prompt Skill
+# Status
 
-Gebruik deze skill om een vage UI-vraag om te zetten naar een Stitch-ready prompt binnen het Budio design system.
+- Status: companion/detaildoc
+- Rol: promptverfijning als hulpmiddel binnen bestaande flow
+- Alleen gebruiken wanneer:
+  - je al in een designtaak zit en promptkwaliteit moet verhogen
+- Niet gebruiken als top-level skillroutering:
+  - start routing via `budio-delivery-fast-path`
+  - bij full-path trigger via `budio-stitch-governance`
+- Primaire routing:
+  - zie `.codex/skills/README.md`
+
+# Budio Enhance Prompt (Companion)
+
+Gebruik deze companion om een vage UI-vraag om te zetten naar een Stitch-ready prompt binnen een al gekozen flow.
 
 ## Doel
 
